@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 serde = { workspace = true }
+specta = { workspace = true }
 thiserror = { workspace = true }
 
 [lints]

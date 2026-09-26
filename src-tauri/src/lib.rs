@@ -3,13 +3,20 @@ use tauri_specta::{Builder, collect_commands};
 
 #[tauri::command]
 #[specta::specta]
+fn create_case_session(id: String, template_id: String) -> epikrise_core::CaseSession {
+    epikrise_core::CaseSession::new(id, template_id)
+}
+
+#[tauri::command]
+#[specta::specta]
 fn greet(name: &str) -> String {
     format!("Hello, {name}! You've been greeted from Rust!")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<(), tauri::Error> {
-    let builder = Builder::<tauri::Wry>::new().commands(collect_commands![greet]);
+    let builder = Builder::<tauri::Wry>::new()
+        .commands(collect_commands![create_case_session, greet]);
 
     #[cfg(debug_assertions)]
     builder

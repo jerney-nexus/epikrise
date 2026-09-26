@@ -922,6 +922,7 @@ name = "epikrise-core"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "specta",
  "thiserror 2.0.21",
 ]
 

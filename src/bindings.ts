@@ -4,6 +4,29 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
+	createCaseSession: (id: string, templateId: string) => __TAURI_INVOKE<CaseSession>("create_case_session", { id, templateId }),
 	greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
 };
+
+/* Types */
+export type CaseSession = {
+	id: string,
+	template_id: string,
+	inputs: ExtractedBlock[],
+	current_output: string | null,
+	reviewed_output_hash: string | null,
+};
+
+export type ExtractedBlock = {
+	id: string,
+	round: number,
+	provenance: InputProvenance,
+	content: string,
+};
+
+export type InputProvenance = "RawText" | ({ File: {
+	name: string,
+} }) & { Url?: never } | "Clipboard" | ({ Url: {
+	address: string,
+} }) & { File?: never };
 
