@@ -37,11 +37,11 @@ system. Epikrise never talks to a hospital information system.
 
 ## Requirements
 
-| Tool | Version | Notes |
-| --- | --- | --- |
-| Rust | 1.98+ | stable toolchain, edition 2024 |
-| Node.js | 22+ | npm is the package manager; pnpm is not used |
-| Platform deps | — | see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
+| Tool          | Version | Notes                                                                |
+| ------------- | ------- | -------------------------------------------------------------------- |
+| Rust          | 1.98+   | stable toolchain, edition 2024                                       |
+| Node.js       | 22+     | npm is the package manager; pnpm is not used                         |
+| Platform deps | —       | see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
 
 A [dev container](.devcontainer/devcontainer.json) with everything preinstalled
 is included; see [CONTRIBUTING.md](CONTRIBUTING.md).
