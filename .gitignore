@@ -1,7 +1,7 @@
 # --- Clinical content (never commit) ---
 # Institutional templates and any real or sample clinical text. The app imports
 # these at first run; see the plan's "Template shipping" decision.
-*.kisimtpl
+*.epitpl
 /templates/
 /fixtures/clinical/
 
@@ -72,3 +72,10 @@ tmp/
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# --- Miscellaneous ---
+# SvelteKit library packaging output
+/package
+# Vite writes these when the config is transpiled on the fly
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*

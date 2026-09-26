@@ -1,0 +1,16 @@
+[package]
+name = "epikrise-ingest"
+description = "Input extraction pipeline for text, documents, images, clipboard and URLs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+epikrise-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
