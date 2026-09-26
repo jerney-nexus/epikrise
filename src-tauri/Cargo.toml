@@ -58,8 +58,11 @@ epikrise-ingest = { workspace = true }
 epikrise-llm = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+specta = { version = "2.0.0-rc.25", features = ["derive"] }
+specta-typescript = "0.0.12"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-specta = { version = "2.0.0-rc.25", features = ["typescript"] }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
