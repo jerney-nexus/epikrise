@@ -1,0 +1,74 @@
+# --- Clinical content (never commit) ---
+# Institutional templates and any real or sample clinical text. The app imports
+# these at first run; see the plan's "Template shipping" decision.
+*.kisimtpl
+/templates/
+/fixtures/clinical/
+
+# --- Secrets & local config ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+policy.toml
+!policy.example.toml
+# Tauri updater signing key
+*.key.pub
+tauri-private.key
+
+# --- Rust ---
+/target/
+**/target/
+*.rs.bk
+*.pdb
+
+# --- Node / frontend ---
+node_modules/
+dist/
+build/
+.svelte-kit/
+.vite/
+.turbo/
+*.tsbuildinfo
+.npm/
+.eslintcache
+
+# --- Tauri ---
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/
+src-tauri/WixTools/
+
+# --- Test & coverage output ---
+coverage/
+*.lcov
+/playwright-report/
+/test-results/
+/blob-report/
+.playwright/
+
+# --- Logs & temp ---
+*.log
+npm-debug.log*
+tmp/
+.tmp/
+
+# --- Editor / OS ---
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
