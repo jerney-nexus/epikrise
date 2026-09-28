@@ -27,7 +27,7 @@ export type ExtractedBlock = {
 	content: string,
 };
 
-export type IngestError = { key: "empty_input" } | { key: "invalid_utf8" } | { key: "unsupported_binary"; mime: string } | { key: "unsupported_control_characters" } | { key: "pdf_extraction_failed" } | { key: "no_text_extracted" };
+export type IngestError = { key: "empty_input" } | { key: "invalid_utf8" } | { key: "unsupported_binary"; mime: string } | { key: "unsupported_control_characters" } | { key: "pdf_extraction_failed" } | { key: "no_text_extracted" } | { key: "pdf_ocr_required"; pages: number[] } | { key: "invalid_docx_archive" } | { key: "missing_docx_document" } | { key: "docx_document_too_large" } | { key: "invalid_docx_xml" } | { key: "invalid_xlsx" } | { key: "no_xlsx_worksheets" } | { key: "no_xlsx_text" } | { key: "html_conversion_failed" } | { key: "no_html_text" } | { key: "invalid_rtf" } | { key: "no_rtf_text" };
 
 export type InputProvenance = "RawText" | ({ File: {
 	name: string,

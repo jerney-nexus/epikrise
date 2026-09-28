@@ -16,6 +16,7 @@ use thiserror::Error;
 use zip::ZipArchive;
 
 const MAX_DOCX_DOCUMENT_XML_BYTES: u64 = 16 * 1024 * 1024;
+const MIN_PDF_CHARACTERS_PER_PAGE: usize = 40;
 
 #[derive(Debug, Error, Serialize, Type, PartialEq, Eq)]
 #[serde(tag = "key", rename_all = "snake_case")]
@@ -32,6 +33,8 @@ pub enum IngestError {
     PdfExtractionFailed,
     #[error("PDF contains no extractable text")]
     NoTextExtracted,
+    #[error("PDF pages {pages:?} require OCR")]
+    PdfOcrRequired { pages: Vec<u32> },
     #[error("invalid DOCX archive")]
     InvalidDocxArchive,
     #[error("DOCX is missing word/document.xml")]
@@ -187,11 +190,28 @@ fn extract_xlsx_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock
 }
 
 fn extract_pdf_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
-    let text =
-        pdf_extract::extract_text_from_mem(&bytes).map_err(|_| IngestError::PdfExtractionFailed)?;
-    if text.trim().is_empty() {
+    let pages = pdf_extract::extract_text_from_mem_by_pages(&bytes)
+        .map_err(|_| IngestError::PdfExtractionFailed)?;
+    if pages.is_empty() {
         return Err(IngestError::NoTextExtracted);
     }
+    let pages_requiring_ocr = pages
+        .iter()
+        .enumerate()
+        .filter(|(_, page)| {
+            page.chars()
+                .filter(|character| !character.is_whitespace())
+                .count()
+                < MIN_PDF_CHARACTERS_PER_PAGE
+        })
+        .map(|(index, _)| index as u32 + 1)
+        .collect::<Vec<_>>();
+    if !pages_requiring_ocr.is_empty() {
+        return Err(IngestError::PdfOcrRequired {
+            pages: pages_requiring_ocr,
+        });
+    }
+    let text = pages.join("\n");
 
     Ok(ExtractedBlock::new(
         uuid::Uuid::new_v4().to_string(),
@@ -403,7 +423,7 @@ mod tests {
 
     #[test]
     fn extracts_text_from_a_pdf_by_content_signature() {
-        let pdf = text_pdf("Synthetic PDF finding");
+        let pdf = text_pdf("Synthetic PDF finding with enough text to pass the quality threshold.");
 
         let block = extract_file("not-a-pdf.txt".to_owned(), pdf)
             .expect("PDF content should be extracted regardless of filename");
@@ -428,7 +448,21 @@ mod tests {
         );
         assert_eq!(
             extract_file("scan.pdf".to_owned(), text_pdf("")),
-            Err(IngestError::NoTextExtracted)
+            Err(IngestError::PdfOcrRequired { pages: vec![1] })
+        );
+    }
+
+    #[test]
+    fn identifies_only_sparse_pdf_pages_for_ocr() {
+        let pdf = text_pdf_pages(&[
+            "This page contains enough extracted text to pass the quality threshold.",
+            "Short",
+            "This final page also contains enough text to pass the quality threshold.",
+        ]);
+
+        assert_eq!(
+            extract_file("mixed.pdf".to_owned(), pdf),
+            Err(IngestError::PdfOcrRequired { pages: vec![2] })
         );
     }
 
@@ -641,18 +675,39 @@ mod tests {
     }
 
     fn text_pdf(text: &str) -> Vec<u8> {
-        let escaped = text
-            .replace('\\', "\\\\")
-            .replace('(', "\\(")
-            .replace(')', "\\)");
-        let stream = format!("BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET");
-        let objects = [
+        text_pdf_pages(&[text])
+    }
+
+    fn text_pdf_pages(pages: &[&str]) -> Vec<u8> {
+        let font_object = pages.len() * 2 + 3;
+        let page_references = (0..pages.len())
+            .map(|index| format!("{} 0 R", index * 2 + 3))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut objects = vec![
             "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
-            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_owned(),
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>".to_owned(),
-            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
-            format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
+            format!(
+                "<< /Type /Pages /Kids [{page_references}] /Count {} >>",
+                pages.len()
+            ),
         ];
+        for (index, text) in pages.iter().enumerate() {
+            let escaped = text
+                .replace('\\', "\\\\")
+                .replace('(', "\\(")
+                .replace(')', "\\)");
+            let stream = format!("BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET");
+            let page_object = index * 2 + 3;
+            let content_object = page_object + 1;
+            objects.push(format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 {font_object} 0 R >> >> /Contents {content_object} 0 R >>"
+            ));
+            objects.push(format!(
+                "<< /Length {} >>\nstream\n{stream}\nendstream",
+                stream.len()
+            ));
+        }
+        objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned());
         let mut pdf = b"%PDF-1.4\n".to_vec();
         let mut offsets = Vec::new();
         for (index, object) in objects.iter().enumerate() {
