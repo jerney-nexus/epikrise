@@ -131,15 +131,9 @@ impl GenaiLlmClient {
     }
 
     pub async fn list_models(&self, profile: &ProviderProfile) -> Result<Vec<String>, LlmError> {
-        use genai::adapter::AdapterKind as GenaiAdapter;
         use genai::resolver::{AuthData, Endpoint, ProviderConfig};
 
-        let adapter = match profile.adapter {
-            ProviderAdapter::OpenAi | ProviderAdapter::OpenAiCompatible => GenaiAdapter::OpenAI,
-            ProviderAdapter::Anthropic => GenaiAdapter::Anthropic,
-            ProviderAdapter::Gemini => GenaiAdapter::Gemini,
-            ProviderAdapter::Ollama => GenaiAdapter::Ollama,
-        };
+        let adapter = genai_adapter(&profile.adapter, &profile.model);
         let endpoint = profile
             .endpoint
             .as_deref()
@@ -166,6 +160,21 @@ impl GenaiLlmClient {
     }
 }
 
+fn genai_adapter(adapter: &ProviderAdapter, model: &str) -> genai::adapter::AdapterKind {
+    use genai::adapter::AdapterKind as GenaiAdapter;
+
+    match adapter {
+        ProviderAdapter::OpenAi if model.starts_with("gpt-5") || model.starts_with("gpt-6") => {
+            GenaiAdapter::OpenAIResp
+        }
+        ProviderAdapter::OpenAi => GenaiAdapter::OpenAI,
+        ProviderAdapter::OpenAiCompatible => GenaiAdapter::OpenAI,
+        ProviderAdapter::Anthropic => GenaiAdapter::Anthropic,
+        ProviderAdapter::Gemini => GenaiAdapter::Gemini,
+        ProviderAdapter::Ollama => GenaiAdapter::Ollama,
+    }
+}
+
 fn prepare_request(
     credentials: &Arc<dyn CredentialStore>,
     profile: &ProviderProfile,
@@ -179,7 +188,6 @@ fn prepare_request(
     ),
     LlmError,
 > {
-    use genai::adapter::AdapterKind as GenaiAdapter;
     use genai::chat::{ChatMessage as GenaiMessage, ChatOptions, ChatRequest};
     use genai::resolver::{AuthData, Endpoint};
     use genai::{Client, ModelIden, ServiceTarget};
@@ -193,12 +201,7 @@ fn prepare_request(
         return Err(LlmError::InvalidProfile);
     }
 
-    let adapter = match profile.adapter {
-        ProviderAdapter::OpenAi | ProviderAdapter::OpenAiCompatible => GenaiAdapter::OpenAI,
-        ProviderAdapter::Anthropic => GenaiAdapter::Anthropic,
-        ProviderAdapter::Gemini => GenaiAdapter::Gemini,
-        ProviderAdapter::Ollama => GenaiAdapter::Ollama,
-    };
+    let adapter = genai_adapter(&profile.adapter, &profile.model);
     let endpoint = profile
         .endpoint
         .as_deref()
@@ -386,9 +389,31 @@ fn map_http_status(status: u16) -> LlmError {
 mod tests {
     use super::{
         AuthSource, ChatMessage, GenaiLlmClient, GenerationParams, LlmClient, LlmError,
-        MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile, map_http_status,
-        validate_endpoint,
+        MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile, genai_adapter,
+        map_http_status, validate_endpoint,
     };
+
+    #[test]
+    fn openai_gpt_five_and_six_use_the_responses_api() {
+        use genai::adapter::AdapterKind;
+
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::OpenAi, "gpt-6-luna"),
+            AdapterKind::OpenAIResp
+        );
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::OpenAi, "gpt-5-mini"),
+            AdapterKind::OpenAIResp
+        );
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::OpenAi, "gpt-4o"),
+            AdapterKind::OpenAI
+        );
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::OpenAiCompatible, "gpt-6-luna"),
+            AdapterKind::OpenAI
+        );
+    }
 
     #[test]
     fn http_statuses_are_classified_as_provider_errors() {
