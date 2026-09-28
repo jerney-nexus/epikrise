@@ -35,6 +35,10 @@ pub enum IngestError {
     NoTextExtracted,
     #[error("PDF pages {pages:?} require OCR")]
     PdfOcrRequired { pages: Vec<u32> },
+    #[error("PDF OCR runtime is unavailable")]
+    PdfOcrUnavailable,
+    #[error("PDF OCR failed")]
+    PdfOcrFailed,
     #[error("invalid DOCX archive")]
     InvalidDocxArchive,
     #[error("DOCX is missing word/document.xml")]
@@ -76,6 +80,54 @@ pub fn extract_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock,
         }),
         None => extract_text_file(file_name, bytes),
     }
+}
+
+pub fn extract_file_with_ocr<F>(
+    file_name: String,
+    bytes: Vec<u8>,
+    ocr_pages: F,
+) -> Result<ExtractedBlock, IngestError>
+where
+    F: FnOnce(&[u8], &[u32]) -> Result<Vec<String>, IngestError>,
+{
+    if infer::get(&bytes).map(|kind| kind.mime_type()) != Some("application/pdf") {
+        return extract_file(file_name, bytes);
+    }
+
+    let mut pages = extract_pdf_pages(&bytes)?;
+    if pages.is_empty() {
+        return Err(IngestError::NoTextExtracted);
+    }
+    let sparse_pages = sparse_pdf_pages(&pages);
+    if !sparse_pages.is_empty() {
+        let recognized_pages = ocr_pages(&bytes, &sparse_pages)?;
+        if recognized_pages.len() != sparse_pages.len() {
+            return Err(IngestError::PdfOcrFailed);
+        }
+        for (page_number, recognized_text) in sparse_pages.iter().zip(recognized_pages) {
+            let Some(page_text) = pages.get_mut((*page_number - 1) as usize) else {
+                return Err(IngestError::PdfOcrFailed);
+            };
+            if recognized_text.trim().is_empty() {
+                return Err(IngestError::PdfOcrFailed);
+            }
+            if recognized_text.trim() != page_text.trim() {
+                page_text.push('\n');
+                page_text.push_str(recognized_text.trim());
+            }
+        }
+    }
+
+    let text = pages.join("\n");
+    if text.trim().is_empty() {
+        return Err(IngestError::NoTextExtracted);
+    }
+
+    Ok(ExtractedBlock::new(
+        uuid::Uuid::new_v4().to_string(),
+        InputProvenance::File { name: file_name },
+        text,
+    ))
 }
 
 fn extract_html_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
@@ -190,22 +242,11 @@ fn extract_xlsx_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock
 }
 
 fn extract_pdf_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
-    let pages = pdf_extract::extract_text_from_mem_by_pages(&bytes)
-        .map_err(|_| IngestError::PdfExtractionFailed)?;
+    let pages = extract_pdf_pages(&bytes)?;
     if pages.is_empty() {
         return Err(IngestError::NoTextExtracted);
     }
-    let pages_requiring_ocr = pages
-        .iter()
-        .enumerate()
-        .filter(|(_, page)| {
-            page.chars()
-                .filter(|character| !character.is_whitespace())
-                .count()
-                < MIN_PDF_CHARACTERS_PER_PAGE
-        })
-        .map(|(index, _)| index as u32 + 1)
-        .collect::<Vec<_>>();
+    let pages_requiring_ocr = sparse_pdf_pages(&pages);
     if !pages_requiring_ocr.is_empty() {
         return Err(IngestError::PdfOcrRequired {
             pages: pages_requiring_ocr,
@@ -218,6 +259,24 @@ fn extract_pdf_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock,
         InputProvenance::File { name: file_name },
         text,
     ))
+}
+
+fn extract_pdf_pages(bytes: &[u8]) -> Result<Vec<String>, IngestError> {
+    pdf_extract::extract_text_from_mem_by_pages(bytes).map_err(|_| IngestError::PdfExtractionFailed)
+}
+
+fn sparse_pdf_pages(pages: &[String]) -> Vec<u32> {
+    pages
+        .iter()
+        .enumerate()
+        .filter(|(_, page)| {
+            page.chars()
+                .filter(|character| !character.is_whitespace())
+                .count()
+                < MIN_PDF_CHARACTERS_PER_PAGE
+        })
+        .map(|(index, _)| index as u32 + 1)
+        .collect::<Vec<_>>()
 }
 
 fn extract_docx_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
@@ -350,7 +409,9 @@ pub fn extract_raw_text(text: String) -> Result<ExtractedBlock, IngestError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{IngestError, extract_file, extract_raw_text, extract_text_file};
+    use super::{
+        IngestError, extract_file, extract_file_with_ocr, extract_raw_text, extract_text_file,
+    };
     use epikrise_core::InputProvenance;
     use std::io::{Cursor, Write};
     use zip::ZipWriter;
@@ -463,6 +524,30 @@ mod tests {
         assert_eq!(
             extract_file("mixed.pdf".to_owned(), pdf),
             Err(IngestError::PdfOcrRequired { pages: vec![2] })
+        );
+    }
+
+    #[test]
+    fn merges_ocr_text_only_into_sparse_pdf_pages_in_order() {
+        let pdf = text_pdf_pages(&[
+            "This page contains enough extracted text to pass the quality threshold.",
+            "Short",
+            "This final page also contains enough text to pass the quality threshold.",
+        ]);
+        let mut requested_pages = Vec::new();
+
+        let block = extract_file_with_ocr("mixed.pdf".to_owned(), pdf, |_, pages| {
+            requested_pages.extend_from_slice(pages);
+            Ok(vec!["OCR text for page two".to_owned()])
+        })
+        .expect("sparse pages should be supplied by the OCR callback");
+
+        assert_eq!(requested_pages, vec![2]);
+        assert!(block.content.contains("Short\nOCR text for page two"));
+        assert!(
+            block
+                .content
+                .contains("This final page also contains enough text")
         );
     }
 

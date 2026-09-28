@@ -1,5 +1,41 @@
+use pdfium_render::prelude::{PdfRenderConfig, Pdfium};
 use specta_typescript::Typescript;
+use std::{
+    ffi::OsString,
+    io::{Seek, SeekFrom, Write},
+    path::Path,
+    sync::OnceLock,
+};
+use tauri::{AppHandle, Manager, path::BaseDirectory};
+use tauri_plugin_shell::ShellExt;
 use tauri_specta::{Builder, collect_commands};
+
+static PDFIUM: OnceLock<Result<Pdfium, ()>> = OnceLock::new();
+
+struct SensitiveImageFile(tempfile::NamedTempFile);
+
+impl Drop for SensitiveImageFile {
+    fn drop(&mut self) {
+        let file = self.0.as_file_mut();
+        let Ok(length) = file.metadata().map(|metadata| metadata.len()) else {
+            return;
+        };
+        if file.seek(SeekFrom::Start(0)).is_err() {
+            return;
+        }
+
+        let zeros = [0_u8; 8192];
+        let mut remaining = length;
+        while remaining > 0 {
+            let chunk_length = remaining.min(zeros.len() as u64) as usize;
+            if file.write_all(&zeros[..chunk_length]).is_err() {
+                break;
+            }
+            remaining -= chunk_length as u64;
+        }
+        let _ = file.sync_all();
+    }
+}
 
 #[tauri::command]
 #[specta::specta]
@@ -27,10 +63,112 @@ fn extract_text_file(
 #[tauri::command]
 #[specta::specta]
 fn extract_file(
+    app: AppHandle,
     file_name: String,
     bytes: Vec<u8>,
 ) -> Result<epikrise_core::ExtractedBlock, epikrise_ingest::IngestError> {
-    epikrise_ingest::extract_file(file_name, bytes)
+    epikrise_ingest::extract_file_with_ocr(file_name, bytes, |pdf, pages| {
+        ocr_pdf_pages(&app, pdf, pages)
+    })
+}
+
+fn ocr_pdf_pages(
+    app: &AppHandle,
+    bytes: &[u8],
+    page_numbers: &[u32],
+) -> Result<Vec<String>, epikrise_ingest::IngestError> {
+    let resources = app
+        .path()
+        .resolve("resources/ocr", BaseDirectory::Resource)
+        .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+    let pdfium_path = resources
+        .join("pdfium")
+        .join(Pdfium::pdfium_platform_library_name());
+    let tessdata_dir = resources.join("tessdata");
+
+    ocr_pdf_pages_with(
+        bytes,
+        page_numbers,
+        &pdfium_path,
+        &tessdata_dir,
+        |image_path, tessdata_dir| {
+            let command = app
+                .shell()
+                .sidecar("tesseract")
+                .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+            let args: [OsString; 6] = [
+                image_path.as_os_str().to_owned(),
+                "stdout".into(),
+                "-l".into(),
+                "deu+eng".into(),
+                "--tessdata-dir".into(),
+                tessdata_dir.as_os_str().to_owned(),
+            ];
+            let output = std::process::Command::from(command.args(args))
+                .output()
+                .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+            if !output.status.success() {
+                return Err(epikrise_ingest::IngestError::PdfOcrFailed);
+            }
+            String::from_utf8(output.stdout).map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)
+        },
+    )
+}
+
+fn ocr_pdf_pages_with<F>(
+    bytes: &[u8],
+    page_numbers: &[u32],
+    pdfium_path: &Path,
+    tessdata_dir: &Path,
+    mut recognize: F,
+) -> Result<Vec<String>, epikrise_ingest::IngestError>
+where
+    F: FnMut(&Path, &Path) -> Result<String, epikrise_ingest::IngestError>,
+{
+    let pdfium = PDFIUM
+        .get_or_init(|| {
+            Pdfium::bind_to_library(&pdfium_path)
+                .map(Pdfium::new)
+                .map_err(|_| ())
+        })
+        .as_ref()
+        .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+    let document = pdfium
+        .load_pdf_from_byte_vec(bytes.to_vec(), None)
+        .map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)?;
+    let mut recognized_pages = Vec::with_capacity(page_numbers.len());
+
+    for page_number in page_numbers {
+        let page_index = page_number
+            .checked_sub(1)
+            .and_then(|page| i32::try_from(page).ok())
+            .ok_or(epikrise_ingest::IngestError::PdfOcrFailed)?;
+        let image = document
+            .pages()
+            .get(page_index)
+            .and_then(|page| {
+                page.render_with_config(
+                    &PdfRenderConfig::new()
+                        .set_target_width(1800)
+                        .set_maximum_width(2200)
+                        .set_maximum_height(3000),
+                )?
+                .as_image()
+            })
+            .map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)?;
+        let temp_file = tempfile::Builder::new()
+            .prefix("epikrise-ocr-")
+            .suffix(".png")
+            .tempfile()
+            .map(SensitiveImageFile)
+            .map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)?;
+        image
+            .save(temp_file.0.path())
+            .map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)?;
+        recognized_pages.push(recognize(temp_file.0.path(), tessdata_dir)?);
+    }
+
+    Ok(recognized_pages)
 }
 
 #[tauri::command]
@@ -61,6 +199,79 @@ pub fn run() -> Result<(), tauri::Error> {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(builder.invoke_handler())
         .run(tauri::generate_context!())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ocr_pdf_pages_with;
+    use std::{path::PathBuf, process::Command};
+
+    #[test]
+    #[ignore = "requires the local PDFium, Tesseract, and deu/eng OCR resources"]
+    fn renders_a_synthetic_pdf_and_recognizes_its_text() {
+        let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/ocr");
+        let pdfium_path = resources.join("pdfium/libpdfium.so");
+        let tessdata_dir = resources.join("tessdata");
+        let pdf = synthetic_text_pdf("OCR TEST 123");
+        let recognized = ocr_pdf_pages_with(
+            &pdf,
+            &[1],
+            &pdfium_path,
+            &tessdata_dir,
+            |image_path, tessdata_dir| {
+                let output = Command::new("tesseract")
+                    .arg(image_path)
+                    .arg("stdout")
+                    .args(["-l", "deu+eng", "--tessdata-dir"])
+                    .arg(tessdata_dir)
+                    .output()
+                    .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+                assert!(
+                    output.status.success(),
+                    "Tesseract failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                String::from_utf8(output.stdout)
+                    .map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)
+            },
+        )
+        .expect("synthetic PDF should render and OCR");
+
+        assert!(recognized[0].contains("OCR"), "{recognized:?}");
+        assert!(recognized[0].contains("123"), "{recognized:?}");
+    }
+
+    fn synthetic_text_pdf(text: &str) -> Vec<u8> {
+        let stream = format!("BT /F1 32 Tf 72 720 Td ({text}) Tj ET");
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_owned(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_owned(),
+            format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
+        ];
+        let mut pdf = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (index, object) in objects.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.extend_from_slice(format!("{} 0 obj\n{object}\nendobj\n", index + 1).as_bytes());
+        }
+        let xref_offset = pdf.len();
+        pdf.extend_from_slice(format!("xref\n0 {}\n", objects.len() + 1).as_bytes());
+        pdf.extend_from_slice(b"0000000000 65535 f \n");
+        for offset in offsets {
+            pdf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        pdf.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+                objects.len() + 1
+            )
+            .as_bytes(),
+        );
+        pdf
+    }
 }
