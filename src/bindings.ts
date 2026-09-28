@@ -12,6 +12,7 @@ export const commands = {
 	extractTextFile: (fileName: string, bytes: number[]) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_text_file", { fileName, bytes })),
 	generate: (requestId: string, profile: ProviderProfile, messages: ChatMessage[]) => typedError<null, LlmError>(__TAURI_INVOKE("generate", { requestId, profile, messages })),
 	greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
+	renderTemplateSystemPrompt: (template: ClinicalTemplate, values: { [key in string]: TemplateValue }) => typedError<string, TemplateError>(__TAURI_INVOKE("render_template_system_prompt", { template, values })),
 	testProvider: (profile: ProviderProfile) => typedError<null, LlmError>(__TAURI_INVOKE("test_provider", { profile })),
 	validateTemplate: (bytes: number[]) => typedError<ClinicalTemplate, TemplateError>(__TAURI_INVOKE("validate_template", { bytes })),
 };
@@ -134,6 +135,8 @@ export type TemplateSection = {
 	enabled_by_default: boolean,
 	labels: { [key in string]: string },
 };
+
+export type TemplateValue = string | boolean;
 
 export type TemplateVariable = {
 	name: string,

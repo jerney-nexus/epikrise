@@ -2,7 +2,7 @@ use pdfium_render::prelude::{PdfRenderConfig, Pdfium};
 use serde::{Deserialize, Serialize};
 use specta_typescript::Typescript;
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     ffi::OsString,
     io::{Seek, SeekFrom, Write},
     path::Path,
@@ -25,6 +25,13 @@ struct SensitiveImageFile(tempfile::NamedTempFile);
 
 #[derive(Default)]
 struct GenerationRegistry(Mutex<HashMap<String, CancellationToken>>);
+
+#[derive(Debug, Clone, Deserialize, specta::Type)]
+#[serde(untagged)]
+enum TemplateValue {
+    Text(String),
+    Boolean(bool),
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -86,6 +93,25 @@ impl Drop for SensitiveImageFile {
 #[specta::specta]
 fn validate_template(bytes: Vec<u8>) -> Result<ClinicalTemplate, TemplateError> {
     ClinicalTemplate::from_json(&bytes)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn render_template_system_prompt(
+    template: ClinicalTemplate,
+    values: BTreeMap<String, TemplateValue>,
+) -> Result<String, TemplateError> {
+    let values = values
+        .into_iter()
+        .map(|(name, value)| {
+            let value = match value {
+                TemplateValue::Text(value) => serde_json::Value::String(value),
+                TemplateValue::Boolean(value) => serde_json::Value::Bool(value),
+            };
+            (name, value)
+        })
+        .collect();
+    template.render_system_prompt(&values)
 }
 
 #[tauri::command]
@@ -331,6 +357,7 @@ pub fn run() -> Result<(), tauri::Error> {
             extract_text_file,
             generate,
             greet,
+            render_template_system_prompt,
             test_provider,
             validate_template
         ])
@@ -353,6 +380,7 @@ pub fn run() -> Result<(), tauri::Error> {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(GenerationRegistry::default())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {

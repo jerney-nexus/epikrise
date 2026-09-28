@@ -1,7 +1,16 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { isTauri } from "@tauri-apps/api/core";
-  import { commands, events, type LlmError, type ProviderAdapter, type ProviderProfile } from "../bindings";
+  import { load as loadStore } from "@tauri-apps/plugin-store";
+  import {
+    commands,
+    events,
+    type ClinicalTemplate,
+    type LlmError,
+    type ProviderAdapter,
+    type ProviderProfile,
+    type TemplateError,
+  } from "../bindings";
 
   const providerNames: Record<ProviderAdapter, string> = {
     open_ai: "OpenAI",
@@ -22,6 +31,32 @@
     internal: "The request could not be completed.",
   };
 
+  const templateErrorMessages: Record<TemplateError["key"], string> = {
+    unsupported_schema_version: "This template version is not supported.",
+    invalid_template: "The template is missing required information.",
+    invalid_variable_name: "A template variable name is invalid.",
+    duplicate_variable: "The template contains duplicate variables.",
+    invalid_variable_definition: "A template variable definition is invalid.",
+    invalid_section: "A template section is invalid.",
+    invalid_serialized_template: "The selected file is not a valid template.",
+    template_too_large: "Template files must be 1 MB or smaller.",
+    missing_required_variable: "A required template value is missing.",
+    invalid_variable_value: "A template value is invalid.",
+    unknown_variable: "The template contains an unknown variable.",
+    invalid_system_prompt: "The template prompt is invalid.",
+    rendering_failed: "The template could not be rendered.",
+  };
+
+  const maxTemplateBytes = 1_048_576;
+  let templateStore: Awaited<ReturnType<typeof loadStore>> | null = null;
+  let importedTemplates = $state<ClinicalTemplate[]>([]);
+  let activeTemplateId = $state("");
+  let templateValues = $state<Record<string, string | boolean>>({});
+  let pendingTemplate = $state<ClinicalTemplate | null>(null);
+  let templateMessage = $state("");
+  let templateIsError = $state(false);
+  let templateBusy = $state(false);
+
   let adapter = $state<ProviderAdapter>("ollama");
   let model = $state("llama3.2");
   let endpoint = $state("");
@@ -33,9 +68,13 @@
   let connectionMessage = $state("");
   let generationMessage = $state("");
   let generationIsError = $state(false);
+  let isPreparingGeneration = $state(false);
   let desktopAvailable = $state(false);
 
   const isGenerating = $derived(activeRequestId !== null);
+  const activeTemplate = $derived(
+    importedTemplates.find((template) => template.metadata.id === activeTemplateId) ?? null,
+  );
 
   function createProfile(): ProviderProfile {
     const keychainId = credentialId.trim();
@@ -55,9 +94,143 @@
     return errorMessages[error.key];
   }
 
+  function formatTemplateError(error: TemplateError): string {
+    return templateErrorMessages[error.key];
+  }
+
+  function initialTemplateValues(template: ClinicalTemplate): Record<string, string | boolean> {
+    return Object.fromEntries(
+      template.variables.map((variable) => [
+        variable.name,
+        variable.default?.value ?? (variable.kind === "boolean" ? false : ""),
+      ]),
+    );
+  }
+
+  function activateTemplate(templateId: string) {
+    activeTemplateId = templateId;
+    const template = importedTemplates.find((saved) => saved.metadata.id === templateId);
+    templateValues = template ? initialTemplateValues(template) : {};
+  }
+
+  function templateVariableLabel(variable: ClinicalTemplate["variables"][number]): string {
+    const locale = activeTemplate?.metadata.locale ?? "";
+    const language = locale.split("-")[0];
+    return variable.labels[locale] ?? variable.labels[language] ?? variable.name;
+  }
+
+  function valuesForRendering(template: ClinicalTemplate): Record<string, string | boolean> {
+    return Object.fromEntries(
+      template.variables
+        .filter(
+          (variable) =>
+            variable.kind !== "select" || templateValues[variable.name] !== "",
+        )
+        .map((variable) => [variable.name, templateValues[variable.name]]),
+    );
+  }
+
+  async function getTemplateStore() {
+    templateStore ??= await loadStore("templates.json", {
+      autoSave: false,
+      defaults: { templates: [] },
+    });
+    return templateStore;
+  }
+
+  async function restoreTemplates() {
+    const store = await getTemplateStore();
+    const savedTemplates = (await store.get<unknown[]>("templates")) ?? [];
+    const validatedTemplates: ClinicalTemplate[] = [];
+
+    for (const savedTemplate of savedTemplates) {
+      const serialized = JSON.stringify(savedTemplate);
+      if (!serialized) continue;
+      const bytes = new TextEncoder().encode(serialized);
+      const result = await commands.validateTemplate(Array.from(bytes));
+      if (result.status === "ok") validatedTemplates.push(result.data);
+    }
+
+    importedTemplates = validatedTemplates;
+    activateTemplate(validatedTemplates[0]?.metadata.id ?? "");
+  }
+
+  async function importTemplate(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+
+    pendingTemplate = null;
+    templateMessage = "";
+    templateIsError = false;
+    if (!desktopAvailable) {
+      templateMessage = "Template import is available in the desktop app.";
+      templateIsError = true;
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".epitpl")) {
+      templateMessage = "Choose a .epitpl file.";
+      templateIsError = true;
+      return;
+    }
+    if (file.size > maxTemplateBytes) {
+      templateMessage = "Template files must be 1 MB or smaller.";
+      templateIsError = true;
+      return;
+    }
+
+    templateBusy = true;
+    try {
+      const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
+      const result = await commands.validateTemplate(bytes);
+      if (result.status === "error") {
+        templateMessage = formatTemplateError(result.error);
+        templateIsError = true;
+      } else {
+        pendingTemplate = result.data;
+      }
+    } catch {
+      templateMessage = "The selected template could not be read.";
+      templateIsError = true;
+    } finally {
+      templateBusy = false;
+    }
+  }
+
+  async function savePendingTemplate() {
+    const template = pendingTemplate;
+    if (!template || templateBusy) return;
+
+    templateBusy = true;
+    try {
+      const updatedTemplates = [
+        ...importedTemplates.filter((saved) => saved.metadata.id !== template.metadata.id),
+        template,
+      ];
+      const store = await getTemplateStore();
+      await store.set("templates", updatedTemplates);
+      await store.save();
+      importedTemplates = updatedTemplates;
+      activateTemplate(template.metadata.id);
+      pendingTemplate = null;
+      templateMessage = "Template saved";
+      templateIsError = false;
+    } catch {
+      templateMessage = "The template could not be saved.";
+      templateIsError = true;
+    } finally {
+      templateBusy = false;
+    }
+  }
+
   onMount(() => {
     desktopAvailable = isTauri();
     if (!desktopAvailable) return;
+    void restoreTemplates().catch(() => {
+      templateMessage = "Saved templates could not be loaded.";
+      templateIsError = true;
+    });
 
     let disposed = false;
     let unlisten: (() => void)[] = [];
@@ -117,11 +290,37 @@
 
   async function generateDraft() {
     const source = prompt.trim();
-    if (!source || isGenerating) return;
+    if (!source || isGenerating || isPreparingGeneration) return;
     if (!desktopAvailable) {
       generationMessage = "Desktop runtime unavailable.";
       generationIsError = true;
       return;
+    }
+
+    let systemPrompt =
+      "Write a concise German clinical discharge summary from the supplied anonymized material. Use only documented facts, preserve uncertainty, and do not invent findings or recommendations.";
+    if (activeTemplate) {
+      isPreparingGeneration = true;
+      generationMessage = "Preparing template";
+      generationIsError = false;
+      try {
+        const rendered = await commands.renderTemplateSystemPrompt(
+          activeTemplate,
+          valuesForRendering(activeTemplate),
+        );
+        if (rendered.status === "error") {
+          generationMessage = formatTemplateError(rendered.error);
+          generationIsError = true;
+          return;
+        }
+        systemPrompt = rendered.data;
+      } catch {
+        generationMessage = "The active template could not be rendered.";
+        generationIsError = true;
+        return;
+      } finally {
+        isPreparingGeneration = false;
+      }
     }
 
     const requestId = crypto.randomUUID();
@@ -131,11 +330,7 @@
     draft = "";
     try {
       const result = await commands.generate(requestId, createProfile(), [
-        {
-          role: "system",
-          content:
-            "Write a concise German clinical discharge summary from the supplied anonymized material. Use only documented facts, preserve uncertainty, and do not invent findings or recommendations.",
-        },
+        { role: "system", content: systemPrompt },
         { role: "user", content: source },
       ]);
       if (result.status === "error" && activeRequestId === requestId) {
@@ -216,6 +411,138 @@
       {/if}
     </section>
 
+    <section class="template-settings" aria-labelledby="templates-title">
+      <div class="template-heading">
+        <p class="eyebrow">Template library</p>
+        <h2 id="templates-title">My templates</h2>
+      </div>
+
+      {#if importedTemplates.length}
+        <label for="active-template">Active template</label>
+        <select
+          id="active-template"
+          value={activeTemplateId}
+          onchange={(event) => activateTemplate(event.currentTarget.value)}
+        >
+          {#each importedTemplates as template (template.metadata.id)}
+            <option value={template.metadata.id}>{template.metadata.name}</option>
+          {/each}
+        </select>
+      {:else}
+        <p class="template-empty">No templates imported</p>
+      {/if}
+
+      {#if activeTemplate?.variables.length}
+        <div class="template-fields">
+          <p class="eyebrow">Template fields</p>
+          {#each activeTemplate.variables as variable (variable.name)}
+            {@const fieldId = `template-variable-${variable.name}`}
+            {#if variable.kind === "boolean"}
+              <label class="template-checkbox" for={fieldId}>
+                <input
+                  id={fieldId}
+                  type="checkbox"
+                  checked={templateValues[variable.name] === true}
+                  aria-required={variable.required}
+                  onchange={(event) =>
+                    (templateValues = {
+                      ...templateValues,
+                      [variable.name]: event.currentTarget.checked,
+                    })}
+                />
+                <span
+                  >{templateVariableLabel(variable)}{variable.required ? " *" : ""}</span
+                >
+              </label>
+            {:else}
+              <label for={fieldId}>
+                {templateVariableLabel(variable)}{variable.required ? " *" : ""}
+              </label>
+              {#if variable.kind === "select"}
+                <select
+                  id={fieldId}
+                  value={typeof templateValues[variable.name] === "string"
+                    ? templateValues[variable.name]
+                    : ""}
+                  aria-required={variable.required}
+                  onchange={(event) =>
+                    (templateValues = {
+                      ...templateValues,
+                      [variable.name]: event.currentTarget.value,
+                    })}
+                >
+                  <option value="" disabled={variable.required}>Select...</option>
+                  {#each variable.options as option (option)}
+                    <option value={option}>{option}</option>
+                  {/each}
+                </select>
+              {:else}
+                <input
+                  id={fieldId}
+                  type={variable.kind === "date" ? "date" : "text"}
+                  value={typeof templateValues[variable.name] === "string"
+                    ? templateValues[variable.name]
+                    : ""}
+                  aria-required={variable.required}
+                  required={variable.required}
+                  onchange={(event) =>
+                    (templateValues = {
+                      ...templateValues,
+                      [variable.name]: event.currentTarget.value,
+                    })}
+                />
+              {/if}
+            {/if}
+          {/each}
+        </div>
+      {/if}
+
+      <label class="template-file-label" for="template-file">
+        {templateBusy ? "Working..." : "Import .epitpl"}
+      </label>
+      <input
+        id="template-file"
+        class="template-file-input"
+        type="file"
+        accept=".epitpl,application/json"
+        onchange={importTemplate}
+        disabled={templateBusy}
+      />
+
+      {#if templateMessage}
+        <p class="template-message" class:error={templateIsError} role="status">{templateMessage}</p>
+      {/if}
+
+      {#if pendingTemplate}
+        <div class="template-preview" aria-label="Template preview">
+          <p class="eyebrow">Review import</p>
+          <h3>{pendingTemplate.metadata.name}</h3>
+          <p>{pendingTemplate.metadata.description}</p>
+          <dl>
+            <div><dt>Locale</dt><dd>{pendingTemplate.metadata.locale}</dd></div>
+            <div><dt>Version</dt><dd>{pendingTemplate.metadata.version}</dd></div>
+            <div><dt>Variables</dt><dd>{pendingTemplate.variables.length}</dd></div>
+            <div><dt>Sections</dt><dd>{pendingTemplate.sections.length}</dd></div>
+          </dl>
+          {#if pendingTemplate.metadata.specialty_tags.length}
+            <p class="template-tags">{pendingTemplate.metadata.specialty_tags.join(" · ")}</p>
+          {/if}
+          <details>
+            <summary>System prompt</summary>
+            <pre>{pendingTemplate.system_prompt}</pre>
+          </details>
+          <div class="template-preview-actions">
+            <button class="connection-button" onclick={savePendingTemplate} disabled={templateBusy}>
+              Save template
+            </button>
+            <button class="template-discard" onclick={() => (pendingTemplate = null)} disabled={templateBusy}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      {/if}
+    </section>
+
     <footer class="rail-footer">
       <span class="local-indicator" aria-hidden="true"></span>
       <span>{desktopAvailable ? "Desktop session" : "Preview session"}</span>
@@ -255,9 +582,13 @@
               Cancel
             </button>
           {:else}
-            <button class="generate-button" onclick={generateDraft} disabled={!prompt.trim()}>
+            <button
+              class="generate-button"
+              onclick={generateDraft}
+              disabled={!prompt.trim() || isPreparingGeneration}
+            >
               <span aria-hidden="true">↗</span>
-              Generate draft
+              {isPreparingGeneration ? "Preparing..." : "Generate draft"}
             </button>
           {/if}
         </div>
@@ -388,6 +719,202 @@
     font-family: Georgia, serif;
     font-size: 25px;
     font-weight: 400;
+  }
+
+  .template-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin-top: 25px;
+    padding-top: 19px;
+    border-top: 1px solid #dce4de;
+  }
+
+  .template-heading h2 {
+    margin: 3px 0 4px;
+    font-family: Georgia, serif;
+    font-size: 20px;
+    font-weight: 400;
+  }
+
+  .template-empty {
+    margin: 0;
+    color: #829088;
+    font-size: 12px;
+  }
+
+  .template-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 3px;
+    padding-top: 10px;
+    border-top: 1px solid #dce4de;
+  }
+
+  .template-fields .eyebrow {
+    margin-bottom: 2px;
+  }
+
+  .template-fields > label {
+    margin-top: 3px;
+  }
+
+  .template-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+
+  .template-checkbox input {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+    margin: 0;
+    accent-color: #287562;
+  }
+
+  .template-checkbox span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .template-file-label {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 4px;
+    border: 1px solid #bfd1c7;
+    border-radius: 5px;
+    color: #285e50;
+    background: #f6faf6;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  .template-file-label:hover {
+    background: #eaf3ec;
+  }
+
+  .template-file-input {
+    height: auto;
+    padding: 7px;
+    font-size: 11px;
+  }
+
+  .template-message {
+    margin: 0;
+    color: #236e5d;
+    font-size: 11px;
+  }
+
+  .template-message.error {
+    color: #a64231;
+  }
+
+  .template-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 5px;
+    padding: 12px;
+    border-left: 2px solid #d46b4d;
+    background: #f8faf7;
+  }
+
+  .template-preview h3 {
+    margin: -4px 0 0;
+    font-family: Georgia, serif;
+    font-size: 17px;
+    font-weight: 400;
+    overflow-wrap: anywhere;
+  }
+
+  .template-preview > p:not(.eyebrow) {
+    margin: 0;
+    color: #5e6f66;
+    font-size: 11px;
+  }
+
+  .template-preview dl {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px 10px;
+    margin: 0;
+  }
+
+  .template-preview dl div {
+    min-width: 0;
+  }
+
+  .template-preview dt {
+    color: #819087;
+    font-size: 10px;
+  }
+
+  .template-preview dd {
+    margin: 0;
+    color: #31443b;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+
+  .template-preview .template-tags {
+    color: #8b513d;
+    overflow-wrap: anywhere;
+  }
+
+  .template-preview details {
+    border-top: 1px solid #dce4de;
+    padding-top: 7px;
+  }
+
+  .template-preview summary {
+    color: #4c6258;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  .template-preview pre {
+    max-height: 180px;
+    overflow: auto;
+    margin: 8px 0 0;
+    color: #44554c;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 10px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .template-preview-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .template-preview-actions .connection-button {
+    min-height: 35px;
+    margin: 0;
+    font-size: 11px;
+  }
+
+  .template-discard {
+    min-height: 30px;
+    border: 0;
+    color: #65766e;
+    background: transparent;
+    cursor: pointer;
+    font-size: 11px;
+  }
+
+  .template-discard:hover {
+    color: #1d2926;
+    text-decoration: underline;
   }
 
   label {
@@ -756,6 +1283,11 @@
 
     .provider-settings h1 {
       margin-bottom: 1px;
+    }
+
+    .template-settings {
+      margin-top: 17px;
+      padding-top: 15px;
     }
 
     .rail-footer {
