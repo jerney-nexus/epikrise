@@ -9,22 +9,33 @@ fn create_case_session(id: String, template_id: String) -> epikrise_core::CaseSe
 
 #[tauri::command]
 #[specta::specta]
+fn extract_raw_text(
+    text: String,
+) -> Result<epikrise_core::ExtractedBlock, epikrise_ingest::IngestError> {
+    epikrise_ingest::extract_raw_text(text)
+}
+
+#[tauri::command]
+#[specta::specta]
 fn greet(name: &str) -> String {
     format!("Hello, {name}! You've been greeted from Rust!")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<(), tauri::Error> {
-    let builder = Builder::<tauri::Wry>::new()
-        .commands(collect_commands![create_case_session, greet]);
+    let builder = Builder::<tauri::Wry>::new().commands(collect_commands![
+        create_case_session,
+        extract_raw_text,
+        greet
+    ]);
 
     #[cfg(debug_assertions)]
     builder
         .export(Typescript::default(), "../src/bindings.ts")
         .map_err(|error| {
-            let setup_error: Box<dyn std::error::Error> = Box::new(std::io::Error::other(
-                format!("failed to export TypeScript bindings: {error}"),
-            ));
+            let setup_error: Box<dyn std::error::Error> = Box::new(std::io::Error::other(format!(
+                "failed to export TypeScript bindings: {error}"
+            )));
             tauri::Error::Setup(setup_error.into())
         })?;
 
