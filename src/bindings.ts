@@ -6,6 +6,7 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 export const commands = {
 	createCaseSession: (id: string, templateId: string) => __TAURI_INVOKE<CaseSession>("create_case_session", { id, templateId }),
 	extractRawText: (text: string) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_raw_text", { text })),
+	extractTextFile: (fileName: string, bytes: number[]) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_text_file", { fileName, bytes })),
 	greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
 };
 
@@ -25,7 +26,7 @@ export type ExtractedBlock = {
 	content: string,
 };
 
-export type IngestError = { key: "empty_input" };
+export type IngestError = { key: "empty_input" } | { key: "invalid_utf8" } | { key: "unsupported_binary"; mime: string } | { key: "unsupported_control_characters" };
 
 export type InputProvenance = "RawText" | ({ File: {
 	name: string,
