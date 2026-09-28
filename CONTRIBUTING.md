@@ -28,7 +28,19 @@ a browser.
 ### Local setup
 
 Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
-for your platform, plus Rust 1.98+ and Node 22+. Then:
+for your platform, plus Rust 1.98+ and Node 22+. macOS builds also require
+Homebrew Tesseract and German language data:
+
+```sh
+brew install tesseract tesseract-lang
+```
+
+`npm run tauri` prepares the ignored, target-specific OCR files before
+invoking the Tauri CLI. It downloads the matching PDFium library from the
+upstream release and verifies its SHA-256 digest. Tesseract itself and its
+language data are taken from the host installation.
+
+Then:
 
 ```sh
 npm install

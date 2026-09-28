@@ -15,7 +15,7 @@
     "template:convert": "node scripts/convert-prompt.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "tauri": "tauri"
+    "tauri": "bash scripts/prepare-ocr.sh && tauri"
   },
   "license": "MIT",
   "dependencies": {
