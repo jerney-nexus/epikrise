@@ -26,6 +26,15 @@ fn extract_text_file(
 
 #[tauri::command]
 #[specta::specta]
+fn extract_file(
+    file_name: String,
+    bytes: Vec<u8>,
+) -> Result<epikrise_core::ExtractedBlock, epikrise_ingest::IngestError> {
+    epikrise_ingest::extract_file(file_name, bytes)
+}
+
+#[tauri::command]
+#[specta::specta]
 fn greet(name: &str) -> String {
     format!("Hello, {name}! You've been greeted from Rust!")
 }
@@ -34,6 +43,7 @@ fn greet(name: &str) -> String {
 pub fn run() -> Result<(), tauri::Error> {
     let builder = Builder::<tauri::Wry>::new().commands(collect_commands![
         create_case_session,
+        extract_file,
         extract_raw_text,
         extract_text_file,
         greet
