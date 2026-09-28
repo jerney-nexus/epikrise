@@ -131,7 +131,7 @@
       endpoint: endpoint.trim() || (adapter === "ollama" ? "http://localhost:11434" : null),
       auth: keychainId ? { source: "keychain", credential_id: keychainId } : { source: "none" },
       capabilities: { vision: false, streaming: true, max_context: null },
-      generation: { temperature: 0.2, max_tokens: 2048 },
+      generation: { temperature: null, max_tokens: 2048 },
     };
   }
 
