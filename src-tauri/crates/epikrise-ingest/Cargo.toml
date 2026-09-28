@@ -8,6 +8,7 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+calamine = { workspace = true }
 epikrise-core = { workspace = true }
 infer = { workspace = true }
 quick-xml = { workspace = true }

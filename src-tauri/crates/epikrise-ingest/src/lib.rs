@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+use calamine::{Data, Reader as WorkbookReader, Xlsx, open_workbook_from_rs};
 use epikrise_core::{ExtractedBlock, InputProvenance};
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
@@ -38,11 +39,20 @@ pub enum IngestError {
     DocxDocumentTooLarge,
     #[error("DOCX document XML is invalid")]
     InvalidDocxXml,
+    #[error("XLSX workbook is invalid")]
+    InvalidXlsx,
+    #[error("XLSX workbook contains no worksheets")]
+    NoXlsxWorksheets,
+    #[error("XLSX workbook contains no extractable text")]
+    NoXlsxText,
 }
 
 pub fn extract_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
     match infer::get(&bytes).map(|kind| kind.mime_type()) {
         Some("application/pdf") => extract_pdf_file(file_name, bytes),
+        Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") => {
+            extract_xlsx_file(file_name, bytes)
+        }
         Some("application/zip")
         | Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document") => {
             extract_docx_file(file_name, bytes)
@@ -52,6 +62,56 @@ pub fn extract_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock,
         }),
         None => extract_text_file(file_name, bytes),
     }
+}
+
+fn extract_xlsx_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
+    let cursor = Cursor::new(bytes);
+    let mut workbook: Xlsx<_> =
+        open_workbook_from_rs(cursor).map_err(|_| IngestError::InvalidXlsx)?;
+    let sheet_names = workbook.sheet_names();
+    if sheet_names.is_empty() {
+        return Err(IngestError::NoXlsxWorksheets);
+    }
+
+    let mut output = String::new();
+    for sheet_name in sheet_names {
+        let range = workbook
+            .worksheet_range(&sheet_name)
+            .map_err(|_| IngestError::InvalidXlsx)?;
+        let mut sheet_text = String::new();
+        for row in range.rows() {
+            let cells: Vec<String> = row.iter().map(Data::to_string).collect();
+            let Some(last_nonempty) = cells.iter().rposition(|cell| !cell.trim().is_empty()) else {
+                continue;
+            };
+            sheet_text.push_str(
+                &cells[..=last_nonempty]
+                    .iter()
+                    .map(|cell| cell.replace(['\t', '\r', '\n'], " "))
+                    .collect::<Vec<_>>()
+                    .join("\t"),
+            );
+            sheet_text.push('\n');
+        }
+        if !sheet_text.is_empty() {
+            if !output.is_empty() {
+                output.push('\n');
+            }
+            output.push_str("[Sheet: ");
+            output.push_str(&sheet_name);
+            output.push_str("]\n");
+            output.push_str(&sheet_text);
+        }
+    }
+    if output.trim().is_empty() {
+        return Err(IngestError::NoXlsxText);
+    }
+
+    Ok(ExtractedBlock::new(
+        uuid::Uuid::new_v4().to_string(),
+        InputProvenance::File { name: file_name },
+        output,
+    ))
 }
 
 fn extract_pdf_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
@@ -319,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_invalid_and_non_docx_zip_archives() {
+    fn reports_invalid_docx_and_xlsx_archives() {
         assert_eq!(
             extract_file("broken.docx".to_owned(), b"PK\x03\x04broken".to_vec()),
             Err(IngestError::InvalidDocxArchive)
@@ -329,10 +389,50 @@ mod tests {
                 "workbook.docx".to_owned(),
                 zip_file("xl/workbook.xml", "<workbook/>")
             ),
-            Err(IngestError::UnsupportedBinary {
-                mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    .to_owned()
-            })
+            Err(IngestError::InvalidXlsx)
+        );
+    }
+
+    #[test]
+    fn extracts_rows_and_sheet_names_from_xlsx_by_content() {
+        let bytes = xlsx_file(&[
+            (
+                "Diagnoses",
+                "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Diagnosis</t></is></c><c r=\"B1\" t=\"inlineStr\"><is><t>Finding</t></is></c></row><row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>I10</t></is></c><c r=\"B2\" t=\"inlineStr\"><is><t>Hypertension</t></is></c></row>",
+            ),
+            (
+                "Medication",
+                "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Drug</t></is></c><c r=\"B1\"><v>5</v></c></row>",
+            ),
+        ]);
+
+        let block = extract_file("workbook.bin".to_owned(), bytes)
+            .expect("XLSX content should extract regardless of filename");
+
+        assert!(
+            block
+                .content
+                .contains("[Sheet: Diagnoses]\nDiagnosis\tFinding")
+        );
+        assert!(block.content.contains("I10\tHypertension"));
+        assert!(block.content.contains("[Sheet: Medication]\nDrug\t5"));
+        assert_eq!(
+            block.provenance,
+            InputProvenance::File {
+                name: "workbook.bin".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn reports_invalid_and_empty_xlsx_workbooks() {
+        assert_eq!(
+            extract_file("broken.xlsx".to_owned(), xlsx_file(&[])),
+            Err(IngestError::NoXlsxWorksheets)
+        );
+        assert_eq!(
+            extract_file("invalid.xlsx".to_owned(), xlsx_file(&[("Empty", "")])),
+            Err(IngestError::NoXlsxText)
         );
     }
 
@@ -352,6 +452,65 @@ mod tests {
         writer
             .finish()
             .expect("test archive should finish")
+            .into_inner()
+    }
+
+    fn xlsx_file(sheets: &[(&str, &str)]) -> Vec<u8> {
+        let mut entries = vec![
+            (
+                "[Content_Types].xml".to_owned(),
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/></Types>".to_owned(),
+            ),
+            (
+                "_rels/.rels".to_owned(),
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>".to_owned(),
+            ),
+        ];
+        let workbook_sheets = sheets
+            .iter()
+            .enumerate()
+            .map(|(index, (name, _))| {
+                format!(
+                    "<sheet name=\"{name}\" sheetId=\"{}\" r:id=\"rId{}\"/>",
+                    index + 1,
+                    index + 1
+                )
+            })
+            .collect::<String>();
+        entries.push((
+            "xl/workbook.xml".to_owned(),
+            format!("<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets>{workbook_sheets}</sheets></workbook>"),
+        ));
+        let relationships = sheets
+            .iter()
+            .enumerate()
+            .map(|(index, _)| {
+                format!("<Relationship Id=\"rId{}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet{}.xml\"/>", index + 1, index + 1)
+            })
+            .collect::<String>();
+        entries.push((
+            "xl/_rels/workbook.xml.rels".to_owned(),
+            format!("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">{relationships}</Relationships>"),
+        ));
+        for (index, (_, rows)) in sheets.iter().enumerate() {
+            entries.push((
+                format!("xl/worksheets/sheet{}.xml", index + 1),
+                format!("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>{rows}</sheetData></worksheet>"),
+            ));
+        }
+
+        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+        for (name, contents) in entries {
+            writer
+                .start_file(name, SimpleFileOptions::default())
+                .expect("XLSX fixture entry should be created");
+            writer
+                .write_all(contents.as_bytes())
+                .expect("XLSX fixture content should be written");
+        }
+        writer
+            .finish()
+            .expect("XLSX fixture archive should finish")
             .into_inner()
     }
 

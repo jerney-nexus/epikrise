@@ -26,6 +26,7 @@ license = "MIT"
 authors = ["Pascal Jerney"]
 
 [workspace.dependencies]
+calamine = "0.36"
 epikrise-core = { path = "crates/epikrise-core" }
 epikrise-ingest = { path = "crates/epikrise-ingest" }
 epikrise-llm = { path = "crates/epikrise-llm" }
