@@ -5,9 +5,15 @@
 #![forbid(unsafe_code)]
 
 use epikrise_core::{ExtractedBlock, InputProvenance};
+use quick_xml::events::Event;
+use quick_xml::reader::Reader;
 use serde::Serialize;
 use specta::Type;
+use std::io::{Cursor, Read};
 use thiserror::Error;
+use zip::ZipArchive;
+
+const MAX_DOCX_DOCUMENT_XML_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Debug, Error, Serialize, Type, PartialEq, Eq)]
 #[serde(tag = "key", rename_all = "snake_case")]
@@ -24,11 +30,23 @@ pub enum IngestError {
     PdfExtractionFailed,
     #[error("PDF contains no extractable text")]
     NoTextExtracted,
+    #[error("invalid DOCX archive")]
+    InvalidDocxArchive,
+    #[error("DOCX is missing word/document.xml")]
+    MissingDocxDocument,
+    #[error("DOCX document XML exceeds the size limit")]
+    DocxDocumentTooLarge,
+    #[error("DOCX document XML is invalid")]
+    InvalidDocxXml,
 }
 
 pub fn extract_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
     match infer::get(&bytes).map(|kind| kind.mime_type()) {
         Some("application/pdf") => extract_pdf_file(file_name, bytes),
+        Some("application/zip")
+        | Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document") => {
+            extract_docx_file(file_name, bytes)
+        }
         Some(mime) => Err(IngestError::UnsupportedBinary {
             mime: mime.to_owned(),
         }),
@@ -48,6 +66,95 @@ fn extract_pdf_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock,
         InputProvenance::File { name: file_name },
         text,
     ))
+}
+
+fn extract_docx_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
+    let mut archive =
+        ZipArchive::new(Cursor::new(bytes)).map_err(|_| IngestError::InvalidDocxArchive)?;
+    let mut document = archive
+        .by_name("word/document.xml")
+        .map_err(|_| IngestError::MissingDocxDocument)?;
+    if document.size() > MAX_DOCX_DOCUMENT_XML_BYTES {
+        return Err(IngestError::DocxDocumentTooLarge);
+    }
+
+    let mut xml = Vec::new();
+    (&mut document)
+        .take(MAX_DOCX_DOCUMENT_XML_BYTES + 1)
+        .read_to_end(&mut xml)
+        .map_err(|_| IngestError::InvalidDocxArchive)?;
+    if xml.len() as u64 > MAX_DOCX_DOCUMENT_XML_BYTES {
+        return Err(IngestError::DocxDocumentTooLarge);
+    }
+
+    let text = extract_docx_xml_text(&xml)?;
+    if text.trim().is_empty() {
+        return Err(IngestError::NoTextExtracted);
+    }
+
+    Ok(ExtractedBlock::new(
+        uuid::Uuid::new_v4().to_string(),
+        InputProvenance::File { name: file_name },
+        text,
+    ))
+}
+
+fn extract_docx_xml_text(xml: &[u8]) -> Result<String, IngestError> {
+    let mut reader = Reader::from_reader(xml);
+    reader.config_mut().trim_text(false);
+    let mut buffer = Vec::new();
+    let mut output = String::new();
+    let mut in_text = false;
+
+    loop {
+        match reader
+            .read_event_into(&mut buffer)
+            .map_err(|_| IngestError::InvalidDocxXml)?
+        {
+            Event::Start(element) => match element.local_name().as_ref() {
+                "t" => in_text = true,
+                "tab" => output.push('\t'),
+                "br" | "cr" => output.push('\n'),
+                _ => {}
+            },
+            Event::Empty(element) => match element.local_name().as_ref() {
+                "tab" => output.push('\t'),
+                "br" | "cr" => output.push('\n'),
+                _ => {}
+            },
+            Event::Text(text) if in_text => {
+                let decoded = text.xml10_content();
+                output.push_str(&decoded);
+            }
+            Event::GeneralRef(reference) if in_text => {
+                if let Some(character) = reference
+                    .resolve_char_ref()
+                    .map_err(|_| IngestError::InvalidDocxXml)?
+                {
+                    output.push(character);
+                } else {
+                    output.push(match reference.xml10_content().as_ref() {
+                        "amp" => '&',
+                        "lt" => '<',
+                        "gt" => '>',
+                        "quot" => '"',
+                        "apos" => '\'',
+                        _ => return Err(IngestError::InvalidDocxXml),
+                    });
+                }
+            }
+            Event::End(element) => match element.local_name().as_ref() {
+                "t" => in_text = false,
+                "p" if !output.is_empty() && !output.ends_with('\n') => output.push('\n'),
+                _ => {}
+            },
+            Event::Eof => break,
+            _ => {}
+        }
+        buffer.clear();
+    }
+
+    Ok(output)
 }
 
 /// Extracts UTF-8 text; the filename is provenance only and never selects a parser.
@@ -93,6 +200,9 @@ pub fn extract_raw_text(text: String) -> Result<ExtractedBlock, IngestError> {
 mod tests {
     use super::{IngestError, extract_file, extract_raw_text, extract_text_file};
     use epikrise_core::InputProvenance;
+    use std::io::{Cursor, Write};
+    use zip::ZipWriter;
+    use zip::write::SimpleFileOptions;
 
     #[test]
     fn extracts_nonempty_text_without_mutating_it() {
@@ -188,6 +298,61 @@ mod tests {
             extract_file("scan.pdf".to_owned(), text_pdf("")),
             Err(IngestError::NoTextExtracted)
         );
+    }
+
+    #[test]
+    fn extracts_text_runs_and_structure_from_docx_by_archive_content() {
+        let bytes = docx_file(
+            "<w:document xmlns:w=\"urn:word\"><w:body><w:p><w:r><w:t>Diagnosis &amp; history</w:t></w:r></w:p><w:p><w:r><w:t>Finding</w:t><w:tab/><w:t>Two</w:t></w:r></w:p></w:body></w:document>",
+        );
+
+        let block = extract_file("misleading.txt".to_owned(), bytes)
+            .expect("DOCX content should be extracted regardless of filename");
+
+        assert_eq!(block.content, "Diagnosis & history\nFinding\tTwo\n");
+        assert_eq!(
+            block.provenance,
+            InputProvenance::File {
+                name: "misleading.txt".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn reports_invalid_and_non_docx_zip_archives() {
+        assert_eq!(
+            extract_file("broken.docx".to_owned(), b"PK\x03\x04broken".to_vec()),
+            Err(IngestError::InvalidDocxArchive)
+        );
+        assert_eq!(
+            extract_file(
+                "workbook.docx".to_owned(),
+                zip_file("xl/workbook.xml", "<workbook/>")
+            ),
+            Err(IngestError::UnsupportedBinary {
+                mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    .to_owned()
+            })
+        );
+    }
+
+    fn docx_file(document_xml: &str) -> Vec<u8> {
+        zip_file("word/document.xml", document_xml)
+    }
+
+    fn zip_file(name: &str, content: &str) -> Vec<u8> {
+        let cursor = Cursor::new(Vec::new());
+        let mut writer = ZipWriter::new(cursor);
+        writer
+            .start_file(name, SimpleFileOptions::default())
+            .expect("test archive entry should be created");
+        writer
+            .write_all(content.as_bytes())
+            .expect("test XML should be written");
+        writer
+            .finish()
+            .expect("test archive should finish")
+            .into_inner()
     }
 
     fn text_pdf(text: &str) -> Vec<u8> {
