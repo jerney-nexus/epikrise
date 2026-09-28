@@ -12,6 +12,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "vitest run",
+    "template:convert": "node scripts/convert-prompt.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "tauri": "tauri"

@@ -12,7 +12,7 @@ export const commands = {
 	extractTextFile: (fileName: string, bytes: number[]) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_text_file", { fileName, bytes })),
 	generate: (requestId: string, profile: ProviderProfile, messages: ChatMessage[]) => typedError<null, LlmError>(__TAURI_INVOKE("generate", { requestId, profile, messages })),
 	greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
-	renderTemplateSystemPrompt: (template: ClinicalTemplate, values: { [key in string]: TemplateValue }) => typedError<string, TemplateError>(__TAURI_INVOKE("render_template_system_prompt", { template, values })),
+	renderTemplateSystemPrompt: (template: ClinicalTemplate, values: { [key in string]: TemplateValue }, enabledSectionIds: string[]) => typedError<string, TemplateError>(__TAURI_INVOKE("render_template_system_prompt", { template, values, enabledSectionIds })),
 	testProvider: (profile: ProviderProfile) => typedError<null, LlmError>(__TAURI_INVOKE("test_provider", { profile })),
 	validateTemplate: (bytes: number[]) => typedError<ClinicalTemplate, TemplateError>(__TAURI_INVOKE("validate_template", { bytes })),
 };
@@ -116,7 +116,7 @@ export type ProviderProfile = {
 
 export type TemplateDefault = { kind: "text"; value: string } | { kind: "boolean"; value: boolean };
 
-export type TemplateError = { key: "unsupported_schema_version"; value: number } | { key: "invalid_template" } | { key: "invalid_variable_name"; value: string } | { key: "duplicate_variable"; value: string } | { key: "invalid_variable_definition"; value: string } | { key: "invalid_section"; value: string } | { key: "invalid_serialized_template" } | { key: "template_too_large" } | { key: "missing_required_variable"; value: string } | { key: "invalid_variable_value"; value: string } | { key: "unknown_variable"; value: string } | { key: "invalid_system_prompt" } | { key: "rendering_failed" };
+export type TemplateError = { key: "unsupported_schema_version"; value: number } | { key: "invalid_template" } | { key: "invalid_variable_name"; value: string } | { key: "duplicate_variable"; value: string } | { key: "invalid_variable_definition"; value: string } | { key: "invalid_section"; value: string } | { key: "invalid_section_selection" } | { key: "invalid_serialized_template" } | { key: "template_too_large" } | { key: "missing_required_variable"; value: string } | { key: "invalid_variable_value"; value: string } | { key: "unknown_variable"; value: string } | { key: "invalid_system_prompt" } | { key: "rendering_failed" };
 
 export type TemplateMetadata = {
 	id: string,

@@ -103,6 +103,8 @@ pub enum TemplateError {
     InvalidVariableDefinition(String),
     #[error("invalid template section: {0}")]
     InvalidSection(String),
+    #[error("template section selection is invalid")]
+    InvalidSectionSelection,
     #[error("template JSON is invalid")]
     InvalidSerializedTemplate,
     #[error("template exceeds the maximum file size")]
@@ -229,6 +231,46 @@ impl ClinicalTemplate {
         template
             .render(minijinja::Value::from_serialize(&resolved_values))
             .map_err(|_| TemplateError::RenderingFailed)
+    }
+
+    pub fn render_system_prompt_with_sections(
+        &self,
+        values: &BTreeMap<String, serde_json::Value>,
+        enabled_section_ids: &[String],
+    ) -> Result<String, TemplateError> {
+        let mut rendered = self.render_system_prompt(values)?;
+        let enabled_ids: BTreeSet<_> = enabled_section_ids.iter().map(String::as_str).collect();
+        let mut sections: Vec<_> = self
+            .sections
+            .iter()
+            .filter(|section| enabled_ids.contains(section.id.as_str()))
+            .collect();
+
+        if sections.len() != enabled_section_ids.len()
+            || (!self.sections.is_empty() && sections.is_empty())
+        {
+            return Err(TemplateError::InvalidSectionSelection);
+        }
+        if sections.is_empty() {
+            return Ok(rendered);
+        }
+
+        sections.sort_by_key(|section| section.order);
+        rendered.push_str("\n\nInclude only these enabled sections, in this order:\n");
+        for (index, section) in sections.iter().enumerate() {
+            if index > 0 {
+                rendered.push('\n');
+            }
+            let language = self.metadata.locale.split('-').next().unwrap_or_default();
+            let label = section
+                .labels
+                .get(&self.metadata.locale)
+                .or_else(|| section.labels.get(language))
+                .unwrap_or(&section.heading);
+            rendered.push_str(label);
+        }
+        rendered.push_str("\nDo not include sections that are not listed.");
+        Ok(rendered)
     }
 }
 
@@ -455,6 +497,41 @@ mod tests {
             .expect("template should render");
 
         assert_eq!(rendered, "Patient: Ada\nInclude history");
+    }
+
+    #[test]
+    fn template_renders_only_selected_sections_in_configured_order() {
+        let mut template = sample_template();
+        template.sections.push(TemplateSection {
+            id: "findings".to_owned(),
+            heading: "Findings".to_owned(),
+            order: 0,
+            enabled_by_default: false,
+            labels: BTreeMap::from([("de-CH".to_owned(), "Befunde".to_owned())]),
+        });
+        template.sections[0].order = 1;
+        let values = BTreeMap::from([("patient_name".to_owned(), serde_json::json!("Ada"))]);
+
+        let selected = template
+            .render_system_prompt_with_sections(&values, &["diagnoses".to_owned()])
+            .expect("selected section should render");
+        assert!(selected.contains("Diagnosen"));
+        assert!(!selected.contains("Befunde"));
+
+        let selected_in_reverse_order = template
+            .render_system_prompt_with_sections(
+                &values,
+                &["diagnoses".to_owned(), "findings".to_owned()],
+            )
+            .expect("selected sections should render");
+        assert!(
+            selected_in_reverse_order.find("Befunde").unwrap()
+                < selected_in_reverse_order.find("Diagnosen").unwrap()
+        );
+        assert_eq!(
+            template.render_system_prompt_with_sections(&values, &[]),
+            Err(TemplateError::InvalidSectionSelection)
+        );
     }
 
     #[test]

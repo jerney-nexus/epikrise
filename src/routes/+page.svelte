@@ -38,6 +38,7 @@
     duplicate_variable: "The template contains duplicate variables.",
     invalid_variable_definition: "A template variable definition is invalid.",
     invalid_section: "A template section is invalid.",
+    invalid_section_selection: "Choose at least one valid template section.",
     invalid_serialized_template: "The selected file is not a valid template.",
     template_too_large: "Template files must be 1 MB or smaller.",
     missing_required_variable: "A required template value is missing.",
@@ -49,9 +50,12 @@
 
   const maxTemplateBytes = 1_048_576;
   let templateStore: Awaited<ReturnType<typeof loadStore>> | null = null;
+  let templateFileInput: HTMLInputElement | undefined;
   let importedTemplates = $state<ClinicalTemplate[]>([]);
+  let templateLibraryReady = $state(false);
   let activeTemplateId = $state("");
   let templateValues = $state<Record<string, string | boolean>>({});
+  let templateSectionStates = $state<Record<string, boolean>>({});
   let pendingTemplate = $state<ClinicalTemplate | null>(null);
   let templateMessage = $state("");
   let templateIsError = $state(false);
@@ -72,8 +76,14 @@
   let desktopAvailable = $state(false);
 
   const isGenerating = $derived(activeRequestId !== null);
+  const enabledSectionCount = $derived(
+    Object.values(templateSectionStates).filter(Boolean).length,
+  );
   const activeTemplate = $derived(
     importedTemplates.find((template) => template.metadata.id === activeTemplateId) ?? null,
+  );
+  const isFirstRun = $derived(
+    desktopAvailable && templateLibraryReady && importedTemplates.length === 0,
   );
 
   function createProfile(): ProviderProfile {
@@ -107,16 +117,39 @@
     );
   }
 
+  function initialTemplateSectionStates(template: ClinicalTemplate): Record<string, boolean> {
+    return Object.fromEntries(
+      template.sections.map((section) => [section.id, section.enabled_by_default]),
+    );
+  }
+
   function activateTemplate(templateId: string) {
     activeTemplateId = templateId;
     const template = importedTemplates.find((saved) => saved.metadata.id === templateId);
     templateValues = template ? initialTemplateValues(template) : {};
+    templateSectionStates = template ? initialTemplateSectionStates(template) : {};
   }
 
   function templateVariableLabel(variable: ClinicalTemplate["variables"][number]): string {
     const locale = activeTemplate?.metadata.locale ?? "";
     const language = locale.split("-")[0];
     return variable.labels[locale] ?? variable.labels[language] ?? variable.name;
+  }
+
+  function templateSectionLabel(section: ClinicalTemplate["sections"][number]): string {
+    const locale = activeTemplate?.metadata.locale ?? "";
+    const language = locale.split("-")[0];
+    return section.labels[locale] ?? section.labels[language] ?? section.heading;
+  }
+
+  function orderedTemplateSections(template: ClinicalTemplate) {
+    return [...template.sections].sort((left, right) => left.order - right.order);
+  }
+
+  function sectionsForRendering(template: ClinicalTemplate): string[] {
+    return orderedTemplateSections(template)
+      .filter((section) => templateSectionStates[section.id])
+      .map((section) => section.id);
   }
 
   function valuesForRendering(template: ClinicalTemplate): Record<string, string | boolean> {
@@ -198,6 +231,59 @@
     }
   }
 
+  async function createGenericStarter() {
+    if (templateBusy) return;
+    templateBusy = true;
+    templateMessage = "";
+    templateIsError = false;
+    const starter: ClinicalTemplate = {
+      schema_version: 1,
+      metadata: {
+        id: "generic-starter",
+        name: "Generic clinical summary",
+        description: "A minimal starting point without institutional rules.",
+        locale: "de-CH",
+        specialty_tags: [],
+        version: "1.0.0",
+        author: "Epikrise",
+      },
+      system_prompt:
+        "Create a concise, structured clinical summary in German from the supplied anonymized material. Use only documented facts, preserve uncertainty, and do not invent diagnoses, findings, or recommendations. Organize the result under the enabled sections.",
+      variables: [],
+      sections: [
+        {
+          id: "summary",
+          heading: "Clinical summary",
+          order: 0,
+          enabled_by_default: true,
+          labels: { "de-CH": "Klinische Zusammenfassung" },
+        },
+      ],
+      output_rules: {
+        forbidden_terms: [],
+        required_terms: [],
+        forbid_code_fences: true,
+        forbid_leading_whitespace: true,
+      },
+    };
+
+    try {
+      const bytes = new TextEncoder().encode(JSON.stringify(starter));
+      const result = await commands.validateTemplate(Array.from(bytes));
+      if (result.status === "error") {
+        templateMessage = formatTemplateError(result.error);
+        templateIsError = true;
+      } else {
+        pendingTemplate = result.data;
+      }
+    } catch {
+      templateMessage = "The starter template could not be prepared.";
+      templateIsError = true;
+    } finally {
+      templateBusy = false;
+    }
+  }
+
   async function savePendingTemplate() {
     const template = pendingTemplate;
     if (!template || templateBusy) return;
@@ -224,13 +310,37 @@
     }
   }
 
+  function exportActiveTemplate() {
+    if (!activeTemplate) return;
+    try {
+      const serialized = JSON.stringify(activeTemplate, null, 2);
+      const blob = new Blob([serialized], { type: "application/json" });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const filename = activeTemplate.metadata.id.replace(/[^A-Za-z0-9._-]/g, "_");
+      link.href = objectUrl;
+      link.download = `${filename || "template"}.epitpl`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      templateMessage = "Template exported";
+      templateIsError = false;
+    } catch {
+      templateMessage = "The template could not be exported.";
+      templateIsError = true;
+    }
+  }
+
   onMount(() => {
     desktopAvailable = isTauri();
     if (!desktopAvailable) return;
-    void restoreTemplates().catch(() => {
-      templateMessage = "Saved templates could not be loaded.";
-      templateIsError = true;
-    });
+    void restoreTemplates()
+      .catch(() => {
+        templateMessage = "Saved templates could not be loaded.";
+        templateIsError = true;
+      })
+      .finally(() => {
+        templateLibraryReady = true;
+      });
 
     let disposed = false;
     let unlisten: (() => void)[] = [];
@@ -291,36 +401,39 @@
   async function generateDraft() {
     const source = prompt.trim();
     if (!source || isGenerating || isPreparingGeneration) return;
+    if (!activeTemplate) {
+      generationMessage = "Import and select a template before generating.";
+      generationIsError = true;
+      return;
+    }
     if (!desktopAvailable) {
       generationMessage = "Desktop runtime unavailable.";
       generationIsError = true;
       return;
     }
 
-    let systemPrompt =
-      "Write a concise German clinical discharge summary from the supplied anonymized material. Use only documented facts, preserve uncertainty, and do not invent findings or recommendations.";
-    if (activeTemplate) {
-      isPreparingGeneration = true;
-      generationMessage = "Preparing template";
-      generationIsError = false;
-      try {
-        const rendered = await commands.renderTemplateSystemPrompt(
-          activeTemplate,
-          valuesForRendering(activeTemplate),
-        );
-        if (rendered.status === "error") {
-          generationMessage = formatTemplateError(rendered.error);
-          generationIsError = true;
-          return;
-        }
-        systemPrompt = rendered.data;
-      } catch {
-        generationMessage = "The active template could not be rendered.";
+    isPreparingGeneration = true;
+    generationMessage = "Preparing template";
+    generationIsError = false;
+    let systemPrompt: string;
+    try {
+      const rendered = await commands.renderTemplateSystemPrompt(
+        activeTemplate,
+        valuesForRendering(activeTemplate),
+        sectionsForRendering(activeTemplate),
+      );
+      if (rendered.status === "error") {
+        generationMessage = formatTemplateError(rendered.error);
         generationIsError = true;
         return;
-      } finally {
-        isPreparingGeneration = false;
       }
+      systemPrompt = rendered.data;
+    } catch {
+      generationMessage = "The active template could not be rendered.";
+      generationIsError = true;
+      return;
+    } finally {
+      isPreparingGeneration = false;
     }
 
     const requestId = crypto.randomUUID();
@@ -428,6 +541,13 @@
             <option value={template.metadata.id}>{template.metadata.name}</option>
           {/each}
         </select>
+        <button
+          class="template-export-button"
+          onclick={exportActiveTemplate}
+          disabled={templateBusy || !activeTemplate}
+        >
+          Export .epitpl
+        </button>
       {:else}
         <p class="template-empty">No templates imported</p>
       {/if}
@@ -497,6 +617,31 @@
         </div>
       {/if}
 
+      {#if activeTemplate?.sections.length}
+        <div class="template-fields template-section-fields">
+          <p class="eyebrow">Sections</p>
+          {#each orderedTemplateSections(activeTemplate) as section (section.id)}
+            {@const sectionInputId = `template-section-${section.id}`}
+            <label class="template-checkbox" for={sectionInputId}>
+              <input
+                id={sectionInputId}
+                type="checkbox"
+                checked={templateSectionStates[section.id] === true}
+                disabled={
+                  templateSectionStates[section.id] === true && enabledSectionCount <= 1
+                }
+                onchange={(event) =>
+                  (templateSectionStates = {
+                    ...templateSectionStates,
+                    [section.id]: event.currentTarget.checked,
+                  })}
+              />
+              <span>{templateSectionLabel(section)}</span>
+            </label>
+          {/each}
+        </div>
+      {/if}
+
       <label class="template-file-label" for="template-file">
         {templateBusy ? "Working..." : "Import .epitpl"}
       </label>
@@ -505,6 +650,7 @@
         class="template-file-input"
         type="file"
         accept=".epitpl,application/json"
+        bind:this={templateFileInput}
         onchange={importTemplate}
         disabled={templateBusy}
       />
@@ -513,7 +659,7 @@
         <p class="template-message" class:error={templateIsError} role="status">{templateMessage}</p>
       {/if}
 
-      {#if pendingTemplate}
+      {#if pendingTemplate && !isFirstRun}
         <div class="template-preview" aria-label="Template preview">
           <p class="eyebrow">Review import</p>
           <h3>{pendingTemplate.metadata.name}</h3>
@@ -550,6 +696,68 @@
   </aside>
 
   <main class="work-area">
+    {#if isFirstRun}
+      <section class="first-run-panel" aria-labelledby="first-run-title">
+        <p class="eyebrow">Getting started / Template setup</p>
+        <h2 id="first-run-title">Bring your clinical template</h2>
+        <p>
+          Institutional templates are not included. Import an .epitpl file, or use the generic
+          starter and adapt it later. Case content and template field values stay in memory only.
+        </p>
+
+        {#if pendingTemplate}
+          <div class="first-run-review">
+            <div>
+              <span class="eyebrow">Ready to save</span>
+              <h3>{pendingTemplate.metadata.name}</h3>
+              <p>{pendingTemplate.metadata.description}</p>
+            </div>
+            <dl>
+              <div><dt>Locale</dt><dd>{pendingTemplate.metadata.locale}</dd></div>
+              <div><dt>Sections</dt><dd>{pendingTemplate.sections.length}</dd></div>
+            </dl>
+            <details>
+              <summary>Review system prompt</summary>
+              <pre>{pendingTemplate.system_prompt}</pre>
+            </details>
+            <div class="onboarding-actions">
+              <button class="connection-button" onclick={savePendingTemplate} disabled={templateBusy}>
+                {templateBusy ? "Saving..." : "Save and continue"}
+              </button>
+              <button
+                class="template-discard"
+                onclick={() => (pendingTemplate = null)}
+                disabled={templateBusy}
+              >
+                Choose another
+              </button>
+            </div>
+          </div>
+        {:else}
+          <div class="onboarding-actions">
+            <button
+              class="connection-button"
+              onclick={() => templateFileInput?.click()}
+              disabled={templateBusy}
+            >
+              {templateBusy ? "Working..." : "Import .epitpl"}
+            </button>
+            <button
+              class="onboarding-secondary"
+              onclick={createGenericStarter}
+              disabled={templateBusy}
+            >
+              Use generic starter
+            </button>
+          </div>
+          {#if templateMessage}
+            <p class="template-message" class:error={templateIsError} role="status">
+              {templateMessage}
+            </p>
+          {/if}
+        {/if}
+      </section>
+    {:else}
     <header class="page-header">
       <div>
         <p class="eyebrow">Clinical writing</p>
@@ -585,7 +793,7 @@
             <button
               class="generate-button"
               onclick={generateDraft}
-              disabled={!prompt.trim() || isPreparingGeneration}
+              disabled={!prompt.trim() || !activeTemplate || isPreparingGeneration}
             >
               <span aria-hidden="true">↗</span>
               {isPreparingGeneration ? "Preparing..." : "Generate draft"}
@@ -623,6 +831,7 @@
       <span>Review generated text before use in the medical record.</span>
       <span>Epikrise <span class="footer-separator">/</span> Workspace</span>
     </footer>
+    {/if}
   </main>
 </div>
 
@@ -741,6 +950,22 @@
     margin: 0;
     color: #829088;
     font-size: 12px;
+  }
+
+  .template-export-button {
+    min-height: 34px;
+    border: 1px solid #bfd1c7;
+    border-radius: 5px;
+    color: #285e50;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  .template-export-button:hover:not(:disabled) {
+    background: #eaf3ec;
   }
 
   .template-fields {
@@ -1023,6 +1248,116 @@
     flex-direction: column;
     margin: 0 auto;
     padding: 38px clamp(24px, 5vw, 76px) 20px;
+  }
+
+  .first-run-panel {
+    width: min(100%, 720px);
+    margin: auto;
+    padding: clamp(24px, 5vw, 48px);
+    border-top: 4px solid #d46b4d;
+    background: rgba(255, 255, 255, 0.62);
+    animation: rise-in 420ms ease-out both;
+  }
+
+  .first-run-panel h2 {
+    max-width: 12ch;
+    margin: 8px 0 12px;
+    font-family: Georgia, serif;
+    font-size: 30px;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+
+  .first-run-panel > p:not(.eyebrow) {
+    max-width: 58ch;
+    color: #5e6f66;
+  }
+
+  .first-run-review {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid #dce4de;
+  }
+
+  .first-run-review h3 {
+    margin: 4px 0;
+    font-family: Georgia, serif;
+    font-size: 20px;
+    font-weight: 400;
+    overflow-wrap: anywhere;
+  }
+
+  .first-run-review p {
+    margin: 0;
+    color: #5e6f66;
+  }
+
+  .first-run-review dl {
+    display: flex;
+    gap: 28px;
+    margin: 0;
+  }
+
+  .first-run-review dt {
+    color: #819087;
+    font-size: 11px;
+  }
+
+  .first-run-review dd {
+    margin: 0;
+  }
+
+  .first-run-review details {
+    padding-top: 12px;
+    border-top: 1px solid #dce4de;
+  }
+
+  .first-run-review summary {
+    color: #4c6258;
+    cursor: pointer;
+    font-weight: 650;
+  }
+
+  .first-run-review pre {
+    max-height: 240px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .onboarding-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 18px;
+    margin-top: 20px;
+  }
+
+  .onboarding-actions .connection-button {
+    min-height: 42px;
+    margin: 0;
+    padding: 0 18px;
+  }
+
+  .onboarding-secondary {
+    min-height: 40px;
+    padding: 0 8px;
+    border: 0;
+    color: #50665c;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 650;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .onboarding-secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
   }
 
   .page-header {

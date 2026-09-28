@@ -67,8 +67,21 @@ app ships only a minimal generic starter template.
 
 On first run you are asked to import your own template as an `.epitpl` file.
 A template defines the system prompt, its variables, the toggleable sections
-per specialty, and the output rules that the built-in linter enforces against
-the model's response.
+per specialty, and the output rules to apply to generated responses.
+
+To convert a plain-text prompt locally, provide section labels explicitly:
+
+```sh
+npm run template:convert -- templates/prompt.txt templates/imported.epitpl \
+  --name "Institutional template" --locale de-CH \
+  --section diagnoses=Diagnosen --section findings=Befunde
+```
+
+The converter preserves the prompt text, creates enabled sections from the
+provided labels, and refuses to overwrite an existing output unless `--force`
+is supplied. It does not infer template variables; prompts containing MiniJinja
+expressions must be converted manually. Both `templates/` and `.epitpl` files
+are ignored by Git.
 
 ## Safety and scope
 

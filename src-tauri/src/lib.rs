@@ -100,6 +100,7 @@ fn validate_template(bytes: Vec<u8>) -> Result<ClinicalTemplate, TemplateError> 
 fn render_template_system_prompt(
     template: ClinicalTemplate,
     values: BTreeMap<String, TemplateValue>,
+    enabled_section_ids: Vec<String>,
 ) -> Result<String, TemplateError> {
     let values = values
         .into_iter()
@@ -111,7 +112,7 @@ fn render_template_system_prompt(
             (name, value)
         })
         .collect();
-    template.render_system_prompt(&values)
+    template.render_system_prompt_with_sections(&values, &enabled_section_ids)
 }
 
 #[tauri::command]
