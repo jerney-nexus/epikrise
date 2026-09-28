@@ -1,5 +1,6 @@
 use pdfium_render::prelude::{PdfRenderConfig, Pdfium};
 use serde::{Deserialize, Serialize};
+#[cfg(debug_assertions)]
 use specta_typescript::Typescript;
 use std::{
     collections::{BTreeMap, HashMap},
