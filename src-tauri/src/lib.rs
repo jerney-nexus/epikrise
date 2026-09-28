@@ -13,6 +13,7 @@ use tauri_plugin_shell::ShellExt;
 use tauri_specta::{Builder, Event, collect_commands, collect_events};
 use tokio_util::sync::CancellationToken;
 
+use epikrise_core::{ClinicalTemplate, TemplateError};
 use epikrise_llm::{
     ChatMessage, GenaiLlmClient, KeyringCredentialStore, LlmClient, LlmError, MessageRole,
     ProviderProfile,
@@ -79,6 +80,12 @@ impl Drop for SensitiveImageFile {
         }
         let _ = file.sync_all();
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+fn validate_template(bytes: Vec<u8>) -> Result<ClinicalTemplate, TemplateError> {
+    ClinicalTemplate::from_json(&bytes)
 }
 
 #[tauri::command]
@@ -324,7 +331,8 @@ pub fn run() -> Result<(), tauri::Error> {
             extract_text_file,
             generate,
             greet,
-            test_provider
+            test_provider,
+            validate_template
         ])
         .events(collect_events![
             GenerationDelta,

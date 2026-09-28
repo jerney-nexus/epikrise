@@ -37,6 +37,7 @@ infer = "0.19"
 html2text = "0.17"
 image = { version = "0.25", default-features = false, features = ["png"] }
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+minijinja = { version = "2", features = ["fuel"] }
 quick-xml = "0.42"
 rtf-parser-tt = "0.5"
 pdf-extract = "0.12"

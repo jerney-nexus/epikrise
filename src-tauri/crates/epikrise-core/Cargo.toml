@@ -8,7 +8,9 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+minijinja = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 specta = { workspace = true }
 thiserror = { workspace = true }
 

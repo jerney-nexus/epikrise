@@ -6,6 +6,276 @@
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::collections::{BTreeMap, BTreeSet};
+use thiserror::Error;
+
+pub const TEMPLATE_SCHEMA_VERSION: u32 = 1;
+pub const MAX_TEMPLATE_FILE_BYTES: usize = 1_048_576;
+const TEMPLATE_RENDER_FUEL: u64 = 50_000;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(deny_unknown_fields)]
+pub struct ClinicalTemplate {
+    pub schema_version: u32,
+    pub metadata: TemplateMetadata,
+    pub system_prompt: String,
+    pub variables: Vec<TemplateVariable>,
+    pub sections: Vec<TemplateSection>,
+    #[serde(default)]
+    pub output_rules: OutputRules,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(deny_unknown_fields)]
+pub struct TemplateMetadata {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub locale: String,
+    pub specialty_tags: Vec<String>,
+    pub version: String,
+    pub author: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum TemplateVariableKind {
+    Text,
+    Select,
+    Boolean,
+    Date,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+pub enum TemplateDefault {
+    Text(String),
+    Boolean(bool),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(deny_unknown_fields)]
+pub struct TemplateVariable {
+    pub name: String,
+    pub kind: TemplateVariableKind,
+    pub labels: BTreeMap<String, String>,
+    pub default: Option<TemplateDefault>,
+    pub required: bool,
+    #[serde(default)]
+    pub options: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(deny_unknown_fields)]
+pub struct TemplateSection {
+    pub id: String,
+    pub heading: String,
+    pub order: u32,
+    pub enabled_by_default: bool,
+    pub labels: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(deny_unknown_fields)]
+pub struct OutputRules {
+    #[serde(default)]
+    pub forbidden_terms: Vec<String>,
+    #[serde(default)]
+    pub required_terms: Vec<String>,
+    #[serde(default)]
+    pub forbid_code_fences: bool,
+    #[serde(default)]
+    pub forbid_leading_whitespace: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type, Error)]
+#[serde(tag = "key", content = "value", rename_all = "snake_case")]
+pub enum TemplateError {
+    #[error("unsupported template schema version {0}")]
+    UnsupportedSchemaVersion(u32),
+    #[error("template metadata and system prompt must be non-empty")]
+    InvalidTemplate,
+    #[error("invalid template variable name: {0}")]
+    InvalidVariableName(String),
+    #[error("duplicate template variable: {0}")]
+    DuplicateVariable(String),
+    #[error("invalid template variable definition: {0}")]
+    InvalidVariableDefinition(String),
+    #[error("invalid template section: {0}")]
+    InvalidSection(String),
+    #[error("template JSON is invalid")]
+    InvalidSerializedTemplate,
+    #[error("template exceeds the maximum file size")]
+    TemplateTooLarge,
+    #[error("required template variable is missing: {0}")]
+    MissingRequiredVariable(String),
+    #[error("template variable value is invalid: {0}")]
+    InvalidVariableValue(String),
+    #[error("unknown template variable: {0}")]
+    UnknownVariable(String),
+    #[error("template system prompt is invalid")]
+    InvalidSystemPrompt,
+    #[error("template system prompt rendering failed")]
+    RenderingFailed,
+}
+
+impl ClinicalTemplate {
+    pub fn from_json(bytes: &[u8]) -> Result<Self, TemplateError> {
+        if bytes.len() > MAX_TEMPLATE_FILE_BYTES {
+            return Err(TemplateError::TemplateTooLarge);
+        }
+        let template: Self =
+            serde_json::from_slice(bytes).map_err(|_| TemplateError::InvalidSerializedTemplate)?;
+        template.validate()?;
+        Ok(template)
+    }
+
+    pub fn to_json(&self) -> Result<Vec<u8>, TemplateError> {
+        self.validate()?;
+        serde_json::to_vec(self).map_err(|_| TemplateError::InvalidSerializedTemplate)
+    }
+
+    pub fn validate(&self) -> Result<(), TemplateError> {
+        if self.schema_version != TEMPLATE_SCHEMA_VERSION {
+            return Err(TemplateError::UnsupportedSchemaVersion(self.schema_version));
+        }
+        if self.metadata.id.trim().is_empty()
+            || self.metadata.name.trim().is_empty()
+            || self.system_prompt.trim().is_empty()
+        {
+            return Err(TemplateError::InvalidTemplate);
+        }
+
+        let mut variable_names = BTreeSet::new();
+        for variable in &self.variables {
+            if !is_valid_variable_name(&variable.name) {
+                return Err(TemplateError::InvalidVariableName(variable.name.clone()));
+            }
+            if !variable_names.insert(&variable.name) {
+                return Err(TemplateError::DuplicateVariable(variable.name.clone()));
+            }
+            if !valid_variable_definition(variable) {
+                return Err(TemplateError::InvalidVariableDefinition(
+                    variable.name.clone(),
+                ));
+            }
+        }
+
+        let mut section_ids = BTreeSet::new();
+        for section in &self.sections {
+            if section.id.trim().is_empty()
+                || section.heading.trim().is_empty()
+                || !section_ids.insert(&section.id)
+            {
+                return Err(TemplateError::InvalidSection(section.id.clone()));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn render_system_prompt(
+        &self,
+        values: &BTreeMap<String, serde_json::Value>,
+    ) -> Result<String, TemplateError> {
+        self.validate()?;
+        let declared_variables: BTreeSet<_> = self
+            .variables
+            .iter()
+            .map(|variable| variable.name.as_str())
+            .collect();
+        for name in values.keys() {
+            if !declared_variables.contains(name.as_str()) {
+                return Err(TemplateError::UnknownVariable(name.clone()));
+            }
+        }
+
+        let mut resolved_values = values.clone();
+        for variable in &self.variables {
+            if let Some(value) = resolved_values.get(&variable.name) {
+                if !value_matches_variable(variable, value) {
+                    return Err(TemplateError::InvalidVariableValue(variable.name.clone()));
+                }
+            } else if let Some(default) = &variable.default {
+                let value = match default {
+                    TemplateDefault::Text(value) => serde_json::Value::String(value.clone()),
+                    TemplateDefault::Boolean(value) => serde_json::Value::Bool(*value),
+                };
+                resolved_values.insert(variable.name.clone(), value);
+            } else if variable.required {
+                return Err(TemplateError::MissingRequiredVariable(
+                    variable.name.clone(),
+                ));
+            }
+        }
+
+        let mut environment = minijinja::Environment::new();
+        environment.set_auto_escape_callback(|_| minijinja::AutoEscape::None);
+        environment.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
+        environment.set_fuel(Some(TEMPLATE_RENDER_FUEL));
+        let global_names: Vec<_> = environment
+            .globals()
+            .map(|(name, _)| name.to_owned())
+            .collect();
+        for name in global_names {
+            environment.remove_global(&name);
+        }
+        environment
+            .add_template("system_prompt", &self.system_prompt)
+            .map_err(|_| TemplateError::InvalidSystemPrompt)?;
+        let template = environment
+            .get_template("system_prompt")
+            .map_err(|_| TemplateError::InvalidSystemPrompt)?;
+        template
+            .render(minijinja::Value::from_serialize(&resolved_values))
+            .map_err(|_| TemplateError::RenderingFailed)
+    }
+}
+
+fn is_valid_variable_name(name: &str) -> bool {
+    let mut characters = name.chars();
+    matches!(characters.next(), Some('_' | 'a'..='z' | 'A'..='Z'))
+        && characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
+fn valid_variable_definition(variable: &TemplateVariable) -> bool {
+    let options_are_valid = match variable.kind {
+        TemplateVariableKind::Select => {
+            !variable.options.is_empty()
+                && variable
+                    .options
+                    .iter()
+                    .all(|option| !option.trim().is_empty())
+                && variable.options.iter().collect::<BTreeSet<_>>().len() == variable.options.len()
+        }
+        _ => variable.options.is_empty(),
+    };
+    let default_is_valid = match (&variable.kind, &variable.default) {
+        (_, None) => true,
+        (TemplateVariableKind::Boolean, Some(TemplateDefault::Boolean(_))) => true,
+        (
+            TemplateVariableKind::Text | TemplateVariableKind::Date,
+            Some(TemplateDefault::Text(value)),
+        ) => !variable.required || !value.trim().is_empty(),
+        (TemplateVariableKind::Select, Some(TemplateDefault::Text(value))) => {
+            variable.options.contains(value)
+        }
+        _ => false,
+    };
+    options_are_valid && default_is_valid
+}
+
+fn value_matches_variable(variable: &TemplateVariable, value: &serde_json::Value) -> bool {
+    match variable.kind {
+        TemplateVariableKind::Text | TemplateVariableKind::Date => value
+            .as_str()
+            .is_some_and(|value| !variable.required || !value.trim().is_empty()),
+        TemplateVariableKind::Boolean => value.is_boolean(),
+        TemplateVariableKind::Select => value
+            .as_str()
+            .is_some_and(|selected| variable.options.iter().any(|option| option == selected)),
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 pub enum InputProvenance {
@@ -124,7 +394,164 @@ fn provenance_label(provenance: &InputProvenance) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{CaseSession, ExtractedBlock, InputProvenance};
+    use super::{
+        CaseSession, ClinicalTemplate, ExtractedBlock, InputProvenance, MAX_TEMPLATE_FILE_BYTES,
+        OutputRules, TEMPLATE_SCHEMA_VERSION, TemplateDefault, TemplateError, TemplateMetadata,
+        TemplateSection, TemplateVariable, TemplateVariableKind,
+    };
+    use std::collections::BTreeMap;
+
+    fn sample_template() -> ClinicalTemplate {
+        ClinicalTemplate {
+            schema_version: TEMPLATE_SCHEMA_VERSION,
+            metadata: TemplateMetadata {
+                id: "generic-discharge".to_owned(),
+                name: "Generic discharge summary".to_owned(),
+                description: "A generic drafting template".to_owned(),
+                locale: "de-CH".to_owned(),
+                specialty_tags: vec!["general".to_owned()],
+                version: "1.0.0".to_owned(),
+                author: "Epikrise".to_owned(),
+            },
+            system_prompt:
+                "Patient: {{ patient_name }}\n{% if include_history %}Include history{% endif %}"
+                    .to_owned(),
+            variables: vec![
+                TemplateVariable {
+                    name: "patient_name".to_owned(),
+                    kind: TemplateVariableKind::Text,
+                    labels: BTreeMap::from([("de-CH".to_owned(), "Name".to_owned())]),
+                    default: None,
+                    required: true,
+                    options: Vec::new(),
+                },
+                TemplateVariable {
+                    name: "include_history".to_owned(),
+                    kind: TemplateVariableKind::Boolean,
+                    labels: BTreeMap::from([("de-CH".to_owned(), "Verlauf".to_owned())]),
+                    default: Some(TemplateDefault::Boolean(true)),
+                    required: false,
+                    options: Vec::new(),
+                },
+            ],
+            sections: vec![TemplateSection {
+                id: "diagnoses".to_owned(),
+                heading: "Diagnosen".to_owned(),
+                order: 0,
+                enabled_by_default: true,
+                labels: BTreeMap::from([("de-CH".to_owned(), "Diagnosen".to_owned())]),
+            }],
+            output_rules: OutputRules::default(),
+        }
+    }
+
+    #[test]
+    fn template_renders_strictly_from_json_values() {
+        let template = sample_template();
+        let values = BTreeMap::from([("patient_name".to_owned(), serde_json::json!("Ada"))]);
+
+        let rendered = template
+            .render_system_prompt(&values)
+            .expect("template should render");
+
+        assert_eq!(rendered, "Patient: Ada\nInclude history");
+    }
+
+    #[test]
+    fn template_rejects_missing_values_and_invalid_definitions() {
+        let template = sample_template();
+        assert_eq!(
+            template.render_system_prompt(&BTreeMap::new()),
+            Err(TemplateError::MissingRequiredVariable(
+                "patient_name".to_owned()
+            ))
+        );
+
+        let invalid_value = BTreeMap::from([("patient_name".to_owned(), serde_json::json!(12))]);
+        assert_eq!(
+            template.render_system_prompt(&invalid_value),
+            Err(TemplateError::InvalidVariableValue(
+                "patient_name".to_owned()
+            ))
+        );
+        let blank_value = BTreeMap::from([("patient_name".to_owned(), serde_json::json!("  "))]);
+        assert_eq!(
+            template.render_system_prompt(&blank_value),
+            Err(TemplateError::InvalidVariableValue(
+                "patient_name".to_owned()
+            ))
+        );
+
+        let unknown_value = BTreeMap::from([("unexpected".to_owned(), serde_json::json!("value"))]);
+        assert_eq!(
+            template.render_system_prompt(&unknown_value),
+            Err(TemplateError::UnknownVariable("unexpected".to_owned()))
+        );
+
+        let mut uses_global_function = sample_template();
+        uses_global_function.system_prompt = "{{ range(10) }}".to_owned();
+        let values = BTreeMap::from([("patient_name".to_owned(), serde_json::json!("Ada"))]);
+        assert_eq!(
+            uses_global_function.render_system_prompt(&values),
+            Err(TemplateError::RenderingFailed)
+        );
+
+        let mut invalid_template = sample_template();
+        invalid_template.variables[0].name = "patient-name".to_owned();
+        assert_eq!(
+            invalid_template.validate(),
+            Err(TemplateError::InvalidVariableName(
+                "patient-name".to_owned()
+            ))
+        );
+
+        let mut blank_default = sample_template();
+        blank_default.variables[0].default = Some(TemplateDefault::Text("  ".to_owned()));
+        assert_eq!(
+            blank_default.validate(),
+            Err(TemplateError::InvalidVariableDefinition(
+                "patient_name".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn template_schema_round_trips_and_rejects_unknown_versions() {
+        let template = sample_template();
+        let json = template.to_json().expect("template should serialize");
+        let restored = ClinicalTemplate::from_json(&json).expect("template should deserialize");
+        assert_eq!(restored, template);
+
+        let mut unsupported_template = template;
+        unsupported_template.schema_version += 1;
+        assert_eq!(
+            unsupported_template.validate(),
+            Err(TemplateError::UnsupportedSchemaVersion(
+                TEMPLATE_SCHEMA_VERSION + 1
+            ))
+        );
+
+        let oversized = vec![b' '; MAX_TEMPLATE_FILE_BYTES + 1];
+        assert_eq!(
+            ClinicalTemplate::from_json(&oversized),
+            Err(TemplateError::TemplateTooLarge)
+        );
+        assert_eq!(
+            ClinicalTemplate::from_json(b"{"),
+            Err(TemplateError::InvalidSerializedTemplate)
+        );
+
+        let mut value: serde_json::Value = serde_json::from_slice(&json).expect("valid JSON");
+        value
+            .as_object_mut()
+            .expect("template JSON is an object")
+            .insert("unexpected".to_owned(), serde_json::json!(true));
+        let unknown_field = serde_json::to_vec(&value).expect("JSON should serialize");
+        assert_eq!(
+            ClinicalTemplate::from_json(&unknown_field),
+            Err(TemplateError::InvalidSerializedTemplate)
+        );
+    }
 
     #[test]
     fn appending_rounds_assigns_monotonic_round_numbers() {

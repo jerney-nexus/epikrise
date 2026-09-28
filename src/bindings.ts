@@ -13,6 +13,7 @@ export const commands = {
 	generate: (requestId: string, profile: ProviderProfile, messages: ChatMessage[]) => typedError<null, LlmError>(__TAURI_INVOKE("generate", { requestId, profile, messages })),
 	greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
 	testProvider: (profile: ProviderProfile) => typedError<null, LlmError>(__TAURI_INVOKE("test_provider", { profile })),
+	validateTemplate: (bytes: number[]) => typedError<ClinicalTemplate, TemplateError>(__TAURI_INVOKE("validate_template", { bytes })),
 };
 
 /** Events */
@@ -36,6 +37,15 @@ export type CaseSession = {
 export type ChatMessage = {
 	role: MessageRole,
 	content: string,
+};
+
+export type ClinicalTemplate = {
+	schema_version: number,
+	metadata: TemplateMetadata,
+	system_prompt: string,
+	variables: TemplateVariable[],
+	sections: TemplateSection[],
+	output_rules?: OutputRules,
 };
 
 export type ExtractedBlock = {
@@ -83,6 +93,13 @@ export type ModelCapabilities = {
 	max_context: number | null,
 };
 
+export type OutputRules = {
+	forbidden_terms?: string[],
+	required_terms?: string[],
+	forbid_code_fences?: boolean,
+	forbid_leading_whitespace?: boolean,
+};
+
 export type ProviderAdapter = "open_ai" | "anthropic" | "gemini" | "ollama" | "open_ai_compatible";
 
 export type ProviderProfile = {
@@ -95,6 +112,39 @@ export type ProviderProfile = {
 	capabilities: ModelCapabilities,
 	generation: GenerationParams,
 };
+
+export type TemplateDefault = { kind: "text"; value: string } | { kind: "boolean"; value: boolean };
+
+export type TemplateError = { key: "unsupported_schema_version"; value: number } | { key: "invalid_template" } | { key: "invalid_variable_name"; value: string } | { key: "duplicate_variable"; value: string } | { key: "invalid_variable_definition"; value: string } | { key: "invalid_section"; value: string } | { key: "invalid_serialized_template" } | { key: "template_too_large" } | { key: "missing_required_variable"; value: string } | { key: "invalid_variable_value"; value: string } | { key: "unknown_variable"; value: string } | { key: "invalid_system_prompt" } | { key: "rendering_failed" };
+
+export type TemplateMetadata = {
+	id: string,
+	name: string,
+	description: string,
+	locale: string,
+	specialty_tags: string[],
+	version: string,
+	author: string,
+};
+
+export type TemplateSection = {
+	id: string,
+	heading: string,
+	order: number,
+	enabled_by_default: boolean,
+	labels: { [key in string]: string },
+};
+
+export type TemplateVariable = {
+	name: string,
+	kind: TemplateVariableKind,
+	labels: { [key in string]: string },
+	default: TemplateDefault | null,
+	required: boolean,
+	options?: string[],
+};
+
+export type TemplateVariableKind = "text" | "select" | "boolean" | "date";
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {
