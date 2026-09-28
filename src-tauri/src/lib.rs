@@ -127,7 +127,7 @@ where
 {
     let pdfium = PDFIUM
         .get_or_init(|| {
-            Pdfium::bind_to_library(&pdfium_path)
+            Pdfium::bind_to_library(pdfium_path)
                 .map(Pdfium::new)
                 .map_err(|_| ())
         })
