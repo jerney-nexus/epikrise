@@ -7,6 +7,7 @@
     events,
     type ClinicalTemplate,
     type LlmError,
+    type OutputViolation,
     type ProviderAdapter,
     type ProviderProfile,
     type TemplateError,
@@ -48,6 +49,15 @@
     rendering_failed: "The template could not be rendered.",
   };
 
+  const outputViolationMessages: Record<OutputViolation["kind"], string> = {
+    forbidden_term: "Forbidden term",
+    missing_required_term: "Required term is missing",
+    code_fence: "Code fence is not allowed",
+    leading_whitespace: "Leading whitespace is not allowed",
+    parenthesized_date: "Date should not be in parentheses",
+    bullet_character: "Bullet character is not allowed",
+  };
+
   const maxTemplateBytes = 1_048_576;
   let templateStore: Awaited<ReturnType<typeof loadStore>> | null = null;
   let templateFileInput: HTMLInputElement | undefined;
@@ -56,6 +66,9 @@
   let activeTemplateId = $state("");
   let templateValues = $state<Record<string, string | boolean>>({});
   let templateSectionStates = $state<Record<string, boolean>>({});
+  let caseSessionId = $state<string | null>(null);
+  let caseSessionTemplateId = $state("");
+  let reviewedOutputCaseId = $state<string | null>(null);
   let pendingTemplate = $state<ClinicalTemplate | null>(null);
   let templateMessage = $state("");
   let templateIsError = $state(false);
@@ -67,6 +80,7 @@
   let credentialId = $state("");
   let prompt = $state("");
   let draft = $state("");
+  let outputViolations = $state<OutputViolation[]>([]);
   let activeRequestId = $state<string | null>(null);
   let connectionState = $state<"idle" | "checking" | "ready" | "error">("idle");
   let connectionMessage = $state("");
@@ -76,6 +90,16 @@
   let desktopAvailable = $state(false);
 
   const isGenerating = $derived(activeRequestId !== null);
+  const draftLines = $derived(draft.split("\n"));
+  const canCopyOutput = $derived(
+    Boolean(
+      draft &&
+        caseSessionId &&
+        reviewedOutputCaseId === caseSessionId &&
+        !isGenerating &&
+        !isPreparingGeneration,
+    ),
+  );
   const enabledSectionCount = $derived(
     Object.values(templateSectionStates).filter(Boolean).length,
   );
@@ -124,10 +148,97 @@
   }
 
   function activateTemplate(templateId: string) {
+    const previousCaseId = caseSessionId;
+    if (previousCaseId && desktopAvailable) {
+      void commands.clearCaseSession(previousCaseId).then((result) => {
+        if (result.status === "error") {
+          templateMessage = "The previous case could not be cleared.";
+          templateIsError = true;
+        }
+      }).catch(() => {
+        templateMessage = "The previous case could not be cleared.";
+        templateIsError = true;
+      });
+    }
     activeTemplateId = templateId;
     const template = importedTemplates.find((saved) => saved.metadata.id === templateId);
     templateValues = template ? initialTemplateValues(template) : {};
     templateSectionStates = template ? initialTemplateSectionStates(template) : {};
+    caseSessionId = null;
+    caseSessionTemplateId = "";
+    reviewedOutputCaseId = null;
+    prompt = "";
+    draft = "";
+    outputViolations = [];
+  }
+
+  async function discardCase() {
+    if (isGenerating || isPreparingGeneration) return;
+    const currentCaseId = caseSessionId;
+    if (currentCaseId && desktopAvailable) {
+      try {
+        const result = await commands.clearCaseSession(currentCaseId);
+        if (result.status === "error") {
+          generationMessage = "The case could not be cleared.";
+          generationIsError = true;
+          return;
+        }
+      } catch {
+        generationMessage = "The case could not be cleared.";
+        generationIsError = true;
+        return;
+      }
+    }
+    caseSessionId = null;
+    caseSessionTemplateId = "";
+    reviewedOutputCaseId = null;
+    prompt = "";
+    draft = "";
+    outputViolations = [];
+    generationMessage = "";
+    generationIsError = false;
+  }
+
+  async function setOutputReview(event: Event) {
+    const caseId = caseSessionId;
+    if (!caseId || !draft || isGenerating) return;
+    const reviewed = (event.currentTarget as HTMLInputElement).checked;
+    try {
+      const result = await commands.setCaseReview(caseId, reviewed);
+      if (result.status === "error") {
+        reviewedOutputCaseId = null;
+        generationMessage = "The review acknowledgement could not be saved.";
+        generationIsError = true;
+        return;
+      }
+      reviewedOutputCaseId = reviewed ? caseId : null;
+      generationMessage = "";
+      generationIsError = false;
+    } catch {
+      reviewedOutputCaseId = null;
+      generationMessage = "The review acknowledgement could not be saved.";
+      generationIsError = true;
+    }
+  }
+
+  async function copyReviewedOutput() {
+    const caseId = caseSessionId;
+    if (!caseId || !canCopyOutput) return;
+    try {
+      const result = await commands.copyCaseOutput(caseId);
+      if (result.status === "error") {
+        reviewedOutputCaseId = null;
+        generationMessage = "Review the current output before copying.";
+        generationIsError = true;
+        return;
+      }
+      await navigator.clipboard.writeText(result.data);
+      generationMessage = "Reviewed output copied";
+      generationIsError = false;
+    } catch {
+      generationMessage = "The output could not be copied.";
+      generationIsError = true;
+    }
   }
 
   function templateVariableLabel(variable: ClinicalTemplate["variables"][number]): string {
@@ -351,6 +462,9 @@
       events.generationDone.listen(({ payload }) => {
         if (payload.requestId !== activeRequestId) return;
         draft = payload.content;
+        outputViolations = payload.violations;
+        reviewedOutputCaseId = null;
+        prompt = "";
         activeRequestId = null;
         generationMessage = "Draft ready";
         generationIsError = false;
@@ -398,9 +512,10 @@
     }
   }
 
-  async function generateDraft() {
-    const source = prompt.trim();
-    if (!source || isGenerating || isPreparingGeneration) return;
+  async function generateDraft(correctionInstructions: string | null = null) {
+    const corrections = correctionInstructions?.trim() ?? "";
+    const source = corrections ? "" : prompt.trim();
+    if ((!source && !corrections) || isGenerating || isPreparingGeneration) return;
     if (!activeTemplate) {
       generationMessage = "Import and select a template before generating.";
       generationIsError = true;
@@ -428,6 +543,21 @@
         return;
       }
       systemPrompt = rendered.data;
+      let currentCaseId = caseSessionId;
+      if (!currentCaseId || caseSessionTemplateId !== activeTemplate.metadata.id) {
+        const created = await commands.createCaseSession(
+          crypto.randomUUID(),
+          activeTemplate.metadata.id,
+        );
+        if (created.status === "error") {
+          generationMessage = formatError(created.error);
+          generationIsError = true;
+          return;
+        }
+        currentCaseId = created.data.id;
+        caseSessionId = currentCaseId;
+        caseSessionTemplateId = activeTemplate.metadata.id;
+      }
     } catch {
       generationMessage = "The active template could not be rendered.";
       generationIsError = true;
@@ -437,15 +567,35 @@
     }
 
     const requestId = crypto.randomUUID();
+    const currentCaseId = caseSessionId;
+    if (!currentCaseId) {
+      generationMessage = "The case session could not be started.";
+      generationIsError = true;
+      return;
+    }
     activeRequestId = requestId;
     generationMessage = "Generating";
     generationIsError = false;
     draft = "";
+    outputViolations = [];
+    reviewedOutputCaseId = null;
     try {
-      const result = await commands.generate(requestId, createProfile(), [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: source },
-      ]);
+      const result = await commands.generate({
+        requestId,
+        caseId: currentCaseId,
+        profile: createProfile(),
+        systemPrompt,
+        outputRules: activeTemplate.output_rules ?? {},
+        input: source
+          ? {
+              id: crypto.randomUUID(),
+              round: 0,
+              provenance: "RawText",
+              content: source,
+            }
+          : null,
+        corrections: corrections || null,
+      });
       if (result.status === "error" && activeRequestId === requestId) {
         activeRequestId = null;
         generationMessage = formatError(result.error);
@@ -469,6 +619,19 @@
       generationMessage = "The request could not be cancelled.";
       generationIsError = true;
     }
+  }
+
+  async function regenerateWithCorrections() {
+    const corrections = outputViolations
+      .map((violation) => {
+        const term = violation.term?.replace(/[\r\n]+/g, " ").slice(0, 160);
+        return `Line ${violation.line}: ${outputViolationMessages[violation.kind]}${term ? ` (${term})` : ""}`;
+      })
+      .join("\n");
+    if (!corrections) return;
+    await generateDraft(
+      `Revise the existing output to resolve these checks. Preserve documented facts and uncertainty.\n${corrections}`,
+    );
   }
 </script>
 
@@ -535,6 +698,7 @@
         <select
           id="active-template"
           value={activeTemplateId}
+          disabled={isGenerating || isPreparingGeneration}
           onchange={(event) => activateTemplate(event.currentTarget.value)}
         >
           {#each importedTemplates as template (template.metadata.id)}
@@ -785,6 +949,15 @@
 
         <div class="source-actions">
           <p>Use anonymized clinical material.</p>
+          {#if caseSessionId || prompt || draft}
+            <button
+              class="case-discard-button"
+              onclick={discardCase}
+              disabled={isGenerating || isPreparingGeneration}
+            >
+              Discard case
+            </button>
+          {/if}
           {#if isGenerating}
             <button class="cancel-button" onclick={cancelGeneration} aria-label="Cancel generation">
               Cancel
@@ -792,7 +965,7 @@
           {:else}
             <button
               class="generate-button"
-              onclick={generateDraft}
+              onclick={() => generateDraft()}
               disabled={!prompt.trim() || !activeTemplate || isPreparingGeneration}
             >
               <span aria-hidden="true">↗</span>
@@ -817,13 +990,66 @@
 
         <article class="draft-output" aria-live="polite" aria-busy={isGenerating}>
           {#if draft}
-            <pre>{draft}</pre>
+            <pre>{#each draftLines as line, index}<span
+                  id={`draft-line-${index + 1}`}
+                  class:linted-line={outputViolations.some((violation) => violation.line === index + 1)}
+              >{line}{index < draftLines.length - 1 ? "\n" : ""}</span
+                >{/each}</pre>
           {:else if isGenerating}
             <p class="empty-state">Preparing draft<span class="typing-dots" aria-hidden="true">...</span></p>
           {:else}
             <p class="empty-state">No draft yet</p>
           {/if}
         </article>
+        {#if outputViolations.length}
+          <aside class="lint-warnings" aria-label="Output checks" role="status">
+            <p>{outputViolations.length} output checks need review</p>
+            <ul>
+              {#each outputViolations as violation, index (`${violation.line}-${violation.kind}-${index}`)}
+                <li>
+                  <button
+                    class="lint-jump"
+                    onclick={() =>
+                      document
+                        .getElementById(`draft-line-${violation.line}`)
+                        ?.scrollIntoView({ behavior: "auto", block: "center" })}
+                  >
+                    Line {violation.line}: {outputViolationMessages[violation.kind]}{violation.term
+                      ? `: ${violation.term}`
+                      : ""}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+            <button
+              class="lint-regenerate-button"
+              onclick={regenerateWithCorrections}
+              disabled={isGenerating || isPreparingGeneration}
+            >
+              Regenerate with corrections
+            </button>
+          </aside>
+        {/if}
+        {#if draft && caseSessionId}
+          <div class="review-controls">
+            <label class="review-confirmation">
+              <input
+                type="checkbox"
+                checked={reviewedOutputCaseId === caseSessionId}
+                disabled={isGenerating || isPreparingGeneration}
+                onchange={setOutputReview}
+              />
+              <span>Ich habe die Ausgabe geprüft und verantworte sie.</span>
+            </label>
+            <button
+              class="review-copy-button"
+              onclick={copyReviewedOutput}
+              disabled={!canCopyOutput}
+            >
+              In die Krankengeschichte kopieren
+            </button>
+          </div>
+        {/if}
       </section>
     </div>
 
@@ -1504,6 +1730,23 @@
     background: #f9e9e3;
   }
 
+  .case-discard-button {
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid #e4b6a8;
+    border-radius: 5px;
+    color: #9a4938;
+    background: #fff8f5;
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  .case-discard-button:hover:not(:disabled) {
+    background: #f9e9e3;
+  }
+
   .draft-output {
     min-height: 354px;
     flex: 1;
@@ -1521,6 +1764,127 @@
     line-height: 1.75;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  .draft-output .linted-line {
+    text-decoration: underline wavy #d46b4d;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+
+  .lint-warnings {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-left: 3px solid #d46b4d;
+    color: #704838;
+    background: #fbf1eb;
+  }
+
+  .lint-warnings p {
+    margin: 0 0 5px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .lint-warnings ul {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .lint-jump {
+    padding: 0;
+    border: 0;
+    color: #704838;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  .lint-jump:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .lint-regenerate-button {
+    min-height: 34px;
+    margin-top: 9px;
+    padding: 0 10px;
+    border: 1px solid #d3a390;
+    border-radius: 5px;
+    color: #704838;
+    background: rgba(255, 255, 255, 0.65);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .lint-regenerate-button:hover:not(:disabled) {
+    background: white;
+  }
+
+  .review-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .review-confirmation {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 9px;
+    margin: 0;
+    color: #354b41;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  .review-confirmation input {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: 2px 0 0;
+    accent-color: #287562;
+  }
+
+  .review-confirmation span {
+    overflow-wrap: anywhere;
+  }
+
+  .review-copy-button {
+    min-height: 42px;
+    max-width: 100%;
+    padding: 8px 14px;
+    border: 0;
+    border-radius: 5px;
+    color: white;
+    background: #236e5d;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+
+  .review-copy-button:hover:not(:disabled) {
+    background: #165747;
+  }
+
+  .review-copy-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 
   .empty-state {

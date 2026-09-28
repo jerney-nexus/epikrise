@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
+use zeroize::Zeroize;
 
 pub const TEMPLATE_SCHEMA_VERSION: u32 = 1;
 pub const MAX_TEMPLATE_FILE_BYTES: usize = 1_048_576;
@@ -86,6 +87,121 @@ pub struct OutputRules {
     pub forbid_code_fences: bool,
     #[serde(default)]
     pub forbid_leading_whitespace: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum OutputViolationKind {
+    ForbiddenTerm,
+    MissingRequiredTerm,
+    CodeFence,
+    LeadingWhitespace,
+    ParenthesizedDate,
+    BulletCharacter,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+pub struct OutputViolation {
+    pub line: u32,
+    pub kind: OutputViolationKind,
+    pub term: Option<String>,
+}
+
+pub fn lint_output(output: &str, rules: &OutputRules) -> Vec<OutputViolation> {
+    let mut violations = Vec::new();
+    let forbidden_terms = [
+        "ß",
+        "St.n.",
+        "Status nach",
+        "Antibiose",
+        "Erstdiagnose",
+        "TTE",
+    ];
+
+    for (line_index, line) in output.lines().enumerate() {
+        let line_number = (line_index as u32).saturating_add(1);
+        for term in forbidden_terms
+            .iter()
+            .copied()
+            .chain(rules.forbidden_terms.iter().map(String::as_str))
+        {
+            if line.contains(term) {
+                violations.push(OutputViolation {
+                    line: line_number,
+                    kind: OutputViolationKind::ForbiddenTerm,
+                    term: Some(term.to_owned()),
+                });
+            }
+        }
+        if rules.forbid_code_fences && line.contains("```") {
+            violations.push(OutputViolation {
+                line: line_number,
+                kind: OutputViolationKind::CodeFence,
+                term: None,
+            });
+        }
+        if rules.forbid_leading_whitespace && line.starts_with([' ', '\t']) {
+            violations.push(OutputViolation {
+                line: line_number,
+                kind: OutputViolationKind::LeadingWhitespace,
+                term: None,
+            });
+        }
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") || trimmed.starts_with('\u{2022}')
+        {
+            violations.push(OutputViolation {
+                line: line_number,
+                kind: OutputViolationKind::BulletCharacter,
+                term: None,
+            });
+        }
+        if has_parenthesized_date(line) {
+            violations.push(OutputViolation {
+                line: line_number,
+                kind: OutputViolationKind::ParenthesizedDate,
+                term: None,
+            });
+        }
+    }
+
+    for term in &rules.required_terms {
+        if !output.contains(term) {
+            violations.push(OutputViolation {
+                line: 1,
+                kind: OutputViolationKind::MissingRequiredTerm,
+                term: Some(term.clone()),
+            });
+        }
+    }
+    violations
+}
+
+fn has_parenthesized_date(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    for (start, byte) in bytes.iter().enumerate() {
+        if *byte != b'(' {
+            continue;
+        }
+        let Some(length) = bytes[start + 1..]
+            .iter()
+            .position(|candidate| *candidate == b')')
+        else {
+            continue;
+        };
+        let date = &bytes[start + 1..start + 1 + length];
+        if date.len() == 10
+            && date[2] == b'.'
+            && date[5] == b'.'
+            && date
+                .iter()
+                .enumerate()
+                .all(|(index, character)| matches!(index, 2 | 5) || character.is_ascii_digit())
+        {
+            return true;
+        }
+    }
+    false
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type, Error)]
@@ -382,22 +498,46 @@ impl CaseSession {
             block.round = round;
         }
         self.inputs.extend(blocks);
-        self.reviewed_output_hash = None;
+        self.invalidate_review();
         round
     }
 
     pub fn set_output(&mut self, output: impl Into<String>) {
         self.current_output = Some(output.into());
-        self.reviewed_output_hash = None;
+        self.invalidate_review();
     }
 
     pub fn acknowledge_review(&mut self, output_hash: impl Into<String>) {
         self.reviewed_output_hash = Some(output_hash.into());
     }
 
+    pub fn invalidate_review(&mut self) {
+        if let Some(reviewed_hash) = &mut self.reviewed_output_hash {
+            reviewed_hash.zeroize();
+        }
+        self.reviewed_output_hash = None;
+    }
+
     pub fn can_copy(&self, current_output_hash: &str) -> bool {
         self.current_output.is_some()
             && self.reviewed_output_hash.as_deref() == Some(current_output_hash)
+    }
+
+    pub fn clear_sensitive_data(&mut self) {
+        for input in &mut self.inputs {
+            input.content.zeroize();
+            match &mut input.provenance {
+                InputProvenance::File { name } => name.zeroize(),
+                InputProvenance::Url { address } => address.zeroize(),
+                InputProvenance::RawText | InputProvenance::Clipboard => {}
+            }
+        }
+        self.inputs.clear();
+        if let Some(output) = &mut self.current_output {
+            output.zeroize();
+        }
+        self.current_output = None;
+        self.invalidate_review();
     }
 
     pub fn assemble_user_prompt(&self, new_round: &[ExtractedBlock]) -> String {
@@ -438,8 +578,8 @@ fn provenance_label(provenance: &InputProvenance) -> String {
 mod tests {
     use super::{
         CaseSession, ClinicalTemplate, ExtractedBlock, InputProvenance, MAX_TEMPLATE_FILE_BYTES,
-        OutputRules, TEMPLATE_SCHEMA_VERSION, TemplateDefault, TemplateError, TemplateMetadata,
-        TemplateSection, TemplateVariable, TemplateVariableKind,
+        OutputRules, OutputViolationKind, TEMPLATE_SCHEMA_VERSION, TemplateDefault, TemplateError,
+        TemplateMetadata, TemplateSection, TemplateVariable, TemplateVariableKind, lint_output,
     };
     use std::collections::BTreeMap;
 
@@ -593,6 +733,42 @@ mod tests {
     }
 
     #[test]
+    fn output_linter_reports_fixed_and_template_rules_with_line_numbers() {
+        let rules = OutputRules {
+            forbidden_terms: vec!["internal code".to_owned()],
+            required_terms: vec!["BEFUNDE".to_owned()],
+            forbid_code_fences: true,
+            forbid_leading_whitespace: true,
+        };
+        let output = "**Diagnosen**\n  St.n. am (01.02.2025)\n- internal code\n```text\n";
+        let violations = lint_output(output, &rules);
+
+        assert!(violations.iter().any(|violation| {
+            violation.line == 2
+                && violation.kind == OutputViolationKind::ForbiddenTerm
+                && violation.term.as_deref() == Some("St.n.")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.line == 2 && violation.kind == OutputViolationKind::ParenthesizedDate
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.line == 3
+                && violation.kind == OutputViolationKind::ForbiddenTerm
+                && violation.term.as_deref() == Some("internal code")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.line == 3 && violation.kind == OutputViolationKind::BulletCharacter
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.line == 4 && violation.kind == OutputViolationKind::CodeFence
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.kind == OutputViolationKind::MissingRequiredTerm
+                && violation.term.as_deref() == Some("BEFUNDE")
+        }));
+    }
+
+    #[test]
     fn template_schema_round_trips_and_rejects_unknown_versions() {
         let template = sample_template();
         let json = template.to_json().expect("template should serialize");
@@ -653,6 +829,47 @@ mod tests {
     }
 
     #[test]
+    fn cumulative_case_integrates_three_rounds_in_sequence() {
+        let mut session = CaseSession::new("case-1", "template-1");
+        let first = ExtractedBlock::new("input-1", InputProvenance::RawText, "First finding");
+        let first_round = session.append_round(vec![first.clone()]);
+        assert_eq!(first_round, 1);
+        session.set_output("Integrated output after round one");
+
+        let second = ExtractedBlock::new("input-2", InputProvenance::Clipboard, "Second finding");
+        let second_round = session.append_round(vec![second.clone()]);
+        let second_prompt = session.assemble_user_prompt(&[ExtractedBlock {
+            round: second_round,
+            ..second
+        }]);
+        assert_eq!(second_round, 2);
+        assert!(second_prompt.contains("Integrated output after round one"));
+        assert!(second_prompt.contains("Second finding"));
+        assert!(!second_prompt.contains("First finding"));
+        session.set_output("Integrated output after round two");
+
+        let third = ExtractedBlock::new("input-3", InputProvenance::RawText, "Third finding");
+        let third_round = session.append_round(vec![third.clone()]);
+        let third_prompt = session.assemble_user_prompt(&[ExtractedBlock {
+            round: third_round,
+            ..third
+        }]);
+        assert_eq!(third_round, 3);
+        assert!(third_prompt.contains("Integrated output after round two"));
+        assert!(third_prompt.contains("Third finding"));
+        assert!(!third_prompt.contains("Second finding"));
+        assert_eq!(session.inputs.len(), 3);
+        assert_eq!(
+            session
+                .inputs
+                .iter()
+                .map(|block| block.round)
+                .collect::<Vec<_>>(),
+            [1, 2, 3]
+        );
+    }
+
+    #[test]
     fn prompt_keeps_existing_output_separate_from_untrusted_input() {
         let mut session = CaseSession::new("case-1", "template-1");
         session.set_output("Existing diagnosis");
@@ -684,5 +901,42 @@ mod tests {
 
         assert!(!session.can_copy("hash-one"));
         assert!(!session.can_copy("hash-two"));
+    }
+
+    #[test]
+    fn review_acknowledgement_is_invalidated_when_a_round_is_added() {
+        let mut session = CaseSession::new("case-1", "template-1");
+        session.set_output("Draft one");
+        session.acknowledge_review("hash-one");
+        assert!(session.can_copy("hash-one"));
+
+        session.append_round(vec![ExtractedBlock::new(
+            "input-2",
+            InputProvenance::RawText,
+            "Additional clinical material",
+        )]);
+
+        assert!(!session.can_copy("hash-one"));
+        assert_eq!(session.reviewed_output_hash, None);
+    }
+
+    #[test]
+    fn clearing_a_case_removes_and_zeroizes_inputs_and_output() {
+        let mut session = CaseSession::new("case-1", "template-1");
+        session.append_round(vec![ExtractedBlock::new(
+            "input-1",
+            InputProvenance::Url {
+                address: "https://example.test/case".to_owned(),
+            },
+            "Sensitive clinical material",
+        )]);
+        session.set_output("Sensitive generated text");
+        session.acknowledge_review("output-hash");
+
+        session.clear_sensitive_data();
+
+        assert!(session.inputs.is_empty());
+        assert_eq!(session.current_output, None);
+        assert_eq!(session.reviewed_output_hash, None);
     }
 }

@@ -1230,6 +1230,7 @@ dependencies = [
  "pdfium-render",
  "serde",
  "serde_json",
+ "sha2",
  "specta",
  "specta-typescript",
  "tauri",
@@ -1252,6 +1253,7 @@ dependencies = [
  "serde_json",
  "specta",
  "thiserror 2.0.21",
+ "zeroize",
 ]
 
 [[package]]
