@@ -10,8 +10,10 @@ publish = false
 [dependencies]
 calamine = { workspace = true }
 epikrise-core = { workspace = true }
+html2text = { workspace = true }
 infer = { workspace = true }
 quick-xml = { workspace = true }
+rtf-parser-tt = { workspace = true }
 pdf-extract = { workspace = true }
 serde = { workspace = true }
 specta = { workspace = true }

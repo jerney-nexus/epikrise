@@ -8,6 +8,7 @@ use calamine::{Data, Reader as WorkbookReader, Xlsx, open_workbook_from_rs};
 use epikrise_core::{ExtractedBlock, InputProvenance};
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
+use rtf_parser_tt::{ControlWord, Lexer, Parser, Token};
 use serde::Serialize;
 use specta::Type;
 use std::io::{Cursor, Read};
@@ -45,11 +46,21 @@ pub enum IngestError {
     NoXlsxWorksheets,
     #[error("XLSX workbook contains no extractable text")]
     NoXlsxText,
+    #[error("HTML conversion failed")]
+    HtmlConversionFailed,
+    #[error("HTML contains no extractable text")]
+    NoHtmlText,
+    #[error("RTF document is invalid")]
+    InvalidRtf,
+    #[error("RTF document contains no extractable text")]
+    NoRtfText,
 }
 
 pub fn extract_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
     match infer::get(&bytes).map(|kind| kind.mime_type()) {
         Some("application/pdf") => extract_pdf_file(file_name, bytes),
+        Some("text/html") => extract_html_file(file_name, bytes),
+        Some("application/rtf") => extract_rtf_file(file_name, bytes),
         Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") => {
             extract_xlsx_file(file_name, bytes)
         }
@@ -62,6 +73,67 @@ pub fn extract_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock,
         }),
         None => extract_text_file(file_name, bytes),
     }
+}
+
+fn extract_html_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
+    let text = html2text::from_read(bytes.as_slice(), 120)
+        .map_err(|_| IngestError::HtmlConversionFailed)?;
+    if text.trim().is_empty() {
+        return Err(IngestError::NoHtmlText);
+    }
+
+    Ok(ExtractedBlock::new(
+        uuid::Uuid::new_v4().to_string(),
+        InputProvenance::File { name: file_name },
+        text,
+    ))
+}
+
+fn extract_rtf_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
+    let source = String::from_utf8(bytes).map_err(|_| IngestError::InvalidUtf8)?;
+    let tokens = Lexer::scan(&source).map_err(|_| IngestError::InvalidRtf)?;
+    validate_rtf_unicode(&tokens)?;
+    let document = Parser::new(tokens)
+        .parse()
+        .map_err(|_| IngestError::InvalidRtf)?;
+    let text = document.get_text();
+    if text.trim().is_empty() {
+        return Err(IngestError::NoRtfText);
+    }
+
+    Ok(ExtractedBlock::new(
+        uuid::Uuid::new_v4().to_string(),
+        InputProvenance::File { name: file_name },
+        text,
+    ))
+}
+
+fn validate_rtf_unicode(tokens: &[Token<'_>]) -> Result<(), IngestError> {
+    let mut index = 0;
+    while index < tokens.len() {
+        let Token::ControlSymbol((ControlWord::Unicode, property)) = &tokens[index] else {
+            index += 1;
+            continue;
+        };
+
+        let mut code_units = Vec::new();
+        code_units.push(
+            property
+                .get_unicode_value()
+                .map_err(|_| IngestError::InvalidRtf)?,
+        );
+        index += 1;
+        while let Some(Token::ControlSymbol((ControlWord::Unicode, property))) = tokens.get(index) {
+            code_units.push(
+                property
+                    .get_unicode_value()
+                    .map_err(|_| IngestError::InvalidRtf)?,
+            );
+            index += 1;
+        }
+        String::from_utf16(&code_units).map_err(|_| IngestError::InvalidRtf)?;
+    }
+    Ok(())
 }
 
 fn extract_xlsx_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
@@ -433,6 +505,60 @@ mod tests {
         assert_eq!(
             extract_file("invalid.xlsx".to_owned(), xlsx_file(&[("Empty", "")])),
             Err(IngestError::NoXlsxText)
+        );
+    }
+
+    #[test]
+    fn extracts_html_text_and_decodes_entities_by_content() {
+        let html = b"<!doctype html><html><body><h1>Diagnoses</h1><p>Hypertension &amp; diabetes</p><script>ignored()</script></body></html>".to_vec();
+
+        let block = extract_file("report.data".to_owned(), html)
+            .expect("HTML should be extracted regardless of filename");
+
+        assert!(block.content.contains("Diagnoses"));
+        assert!(block.content.contains("Hypertension & diabetes"));
+        assert!(!block.content.contains("ignored()"));
+    }
+
+    #[test]
+    fn extracts_rtf_text_and_special_characters_by_content() {
+        let rtf = br#"{\rtf1\ansi Diagnosis\emdash finding {\b bold} \uc0\u252 berpr\uc0\u252 ft}"#
+            .to_vec();
+
+        let block = extract_file("report.data".to_owned(), rtf)
+            .expect("RTF should be extracted regardless of filename");
+
+        assert!(block.content.contains("Diagnosis—finding"));
+        assert!(block.content.contains("bold"));
+        assert!(block.content.contains("überprüft"), "{:?}", block.content);
+    }
+
+    #[test]
+    fn rejects_invalid_and_empty_rtf_or_html_content() {
+        assert_eq!(
+            extract_file("broken.rtf".to_owned(), b"{\\rtf1 ".to_vec()),
+            Err(IngestError::InvalidRtf)
+        );
+        assert_eq!(
+            extract_file(
+                "empty.rtf".to_owned(),
+                br#"{\rtf1\ansi {\fonttbl\f0 Arial;}}"#.to_vec()
+            ),
+            Err(IngestError::NoRtfText)
+        );
+        assert_eq!(
+            extract_file(
+                "surrogate.rtf".to_owned(),
+                br#"{\rtf1\ansi\uc0\u-10179}"#.to_vec()
+            ),
+            Err(IngestError::InvalidRtf)
+        );
+        assert_eq!(
+            extract_file(
+                "empty.html".to_owned(),
+                b"<html><body></body></html>".to_vec()
+            ),
+            Err(IngestError::NoHtmlText)
         );
     }
 
