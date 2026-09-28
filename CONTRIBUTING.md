@@ -35,8 +35,25 @@ npm install
 npm run tauri dev
 ```
 
-On macOS with Homebrew's keg-only `rustup`, make sure
-`/opt/homebrew/opt/rustup/bin` is on your `PATH`.
+On macOS, `cargo` must be on `PATH` in the terminal that runs npm. With
+Homebrew's keg-only `rustup`, add both the rustup executable and its Cargo
+shims. For Apple Silicon, run:
+
+```sh
+export PATH="$HOME/.cargo/bin:/opt/homebrew/opt/rustup/bin:$PATH"
+```
+
+For Intel Macs, use `/usr/local/opt/rustup/bin` instead of
+`/opt/homebrew/opt/rustup/bin`. Put the matching line in `~/.zprofile` to keep
+it for new Terminal sessions. Verify the shell can find Cargo before building:
+
+```sh
+command -v cargo
+cargo --version
+```
+
+If `command -v cargo` prints nothing, install Rust with [rustup](https://rustup.rs/)
+and open a new terminal. Then retry `npm run tauri build`.
 
 ## Project layout
 

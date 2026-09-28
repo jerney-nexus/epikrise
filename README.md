@@ -59,6 +59,10 @@ To produce installers for the current platform:
 npm run tauri build
 ```
 
+Tauri must be able to find `cargo` on `PATH`. If the build fails while running
+`cargo metadata` with “No such file or directory”, see the [local Rust setup
+instructions](CONTRIBUTING.md#local-setup).
+
 ## Templates
 
 No clinical templates ship with Epikrise. The formatting rules used in a
