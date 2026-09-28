@@ -1,18 +1,62 @@
 use pdfium_render::prelude::{PdfRenderConfig, Pdfium};
+use serde::{Deserialize, Serialize};
 use specta_typescript::Typescript;
 use std::{
+    collections::HashMap,
     ffi::OsString,
     io::{Seek, SeekFrom, Write},
     path::Path,
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
 };
-use tauri::{AppHandle, Manager, path::BaseDirectory};
+use tauri::{AppHandle, Manager, State, path::BaseDirectory};
 use tauri_plugin_shell::ShellExt;
-use tauri_specta::{Builder, collect_commands};
+use tauri_specta::{Builder, Event, collect_commands, collect_events};
+use tokio_util::sync::CancellationToken;
+
+use epikrise_llm::{
+    ChatMessage, GenaiLlmClient, KeyringCredentialStore, LlmClient, LlmError, MessageRole,
+    ProviderProfile,
+};
 
 static PDFIUM: OnceLock<Result<Pdfium, ()>> = OnceLock::new();
 
 struct SensitiveImageFile(tempfile::NamedTempFile);
+
+#[derive(Default)]
+struct GenerationRegistry(Mutex<HashMap<String, CancellationToken>>);
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct GenerationDelta {
+    request_id: String,
+    content: String,
+}
+
+impl Event for GenerationDelta {
+    const NAME: &'static str = "generation://delta";
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct GenerationDone {
+    request_id: String,
+    content: String,
+}
+
+impl Event for GenerationDone {
+    const NAME: &'static str = "generation://done";
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct GenerationError {
+    request_id: String,
+    error: LlmError,
+}
+
+impl Event for GenerationError {
+    const NAME: &'static str = "generation://error";
+}
 
 impl Drop for SensitiveImageFile {
     fn drop(&mut self) {
@@ -70,6 +114,98 @@ fn extract_file(
     epikrise_ingest::extract_file_with_ocr(file_name, bytes, |pdf, pages| {
         ocr_pdf_pages(&app, pdf, pages)
     })
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn test_provider(profile: ProviderProfile) -> Result<(), LlmError> {
+    let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
+    client
+        .complete(
+            &profile,
+            &[ChatMessage {
+                role: MessageRole::User,
+                content: "Reply with OK.".to_owned(),
+            }],
+        )
+        .await
+        .map(|_| ())
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn generate(
+    app: AppHandle,
+    registry: State<'_, GenerationRegistry>,
+    request_id: String,
+    profile: ProviderProfile,
+    messages: Vec<ChatMessage>,
+) -> Result<(), LlmError> {
+    let request_id = uuid::Uuid::parse_str(&request_id)
+        .map_err(|_| LlmError::InvalidRequest)?
+        .to_string();
+    let cancellation = CancellationToken::new();
+    {
+        let mut requests = registry.0.lock().map_err(|_| LlmError::Internal)?;
+        if requests.contains_key(&request_id) {
+            return Err(LlmError::InvalidRequest);
+        }
+        requests.insert(request_id.clone(), cancellation.clone());
+    }
+
+    let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
+    let app_for_deltas = app.clone();
+    let delta_request_id = request_id.clone();
+    let mut emit_delta = move |content| {
+        let _ = GenerationDelta {
+            request_id: delta_request_id.clone(),
+            content,
+        }
+        .emit(&app_for_deltas);
+    };
+    let result = client
+        .stream(&profile, &messages, cancellation, &mut emit_delta)
+        .await;
+
+    registry
+        .0
+        .lock()
+        .map_err(|_| LlmError::Internal)?
+        .remove(&request_id);
+
+    match result {
+        Ok(content) => GenerationDone {
+            request_id,
+            content,
+        }
+        .emit(&app)
+        .map_err(|_| LlmError::Internal),
+        Err(error) => {
+            let _ = GenerationError {
+                request_id,
+                error: error.clone(),
+            }
+            .emit(&app);
+            Err(error)
+        }
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+fn cancel_generation(
+    request_id: String,
+    registry: State<'_, GenerationRegistry>,
+) -> Result<bool, LlmError> {
+    let request_id = uuid::Uuid::parse_str(&request_id)
+        .map_err(|_| LlmError::InvalidRequest)?
+        .to_string();
+    let requests = registry.0.lock().map_err(|_| LlmError::Internal)?;
+    let Some(cancellation) = requests.get(&request_id) else {
+        return Ok(false);
+    };
+    cancellation.cancel();
+    Ok(true)
 }
 
 fn ocr_pdf_pages(
@@ -179,13 +315,22 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<(), tauri::Error> {
-    let builder = Builder::<tauri::Wry>::new().commands(collect_commands![
-        create_case_session,
-        extract_file,
-        extract_raw_text,
-        extract_text_file,
-        greet
-    ]);
+    let builder = Builder::<tauri::Wry>::new()
+        .commands(collect_commands![
+            cancel_generation,
+            create_case_session,
+            extract_file,
+            extract_raw_text,
+            extract_text_file,
+            generate,
+            greet,
+            test_provider
+        ])
+        .events(collect_events![
+            GenerationDelta,
+            GenerationDone,
+            GenerationError
+        ]);
 
     #[cfg(debug_assertions)]
     builder
@@ -200,7 +345,12 @@ pub fn run() -> Result<(), tauri::Error> {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .manage(GenerationRegistry::default())
         .invoke_handler(builder.invoke_handler())
+        .setup(move |app| {
+            builder.mount_events(app);
+            Ok(())
+        })
         .run(tauri::generate_context!())
 }
 

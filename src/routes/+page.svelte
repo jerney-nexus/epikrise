@@ -1,156 +1,813 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
+  import { isTauri } from "@tauri-apps/api/core";
+  import { commands, events, type LlmError, type ProviderAdapter, type ProviderProfile } from "../bindings";
 
-  let name = $state("");
-  let greetMsg = $state("");
+  const providerNames: Record<ProviderAdapter, string> = {
+    open_ai: "OpenAI",
+    anthropic: "Anthropic",
+    gemini: "Gemini",
+    ollama: "Ollama",
+    open_ai_compatible: "OpenAI compatible",
+  };
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
+  const errorMessages: Record<LlmError["key"], string> = {
+    invalid_profile: "Check the provider settings.",
+    invalid_request: "The request could not be sent.",
+    authentication: "The provider credentials were not accepted.",
+    network: "The provider could not be reached.",
+    model: "The model rejected the request or returned no text.",
+    quota: "The provider quota was exceeded.",
+    cancelled: "Generation was cancelled.",
+    internal: "The request could not be completed.",
+  };
+
+  let adapter = $state<ProviderAdapter>("ollama");
+  let model = $state("llama3.2");
+  let endpoint = $state("");
+  let credentialId = $state("");
+  let prompt = $state("");
+  let draft = $state("");
+  let activeRequestId = $state<string | null>(null);
+  let connectionState = $state<"idle" | "checking" | "ready" | "error">("idle");
+  let connectionMessage = $state("");
+  let generationMessage = $state("");
+  let generationIsError = $state(false);
+  let desktopAvailable = $state(false);
+
+  const isGenerating = $derived(activeRequestId !== null);
+
+  function createProfile(): ProviderProfile {
+    const keychainId = credentialId.trim();
+    return {
+      id: "active-provider",
+      display_name: providerNames[adapter],
+      adapter,
+      model: model.trim(),
+      endpoint: endpoint.trim() || (adapter === "ollama" ? "http://localhost:11434" : null),
+      auth: keychainId ? { source: "keychain", credential_id: keychainId } : { source: "none" },
+      capabilities: { vision: false, streaming: true, max_context: null },
+      generation: { temperature: 0.2, max_tokens: 2048 },
+    };
+  }
+
+  function formatError(error: LlmError): string {
+    return errorMessages[error.key];
+  }
+
+  onMount(() => {
+    desktopAvailable = isTauri();
+    if (!desktopAvailable) return;
+
+    let disposed = false;
+    let unlisten: (() => void)[] = [];
+    void Promise.all([
+      events.generationDelta.listen(({ payload }) => {
+        if (payload.requestId === activeRequestId) draft += payload.content;
+      }),
+      events.generationDone.listen(({ payload }) => {
+        if (payload.requestId !== activeRequestId) return;
+        draft = payload.content;
+        activeRequestId = null;
+        generationMessage = "Draft ready";
+        generationIsError = false;
+      }),
+      events.generationError.listen(({ payload }) => {
+        if (payload.requestId !== activeRequestId) return;
+        activeRequestId = null;
+        generationMessage = formatError(payload.error);
+        generationIsError = true;
+      }),
+    ])
+      .then((listeners) => {
+        if (disposed) listeners.forEach((stop) => stop());
+        else unlisten = listeners;
+      })
+      .catch(() => {
+        if (!disposed) {
+          generationMessage = "Generation events are unavailable.";
+          generationIsError = true;
+        }
+      });
+
+    return () => {
+      disposed = true;
+      unlisten.forEach((stop) => stop());
+    };
+  });
+
+  async function testProvider() {
+    if (!desktopAvailable) {
+      connectionState = "error";
+      connectionMessage = "Desktop runtime unavailable.";
+      return;
+    }
+
+    connectionState = "checking";
+    connectionMessage = "";
+    try {
+      const result = await commands.testProvider(createProfile());
+      connectionState = result.status === "ok" ? "ready" : "error";
+      connectionMessage = result.status === "ok" ? "Connected" : formatError(result.error);
+    } catch {
+      connectionState = "error";
+      connectionMessage = "The connection check failed.";
+    }
+  }
+
+  async function generateDraft() {
+    const source = prompt.trim();
+    if (!source || isGenerating) return;
+    if (!desktopAvailable) {
+      generationMessage = "Desktop runtime unavailable.";
+      generationIsError = true;
+      return;
+    }
+
+    const requestId = crypto.randomUUID();
+    activeRequestId = requestId;
+    generationMessage = "Generating";
+    generationIsError = false;
+    draft = "";
+    try {
+      const result = await commands.generate(requestId, createProfile(), [
+        {
+          role: "system",
+          content:
+            "Write a concise German clinical discharge summary from the supplied anonymized material. Use only documented facts, preserve uncertainty, and do not invent findings or recommendations.",
+        },
+        { role: "user", content: source },
+      ]);
+      if (result.status === "error" && activeRequestId === requestId) {
+        activeRequestId = null;
+        generationMessage = formatError(result.error);
+        generationIsError = true;
+      }
+    } catch {
+      if (activeRequestId === requestId) {
+        activeRequestId = null;
+        generationMessage = "The generation request failed.";
+        generationIsError = true;
+      }
+    }
+  }
+
+  async function cancelGeneration() {
+    const requestId = activeRequestId;
+    if (!requestId) return;
+    try {
+      await commands.cancelGeneration(requestId);
+    } catch {
+      generationMessage = "The request could not be cancelled.";
+      generationIsError = true;
+    }
   }
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
+<svelte:head>
+  <title>Epikrise | Draft workspace</title>
+  <meta name="theme-color" content="#f2f5f1" />
+</svelte:head>
 
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
+<div class="app-shell">
+  <aside class="provider-rail" aria-label="Provider settings">
+    <a class="brand" href="/" aria-label="Epikrise home">
+      <span class="brand-mark" aria-hidden="true">E</span>
+      <span class="brand-name">Epikrise</span>
     </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
-  </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
 
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
-</main>
+    <section class="provider-settings">
+      <p class="eyebrow">Workspace</p>
+      <h1>Connection</h1>
+
+      <label for="adapter">Provider</label>
+      <select id="adapter" bind:value={adapter}>
+        <option value="ollama">Ollama</option>
+        <option value="open_ai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="gemini">Gemini</option>
+        <option value="open_ai_compatible">OpenAI compatible</option>
+      </select>
+
+      <label for="model">Model</label>
+      <input id="model" bind:value={model} autocomplete="off" />
+
+      <label for="endpoint">Endpoint</label>
+      <input
+        id="endpoint"
+        bind:value={endpoint}
+        autocomplete="url"
+        spellcheck="false"
+        placeholder={adapter === "ollama" ? "http://localhost:11434" : "Provider default"}
+      />
+
+      <label for="credential">Keychain ID</label>
+      <input id="credential" bind:value={credentialId} autocomplete="off" spellcheck="false" />
+
+      <button class="connection-button" onclick={testProvider} disabled={connectionState === "checking"}>
+        {connectionState === "checking" ? "Checking..." : "Check connection"}
+      </button>
+
+      {#if connectionMessage}
+        <p class="connection-message" class:error={connectionState === "error"} role="status">
+          <span class="status-dot" aria-hidden="true"></span>
+          {connectionMessage}
+        </p>
+      {/if}
+    </section>
+
+    <footer class="rail-footer">
+      <span class="local-indicator" aria-hidden="true"></span>
+      <span>{desktopAvailable ? "Desktop session" : "Preview session"}</span>
+    </footer>
+  </aside>
+
+  <main class="work-area">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Clinical writing</p>
+        <h2>New discharge summary</h2>
+      </div>
+      <span class="draft-tag"><span aria-hidden="true"></span> Draft</span>
+    </header>
+
+    <div class="writing-grid">
+      <section class="source-panel" aria-labelledby="source-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">01 / Source</p>
+            <h3 id="source-title">Clinical material</h3>
+          </div>
+          <span class="field-count">{prompt.length} chars</span>
+        </div>
+
+        <textarea
+          id="source-material"
+          bind:value={prompt}
+          placeholder="Paste anonymized notes, findings, and relevant history..."
+          aria-label="Anonymized clinical material"
+        ></textarea>
+
+        <div class="source-actions">
+          <p>Use anonymized clinical material.</p>
+          {#if isGenerating}
+            <button class="cancel-button" onclick={cancelGeneration} aria-label="Cancel generation">
+              Cancel
+            </button>
+          {:else}
+            <button class="generate-button" onclick={generateDraft} disabled={!prompt.trim()}>
+              <span aria-hidden="true">↗</span>
+              Generate draft
+            </button>
+          {/if}
+        </div>
+      </section>
+
+      <section class="draft-panel" aria-labelledby="draft-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">02 / Review</p>
+            <h3 id="draft-title">Generated summary</h3>
+          </div>
+          {#if generationMessage}
+            <span class="generation-status" class:error={generationIsError}>
+              {generationMessage}
+            </span>
+          {/if}
+        </div>
+
+        <article class="draft-output" aria-live="polite" aria-busy={isGenerating}>
+          {#if draft}
+            <pre>{draft}</pre>
+          {:else if isGenerating}
+            <p class="empty-state">Preparing draft<span class="typing-dots" aria-hidden="true">...</span></p>
+          {:else}
+            <p class="empty-state">No draft yet</p>
+          {/if}
+        </article>
+      </section>
+    </div>
+
+    <footer class="work-footer">
+      <span>Review generated text before use in the medical record.</span>
+      <span>Epikrise <span class="footer-separator">/</span> Workspace</span>
+    </footer>
+  </main>
+</div>
 
 <style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+  :global(*) {
+    box-sizing: border-box;
   }
 
-  a:hover {
-    color: #24c8db;
+  :global(body) {
+    margin: 0;
+    min-width: 320px;
+    color: #1d2926;
+    background: #f2f5f1;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :global(button),
+  :global(input),
+  :global(select),
+  :global(textarea) {
+    font: inherit;
+  }
+
+  .app-shell {
+    display: grid;
+    grid-template-columns: 278px minmax(0, 1fr);
+    min-height: 100vh;
+    background:
+      radial-gradient(ellipse at 88% 10%, rgba(215, 229, 218, 0.55), transparent 30%),
+      #f2f5f1;
+  }
+
+  .provider-rail {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 27px 22px 18px;
+    border-right: 1px solid #dce4de;
+    background: rgba(249, 251, 248, 0.8);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .brand-mark {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    place-items: center;
+    border-radius: 10px 10px 10px 3px;
+    color: #f8fbf7;
+    background: #176c5c;
+    font-family: Georgia, serif;
+    font-size: 22px;
+  }
+
+  .brand-name {
+    font-family: Georgia, serif;
+    font-size: 20px;
+  }
+
+  .provider-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin-top: 58px;
+  }
+
+  .eyebrow {
+    margin: 0;
+    color: #6b7b74;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin-top: 0;
+  }
+
+  .provider-settings h1 {
+    margin: 0 0 14px;
+    font-family: Georgia, serif;
+    font-size: 25px;
+    font-weight: 400;
+  }
+
+  label {
+    margin-top: 7px;
+    color: #495a53;
+    font-size: 12px;
+    font-weight: 650;
   }
 
   input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  select,
+  textarea {
+    width: 100%;
+    border: 1px solid #d4ded7;
+    border-radius: 5px;
+    color: #1d2926;
+    background: #fff;
   }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
 
+  input,
+  select {
+    height: 39px;
+    padding: 0 10px;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: #348c77;
+    outline: 3px solid rgba(52, 140, 119, 0.14);
+  }
+
+  .connection-button,
+  .generate-button,
+  .cancel-button {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    border: 0;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: 650;
+    transition: background-color 160ms ease, transform 160ms ease;
+  }
+
+  .connection-button {
+    margin-top: 11px;
+    color: white;
+    background: #236e5d;
+  }
+
+  .connection-button:hover:not(:disabled),
+  .generate-button:hover:not(:disabled) {
+    background: #165747;
+    transform: translateY(-1px);
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .connection-message {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 2px 0 0;
+    color: #236e5d;
+    font-size: 12px;
+  }
+
+  .connection-message.error,
+  .generation-status.error {
+    color: #a64231;
+  }
+
+  .status-dot,
+  .local-indicator {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .rail-footer {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: auto;
+    padding-top: 20px;
+    color: #65766e;
+    font-size: 12px;
+  }
+
+  .local-indicator {
+    background: #d46b4d;
+    box-shadow: 0 0 0 4px rgba(212, 107, 77, 0.12);
+  }
+
+  .work-area {
+    display: flex;
+    width: min(100%, 1440px);
+    flex-direction: column;
+    margin: 0 auto;
+    padding: 38px clamp(24px, 5vw, 76px) 20px;
+  }
+
+  .page-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 27px;
+    animation: rise-in 420ms ease-out both;
+  }
+
+  .page-header h2 {
+    margin: 5px 0 0;
+    font-family: Georgia, serif;
+    font-size: 31px;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+
+  .draft-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 10px;
+    border: 1px solid #e1c7b8;
+    border-radius: 4px;
+    color: #96503b;
+    background: #fbf1eb;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .draft-tag span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #c66b4e;
+  }
+
+  .writing-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    gap: 20px;
+    align-items: stretch;
+  }
+
+  .source-panel,
+  .draft-panel {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    padding: 21px;
+    border: 1px solid #dce4de;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 8px 24px rgba(40, 69, 57, 0.035);
+    animation: rise-in 500ms 80ms ease-out both;
+  }
+
+  .draft-panel {
+    animation-delay: 150ms;
+  }
+
+  .panel-heading {
+    display: flex;
+    min-height: 49px;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .panel-heading h3 {
+    margin: 3px 0 0;
+    font-family: Georgia, serif;
+    font-size: 20px;
+    font-weight: 400;
+  }
+
+  .field-count,
+  .generation-status {
+    padding-top: 3px;
+    color: #74837b;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .generation-status {
+    color: #236e5d;
+    text-align: right;
+  }
+
+  .source-panel textarea {
+    min-height: 282px;
+    flex: 1;
+    resize: vertical;
+    padding: 13px 14px;
+    font-family: inherit;
+    line-height: 1.65;
+  }
+
+  textarea::placeholder {
+    color: #9aa69f;
+  }
+
+  .source-actions {
+    display: flex;
+    min-height: 60px;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 14px;
+  }
+
+  .source-actions p {
+    max-width: 210px;
+    margin: 0;
+    color: #75847c;
+    font-size: 11px;
+  }
+
+  .generate-button {
+    min-width: 145px;
+    padding: 0 15px;
+    color: white;
+    background: #236e5d;
+  }
+
+  .generate-button span {
+    font-size: 17px;
+    line-height: 1;
+  }
+
+  .cancel-button {
+    min-width: 100px;
+    padding: 0 14px;
+    border: 1px solid #e4b6a8;
+    color: #9a4938;
+    background: #fff8f5;
+  }
+
+  .cancel-button:hover {
+    background: #f9e9e3;
+  }
+
+  .draft-output {
+    min-height: 354px;
+    flex: 1;
+    overflow: auto;
+    padding: 15px 16px;
+    border-left: 2px solid #d7e7dd;
+    background: linear-gradient(90deg, #f8fbf8, #fff 30%);
+  }
+
+  .draft-output pre {
+    margin: 0;
+    color: #293a34;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .empty-state {
+    margin: 4px 0;
+    color: #95a29b;
+    font-family: Georgia, serif;
+    font-size: 17px;
+    font-style: italic;
+  }
+
+  .typing-dots {
+    display: inline-block;
+    width: 22px;
+    overflow: hidden;
+    vertical-align: bottom;
+    animation: ellipsis 1.1s steps(4, end) infinite;
+  }
+
+  .work-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: auto;
+    padding-top: 26px;
+    color: #77857e;
+    font-size: 11px;
+  }
+
+  .footer-separator {
+    padding: 0 4px;
+    color: #c56a4f;
+  }
+
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(7px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes ellipsis {
+    to {
+      width: 0;
+    }
+  }
+
+  @media (max-width: 940px) {
+    .app-shell {
+      grid-template-columns: 240px minmax(0, 1fr);
+    }
+
+    .work-area {
+      padding-right: 24px;
+      padding-left: 24px;
+    }
+
+    .writing-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .draft-output {
+      min-height: 260px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .app-shell {
+      grid-template-columns: 1fr;
+    }
+
+    .provider-rail {
+      min-height: auto;
+      padding: 15px 18px 17px;
+      border-right: 0;
+      border-bottom: 1px solid #dce4de;
+    }
+
+    .provider-settings {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+      margin-top: 19px;
+    }
+
+    .provider-settings .eyebrow,
+    .provider-settings h1,
+    .connection-button,
+    .connection-message {
+      grid-column: 1 / -1;
+    }
+
+    .provider-settings h1 {
+      margin-bottom: 1px;
+    }
+
+    .rail-footer {
+      display: none;
+    }
+
+    .work-area {
+      padding: 25px 16px 16px;
+    }
+
+    .page-header {
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .page-header h2 {
+      max-width: 250px;
+      font-size: 27px;
+    }
+
+    .source-panel,
+    .draft-panel {
+      padding: 16px;
+    }
+
+    .source-panel textarea {
+      min-height: 210px;
+    }
+
+    .source-actions p {
+      max-width: 130px;
+    }
+
+    .generate-button {
+      min-width: 132px;
+      padding: 0 10px;
+    }
+
+    .work-footer {
+      flex-direction: column;
+      gap: 4px;
+      padding-top: 20px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 </style>

@@ -27,12 +27,16 @@ authors = ["Pascal Jerney"]
 
 [workspace.dependencies]
 calamine = "0.36"
+async-trait = "0.1"
 epikrise-core = { path = "crates/epikrise-core" }
 epikrise-ingest = { path = "crates/epikrise-ingest" }
 epikrise-llm = { path = "crates/epikrise-llm" }
+futures-util = "0.3"
+genai = "0.6.1"
 infer = "0.19"
 html2text = "0.17"
 image = { version = "0.25", default-features = false, features = ["png"] }
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 quick-xml = "0.42"
 rtf-parser-tt = "0.5"
 pdf-extract = "0.12"
@@ -42,7 +46,10 @@ serde_json = "1"
 specta = { version = "2.0.0-rc.25", features = ["derive"] }
 tempfile = "3"
 thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 uuid = { version = "1", features = ["v4"] }
+url = "2"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]
@@ -79,6 +86,8 @@ tauri-specta = { version = "2.0.0-rc.25", features = ["typescript"] }
 pdfium-render = { workspace = true }
 tempfile = { workspace = true }
 image = { workspace = true }
+tokio-util = { workspace = true }
+uuid = { workspace = true }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
