@@ -76,6 +76,11 @@
 
   let adapter = $state<ProviderAdapter>("ollama");
   let model = $state("llama3.2");
+  let availableModels = $state<string[]>([]);
+  let modelsForProfile = $state("");
+  let modelListLoading = $state(false);
+  let modelListMessage = $state("");
+  let modelListIsError = $state(false);
   let endpoint = $state("");
   let credentialId = $state("");
   let prompt = $state("");
@@ -105,6 +110,12 @@
   );
   const activeTemplate = $derived(
     importedTemplates.find((template) => template.metadata.id === activeTemplateId) ?? null,
+  );
+  const modelProfileKey = $derived(
+    JSON.stringify([adapter, endpoint.trim(), credentialId.trim()]),
+  );
+  const currentModels = $derived(
+    modelsForProfile === modelProfileKey ? availableModels : [],
   );
   const isFirstRun = $derived(
     desktopAvailable && templateLibraryReady && importedTemplates.length === 0,
@@ -512,6 +523,43 @@
     }
   }
 
+  async function refreshModels() {
+    if (modelListLoading) return;
+    if (!desktopAvailable) {
+      modelListMessage = "Desktop runtime unavailable.";
+      modelListIsError = true;
+      return;
+    }
+
+    const requestedProfileKey = modelProfileKey;
+    modelListLoading = true;
+    modelListMessage = "";
+    modelListIsError = false;
+    try {
+      const result = await commands.listModels(createProfile());
+      if (requestedProfileKey !== modelProfileKey) return;
+      if (result.status === "error") {
+        modelListMessage = formatError(result.error);
+        modelListIsError = true;
+        return;
+      }
+
+      availableModels = result.data;
+      modelsForProfile = requestedProfileKey;
+      if (result.data.length > 0 && !result.data.includes(model)) {
+        model = result.data[0];
+      }
+      modelListMessage = result.data.length === 0 ? "No models were returned by this provider." : "";
+    } catch {
+      if (requestedProfileKey === modelProfileKey) {
+        modelListMessage = "The model list could not be loaded.";
+        modelListIsError = true;
+      }
+    } finally {
+      modelListLoading = false;
+    }
+  }
+
   async function generateDraft(correctionInstructions: string | null = null) {
     const corrections = correctionInstructions?.trim() ?? "";
     const source = corrections ? "" : prompt.trim();
@@ -661,7 +709,29 @@
       </select>
 
       <label for="model">Model</label>
-      <input id="model" bind:value={model} autocomplete="off" />
+      <div class="model-picker">
+        <select id="model" bind:value={model} disabled={modelListLoading || isGenerating}>
+          {#if !currentModels.includes(model)}
+            <option value={model}>{model} (current)</option>
+          {/if}
+          {#each currentModels as availableModel (availableModel)}
+            <option value={availableModel}>{availableModel}</option>
+          {/each}
+        </select>
+        <button
+          class="model-refresh-button"
+          type="button"
+          onclick={refreshModels}
+          disabled={modelListLoading || isGenerating || isPreparingGeneration}
+        >
+          {modelListLoading ? "Loading..." : "Refresh models"}
+        </button>
+      </div>
+      {#if modelListMessage}
+        <p class="model-list-message" class:error={modelListIsError} role="status">
+          {modelListMessage}
+        </p>
+      {/if}
 
       <label for="endpoint">Endpoint</label>
       <input
@@ -1417,6 +1487,45 @@
     margin-top: 11px;
     color: white;
     background: #236e5d;
+  }
+
+  .model-picker {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .model-picker select {
+    min-width: 0;
+  }
+
+  .model-refresh-button {
+    min-height: 36px;
+    padding: 0 9px;
+    border: 1px solid #cbd7d0;
+    border-radius: 5px;
+    color: #335248;
+    background: #f8faf8;
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
+  .model-refresh-button:hover:not(:disabled) {
+    background: #edf3ef;
+  }
+
+  .model-list-message {
+    margin: 5px 0 0;
+    color: #236e5d;
+    font-size: 11px;
+  }
+
+  .model-list-message.error {
+    color: #a64231;
   }
 
   .connection-button:hover:not(:disabled),

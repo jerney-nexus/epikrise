@@ -30,6 +30,8 @@ export const commands = {
   generate: (request: GenerateRequest) =>
     typedError<null, LlmError>(__TAURI_INVOKE("generate", { request })),
   greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
+  listModels: (profile: ProviderProfile) =>
+    typedError<string[], LlmError>(__TAURI_INVOKE("list_models", { profile })),
   renderTemplateSystemPrompt: (
     template: ClinicalTemplate,
     values: { [key in string]: TemplateValue },

@@ -291,6 +291,13 @@ async fn test_provider(profile: ProviderProfile) -> Result<(), LlmError> {
 
 #[tauri::command]
 #[specta::specta]
+async fn list_models(profile: ProviderProfile) -> Result<Vec<String>, LlmError> {
+    let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
+    client.list_models(&profile).await
+}
+
+#[tauri::command]
+#[specta::specta]
 async fn generate(
     app: AppHandle,
     registry: State<'_, GenerationRegistry>,
@@ -595,6 +602,7 @@ pub fn run() -> Result<(), tauri::Error> {
             extract_text_file,
             generate,
             greet,
+            list_models,
             render_template_system_prompt,
             set_case_review,
             test_provider,

@@ -129,6 +129,41 @@ impl GenaiLlmClient {
     pub fn new(credentials: Arc<dyn CredentialStore>) -> Self {
         Self { credentials }
     }
+
+    pub async fn list_models(&self, profile: &ProviderProfile) -> Result<Vec<String>, LlmError> {
+        use genai::adapter::AdapterKind as GenaiAdapter;
+        use genai::resolver::{AuthData, Endpoint, ProviderConfig};
+
+        let adapter = match profile.adapter {
+            ProviderAdapter::OpenAi | ProviderAdapter::OpenAiCompatible => GenaiAdapter::OpenAI,
+            ProviderAdapter::Anthropic => GenaiAdapter::Anthropic,
+            ProviderAdapter::Gemini => GenaiAdapter::Gemini,
+            ProviderAdapter::Ollama => GenaiAdapter::Ollama,
+        };
+        let endpoint = profile
+            .endpoint
+            .as_deref()
+            .map(validate_endpoint)
+            .transpose()?
+            .map(Endpoint::from_owned);
+        let auth = match &profile.auth {
+            AuthSource::None => AuthData::None,
+            AuthSource::Keychain { credential_id } => self
+                .credentials
+                .get(credential_id)?
+                .map(AuthData::from_single)
+                .ok_or(LlmError::Authentication)?,
+        };
+        let provider_config = ProviderConfig::from((endpoint, Some(auth)));
+        let client = genai::Client::builder().build();
+        let mut models = client
+            .all_model_names(adapter, provider_config)
+            .await
+            .map_err(map_genai_error)?;
+        models.sort_unstable();
+        models.dedup();
+        Ok(models)
+    }
 }
 
 fn prepare_request(
