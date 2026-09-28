@@ -27,6 +27,7 @@
     authentication: "The provider credentials were not accepted.",
     network: "The provider could not be reached.",
     model: "The model rejected the request or returned no text.",
+    provider_rejected: "The provider rejected the request.",
     quota: "The provider quota was exceeded.",
     cancelled: "Generation was cancelled.",
     internal: "The request could not be completed.",
@@ -136,6 +137,9 @@
   }
 
   function formatError(error: LlmError): string {
+    if (error.key === "provider_rejected") {
+      return `The provider rejected the request (HTTP ${error.status}). Verify the model ID and account access.`;
+    }
     return errorMessages[error.key];
   }
 

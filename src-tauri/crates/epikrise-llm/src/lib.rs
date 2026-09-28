@@ -78,6 +78,8 @@ pub enum LlmError {
     Network,
     #[error("provider rejected the model or request")]
     Model,
+    #[error("provider rejected the request with HTTP status {status}")]
+    ProviderRejected { status: u16 },
     #[error("provider quota was exceeded")]
     Quota,
     #[error("generation was cancelled")]
@@ -380,7 +382,7 @@ fn map_http_status(status: u16) -> LlmError {
     match status {
         401 | 403 => LlmError::Authentication,
         429 => LlmError::Quota,
-        400 | 404 | 422 => LlmError::Model,
+        400..=499 => LlmError::ProviderRejected { status },
         _ => LlmError::Network,
     }
 }
@@ -420,9 +422,18 @@ mod tests {
         assert_eq!(map_http_status(401), LlmError::Authentication);
         assert_eq!(map_http_status(403), LlmError::Authentication);
         assert_eq!(map_http_status(429), LlmError::Quota);
-        assert_eq!(map_http_status(400), LlmError::Model);
-        assert_eq!(map_http_status(404), LlmError::Model);
-        assert_eq!(map_http_status(422), LlmError::Model);
+        assert_eq!(
+            map_http_status(400),
+            LlmError::ProviderRejected { status: 400 }
+        );
+        assert_eq!(
+            map_http_status(404),
+            LlmError::ProviderRejected { status: 404 }
+        );
+        assert_eq!(
+            map_http_status(422),
+            LlmError::ProviderRejected { status: 422 }
+        );
         assert_eq!(map_http_status(503), LlmError::Network);
     }
 

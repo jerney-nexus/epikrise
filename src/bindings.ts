@@ -164,6 +164,7 @@ export type LlmError =
   | { key: "authentication" }
   | { key: "network" }
   | { key: "model" }
+  | { key: "provider_rejected"; status: number }
   | { key: "quota" }
   | { key: "cancelled" }
   | { key: "internal" };
