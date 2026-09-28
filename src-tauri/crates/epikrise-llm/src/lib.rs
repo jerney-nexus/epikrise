@@ -352,12 +352,32 @@ fn map_genai_error(error: genai::Error) -> LlmError {
         | genai::Error::NoAuthData { .. }
         | genai::Error::NoAuthResolver { .. }
         | genai::Error::Resolver { .. } => LlmError::Authentication,
-        genai::Error::HttpError { status, .. } => match status.as_u16() {
-            401 | 403 => LlmError::Authentication,
-            429 => LlmError::Quota,
-            400 | 404 | 422 => LlmError::Model,
-            _ => LlmError::Network,
-        },
+        genai::Error::HttpError { status, .. } => map_http_status(status.as_u16()),
+        genai::Error::WebModelCall { webc_error, .. }
+        | genai::Error::WebAdapterCall { webc_error, .. } => map_webc_error(webc_error),
+        genai::Error::ChatResponseGeneration { .. }
+        | genai::Error::ChatResponse { .. }
+        | genai::Error::StreamParse { .. }
+        | genai::Error::NoChatResponse { .. } => LlmError::Model,
+        _ => LlmError::Network,
+    }
+}
+
+fn map_webc_error(error: genai::webc::Error) -> LlmError {
+    match error {
+        genai::webc::Error::ResponseFailedStatus { status, .. } => map_http_status(status.as_u16()),
+        genai::webc::Error::ResponseFailedNotJson { .. }
+        | genai::webc::Error::ResponseFailedInvalidJson { .. }
+        | genai::webc::Error::JsonValueExt(_) => LlmError::Model,
+        genai::webc::Error::Reqwest(_) => LlmError::Network,
+    }
+}
+
+fn map_http_status(status: u16) -> LlmError {
+    match status {
+        401 | 403 => LlmError::Authentication,
+        429 => LlmError::Quota,
+        400 | 404 | 422 => LlmError::Model,
         _ => LlmError::Network,
     }
 }
@@ -366,8 +386,20 @@ fn map_genai_error(error: genai::Error) -> LlmError {
 mod tests {
     use super::{
         AuthSource, ChatMessage, GenaiLlmClient, GenerationParams, LlmClient, LlmError,
-        MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile, validate_endpoint,
+        MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile, map_http_status,
+        validate_endpoint,
     };
+
+    #[test]
+    fn http_statuses_are_classified_as_provider_errors() {
+        assert_eq!(map_http_status(401), LlmError::Authentication);
+        assert_eq!(map_http_status(403), LlmError::Authentication);
+        assert_eq!(map_http_status(429), LlmError::Quota);
+        assert_eq!(map_http_status(400), LlmError::Model);
+        assert_eq!(map_http_status(404), LlmError::Model);
+        assert_eq!(map_http_status(422), LlmError::Model);
+        assert_eq!(map_http_status(503), LlmError::Network);
+    }
 
     #[test]
     fn provider_profile_round_trips_with_keychain_reference_only() {
