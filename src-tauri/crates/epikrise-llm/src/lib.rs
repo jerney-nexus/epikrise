@@ -24,6 +24,14 @@ pub enum ProviderAdapter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CredentialSummary {
+    pub id: String,
+    pub adapter: ProviderAdapter,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum AuthSource {
     None,
@@ -131,6 +139,57 @@ pub trait CredentialStore: Send + Sync {
 
 pub struct KeyringCredentialStore;
 
+const KEYRING_SERVICE: &str = "com.pascaljerney.epikrise";
+
+fn adapter_key(adapter: &ProviderAdapter) -> &'static str {
+    match adapter {
+        ProviderAdapter::OpenAi => "open_ai",
+        ProviderAdapter::Anthropic => "anthropic",
+        ProviderAdapter::Gemini => "gemini",
+        ProviderAdapter::Ollama => "ollama",
+        ProviderAdapter::OpenAiCompatible => "open_ai_compatible",
+        ProviderAdapter::OpenRouter => "open_router",
+        ProviderAdapter::Xai => "xai",
+        ProviderAdapter::Groq => "groq",
+    }
+}
+
+fn parse_adapter_key(key: &str) -> Option<ProviderAdapter> {
+    match key {
+        "open_ai" => Some(ProviderAdapter::OpenAi),
+        "anthropic" => Some(ProviderAdapter::Anthropic),
+        "gemini" => Some(ProviderAdapter::Gemini),
+        "ollama" => Some(ProviderAdapter::Ollama),
+        "open_ai_compatible" => Some(ProviderAdapter::OpenAiCompatible),
+        "open_router" => Some(ProviderAdapter::OpenRouter),
+        "xai" => Some(ProviderAdapter::Xai),
+        "groq" => Some(ProviderAdapter::Groq),
+        _ => None,
+    }
+}
+
+pub fn credential_account_id(adapter: &ProviderAdapter, label: &str) -> Result<String, LlmError> {
+    if label.trim().is_empty() || label.chars().any(char::is_control) {
+        return Err(LlmError::InvalidProfile);
+    }
+    let account_id = format!("{}:{label}", adapter_key(adapter));
+    credential_entry(&account_id)?;
+    Ok(account_id)
+}
+
+pub fn parse_credential_account(account_id: &str) -> Option<CredentialSummary> {
+    let (adapter_key, label) = account_id.split_once(':')?;
+    let adapter = parse_adapter_key(adapter_key)?;
+    if label.trim().is_empty() || credential_entry(account_id).is_err() {
+        return None;
+    }
+    Some(CredentialSummary {
+        id: account_id.to_owned(),
+        adapter,
+        label: label.to_owned(),
+    })
+}
+
 fn credential_entry(credential_id: &str) -> Result<keyring::Entry, LlmError> {
     if credential_id.trim().is_empty()
         || credential_id.len() > 128
@@ -138,8 +197,7 @@ fn credential_entry(credential_id: &str) -> Result<keyring::Entry, LlmError> {
     {
         return Err(LlmError::InvalidProfile);
     }
-    keyring::Entry::new("com.pascaljerney.epikrise", credential_id)
-        .map_err(|_| LlmError::Authentication)
+    keyring::Entry::new(KEYRING_SERVICE, credential_id).map_err(|_| LlmError::Authentication)
 }
 
 impl CredentialStore for KeyringCredentialStore {
@@ -154,6 +212,45 @@ impl CredentialStore for KeyringCredentialStore {
 }
 
 impl KeyringCredentialStore {
+    pub fn list(&self) -> Result<Vec<CredentialSummary>, LlmError> {
+        let search = keyring_search::Search::new().map_err(|_| LlmError::Authentication)?;
+        #[cfg(target_os = "windows")]
+        let search_result = search.by_target(KEYRING_SERVICE);
+        #[cfg(not(target_os = "windows"))]
+        let search_result = search.by_service(KEYRING_SERVICE);
+
+        let credentials = match search_result {
+            Ok(credentials) => credentials,
+            Err(keyring_search::Error::NoResults) => return Ok(Vec::new()),
+            Err(_) => return Err(LlmError::Authentication),
+        };
+        let mut summaries: Vec<CredentialSummary> = credentials
+            .values()
+            .filter_map(|metadata| {
+                #[cfg(target_os = "windows")]
+                if metadata.get("Target").map(String::as_str) != Some(KEYRING_SERVICE) {
+                    return None;
+                }
+                let account_id = metadata
+                    .get("acct")
+                    .or_else(|| metadata.get("username"))
+                    .or_else(|| metadata.get("User"))
+                    .or_else(|| metadata.get("user"))
+                    .or_else(|| metadata.get("Target"))
+                    .or_else(|| metadata.get("target"))?;
+                parse_credential_account(account_id)
+            })
+            .collect();
+        summaries.sort_by(|left, right| {
+            adapter_key(&left.adapter)
+                .cmp(adapter_key(&right.adapter))
+                .then_with(|| left.label.cmp(&right.label))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        summaries.dedup_by(|left, right| left.id == right.id);
+        Ok(summaries)
+    }
+
     pub fn set(&self, credential_id: &str, secret: &str) -> Result<(), LlmError> {
         if secret.trim().is_empty() {
             return Err(LlmError::InvalidProfile);
@@ -208,6 +305,35 @@ impl GenaiLlmClient {
         models.dedup();
         Ok(models)
     }
+
+    pub async fn check_connection(
+        &self,
+        profile: &ProviderProfile,
+    ) -> Result<Vec<String>, LlmError> {
+        match self.list_models(profile).await {
+            Ok(models) => Ok(models),
+            Err(error) if should_fallback_to_completion(&error, &profile.model) => {
+                let mut probe_profile = profile.clone();
+                probe_profile.generation.max_tokens = Some(64);
+                probe_profile.generation.reasoning_effort = None;
+                self.complete(
+                    &probe_profile,
+                    &[ChatMessage {
+                        role: MessageRole::User,
+                        content: "Reply with OK.".to_owned(),
+                        images: Vec::new(),
+                    }],
+                )
+                .await?;
+                Ok(Vec::new())
+            }
+            Err(error) => Err(error),
+        }
+    }
+}
+
+fn should_fallback_to_completion(error: &LlmError, model: &str) -> bool {
+    !model.trim().is_empty() && matches!(error, LlmError::Model | LlmError::ProviderRejected { .. })
 }
 
 fn genai_adapter(adapter: &ProviderAdapter, model: &str) -> genai::adapter::AdapterKind {
@@ -484,7 +610,8 @@ mod tests {
     use super::{
         AuthSource, ChatMessage, GenaiLlmClient, GenerationParams, KeyringCredentialStore,
         LlmClient, LlmError, MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile,
-        ReasoningEffort, credential_entry, genai_adapter, map_http_status, prepare_request,
+        ReasoningEffort, credential_account_id, credential_entry, genai_adapter, map_http_status,
+        parse_credential_account, prepare_request, should_fallback_to_completion,
         validate_endpoint,
     };
     use std::sync::Arc;
@@ -666,6 +793,53 @@ mod tests {
             credential_entry(&"x".repeat(129)),
             Err(LlmError::InvalidProfile)
         ));
+    }
+
+    #[test]
+    fn provider_credential_accounts_round_trip() {
+        let adapter = ProviderAdapter::OpenAiCompatible;
+        let account_id = credential_account_id(&adapter, "Work key")
+            .expect("valid provider credential account should format");
+
+        assert_eq!(account_id, "open_ai_compatible:Work key");
+        assert_eq!(
+            parse_credential_account(&account_id),
+            Some(super::CredentialSummary {
+                id: account_id,
+                adapter,
+                label: "Work key".to_owned(),
+            })
+        );
+        assert!(parse_credential_account("legacy-id").is_none());
+        assert!(parse_credential_account("unknown:credential").is_none());
+    }
+
+    #[test]
+    fn rejects_invalid_provider_credential_labels() {
+        assert_eq!(
+            credential_account_id(&ProviderAdapter::OpenAi, "  "),
+            Err(LlmError::InvalidProfile)
+        );
+        assert_eq!(
+            credential_account_id(&ProviderAdapter::OpenAi, "bad\nlabel"),
+            Err(LlmError::InvalidProfile)
+        );
+        assert!(credential_account_id(&ProviderAdapter::OpenAi, &"x".repeat(128)).is_err());
+    }
+
+    #[test]
+    fn completion_fallback_is_limited_to_model_rejections_with_a_model() {
+        assert!(should_fallback_to_completion(&LlmError::Model, "gpt-4o"));
+        assert!(should_fallback_to_completion(
+            &LlmError::ProviderRejected { status: 404 },
+            "gpt-4o"
+        ));
+        assert!(!should_fallback_to_completion(
+            &LlmError::Authentication,
+            "gpt-4o"
+        ));
+        assert!(!should_fallback_to_completion(&LlmError::Network, "gpt-4o"));
+        assert!(!should_fallback_to_completion(&LlmError::Model, "  "));
     }
 
     #[test]

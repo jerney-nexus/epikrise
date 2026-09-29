@@ -21,8 +21,8 @@ use epikrise_core::{
     InputProvenance, OutputRules, OutputViolation, TemplateError, TemplateValue, lint_output,
 };
 use epikrise_llm::{
-    ChatMessage, GenaiLlmClient, KeyringCredentialStore, LlmClient, LlmError, MessageRole,
-    ProviderProfile,
+    ChatMessage, CredentialSummary, GenaiLlmClient, KeyringCredentialStore, LlmClient, LlmError,
+    MessageRole, ProviderAdapter, ProviderProfile, credential_account_id,
 };
 use sha2::{Digest, Sha256};
 
@@ -633,26 +633,9 @@ fn extract_image(
 
 #[tauri::command]
 #[specta::specta]
-async fn test_provider(profile: ProviderProfile) -> Result<(), LlmError> {
-    let profile = provider_probe_profile(profile);
+async fn test_provider(profile: ProviderProfile) -> Result<Vec<String>, LlmError> {
     let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
-    client
-        .complete(
-            &profile,
-            &[ChatMessage {
-                role: MessageRole::User,
-                content: "Reply with OK.".to_owned(),
-                images: Vec::new(),
-            }],
-        )
-        .await
-        .map(|_| ())
-}
-
-fn provider_probe_profile(mut profile: ProviderProfile) -> ProviderProfile {
-    profile.generation.max_tokens = Some(64);
-    profile.generation.reasoning_effort = None;
-    profile
+    client.check_connection(&profile).await
 }
 
 #[tauri::command]
@@ -664,8 +647,25 @@ async fn list_models(profile: ProviderProfile) -> Result<Vec<String>, LlmError> 
 
 #[tauri::command]
 #[specta::specta]
-fn set_provider_credential(credential_id: String, mut secret: String) -> Result<(), LlmError> {
-    let result = KeyringCredentialStore.set(&credential_id, &secret);
+fn list_provider_credentials() -> Result<Vec<CredentialSummary>, LlmError> {
+    KeyringCredentialStore.list()
+}
+
+#[tauri::command]
+#[specta::specta]
+fn set_provider_credential(
+    adapter: ProviderAdapter,
+    label: String,
+    mut secret: String,
+) -> Result<CredentialSummary, LlmError> {
+    let result = credential_account_id(&adapter, &label).and_then(|credential_id| {
+        KeyringCredentialStore.set(&credential_id, &secret)?;
+        Ok(CredentialSummary {
+            id: credential_id,
+            adapter,
+            label,
+        })
+    });
     secret.zeroize();
     result
 }
@@ -1142,6 +1142,7 @@ pub fn run() -> Result<(), tauri::Error> {
             generate,
             greet,
             load_templates,
+            list_provider_credentials,
             list_models,
             render_template_system_prompt,
             save_templates,
@@ -1188,8 +1189,7 @@ mod tests {
     use super::{
         MAX_PDF_VISION_PAGES, OcrTempSession, commit_case_generation,
         load_template_library_from_paths, ocr_pdf_pages_with, parse_template_library,
-        prepare_case_generation, provider_probe_profile, render_pdf_pages_for_vision,
-        wipe_directory_contents,
+        prepare_case_generation, render_pdf_pages_for_vision, wipe_directory_contents,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
@@ -1261,18 +1261,6 @@ mod tests {
                 reasoning_effort: None,
             },
         }
-    }
-
-    #[test]
-    fn provider_connection_check_uses_small_output_budget_without_reasoning() {
-        let mut profile = test_provider_profile();
-        profile.generation.max_tokens = Some(8192);
-        profile.generation.reasoning_effort = Some(epikrise_llm::ReasoningEffort::High);
-
-        let probe = provider_probe_profile(profile);
-
-        assert_eq!(probe.generation.max_tokens, Some(64));
-        assert_eq!(probe.generation.reasoning_effort, None);
     }
 
     #[test]

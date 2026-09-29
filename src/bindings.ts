@@ -19,12 +19,13 @@ export const commands = {
 	generate: (request: GenerateRequest) => typedError<null, LlmError>(__TAURI_INVOKE("generate", { request })),
 	greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
 	loadTemplates: () => typedError<ClinicalTemplate[], TemplateError>(__TAURI_INVOKE("load_templates")),
+	listProviderCredentials: () => typedError<CredentialSummary[], LlmError>(__TAURI_INVOKE("list_provider_credentials")),
 	listModels: (profile: ProviderProfile) => typedError<string[], LlmError>(__TAURI_INVOKE("list_models", { profile })),
 	renderTemplateSystemPrompt: (template: ClinicalTemplate, values: { [key in string]: TemplateValue }, enabledSectionIds: string[]) => typedError<string, TemplateError>(__TAURI_INVOKE("render_template_system_prompt", { template, values, enabledSectionIds })),
 	saveTemplates: (templates: ClinicalTemplate[]) => typedError<null, TemplateError>(__TAURI_INVOKE("save_templates", { templates })),
 	setCaseReview: (caseId: string, reviewed: boolean) => typedError<boolean, LlmError>(__TAURI_INVOKE("set_case_review", { caseId, reviewed })),
-	setProviderCredential: (credentialId: string, secret: string) => typedError<null, LlmError>(__TAURI_INVOKE("set_provider_credential", { credentialId, secret })),
-	testProvider: (profile: ProviderProfile) => typedError<null, LlmError>(__TAURI_INVOKE("test_provider", { profile })),
+	setProviderCredential: (adapter: ProviderAdapter, label: string, secret: string) => typedError<CredentialSummary, LlmError>(__TAURI_INVOKE("set_provider_credential", { adapter, label, secret })),
+	testProvider: (profile: ProviderProfile) => typedError<string[], LlmError>(__TAURI_INVOKE("test_provider", { profile })),
 	validateTemplate: (bytes: number[]) => typedError<ClinicalTemplate, TemplateError>(__TAURI_INVOKE("validate_template", { bytes })),
 };
 
@@ -55,6 +56,12 @@ export type ClinicalTemplate = {
 	variables: TemplateVariable[],
 	sections: TemplateSection[],
 	output_rules?: OutputRules,
+};
+
+export type CredentialSummary = {
+	id: string,
+	adapter: ProviderAdapter,
+	label: string,
 };
 
 export type ExtractedBlock = {

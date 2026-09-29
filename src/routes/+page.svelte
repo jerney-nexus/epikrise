@@ -2098,7 +2098,8 @@
     align-items: stretch;
     gap: 0 18px;
     padding: 0 22px;
-    min-height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
     background:
       radial-gradient(ellipse at 88% 10%, rgba(215, 229, 218, 0.55), transparent 30%),
       #f2f5f1;
@@ -2109,7 +2110,8 @@
     grid-area: controls;
     flex-direction: column;
     min-width: 0;
-    min-height: 100vh;
+    min-height: 0;
+    overflow-y: auto;
     padding: 24px 0 18px 18px;
     border-left: 1px solid #dce4de;
     background: rgba(249, 251, 248, 0.62);
@@ -2925,6 +2927,7 @@
     min-height: 0;
     min-width: 0;
     flex-direction: column;
+    overflow-y: auto;
     margin: 0 0 18px;
     padding: 18px;
     border: 1px solid #dce4de;
@@ -3173,7 +3176,7 @@
   }
 
   .source-panel textarea {
-    min-height: 190px;
+    min-height: 120px;
     flex: 1;
     resize: vertical;
     padding: 13px 14px;
@@ -3238,7 +3241,7 @@
   }
 
   .draft-output {
-    min-height: 354px;
+    min-height: 0;
     flex: 1;
     overflow: auto;
     padding: 15px 16px;
@@ -3442,8 +3445,11 @@
 
   @media (max-width: 1120px) {
     .app-shell {
+      height: auto;
+      min-height: 100vh;
+      overflow: visible;
       grid-template-columns: minmax(250px, 0.9fr) minmax(0, 1.1fr);
-      grid-template-rows: auto minmax(0, 1fr) auto auto;
+      grid-template-rows: auto auto auto auto;
       grid-template-areas:
         "header header"
         "inputs output"
@@ -3454,6 +3460,7 @@
 
     .provider-rail {
       min-height: auto;
+      overflow: visible;
       padding: 18px 0;
       border-top: 1px solid #dce4de;
       border-left: 0;
@@ -3484,10 +3491,17 @@
       grid-column: 1 / -1;
       grid-row: 1 / 4;
     }
+
+    .draft-output {
+      min-height: 354px;
+    }
   }
 
   @media (max-width: 720px) {
     .app-shell {
+      height: auto;
+      min-height: 100vh;
+      overflow: visible;
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: auto auto auto auto auto;
       grid-template-areas:
@@ -3502,6 +3516,7 @@
 
     .provider-rail {
       min-height: auto;
+      overflow: visible;
       padding: 17px 0;
       border-top: 1px solid #dce4de;
     }

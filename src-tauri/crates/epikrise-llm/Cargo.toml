@@ -14,6 +14,7 @@ epikrise-core = { workspace = true }
 futures-util = { workspace = true }
 genai = { workspace = true }
 keyring = { workspace = true }
+keyring-search = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 specta = { workspace = true }
