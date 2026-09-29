@@ -32,8 +32,7 @@
   "remoteEnv": {
     "DISPLAY": ":1",
     // WebKitGTK's DMABUF renderer fails inside a container without GPU passthrough.
-    "WEBKIT_DISABLE_DMABUF_RENDERER": "1",
-    "CI": "1"
+    "WEBKIT_DISABLE_DMABUF_RENDERER": "1"
   },
   "customizations": {
     "vscode": {
