@@ -294,6 +294,9 @@ fn prepare_request(
         ProviderAdapter::Groq if !profile.model.starts_with("groq::") => {
             format!("groq::{}", profile.model)
         }
+        ProviderAdapter::OpenRouter if !profile.model.starts_with("open_router::") => {
+            format!("open_router::{}", profile.model)
+        }
         _ => profile.model.clone(),
     };
 
@@ -527,7 +530,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn groq_chat_profiles_resolve_the_groq_default_endpoint() {
+    async fn namespaced_provider_models_resolve_their_default_endpoints() {
         struct NoCredentials;
 
         impl super::CredentialStore for NoCredentials {
@@ -536,46 +539,63 @@ mod tests {
             }
         }
 
-        let profile = ProviderProfile {
-            id: "groq".to_owned(),
-            display_name: "Groq".to_owned(),
-            adapter: ProviderAdapter::Groq,
-            model: "llama-3.3-70b-versatile".to_owned(),
-            endpoint: None,
-            auth: AuthSource::None,
-            capabilities: ModelCapabilities {
-                vision: false,
-                streaming: true,
-                max_context: None,
-            },
-            generation: GenerationParams {
-                temperature: None,
-                max_tokens: Some(1),
-                reasoning_effort: None,
-            },
-        };
         let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
-        let (client, model, _, _) = prepare_request(
-            &credentials,
-            &profile,
-            &[ChatMessage {
-                role: MessageRole::User,
-                content: "Reply with OK.".to_owned(),
-                images: Vec::new(),
-            }],
-        )
-        .expect("Groq request should be prepared");
+        let test_cases = [
+            (
+                ProviderAdapter::Groq,
+                "llama-3.3-70b-versatile",
+                "groq::llama-3.3-70b-versatile",
+                genai::adapter::AdapterKind::Groq,
+                "https://api.groq.com/openai/v1/",
+            ),
+            (
+                ProviderAdapter::OpenRouter,
+                "openai/gpt-4o",
+                "open_router::openai/gpt-4o",
+                genai::adapter::AdapterKind::OpenRouter,
+                "https://openrouter.ai/api/v1/",
+            ),
+        ];
 
-        assert_eq!(model, "groq::llama-3.3-70b-versatile");
-        let target = client
-            .resolve_service_target(model.as_str())
-            .await
-            .expect("Groq model should resolve to its adapter target");
-        assert_eq!(target.model.adapter_kind, genai::adapter::AdapterKind::Groq);
-        assert_eq!(
-            target.endpoint.base_url(),
-            "https://api.groq.com/openai/v1/"
-        );
+        for (adapter, model_name, expected_model, expected_adapter, expected_endpoint) in test_cases
+        {
+            let profile = ProviderProfile {
+                id: "provider".to_owned(),
+                display_name: "Provider".to_owned(),
+                adapter,
+                model: model_name.to_owned(),
+                endpoint: None,
+                auth: AuthSource::None,
+                capabilities: ModelCapabilities {
+                    vision: false,
+                    streaming: true,
+                    max_context: None,
+                },
+                generation: GenerationParams {
+                    temperature: None,
+                    max_tokens: Some(1),
+                    reasoning_effort: None,
+                },
+            };
+            let (client, model, _, _) = prepare_request(
+                &credentials,
+                &profile,
+                &[ChatMessage {
+                    role: MessageRole::User,
+                    content: "Reply with OK.".to_owned(),
+                    images: Vec::new(),
+                }],
+            )
+            .expect("provider request should be prepared");
+
+            assert_eq!(model, expected_model);
+            let target = client
+                .resolve_service_target(model.as_str())
+                .await
+                .expect("model should resolve to its adapter target");
+            assert_eq!(target.model.adapter_kind, expected_adapter);
+            assert_eq!(target.endpoint.base_url(), expected_endpoint);
+        }
     }
 
     #[test]
