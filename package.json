@@ -16,6 +16,7 @@
     "check:rust:clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
+    "test:i18n": "pnpm test -- tests/i18n.test.ts",
     "test:rust": "cargo nextest run --manifest-path src-tauri/Cargo.toml --workspace",
     "template:convert": "node scripts/convert-prompt.mjs",
     "format": "prettier --write .",

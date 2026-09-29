@@ -41,6 +41,7 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - `pnpm build`: Production build.
 - `pnpm check`: Check after UI changes.
 - `pnpm test`: Test after UI changes.
+- `pnpm test:i18n`: Test internationalization.
 - `pnpm check:rust:fmt` and `pnpm check:rust:clippy`: Check after Rust changes.
 - `pnpm test:rust`: Test after Rust changes.
 - `pnpm format:check`: Check formatting for all files.
