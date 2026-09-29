@@ -642,7 +642,7 @@
 
   function openTemplateEditor() {
     if (!activeTemplate) return;
-    templateEditDraft = structuredClone(activeTemplate);
+    templateEditDraft = structuredClone($state.snapshot(activeTemplate));
     templatePreview = "";
     templatePreviewMessage = "Rendering preview...";
     templatePreviewIsError = false;
@@ -2670,6 +2670,10 @@
   }
 
   .provider-rail > .template-empty {
+    margin-top: 12px;
+  }
+
+  .rail-template-picker {
     margin-top: 12px;
   }
 

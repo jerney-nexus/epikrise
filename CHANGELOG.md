@@ -54,4 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   below the clinical-material field, and matched the Tauri app icon to the
   workspace E mark.
 
+### Fixed
+
+- Spaced the active-template picker away from configuration and allowed the
+  template editor to clone reactive Svelte state safely.
+
 [Unreleased]: https://github.com/pascaljerney/epikrise/compare/HEAD
