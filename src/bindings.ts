@@ -123,6 +123,7 @@ export type GenerationError = {
 export type GenerationParams = {
   temperature: number | null;
   max_tokens: number | null;
+  reasoning_effort?: ReasoningEffort | null;
 };
 
 export type IngestError =
@@ -214,6 +215,9 @@ export type ProviderProfile = {
   capabilities: ModelCapabilities;
   generation: GenerationParams;
 };
+
+export type ReasoningEffort =
+  "none" | "minimal" | "low" | "medium" | "high" | "x_high" | "max";
 
 export type TemplateDefault =
   { kind: "text"; value: string } | { kind: "boolean"; value: boolean };

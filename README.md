@@ -87,6 +87,20 @@ is supplied. It does not infer template variables; prompts containing MiniJinja
 expressions must be converted manually. Both `templates/` and `.epitpl` files
 are ignored by Git.
 
+## Provider generation settings
+
+The provider settings include an output-token limit, defaulting to 8,192 tokens
+and configurable from 1 to 1,000,000. This is a ceiling, not a promise that a
+provider will return that many tokens; model and provider limits may be lower.
+Reasoning tokens can use part of this same output budget, depending on the
+provider, so raise the limit or choose a lower reasoning effort if the report
+is cut short.
+
+Reasoning effort can be left at the provider default or set to none, minimal,
+low, medium, high, extra high, or maximum. These are provider hints: supported
+values and their effect vary by provider and model, and unsupported settings may
+be ignored or rejected.
+
 ## Safety and scope
 
 Epikrise formats text. It does not interpret findings, does not suggest

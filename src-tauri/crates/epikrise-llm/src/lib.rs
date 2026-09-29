@@ -37,6 +37,20 @@ pub struct ModelCapabilities {
 pub struct GenerationParams {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningEffort {
+    None,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    XHigh,
+    Max,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Type)]
@@ -199,6 +213,7 @@ fn prepare_request(
             .generation
             .temperature
             .is_some_and(|temperature| !temperature.is_finite())
+        || profile.generation.max_tokens == Some(0)
     {
         return Err(LlmError::InvalidProfile);
     }
@@ -270,6 +285,18 @@ fn prepare_request(
     }
     if let Some(max_tokens) = profile.generation.max_tokens {
         options = options.with_max_tokens(max_tokens);
+    }
+    if let Some(reasoning_effort) = profile.generation.reasoning_effort {
+        let reasoning_effort = match reasoning_effort {
+            ReasoningEffort::None => genai::chat::ReasoningEffort::None,
+            ReasoningEffort::Minimal => genai::chat::ReasoningEffort::Minimal,
+            ReasoningEffort::Low => genai::chat::ReasoningEffort::Low,
+            ReasoningEffort::Medium => genai::chat::ReasoningEffort::Medium,
+            ReasoningEffort::High => genai::chat::ReasoningEffort::High,
+            ReasoningEffort::XHigh => genai::chat::ReasoningEffort::XHigh,
+            ReasoningEffort::Max => genai::chat::ReasoningEffort::Max,
+        };
+        options = options.with_reasoning_effort(reasoning_effort);
     }
 
     Ok((client, profile.model.clone(), request, options))
@@ -391,9 +418,10 @@ fn map_http_status(status: u16) -> LlmError {
 mod tests {
     use super::{
         AuthSource, ChatMessage, GenaiLlmClient, GenerationParams, LlmClient, LlmError,
-        MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile, genai_adapter,
-        map_http_status, validate_endpoint,
+        MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile, ReasoningEffort,
+        genai_adapter, map_http_status, prepare_request, validate_endpoint,
     };
+    use std::sync::Arc;
 
     #[test]
     fn openai_gpt_five_and_six_use_the_responses_api() {
@@ -456,16 +484,63 @@ mod tests {
             generation: GenerationParams {
                 temperature: Some(0.2),
                 max_tokens: Some(4_000),
+                reasoning_effort: Some(ReasoningEffort::High),
             },
         };
 
         let encoded = serde_json::to_value(&profile).expect("profile should serialize");
         assert_eq!(encoded["auth"]["credential_id"], "epikrise/local-ollama");
         assert!(encoded["auth"].get("secret").is_none());
+        assert_eq!(encoded["generation"]["max_tokens"], 4_000);
+        assert_eq!(encoded["generation"]["reasoning_effort"], "high");
         assert_eq!(
             serde_json::from_value::<ProviderProfile>(encoded).expect("profile should deserialize"),
             profile
         );
+    }
+
+    #[test]
+    fn generation_settings_reach_genai_chat_options() {
+        struct NoCredentials;
+
+        impl super::CredentialStore for NoCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let profile = ProviderProfile {
+            id: "test".to_owned(),
+            display_name: "Test".to_owned(),
+            adapter: ProviderAdapter::OpenAi,
+            model: "o3-mini".to_owned(),
+            endpoint: None,
+            auth: AuthSource::None,
+            capabilities: ModelCapabilities {
+                vision: false,
+                streaming: true,
+                max_context: None,
+            },
+            generation: GenerationParams {
+                temperature: None,
+                max_tokens: Some(16_384),
+                reasoning_effort: Some(ReasoningEffort::High),
+            },
+        };
+        let messages = [ChatMessage {
+            role: MessageRole::User,
+            content: "Finish the complete report".to_owned(),
+        }];
+        let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
+
+        let (_, _, _, options) = prepare_request(&credentials, &profile, &messages)
+            .expect("provider request should be prepared");
+
+        assert_eq!(options.max_tokens, Some(16_384));
+        assert!(matches!(
+            options.reasoning_effort,
+            Some(genai::chat::ReasoningEffort::High)
+        ));
     }
 
     struct FakeClient;
@@ -517,6 +592,7 @@ mod tests {
             generation: GenerationParams {
                 temperature: None,
                 max_tokens: None,
+                reasoning_effort: None,
             },
         };
         let messages = [ChatMessage {
@@ -549,6 +625,7 @@ mod tests {
             generation: GenerationParams {
                 temperature: None,
                 max_tokens: None,
+                reasoning_effort: None,
             },
         };
         let messages = [ChatMessage {
@@ -598,6 +675,7 @@ mod tests {
             generation: GenerationParams {
                 temperature: None,
                 max_tokens: None,
+                reasoning_effort: None,
             },
         };
         let messages = [ChatMessage {

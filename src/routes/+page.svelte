@@ -10,6 +10,7 @@
     type OutputViolation,
     type ProviderAdapter,
     type ProviderProfile,
+    type ReasoningEffort,
     type TemplateError,
   } from "../bindings";
 
@@ -84,6 +85,8 @@
   let modelListIsError = $state(false);
   let endpoint = $state("");
   let credentialId = $state("");
+  let outputTokenLimit = $state<number | undefined>(8192);
+  let reasoningEffort = $state<ReasoningEffort | "provider_default">("provider_default");
   let prompt = $state("");
   let draft = $state("");
   let outputViolations = $state<OutputViolation[]>([]);
@@ -98,6 +101,12 @@
 
   const isGenerating = $derived(activeRequestId !== null);
   const draftLines = $derived(draft.split("\n"));
+  const isOutputTokenLimitValid = $derived(
+    typeof outputTokenLimit === "number" &&
+      Number.isInteger(outputTokenLimit) &&
+      outputTokenLimit >= 1 &&
+      outputTokenLimit <= 1_000_000,
+  );
   const canCopyOutput = $derived(
     Boolean(
       draft &&
@@ -134,7 +143,11 @@
       endpoint: endpoint.trim() || (adapter === "ollama" ? "http://localhost:11434" : null),
       auth: keychainId ? { source: "keychain", credential_id: keychainId } : { source: "none" },
       capabilities: { vision: false, streaming: true, max_context: null },
-      generation: { temperature: null, max_tokens: 2048 },
+      generation: {
+        temperature: null,
+        max_tokens: outputTokenLimit ?? null,
+        reasoning_effort: reasoningEffort === "provider_default" ? null : reasoningEffort,
+      },
     };
   }
 
@@ -604,6 +617,11 @@
     const corrections = correctionInstructions?.trim() ?? "";
     const source = corrections ? "" : prompt.trim();
     if ((!source && !corrections) || isGenerating || isPreparingGeneration) return;
+    if (!isOutputTokenLimitValid) {
+      generationMessage = "Set an output token limit between 1 and 1,000,000.";
+      generationIsError = true;
+      return;
+    }
     if (!activeTemplate) {
       generationMessage = "Import and select a template before generating.";
       generationIsError = true;
@@ -978,6 +996,39 @@
           <div class="first-run-review">
             <div>
               <span class="eyebrow">Ready to save</span>
+            <label for="output-token-limit">Output token limit</label>
+            <input
+              id="output-token-limit"
+              type="number"
+              bind:value={outputTokenLimit}
+              min="1"
+              max="1000000"
+              step="1"
+              required
+              aria-describedby="output-token-limit-hint"
+              aria-invalid={!isOutputTokenLimitValid}
+              disabled={isGenerating || isPreparingGeneration}
+            />
+            <p id="output-token-limit-hint" class="setting-hint">
+              Includes reasoning tokens when the provider counts them toward output.
+            </p>
+
+            <label for="reasoning-effort">Reasoning effort</label>
+            <select
+              id="reasoning-effort"
+              bind:value={reasoningEffort}
+              disabled={isGenerating || isPreparingGeneration}
+            >
+              <option value="provider_default">Provider default</option>
+              <option value="none">None</option>
+              <option value="minimal">Minimal</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="x_high">Extra high</option>
+              <option value="max">Maximum</option>
+            </select>
+
               <h3>{pendingTemplate.metadata.name}</h3>
               <p>{pendingTemplate.metadata.description}</p>
             </div>
@@ -1071,7 +1122,12 @@
             <button
               class="generate-button"
               onclick={() => generateDraft()}
-              disabled={!prompt.trim() || !activeTemplate || isPreparingGeneration}
+              disabled={
+                !prompt.trim() ||
+                !activeTemplate ||
+                isPreparingGeneration ||
+                !isOutputTokenLimitValid
+              }
             >
               <span aria-hidden="true">↗</span>
               {isPreparingGeneration ? "Preparing..." : "Generate draft"}

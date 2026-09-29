@@ -773,6 +773,7 @@ mod tests {
             generation: GenerationParams {
                 temperature: None,
                 max_tokens: None,
+                reasoning_effort: None,
             },
         }
     }
