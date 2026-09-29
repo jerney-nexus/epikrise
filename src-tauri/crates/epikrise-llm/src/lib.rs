@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+use epikrise_core::ImageAttachment;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::sync::Arc;
@@ -17,6 +18,9 @@ pub enum ProviderAdapter {
     Gemini,
     Ollama,
     OpenAiCompatible,
+    OpenRouter,
+    Xai,
+    Groq,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
@@ -77,6 +81,8 @@ pub enum MessageRole {
 pub struct ChatMessage {
     pub role: MessageRole,
     pub content: String,
+    #[serde(default)]
+    pub images: Vec<ImageAttachment>,
 }
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
@@ -188,6 +194,9 @@ fn genai_adapter(adapter: &ProviderAdapter, model: &str) -> genai::adapter::Adap
         ProviderAdapter::Anthropic => GenaiAdapter::Anthropic,
         ProviderAdapter::Gemini => GenaiAdapter::Gemini,
         ProviderAdapter::Ollama => GenaiAdapter::Ollama,
+        ProviderAdapter::OpenRouter => GenaiAdapter::OpenRouter,
+        ProviderAdapter::Xai => GenaiAdapter::Xai,
+        ProviderAdapter::Groq => GenaiAdapter::Groq,
     }
 }
 
@@ -204,6 +213,8 @@ fn prepare_request(
     ),
     LlmError,
 > {
+    use base64::Engine;
+    use genai::chat::ContentPart;
     use genai::chat::{ChatMessage as GenaiMessage, ChatOptions, ChatRequest};
     use genai::resolver::{AuthData, Endpoint};
     use genai::{Client, ModelIden, ServiceTarget};
@@ -258,25 +269,42 @@ fn prepare_request(
         .map(|message| message.content.as_str())
         .collect::<Vec<_>>()
         .join("\n\n");
+    if !messages
+        .iter()
+        .any(|message| message.role == MessageRole::User)
+    {
+        return Err(LlmError::InvalidRequest);
+    }
+    if messages
+        .iter()
+        .any(|message| !message.images.is_empty() && !profile.capabilities.vision)
+    {
+        return Err(LlmError::InvalidProfile);
+    }
+
     let mut request = ChatRequest::default();
     if !system_prompt.is_empty() {
         request = request.with_system(system_prompt);
     }
-    let mut has_user_message = false;
     for message in messages {
         match message.role {
             MessageRole::System => {}
             MessageRole::User => {
-                request = request.append_message(GenaiMessage::user(message.content.clone()));
-                has_user_message = true;
+                let mut parts = vec![ContentPart::from_text(message.content.clone())];
+                for image in &message.images {
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(&image.data);
+                    parts.push(ContentPart::from_binary_base64(
+                        image.mime_type.clone(),
+                        encoded,
+                        Some(image.name.clone()),
+                    ));
+                }
+                request = request.append_message(GenaiMessage::user(parts));
             }
             MessageRole::Assistant => {
                 request = request.append_message(GenaiMessage::assistant(message.content.clone()));
             }
         }
-    }
-    if !has_user_message {
-        return Err(LlmError::InvalidRequest);
     }
 
     let mut options = ChatOptions::default();
@@ -446,6 +474,24 @@ mod tests {
     }
 
     #[test]
+    fn provider_profiles_resolve_all_planned_adapters() {
+        use genai::adapter::AdapterKind;
+
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::OpenRouter, "openai/gpt-4o"),
+            AdapterKind::OpenRouter
+        );
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::Xai, "grok-3"),
+            AdapterKind::Xai
+        );
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::Groq, "llama-3.3-70b-versatile"),
+            AdapterKind::Groq
+        );
+    }
+
+    #[test]
     fn http_statuses_are_classified_as_provider_errors() {
         assert_eq!(map_http_status(401), LlmError::Authentication);
         assert_eq!(map_http_status(403), LlmError::Authentication);
@@ -530,6 +576,7 @@ mod tests {
         let messages = [ChatMessage {
             role: MessageRole::User,
             content: "Finish the complete report".to_owned(),
+            images: Vec::new(),
         }];
         let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
 
@@ -541,6 +588,57 @@ mod tests {
             options.reasoning_effort,
             Some(genai::chat::ReasoningEffort::High)
         ));
+    }
+
+    #[test]
+    fn image_parts_require_vision_capability_and_are_base64_encoded() {
+        struct NoCredentials;
+
+        impl super::CredentialStore for NoCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let mut profile = ProviderProfile {
+            id: "vision-test".to_owned(),
+            display_name: "Vision test".to_owned(),
+            adapter: ProviderAdapter::OpenAi,
+            model: "gpt-4o".to_owned(),
+            endpoint: None,
+            auth: AuthSource::None,
+            capabilities: ModelCapabilities {
+                vision: true,
+                streaming: true,
+                max_context: None,
+            },
+            generation: GenerationParams {
+                temperature: None,
+                max_tokens: None,
+                reasoning_effort: None,
+            },
+        };
+        let messages = [ChatMessage {
+            role: MessageRole::User,
+            content: "Describe the image".to_owned(),
+            images: vec![epikrise_core::ImageAttachment {
+                mime_type: "image/png".to_owned(),
+                data: vec![1, 2, 3],
+                name: "scan.png".to_owned(),
+            }],
+        }];
+        let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
+        let (_, _, request, _) = prepare_request(&credentials, &profile, &messages)
+            .expect("vision-capable profiles should accept image parts");
+        let serialized = serde_json::to_string(&request).expect("request should serialize");
+        assert!(serialized.contains("image/png"));
+        assert!(serialized.contains("AQID"));
+
+        profile.capabilities.vision = false;
+        assert_eq!(
+            prepare_request(&credentials, &profile, &messages).map(|_| ()),
+            Err(LlmError::InvalidProfile)
+        );
     }
 
     struct FakeClient;
@@ -598,6 +696,7 @@ mod tests {
         let messages = [ChatMessage {
             role: MessageRole::User,
             content: "Summarize these findings".to_owned(),
+            images: Vec::new(),
         }];
 
         let response = FakeClient
@@ -631,6 +730,7 @@ mod tests {
         let messages = [ChatMessage {
             role: MessageRole::User,
             content: "hello".to_owned(),
+            images: Vec::new(),
         }];
         let mut deltas = Vec::new();
         let cancellation = tokio_util::sync::CancellationToken::new();
@@ -681,6 +781,7 @@ mod tests {
         let messages = [ChatMessage {
             role: MessageRole::User,
             content: "hello".to_owned(),
+            images: Vec::new(),
         }];
         let cancellation = tokio_util::sync::CancellationToken::new();
         cancellation.cancel();

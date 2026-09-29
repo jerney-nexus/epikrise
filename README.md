@@ -63,6 +63,16 @@ Tauri must be able to find `cargo` on `PATH`. If the build fails while running
 `cargo metadata` with “No such file or directory”, see the [local Rust setup
 instructions](CONTRIBUTING.md#local-setup).
 
+## Testing
+
+Install Cargo Nextest once, then run both test suites from the project root:
+
+```sh
+cargo install cargo-nextest --locked
+npm test
+npm run test:rust
+```
+
 ## Templates
 
 No clinical templates ship with Epikrise. The formatting rules used in a

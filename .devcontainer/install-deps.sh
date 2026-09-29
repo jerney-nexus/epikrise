@@ -26,6 +26,7 @@ sudo apt-get clean
 sudo rm -rf /var/lib/apt/lists/*
 
 rustup component add clippy rustfmt
+cargo install cargo-nextest --locked
 
 host_target="$(rustc -vV | sed -n 's/^host: //p')"
 case "$(uname -m)" in

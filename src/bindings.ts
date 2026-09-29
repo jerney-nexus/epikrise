@@ -19,6 +19,10 @@ export const commands = {
     typedError<ExtractedBlock, IngestError>(
       __TAURI_INVOKE("extract_file", { fileName, bytes }),
     ),
+  extractImage: (fileName: string, bytes: number[], visionEnabled: boolean) =>
+    typedError<ExtractedBlock, IngestError>(
+      __TAURI_INVOKE("extract_image", { fileName, bytes, visionEnabled }),
+    ),
   extractRawText: (text: string) =>
     typedError<ExtractedBlock, IngestError>(
       __TAURI_INVOKE("extract_raw_text", { text }),
@@ -27,6 +31,8 @@ export const commands = {
     typedError<ExtractedBlock, IngestError>(
       __TAURI_INVOKE("extract_text_file", { fileName, bytes }),
     ),
+  extractUrl: (address: string) =>
+    typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_url", { address })),
   generate: (request: GenerateRequest) =>
     typedError<null, LlmError>(__TAURI_INVOKE("generate", { request })),
   greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
@@ -91,6 +97,7 @@ export type ExtractedBlock = {
   round: number;
   provenance: InputProvenance;
   content: string;
+  image?: ImageAttachment | null;
 };
 
 export type GenerateRequest = {
@@ -126,6 +133,12 @@ export type GenerationParams = {
   reasoning_effort?: ReasoningEffort | null;
 };
 
+export type ImageAttachment = {
+  mime_type: string;
+  data: number[];
+  name: string;
+};
+
 export type IngestError =
   | { key: "empty_input" }
   | { key: "invalid_utf8" }
@@ -146,7 +159,18 @@ export type IngestError =
   | { key: "html_conversion_failed" }
   | { key: "no_html_text" }
   | { key: "invalid_rtf" }
-  | { key: "no_rtf_text" };
+  | { key: "no_rtf_text" }
+  | { key: "invalid_url" }
+  | { key: "unsafe_url" }
+  | { key: "url_request_failed" }
+  | { key: "url_response_too_large" }
+  | { key: "too_many_url_redirects" }
+  | { key: "unsupported_url_content" }
+  | { key: "image_too_large" }
+  | { key: "unsupported_image" }
+  | { key: "invalid_image" }
+  | { key: "image_ocr_unavailable" }
+  | { key: "image_ocr_failed" };
 
 export type InputProvenance =
   | "RawText"
@@ -203,7 +227,14 @@ export type OutputViolationKind =
   | "bullet_character";
 
 export type ProviderAdapter =
-  "open_ai" | "anthropic" | "gemini" | "ollama" | "open_ai_compatible";
+  | "open_ai"
+  | "anthropic"
+  | "gemini"
+  | "ollama"
+  | "open_ai_compatible"
+  | "open_router"
+  | "xai"
+  | "groq";
 
 export type ProviderProfile = {
   id: string;

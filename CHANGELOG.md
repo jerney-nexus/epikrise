@@ -18,5 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dev container definition with the Rust, Node and Linux GUI toolchain
   preinstalled.
 - Project documentation: README, contributing guide, changelog and license.
+- OpenRouter, xAI and Groq provider profiles.
+- URL ingestion with DNS-pinned requests, private/reserved address rejection,
+  bounded redirects, response size limits and timeouts.
+- PNG/JPEG screenshot input with local OCR and an explicit, capability-gated
+  vision fallback, plus file drop and clipboard-image workflows.
+- Project-local ESLint support for Svelte and TypeScript, and Prettier support
+  for Svelte files, plus a Cargo Nextest workflow for Rust tests.
 
 [Unreleased]: https://github.com/pascaljerney/epikrise/compare/HEAD

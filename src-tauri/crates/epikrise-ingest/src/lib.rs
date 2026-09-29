@@ -11,12 +11,20 @@ use quick_xml::reader::Reader;
 use rtf_parser_tt::{ControlWord, Lexer, Parser, Token};
 use serde::Serialize;
 use specta::Type;
-use std::io::{Cursor, Read};
+use std::{
+    io::{Cursor, Read},
+    net::{IpAddr, SocketAddr},
+    time::Duration,
+};
 use thiserror::Error;
 use zip::ZipArchive;
 
 const MAX_DOCX_DOCUMENT_XML_BYTES: u64 = 16 * 1024 * 1024;
 const MIN_PDF_CHARACTERS_PER_PAGE: usize = 40;
+const MAX_URL_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
+const MAX_URL_REDIRECTS: usize = 3;
+const MAX_IMAGE_INPUT_BYTES: usize = 20 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION: u32 = 8_192;
 
 #[derive(Debug, Error, Serialize, Type, PartialEq, Eq)]
 #[serde(tag = "key", rename_all = "snake_case")]
@@ -61,6 +69,238 @@ pub enum IngestError {
     InvalidRtf,
     #[error("RTF document contains no extractable text")]
     NoRtfText,
+    #[error("URL must use HTTP or HTTPS without credentials")]
+    InvalidUrl,
+    #[error("URL resolves to a private or reserved address")]
+    UnsafeUrl,
+    #[error("URL request failed")]
+    UrlRequestFailed,
+    #[error("URL response exceeded the size limit")]
+    UrlResponseTooLarge,
+    #[error("URL redirected too many times")]
+    TooManyUrlRedirects,
+    #[error("URL did not return extractable HTML or text")]
+    UnsupportedUrlContent,
+    #[error("image input exceeds the size or dimension limit")]
+    ImageTooLarge,
+    #[error("image format is unsupported; use PNG or JPEG")]
+    UnsupportedImage,
+    #[error("image data could not be decoded")]
+    InvalidImage,
+    #[error("image OCR runtime is unavailable")]
+    ImageOcrUnavailable,
+    #[error("image OCR failed or returned no text")]
+    ImageOcrFailed,
+}
+
+pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError> {
+    let mut current_url = validate_url(&address)?;
+    for redirect_count in 0..=MAX_URL_REDIRECTS {
+        let host = current_url.host_str().ok_or(IngestError::InvalidUrl)?;
+        let port = current_url
+            .port_or_known_default()
+            .ok_or(IngestError::InvalidUrl)?;
+        let resolved = tokio::net::lookup_host((host, port))
+            .await
+            .map_err(|_| IngestError::UrlRequestFailed)?
+            .collect::<Vec<SocketAddr>>();
+        if resolved.is_empty() || resolved.iter().any(|address| !is_public_ip(address.ip())) {
+            return Err(IngestError::UnsafeUrl);
+        }
+
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(10))
+            .no_proxy()
+            .resolve_to_addrs(host, &resolved)
+            .build()
+            .map_err(|_| IngestError::UrlRequestFailed)?;
+        let mut response = client
+            .get(current_url.clone())
+            .header(reqwest::header::USER_AGENT, "Epikrise/0.1")
+            .send()
+            .await
+            .map_err(|_| IngestError::UrlRequestFailed)?;
+
+        if response.status().is_redirection() {
+            if redirect_count == MAX_URL_REDIRECTS {
+                return Err(IngestError::TooManyUrlRedirects);
+            }
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .ok_or(IngestError::UrlRequestFailed)?;
+            current_url = validate_url(
+                current_url
+                    .join(location)
+                    .map_err(|_| IngestError::InvalidUrl)?
+                    .as_str(),
+            )?;
+            continue;
+        }
+        if !response.status().is_success() {
+            return Err(IngestError::UrlRequestFailed);
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_URL_RESPONSE_BYTES as u64)
+        {
+            return Err(IngestError::UrlResponseTooLarge);
+        }
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| IngestError::UrlRequestFailed)?
+        {
+            if bytes.len().saturating_add(chunk.len()) > MAX_URL_RESPONSE_BYTES {
+                return Err(IngestError::UrlResponseTooLarge);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+
+        let text = match content_type.as_str() {
+            "text/html" | "application/xhtml+xml" => html2text::from_read(bytes.as_slice(), 120)
+                .map_err(|_| IngestError::HtmlConversionFailed)?,
+            "text/plain" => String::from_utf8(bytes).map_err(|_| IngestError::InvalidUtf8)?,
+            _ => return Err(IngestError::UnsupportedUrlContent),
+        };
+        if text.trim().is_empty() {
+            return Err(IngestError::NoHtmlText);
+        }
+        return Ok(ExtractedBlock::new(
+            uuid::Uuid::new_v4().to_string(),
+            InputProvenance::Url {
+                address: current_url.to_string(),
+            },
+            text,
+        ));
+    }
+    Err(IngestError::TooManyUrlRedirects)
+}
+
+fn validate_url(address: &str) -> Result<url::Url, IngestError> {
+    let parsed = url::Url::parse(address).map_err(|_| IngestError::InvalidUrl)?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err(IngestError::InvalidUrl);
+    }
+    Ok(parsed)
+}
+
+fn is_public_ip(address: IpAddr) -> bool {
+    match address {
+        IpAddr::V4(address) => {
+            let [first, second, third, _] = address.octets();
+            !(address.is_private()
+                || address.is_loopback()
+                || address.is_link_local()
+                || address.is_unspecified()
+                || address.is_broadcast()
+                || address.is_multicast()
+                || first == 0
+                || first >= 240
+                || (first == 100 && (64..=127).contains(&second))
+                || (first == 192 && second == 0 && (third == 0 || third == 2))
+                || (first == 192 && second == 88 && third == 99)
+                || (first == 198 && (second == 18 || second == 19))
+                || (first == 198 && second == 51 && third == 100)
+                || (first == 203 && second == 0 && third == 113))
+        }
+        IpAddr::V6(address) => {
+            let segments = address.segments();
+            !(address.is_loopback()
+                || address.is_unspecified()
+                || address.is_multicast()
+                || (segments[0] & 0xe000) != 0x2000
+                || (segments[0] & 0xfe00) == 0xfc00
+                || (segments[0] & 0xffc0) == 0xfe80
+                || (segments[0] == 0x2001 && segments[1] <= 0x01ff)
+                || segments[0] == 0x2002
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+                || address
+                    .to_ipv4_mapped()
+                    .is_some_and(|mapped| !is_public_ip(IpAddr::V4(mapped))))
+        }
+    }
+}
+
+pub fn extract_image_with_ocr<F>(
+    file_name: String,
+    bytes: &[u8],
+    recognize: F,
+) -> Result<ExtractedBlock, IngestError>
+where
+    F: FnOnce(&[u8]) -> Result<String, IngestError>,
+{
+    let (normalized, _) = normalize_image(bytes)?;
+    let text = recognize(&normalized)?;
+    if text.trim().is_empty() {
+        return Err(IngestError::ImageOcrFailed);
+    }
+    Ok(ExtractedBlock::new(
+        uuid::Uuid::new_v4().to_string(),
+        InputProvenance::File { name: file_name },
+        text,
+    ))
+}
+
+pub fn extract_image_for_vision(
+    file_name: String,
+    bytes: &[u8],
+) -> Result<ExtractedBlock, IngestError> {
+    let (normalized, mime_type) = normalize_image(bytes)?;
+    let mut block = ExtractedBlock::new(
+        uuid::Uuid::new_v4().to_string(),
+        InputProvenance::File {
+            name: file_name.clone(),
+        },
+        "Image attached for visual analysis.",
+    );
+    block.image = Some(epikrise_core::ImageAttachment {
+        mime_type,
+        data: normalized,
+        name: file_name,
+    });
+    Ok(block)
+}
+
+fn normalize_image(bytes: &[u8]) -> Result<(Vec<u8>, String), IngestError> {
+    if bytes.len() > MAX_IMAGE_INPUT_BYTES {
+        return Err(IngestError::ImageTooLarge);
+    }
+    match infer::get(bytes).map(|kind| kind.mime_type()) {
+        Some("image/png" | "image/jpeg") => {}
+        _ => return Err(IngestError::UnsupportedImage),
+    }
+    let mut reader = image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|_| IngestError::InvalidImage)?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_IMAGE_DIMENSION);
+    limits.max_image_height = Some(MAX_IMAGE_DIMENSION);
+    limits.max_alloc = Some(128 * 1024 * 1024);
+    reader.limits(limits);
+    let decoded = reader.decode().map_err(|_| IngestError::InvalidImage)?;
+    let mut normalized = Cursor::new(Vec::new());
+    decoded
+        .write_to(&mut normalized, image::ImageFormat::Png)
+        .map_err(|_| IngestError::InvalidImage)?;
+    Ok((normalized.into_inner(), "image/png".to_owned()))
 }
 
 pub fn extract_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
@@ -410,12 +650,122 @@ pub fn extract_raw_text(text: String) -> Result<ExtractedBlock, IngestError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        IngestError, extract_file, extract_file_with_ocr, extract_raw_text, extract_text_file,
+        IngestError, extract_file, extract_file_with_ocr, extract_image_for_vision,
+        extract_image_with_ocr, extract_raw_text, extract_text_file, extract_url, is_public_ip,
+        validate_url,
     };
     use epikrise_core::InputProvenance;
-    use std::io::{Cursor, Write};
+    use std::{
+        io::{Cursor, Write},
+        net::IpAddr,
+    };
     use zip::ZipWriter;
     use zip::write::SimpleFileOptions;
+
+    #[test]
+    fn rejects_non_http_urls_and_embedded_credentials() {
+        assert_eq!(
+            validate_url("file:///etc/passwd"),
+            Err(IngestError::InvalidUrl)
+        );
+        assert_eq!(
+            validate_url("https://user:secret@example.org"),
+            Err(IngestError::InvalidUrl)
+        );
+        assert!(validate_url("https://example.org/path").is_ok());
+    }
+
+    #[test]
+    fn rejects_private_and_reserved_destination_addresses() {
+        for address in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "192.0.2.1",
+            "198.18.0.1",
+            "224.0.0.1",
+            "::1",
+            "fc00::1",
+            "fe80::1",
+            "2001:db8::1",
+            "::ffff:127.0.0.1",
+        ] {
+            let parsed = address
+                .parse::<IpAddr>()
+                .expect("test address should parse");
+            assert!(!is_public_ip(parsed), "{address} must be blocked");
+        }
+        assert!(is_public_ip("1.1.1.1".parse().expect("public IPv4 parses")));
+        assert!(is_public_ip(
+            "2606:4700:4700::1111".parse().expect("public IPv6 parses")
+        ));
+    }
+
+    #[tokio::test]
+    async fn blocks_loopback_url_before_connecting() {
+        assert_eq!(
+            extract_url("http://127.0.0.1:8080/".to_owned()).await,
+            Err(IngestError::UnsafeUrl)
+        );
+    }
+
+    #[test]
+    fn image_input_is_normalized_for_ocr_or_vision() {
+        let mut image_bytes = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(2, 2)
+            .write_to(&mut image_bytes, image::ImageFormat::Png)
+            .expect("synthetic image should encode");
+        let image_bytes = image_bytes.into_inner();
+
+        let extracted = extract_image_with_ocr("screen.png".to_owned(), &image_bytes, |png| {
+            assert_eq!(
+                infer::get(png).map(|kind| kind.mime_type()),
+                Some("image/png")
+            );
+            Ok("Recognized clinical finding".to_owned())
+        })
+        .expect("OCR output should be returned as text");
+        assert_eq!(extracted.content, "Recognized clinical finding");
+        assert!(extracted.image.is_none());
+
+        let vision = extract_image_for_vision("screen.png".to_owned(), &image_bytes)
+            .expect("vision fallback should produce a normalized image attachment");
+        assert_eq!(
+            vision.image.as_ref().map(|image| image.mime_type.as_str()),
+            Some("image/png")
+        );
+        assert_eq!(
+            infer::get(&vision.image.expect("vision image is attached").data)
+                .map(|kind| kind.mime_type()),
+            Some("image/png")
+        );
+
+        let mut jpeg_bytes = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(2, 2)
+            .write_to(&mut jpeg_bytes, image::ImageFormat::Jpeg)
+            .expect("synthetic JPEG should encode");
+        let jpeg_vision =
+            extract_image_for_vision("screen.jpg".to_owned(), &jpeg_bytes.into_inner())
+                .expect("JPEG should be normalized for vision");
+        assert_eq!(
+            jpeg_vision
+                .image
+                .as_ref()
+                .map(|image| image.mime_type.as_str()),
+            Some("image/png")
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_image_data() {
+        assert_eq!(
+            extract_image_for_vision("screen.gif".to_owned(), b"not an image"),
+            Err(IngestError::UnsupportedImage)
+        );
+    }
 
     #[test]
     fn extracts_nonempty_text_without_mutating_it() {

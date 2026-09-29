@@ -27,6 +27,7 @@ authors = ["Pascal Jerney"]
 
 [workspace.dependencies]
 calamine = "0.36"
+base64 = "0.22"
 async-trait = "0.1"
 epikrise-core = { path = "crates/epikrise-core" }
 epikrise-ingest = { path = "crates/epikrise-ingest" }
@@ -35,7 +36,7 @@ futures-util = "0.3"
 genai = "0.6.1"
 infer = "0.19"
 html2text = "0.17"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 minijinja = { version = "2", features = ["fuel"] }
 quick-xml = "0.42"
@@ -48,8 +49,9 @@ sha2 = "0.10"
 specta = { version = "2.0.0-rc.25", features = ["derive"] }
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "net", "rt"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 uuid = { version = "1", features = ["v4"] }
 url = "2"
 zeroize = "1.8"

@@ -6,18 +6,13 @@
     "ghcr.io/devcontainers/features/node:1": {
       "version": "22"
     },
-    "ghcr.io/devcontainers/features/desktop-lite:1": {
-      "version": "latest"
-    },
-    "ghcr.io/devcontainers/features/copilot-cli:1": {
-      "version": "latest"
-    },
-    "ghcr.io/devcontainers-extra/features/ripgrep:1": {
-      "version": "latest"
-    }
+    "ghcr.io/devcontainers/features/desktop-lite:1": {},
+    "ghcr.io/devcontainers/features/copilot-cli:1": {},
+    "ghcr.io/devcontainers-extra/features/ripgrep:1": {},
+    "ghcr.io/devcontainers-extra/features/prettier:1": {}
   },
   "onCreateCommand": "bash .devcontainer/install-deps.sh",
-  "postCreateCommand": "npm install",
+  "postCreateCommand": "npm ci --include=dev",
   "forwardPorts": [1420, 6080],
   "portsAttributes": {
     "1420": {
