@@ -290,6 +290,12 @@ fn prepare_request(
         .with_service_target_resolver_fn(target_resolver)
         .with_auth_resolver_fn(auth_resolver)
         .build();
+    let model_for_request = match profile.adapter {
+        ProviderAdapter::Groq if !profile.model.starts_with("groq::") => {
+            format!("groq::{}", profile.model)
+        }
+        _ => profile.model.clone(),
+    };
 
     let system_prompt = messages
         .iter()
@@ -355,7 +361,7 @@ fn prepare_request(
         options = options.with_reasoning_effort(reasoning_effort);
     }
 
-    Ok((client, profile.model.clone(), request, options))
+    Ok((client, model_for_request, request, options))
 }
 
 #[async_trait::async_trait]
@@ -517,6 +523,58 @@ mod tests {
         assert_eq!(
             genai_adapter(&ProviderAdapter::Groq, "llama-3.3-70b-versatile"),
             AdapterKind::Groq
+        );
+    }
+
+    #[tokio::test]
+    async fn groq_chat_profiles_resolve_the_groq_default_endpoint() {
+        struct NoCredentials;
+
+        impl super::CredentialStore for NoCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let profile = ProviderProfile {
+            id: "groq".to_owned(),
+            display_name: "Groq".to_owned(),
+            adapter: ProviderAdapter::Groq,
+            model: "llama-3.3-70b-versatile".to_owned(),
+            endpoint: None,
+            auth: AuthSource::None,
+            capabilities: ModelCapabilities {
+                vision: false,
+                streaming: true,
+                max_context: None,
+            },
+            generation: GenerationParams {
+                temperature: None,
+                max_tokens: Some(1),
+                reasoning_effort: None,
+            },
+        };
+        let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
+        let (client, model, _, _) = prepare_request(
+            &credentials,
+            &profile,
+            &[ChatMessage {
+                role: MessageRole::User,
+                content: "Reply with OK.".to_owned(),
+                images: Vec::new(),
+            }],
+        )
+        .expect("Groq request should be prepared");
+
+        assert_eq!(model, "groq::llama-3.3-70b-versatile");
+        let target = client
+            .resolve_service_target(model.as_str())
+            .await
+            .expect("Groq model should resolve to its adapter target");
+        assert_eq!(target.model.adapter_kind, genai::adapter::AdapterKind::Groq);
+        assert_eq!(
+            target.endpoint.base_url(),
+            "https://api.groq.com/openai/v1/"
         );
     }
 
