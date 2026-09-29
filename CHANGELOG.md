@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Three-pane clinical drafting workspace with responsive input and output panes,
   provider/template controls, connection settings dialog, and a live-preview
   template editor.
-- Template editor controls for adding, editing, deleting, and reordering sections.
+- Template editor controls for managing sections and editing output rules.
 - Per-input extraction-method provenance, plain/formatted output previews, and
   review-gated HTML clipboard output with a plain-text fallback.
 - Tauri v2 + SvelteKit project scaffold with `adapter-static` in SPA mode.

@@ -675,6 +675,28 @@
     queueTemplatePreview();
   }
 
+  function updateTemplateOutputRules(
+    updates: Partial<NonNullable<ClinicalTemplate["output_rules"]>>,
+  ) {
+    if (!templateEditDraft) return;
+    templateEditDraft = {
+      ...templateEditDraft,
+      output_rules: { ...templateEditDraft.output_rules, ...updates },
+    };
+  }
+
+  function updateTemplateOutputTerms(
+    field: "forbidden_terms" | "required_terms",
+    value: string,
+  ) {
+    updateTemplateOutputRules({
+      [field]: value
+        .split(/\r?\n/)
+        .map((term) => term.trim())
+        .filter(Boolean),
+    });
+  }
+
   function setTemplateEditorSections(sections: ClinicalTemplate["sections"]) {
     if (!templateEditDraft) return;
     templateEditDraft = {
@@ -2079,6 +2101,93 @@
           </label>
         </div>
 
+        <section class="template-output-rules" aria-labelledby="output-rules-title">
+          <p class="eyebrow" id="output-rules-title">Output rules</p>
+          <div class="template-output-rule-terms">
+            <label>
+              Forbidden terms
+              <textarea
+                rows="3"
+                value={(templateEditDraft.output_rules?.forbidden_terms ?? []).join(
+                  "\n",
+                )}
+                disabled={templateSaveBusy}
+                oninput={(event) =>
+                  updateTemplateOutputTerms(
+                    "forbidden_terms",
+                    event.currentTarget.value,
+                  )}></textarea>
+            </label>
+            <label>
+              Required terms
+              <textarea
+                rows="3"
+                value={(templateEditDraft.output_rules?.required_terms ?? []).join(
+                  "\n",
+                )}
+                disabled={templateSaveBusy}
+                oninput={(event) =>
+                  updateTemplateOutputTerms(
+                    "required_terms",
+                    event.currentTarget.value,
+                  )}></textarea>
+            </label>
+          </div>
+          <div class="template-output-rule-flags">
+            <label class="template-checkbox">
+              <input
+                type="checkbox"
+                checked={templateEditDraft.output_rules?.forbid_code_fences ?? false}
+                disabled={templateSaveBusy}
+                onchange={(event) =>
+                  updateTemplateOutputRules({
+                    forbid_code_fences: event.currentTarget.checked,
+                  })}
+              />
+              <span>Forbid code fences</span>
+            </label>
+            <label class="template-checkbox">
+              <input
+                type="checkbox"
+                checked={templateEditDraft.output_rules?.forbid_leading_whitespace ??
+                  false}
+                disabled={templateSaveBusy}
+                onchange={(event) =>
+                  updateTemplateOutputRules({
+                    forbid_leading_whitespace: event.currentTarget.checked,
+                  })}
+              />
+              <span>Forbid leading whitespace</span>
+            </label>
+            <label class="template-checkbox">
+              <input
+                type="checkbox"
+                checked={templateEditDraft.output_rules?.forbid_bullet_characters ??
+                  false}
+                disabled={templateSaveBusy}
+                onchange={(event) =>
+                  updateTemplateOutputRules({
+                    forbid_bullet_characters: event.currentTarget.checked,
+                  })}
+              />
+              <span>Forbid bullet characters</span>
+            </label>
+            <label class="template-checkbox">
+              <input
+                type="checkbox"
+                checked={templateEditDraft.output_rules?.forbid_parenthesized_dates ??
+                  false}
+                disabled={templateSaveBusy}
+                onchange={(event) =>
+                  updateTemplateOutputRules({
+                    forbid_parenthesized_dates: event.currentTarget.checked,
+                  })}
+              />
+              <span>Forbid parenthesized dates</span>
+            </label>
+          </div>
+        </section>
+
         <section
           class="template-sections-editor"
           aria-labelledby="sections-editor-title"
@@ -3063,7 +3172,7 @@
 
   .template-editor {
     display: grid;
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
     gap: 17px;
     max-height: min(88dvh, 900px);
     padding: 24px;
@@ -3080,6 +3189,47 @@
     flex-direction: column;
     gap: 4px;
     margin: 0;
+  }
+
+  .template-output-rules {
+    display: grid;
+    gap: 8px 16px;
+  }
+
+  .template-output-rules > .eyebrow {
+    margin: 0;
+  }
+
+  .template-output-rule-terms {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+  }
+
+  .template-output-rule-terms label {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    color: #51645b;
+    font-size: 11px;
+  }
+
+  .template-output-rule-terms textarea {
+    min-height: 66px;
+    resize: vertical;
+    padding: 7px 9px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .template-output-rule-flags {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 12px;
   }
 
   .template-sections-editor {
@@ -4167,6 +4317,11 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .template-output-rule-terms,
+    .template-output-rule-flags {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
     .template-editor-body {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: auto minmax(220px, 1fr) minmax(220px, 1fr);
@@ -4288,7 +4443,8 @@
       border-color: #34463b;
     }
 
-    .template-section-item-fields label {
+    .template-section-item-fields label,
+    .template-output-rule-terms label {
       color: #a7b7ad;
     }
 
