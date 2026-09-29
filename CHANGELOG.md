@@ -48,4 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ESLint for TypeScript and Svelte, Prettier formatting, and Cargo Nextest for
   Rust tests.
 
+### Changed
+
+- Kept URL entry usable beside its submit control, moved draft generation
+  below the clinical-material field, and matched the Tauri app icon to the
+  workspace E mark.
+
 [Unreleased]: https://github.com/pascaljerney/epikrise/compare/HEAD

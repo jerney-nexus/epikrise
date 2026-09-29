@@ -136,6 +136,7 @@
   let connectionMessage = $state("");
   let generationMessage = $state("");
   let generationIsError = $state(false);
+  let copyReviewMessage = $state("");
   let isPreparingGeneration = $state(false);
   let isInvalidatingReview = $state(false);
   let desktopAvailable = $state(false);
@@ -436,6 +437,7 @@
     caseSessionId = null;
     caseSessionTemplateId = "";
     reviewedOutputCaseId = null;
+    copyReviewMessage = "";
     prompt = "";
     sourceBlocks = [];
     draft = "";
@@ -462,6 +464,7 @@
     caseSessionId = null;
     caseSessionTemplateId = "";
     reviewedOutputCaseId = null;
+    copyReviewMessage = "";
     prompt = "";
     sourceBlocks = [];
     draft = "";
@@ -474,6 +477,7 @@
     const caseId = caseSessionId;
     if (!caseId || !draft || isGenerating) return;
     const reviewed = (event.currentTarget as HTMLInputElement).checked;
+    copyReviewMessage = "";
     try {
       const result = await commands.setCaseReview(caseId, reviewed);
       if (result.status === "error") {
@@ -558,8 +562,7 @@
     for (let index = 0; index < selection.rangeCount; index += 1) {
       if (selection.getRangeAt(index).intersectsNode(output)) {
         event.preventDefault();
-        generationMessage = "Review the output before copying.";
-        generationIsError = false;
+        copyReviewMessage = "Review the output before copying.";
         return;
       }
     }
@@ -1177,6 +1180,7 @@
     }
 
     isPreparingGeneration = true;
+    copyReviewMessage = "";
     generationMessage = "Preparing template";
     generationIsError = false;
     let systemPrompt: string;
@@ -1558,28 +1562,11 @@
       <p class="template-empty">No templates imported</p>
     {/if}
 
-    <section
-      class="controls-actions rail-generation-actions"
-      aria-label="Draft actions"
-    >
-      {#if isGenerating}
-        <button class="cancel-button" type="button" onclick={cancelGeneration}>
-          Cancel generation
-        </button>
-      {:else}
-        <button
-          class="generate-button"
-          type="button"
-          onclick={() => generateDraft()}
-          disabled={(!prompt.trim() && sourceBlocks.length === 0) ||
-            !activeTemplate ||
-            isPreparingGeneration ||
-            !isOutputTokenLimitValid}
-        >
-          {isPreparingGeneration ? "Preparing..." : "Generate draft"}
-        </button>
-      {/if}
-      {#if caseSessionId || prompt || draft}
+    {#if caseSessionId || prompt || draft}
+      <section
+        class="controls-actions rail-generation-actions"
+        aria-label="Case actions"
+      >
         <button
           class="case-discard-button"
           type="button"
@@ -1588,8 +1575,8 @@
         >
           Discard case
         </button>
-      {/if}
-    </section>
+      </section>
+    {/if}
     {#if generationMessage}
       <p class="generation-status" class:error={generationIsError} role="status">
         {generationMessage}
@@ -2180,6 +2167,23 @@
             onpaste={handleInputPaste}></textarea>
 
           <div class="source-actions">
+            {#if isGenerating}
+              <button class="cancel-button" type="button" onclick={cancelGeneration}>
+                Cancel generation
+              </button>
+            {:else}
+              <button
+                class="generate-button"
+                type="button"
+                onclick={() => generateDraft()}
+                disabled={(!prompt.trim() && sourceBlocks.length === 0) ||
+                  !activeTemplate ||
+                  isPreparingGeneration ||
+                  !isOutputTokenLimitValid}
+              >
+                {isPreparingGeneration ? "Preparing..." : "Generate draft"}
+              </button>
+            {/if}
             <p>Use anonymized clinical material.</p>
           </div>
         </section>
@@ -2190,7 +2194,9 @@
               <p class="eyebrow">02 / Review</p>
               <h3 id="draft-title">Generated summary</h3>
             </div>
-            {#if generationMessage}
+            {#if copyReviewMessage}
+              <span class="generation-status">{copyReviewMessage}</span>
+            {:else if generationMessage}
               <span class="generation-status" class:error={generationIsError}>
                 {generationMessage}
               </span>
@@ -2651,12 +2657,6 @@
     margin-top: 13px;
     padding-top: 12px;
     border-top: 1px solid #dce4de;
-  }
-
-  .controls-actions .generate-button,
-  .controls-actions .cancel-button {
-    width: 100%;
-    min-height: 44px;
   }
 
   .controls-actions .case-discard-button {
@@ -3315,14 +3315,15 @@
 
   .input-tools {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     margin: 0 0 12px;
   }
 
   .url-import {
-    display: flex;
+    display: grid;
     min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 7px;
   }
 
@@ -3351,7 +3352,7 @@
 
   .url-import input {
     min-width: 0;
-    flex: 1;
+    width: 100%;
   }
 
   .ingest-message {
@@ -3468,18 +3469,22 @@
 
   .source-actions {
     display: flex;
-    min-height: 60px;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
     padding-top: 14px;
   }
 
   .source-actions p {
-    max-width: 210px;
+    max-width: none;
     margin: 0;
     color: #75847c;
     font-size: 11px;
+  }
+
+  .source-actions .generate-button,
+  .source-actions .cancel-button {
+    width: 100%;
   }
 
   .generate-button {
@@ -3842,14 +3847,6 @@
 
     .input-tools {
       grid-template-columns: 1fr;
-    }
-
-    .url-import {
-      flex-wrap: wrap;
-    }
-
-    .url-import input {
-      flex-basis: 100%;
     }
 
     .work-footer {
