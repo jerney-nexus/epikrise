@@ -564,11 +564,12 @@
       }
       try {
         await writeClipboardHtml(formatOutputHtml(result.data), result.data);
-        generationMessage = "Reviewed formatted output copied";
+        copyReviewMessage = "Reviewed formatted output copied";
       } catch {
         await writeClipboardText(result.data);
-        generationMessage = "Reviewed output copied as plain text";
+        copyReviewMessage = "Reviewed output copied as plain text";
       }
+      generationMessage = "";
       generationIsError = false;
     } catch {
       generationMessage = "The output could not be copied.";
