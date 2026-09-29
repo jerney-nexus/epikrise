@@ -27,6 +27,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@fluent/bundle": "^0.19.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-clipboard-manager": "^2.4.0",
     "@tauri-apps/plugin-opener": "^2"

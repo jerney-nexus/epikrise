@@ -3,6 +3,15 @@
   import { resolve } from "$app/paths";
   import { isTauri } from "@tauri-apps/api/core";
   import {
+    defaultLocale,
+    initializeLocale,
+    localePreferenceKey,
+    pseudoLocale,
+    setLocale,
+    supportedLocales,
+    translate,
+  } from "$lib/i18n";
+  import {
     readText as readClipboardText,
     writeHtml as writeClipboardHtml,
     writeText as writeClipboardText,
@@ -140,6 +149,17 @@
   let isPreparingGeneration = $state(false);
   let isInvalidatingReview = $state(false);
   let desktopAvailable = $state(false);
+  let uiLocale = $state(defaultLocale);
+
+  function t(source: string, args: Record<string, string | number> = {}): string {
+    return translate(uiLocale, source, args);
+  }
+
+  function changeUiLocale(locale: string) {
+    setLocale(locale);
+    uiLocale = locale;
+    document.documentElement.lang = locale === pseudoLocale ? "en" : locale;
+  }
 
   const isGenerating = $derived(activeRequestId !== null);
   const inputCharacterCount = $derived(
@@ -210,13 +230,13 @@
 
   function formatError(error: LlmError): string {
     if (error.key === "provider_rejected") {
-      return `The provider rejected the request (HTTP ${error.status}). Verify the model ID and account access.`;
+      return t("provider-rejected", { status: error.status });
     }
-    return errorMessages[error.key];
+    return t(errorMessages[error.key]);
   }
 
   function formatTemplateError(error: TemplateError): string {
-    return templateErrorMessages[error.key];
+    return t(templateErrorMessages[error.key]);
   }
 
   function formatIngestError(error: IngestError): string {
@@ -232,10 +252,10 @@
         "This PDF has more than 12 scanned pages. Split it or provide fewer pages.",
       pdf_vision_too_large: "The scanned pages exceed the 20 MB vision limit.",
     };
-    return (
-      messages[error.key] ??
-      `Input extraction failed: ${error.key.replaceAll("_", " ")}.`
-    );
+    const message = messages[error.key];
+    return message
+      ? t(message)
+      : t("input-extraction-failed", { error: error.key.replaceAll("_", " ") });
   }
 
   function appendSourceBlock(block: ExtractedBlock) {
@@ -256,11 +276,11 @@
   function sourceProvenanceLabel(block: ExtractedBlock): string {
     const provenance = block.provenance;
     if (typeof provenance === "string") {
-      return provenance === "Clipboard" ? "Clipboard" : "Clinical text";
+      return t(provenance === "Clipboard" ? "Clipboard" : "Clinical text");
     }
     if ("File" in provenance && provenance.File) return provenance.File.name;
     if ("Url" in provenance && provenance.Url) return provenance.Url.address;
-    return "Clinical input";
+    return t("Clinical input");
   }
 
   function extractionMethodLabel(method: ExtractionMethod | undefined): string {
@@ -270,7 +290,7 @@
       ocr: "Local OCR",
       vision: "Model vision",
     };
-    return labels[method ?? "parsed"];
+    return t(labels[method ?? "parsed"]);
   }
 
   function escapeHtml(value: string): string {
@@ -302,7 +322,7 @@
     try {
       for (const file of Array.from(files)) {
         if (file.size > 20 * 1024 * 1024) {
-          ingestMessage = `${file.name}: image or file exceeds the 20 MB limit.`;
+          ingestMessage = t("input-file-too-large", { name: file.name });
           ingestIsError = true;
           continue;
         }
@@ -311,7 +331,10 @@
           ? await commands.extractImage(file.name, bytes, visionEnabled)
           : await commands.extractFile(file.name, bytes, visionEnabled);
         if (result.status === "error") {
-          ingestMessage = `${file.name}: ${formatIngestError(result.error)}`;
+          ingestMessage = t("file-extraction-failed", {
+            name: file.name,
+            error: formatIngestError(result.error),
+          });
           ingestIsError = true;
           continue;
         }
@@ -1038,6 +1061,15 @@
   }
 
   onMount(() => {
+    let storedLocale: string | null = null;
+    try {
+      storedLocale = localStorage.getItem(localePreferenceKey);
+    } catch {
+      // Storage can be unavailable in restricted webviews.
+    }
+    const detectedLocale = navigator.languages[0] ?? navigator.language;
+    uiLocale = initializeLocale(storedLocale, detectedLocale);
+    document.documentElement.lang = uiLocale;
     desktopAvailable = isTauri();
     if (!desktopAvailable) return;
     void restoreTemplates()
@@ -1117,8 +1149,8 @@
       }
       connectionState = "ready";
       connectionMessage = result.data.length
-        ? `Connected · ${result.data.length} models available`
-        : "Connected · no models returned";
+        ? "provider-models-available"
+        : "connected-no-models-returned";
     } catch {
       if (requestedProfileKey === modelProfileKey) {
         connectionState = "error";
@@ -1288,7 +1320,7 @@
 
     isPreparingGeneration = true;
     copyReviewMessage = "";
-    generationMessage = "Preparing template";
+    generationMessage = "preparing-template";
     generationIsError = false;
     let systemPrompt: string;
     try {
@@ -1403,7 +1435,7 @@
 </script>
 
 <svelte:head>
-  <title>Epikrise | Draft workspace</title>
+  <title>{t("Epikrise | Draft workspace")}</title>
   <meta name="theme-color" content="#f2f5f1" />
 </svelte:head>
 
@@ -1411,7 +1443,7 @@
 
 <div class="app-shell">
   <aside class="provider-rail" aria-labelledby="controls-heading">
-    <a class="brand" href={resolve("/")} aria-label="Epikrise home">
+    <a class="brand" href={resolve("/")} aria-label={t("Epikrise home")}>
       <span class="brand-mark" aria-hidden="true">E</span>
       <span class="brand-name">Epikrise</span>
     </a>
@@ -1427,23 +1459,39 @@
       }}
     >
       <section class="provider-settings" aria-labelledby="provider-settings-title">
-        <p class="eyebrow">Workspace</p>
+        <p class="eyebrow">{t("Workspace")}</p>
         <div class="dialog-heading">
           <div>
-            <h1 id="provider-settings-title">Provider settings</h1>
-            <p>Choose a provider endpoint and saved keychain credential.</p>
+            <h1 id="provider-settings-title">{t("Provider settings")}</h1>
+            <p>{t("Choose a provider endpoint and saved keychain credential.")}</p>
           </div>
           <button
             class="dialog-close"
             type="button"
-            aria-label="Close provider settings"
+            aria-label={t("Close provider settings")}
             onclick={() => providerSettingsDialog?.close()}
           >
             ×
           </button>
         </div>
 
-        <label for="active-adapter">Provider</label>
+        <label for="interface-language">{t("language")}</label>
+        <select
+          id="interface-language"
+          value={uiLocale}
+          onchange={(event) => changeUiLocale(event.currentTarget.value)}
+        >
+          {#each supportedLocales as locale (locale)}
+            <option value={locale}>
+              {t(locale === "de-CH" ? "language-de-ch" : "language-en")}
+            </option>
+          {/each}
+          {#if import.meta.env.DEV}
+            <option value={pseudoLocale}>{t("language-pseudo")}</option>
+          {/if}
+        </select>
+
+        <label for="active-adapter">{t("Provider")}</label>
         <select
           id="active-adapter"
           value={adapter}
@@ -1460,7 +1508,7 @@
           <option value="groq">Groq</option>
         </select>
 
-        <label for="endpoint">Endpoint</label>
+        <label for="endpoint">{t("Endpoint")}</label>
         <input
           id="endpoint"
           bind:value={endpoint}
@@ -1468,17 +1516,17 @@
           spellcheck="false"
           placeholder={adapter === "ollama"
             ? "http://localhost:11434"
-            : "Provider default"}
+            : t("Provider default")}
         />
 
-        <label for="provider-credential">Provider credential</label>
+        <label for="provider-credential">{t("Provider credential")}</label>
         <select
           id="provider-credential"
           bind:value={credentialId}
           onchange={() => (credentialRemovalPending = false)}
           disabled={credentialBusy}
         >
-          <option value="">None</option>
+          <option value="">{t("None")}</option>
           {#each credentialsForProvider as credential (credential.id)}
             <option value={credential.id}>{credential.label}</option>
           {/each}
@@ -1490,7 +1538,7 @@
             onclick={openAddCredential}
             disabled={!desktopAvailable || credentialBusy || isGenerating}
           >
-            Add new provider credential
+            {t("Add provider credential")}
           </button>
           <button
             class="credential-remove-button"
@@ -1498,16 +1546,20 @@
             onclick={() => (credentialRemovalPending = true)}
             disabled={!selectedCredential || credentialBusy}
           >
-            Remove provider credential
+            {t("Remove provider credential")}
           </button>
         </div>
         {#if credentialRemovalPending && selectedCredential}
           <div
             class="credential-confirmation"
             role="group"
-            aria-label="Confirm credential removal"
+            aria-label={t("Confirm credential removal")}
           >
-            <p>Remove “{selectedCredential.label}” from the OS keychain?</p>
+            <p>
+              {t("Remove selected credential from the OS keychain", {
+                label: selectedCredential.label,
+              })}
+            </p>
             <div>
               <button
                 class="credential-remove-button"
@@ -1515,7 +1567,7 @@
                 onclick={deleteProviderCredential}
                 disabled={credentialBusy}
               >
-                {credentialBusy ? "Removing..." : "Confirm removal"}
+                {credentialBusy ? t("Removing...") : t("Confirm removal")}
               </button>
               <button
                 class="credential-cancel-button"
@@ -1523,14 +1575,14 @@
                 onclick={() => (credentialRemovalPending = false)}
                 disabled={credentialBusy}
               >
-                Cancel
+                {t("Cancel")}
               </button>
             </div>
           </div>
         {/if}
         {#if credentialMessage}
           <p class="model-list-message" class:error={credentialIsError} role="status">
-            {credentialMessage}
+            {t(credentialMessage)}
           </p>
         {/if}
 
@@ -1540,7 +1592,7 @@
           onclick={testProvider}
           disabled={connectionState === "checking"}
         >
-          {connectionState === "checking" ? "Checking..." : "Check connection"}
+          {connectionState === "checking" ? t("Checking...") : t("Check connection")}
         </button>
 
         {#if connectionMessage}
@@ -1550,7 +1602,7 @@
             role="status"
           >
             <span class="status-dot" aria-hidden="true"></span>
-            {connectionMessage}
+            {t(connectionMessage, { count: availableModels.length })}
           </p>
         {/if}
       </section>
@@ -1576,19 +1628,19 @@
         <p class="eyebrow">{providerNames[adapter]}</p>
         <div class="dialog-heading">
           <div>
-            <h2 id="add-credential-title">Add provider credential</h2>
-            <p>The API key is stored in the OS keychain.</p>
+            <h2 id="add-credential-title">{t("Add provider credential")}</h2>
+            <p>{t("The API key is stored in the OS keychain.")}</p>
           </div>
           <button
             class="dialog-close"
             type="button"
-            aria-label="Close add credential dialog"
+            aria-label={t("Close add credential dialog")}
             onclick={() => addCredentialDialog?.close()}
           >
             ×
           </button>
         </div>
-        <label for="new-credential-label">Credential label</label>
+        <label for="new-credential-label">{t("Credential label")}</label>
         <input
           id="new-credential-label"
           bind:value={newCredentialLabel}
@@ -1597,7 +1649,7 @@
           required
           disabled={credentialBusy}
         />
-        <label for="credential-secret">API key</label>
+        <label for="credential-secret">{t("API key")}</label>
         <input
           id="credential-secret"
           type="password"
@@ -1609,51 +1661,51 @@
         />
         {#if credentialMessage}
           <p class="model-list-message" class:error={credentialIsError} role="status">
-            {credentialMessage}
+            {t(credentialMessage)}
           </p>
         {/if}
         <button class="connection-button" type="submit" disabled={credentialBusy}>
-          {credentialBusy ? "Saving..." : "Add credential"}
+          {credentialBusy ? t("Saving...") : t("Add credential")}
         </button>
       </form>
     </dialog>
 
-    <section class="active-provider" aria-label="Active model and settings">
-      <p class="eyebrow">Active configuration</p>
+    <section class="active-provider" aria-label={t("Active model and settings")}>
+      <p class="eyebrow">{t("Active configuration")}</p>
       <dl class="provider-summary">
         <div>
-          <dt>Provider</dt>
+          <dt>{t("Provider")}</dt>
           <dd>{providerNames[adapter]}</dd>
         </div>
         <div>
-          <dt>Credential</dt>
-          <dd>{selectedCredential?.label ?? "None"}</dd>
+          <dt>{t("Credential")}</dt>
+          <dd>{selectedCredential?.label ?? t("None")}</dd>
         </div>
         <div>
-          <dt>Model</dt>
-          <dd>{model || "No model selected"}</dd>
+          <dt>{t("Model")}</dt>
+          <dd>{model || t("No model selected")}</dd>
         </div>
         <div>
-          <dt>Template</dt>
-          <dd>{activeTemplate?.metadata.name ?? "None"}</dd>
+          <dt>{t("Template")}</dt>
+          <dd>{activeTemplate?.metadata.name ?? t("None")}</dd>
         </div>
       </dl>
       <div class="settings-actions">
         <button class="settings-trigger" type="button" onclick={openProviderSettings}>
-          Provider settings
+          {t("Provider settings")}
         </button>
         <button class="settings-trigger" type="button" onclick={openModelSettings}>
-          Model settings
+          {t("Model settings")}
         </button>
         <button class="settings-trigger" type="button" onclick={openTemplateSettings}>
-          Template settings
+          {t("Template settings")}
         </button>
       </div>
     </section>
 
     {#if importedTemplates.length}
       <div class="rail-template-picker">
-        <label for="active-template-rail">Active template</label>
+        <label for="active-template-rail">{t("Active template")}</label>
         <select
           id="active-template-rail"
           value={activeTemplateId}
@@ -1666,13 +1718,13 @@
         </select>
       </div>
     {:else}
-      <p class="template-empty">No templates imported</p>
+      <p class="template-empty">{t("No templates imported")}</p>
     {/if}
 
     {#if caseSessionId || prompt || draft}
       <section
         class="controls-actions rail-generation-actions"
-        aria-label="Case actions"
+        aria-label={t("Case actions")}
       >
         <button
           class="case-discard-button"
@@ -1680,13 +1732,13 @@
           onclick={discardCase}
           disabled={isGenerating || isPreparingGeneration}
         >
-          Discard case
+          {t("Discard case")}
         </button>
       </section>
     {/if}
     {#if generationMessage}
       <p class="generation-status" class:error={generationIsError} role="status">
-        {generationMessage}
+        {t(generationMessage)}
       </p>
     {/if}
 
@@ -1701,23 +1753,23 @@
       }}
     >
       <section class="provider-settings" aria-labelledby="model-settings-title">
-        <p class="eyebrow">Generation</p>
+        <p class="eyebrow">{t("Generation")}</p>
         <div class="dialog-heading">
           <div>
-            <h2 id="model-settings-title">Model settings</h2>
-            <p>{providerNames[adapter]} · {model || "No model selected"}</p>
+            <h2 id="model-settings-title">{t("Model settings")}</h2>
+            <p>{providerNames[adapter]} · {model || t("No model selected")}</p>
           </div>
           <button
             class="dialog-close"
             type="button"
-            aria-label="Close model settings"
+            aria-label={t("Close model settings")}
             onclick={() => modelSettingsDialog?.close()}
           >
             ×
           </button>
         </div>
 
-        <label for="active-model">Model</label>
+        <label for="active-model">{t("Model")}</label>
         <div class="model-picker">
           <select
             id="active-model"
@@ -1725,7 +1777,7 @@
             disabled={modelListLoading || isGenerating}
           >
             {#if !currentModels.includes(model)}
-              <option value={model}>{model} (current)</option>
+              <option value={model}>{model} ({t("current")})</option>
             {/if}
             {#each currentModels as availableModel (availableModel)}
               <option value={availableModel}>{availableModel}</option>
@@ -1737,16 +1789,16 @@
             onclick={refreshModels}
             disabled={modelListLoading || isGenerating || isPreparingGeneration}
           >
-            {modelListLoading ? "Loading..." : "Refresh models"}
+            {modelListLoading ? t("Loading...") : t("Refresh models")}
           </button>
         </div>
         {#if modelListMessage}
           <p class="model-list-message" class:error={modelListIsError} role="status">
-            {modelListMessage}
+            {t(modelListMessage)}
           </p>
         {/if}
 
-        <label for="output-token-limit">Output token limit</label>
+        <label for="output-token-limit">{t("Output token limit")}</label>
         <input
           id="output-token-limit"
           type="number"
@@ -1760,28 +1812,28 @@
           disabled={isGenerating || isPreparingGeneration}
         />
         <p id="output-token-limit-hint" class="setting-hint">
-          1 to 1,000,000 tokens. Providers may impose a lower limit.
+          {t("token-limit-hint")}
         </p>
 
-        <label for="reasoning-effort">Reasoning effort</label>
+        <label for="reasoning-effort">{t("Reasoning effort")}</label>
         <select
           id="reasoning-effort"
           bind:value={reasoningEffort}
           disabled={isGenerating || isPreparingGeneration}
         >
-          <option value="provider_default">Provider default</option>
-          <option value="none">None</option>
-          <option value="minimal">Minimal</option>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="x_high">Extra high</option>
-          <option value="max">Maximum</option>
+          <option value="provider_default">{t("Provider default")}</option>
+          <option value="none">{t("None")}</option>
+          <option value="minimal">{t("Minimal")}</option>
+          <option value="low">{t("Low")}</option>
+          <option value="medium">{t("Medium")}</option>
+          <option value="high">{t("High")}</option>
+          <option value="x_high">{t("Extra high")}</option>
+          <option value="max">{t("Maximum")}</option>
         </select>
 
         <label class="vision-setting" for="vision-enabled">
           <input id="vision-enabled" type="checkbox" bind:checked={visionEnabled} />
-          <span>Allow image input for this model</span>
+          <span>{t("Allow image input for this model")}</span>
         </label>
       </section>
     </dialog>
@@ -1796,18 +1848,18 @@
         templateSettingsDialog?.close();
       }}
     >
-      <section class="template-settings" aria-label="Template settings">
+      <section class="template-settings" aria-label={t("Template settings")}>
         <div class="template-heading">
-          <p class="eyebrow">Workspace</p>
+          <p class="eyebrow">{t("Workspace")}</p>
           <div class="dialog-heading">
             <div>
-              <h2 id="template-settings-title">Template settings</h2>
-              <p>Select, import, and configure the active template.</p>
+              <h2 id="template-settings-title">{t("Template settings")}</h2>
+              <p>{t("Select, import, and configure the active template.")}</p>
             </div>
             <button
               class="dialog-close"
               type="button"
-              aria-label="Close template settings"
+              aria-label={t("Close template settings")}
               onclick={() => templateSettingsDialog?.close()}
             >
               ×
@@ -1816,7 +1868,7 @@
         </div>
 
         {#if importedTemplates.length}
-          <label for="active-template">Active template</label>
+          <label for="active-template">{t("Active template")}</label>
           <select
             id="active-template"
             value={activeTemplateId}
@@ -1832,7 +1884,7 @@
             onclick={exportActiveTemplate}
             disabled={templateBusy || !activeTemplate}
           >
-            Export .epitpl
+            {t("Export .epitpl")}
           </button>
           <button
             class="template-export-button"
@@ -1840,23 +1892,23 @@
             onclick={openTemplateEditor}
             disabled={!activeTemplate || isGenerating || isPreparingGeneration}
           >
-            Edit template
+            {t("Edit template")}
           </button>
         {:else}
-          <p class="template-empty">No templates imported</p>
+          <p class="template-empty">{t("No templates imported")}</p>
           <button
             class="template-export-button"
             type="button"
             onclick={createGenericStarter}
             disabled={templateBusy}
           >
-            Use generic starter
+            {t("Use generic starter")}
           </button>
         {/if}
 
         {#if activeTemplate?.variables.length}
           <div class="template-fields">
-            <p class="eyebrow">Template fields</p>
+            <p class="eyebrow">{t("Template fields")}</p>
             {#each activeTemplate.variables as variable (variable.name)}
               {@const fieldId = `template-variable-${variable.name}`}
               {#if variable.kind === "boolean"}
@@ -1891,7 +1943,9 @@
                     onchange={(event) =>
                       updateTemplateValue(variable.name, event.currentTarget.value)}
                   >
-                    <option value="" disabled={variable.required}>Select...</option>
+                    <option value="" disabled={variable.required}
+                      >{t("Select...")}</option
+                    >
                     {#each variable.options as option (option)}
                       <option value={option}>{option}</option>
                     {/each}
@@ -1917,7 +1971,7 @@
 
         {#if activeTemplate?.sections.length}
           <div class="template-fields template-section-fields">
-            <p class="eyebrow">Sections</p>
+            <p class="eyebrow">{t("Sections")}</p>
             {#each orderedTemplateSections(activeTemplate) as section (section.id)}
               {@const sectionInputId = `template-section-${section.id}`}
               <label class="template-checkbox" for={sectionInputId}>
@@ -1939,7 +1993,7 @@
         {/if}
 
         <label class="template-file-label" for="template-file">
-          {templateBusy ? "Working..." : "Import .epitpl"}
+          {templateBusy ? t("Working...") : t("Import .epitpl")}
         </label>
         <input
           id="template-file"
@@ -1953,30 +2007,30 @@
 
         {#if templateMessage}
           <p class="template-message" class:error={templateIsError} role="status">
-            {templateMessage}
+            {t(templateMessage)}
           </p>
         {/if}
 
         {#if pendingTemplate}
-          <div class="template-preview" aria-label="Template preview">
-            <p class="eyebrow">Review import</p>
+          <div class="template-preview" aria-label={t("Template preview")}>
+            <p class="eyebrow">{t("Review import")}</p>
             <h3>{pendingTemplate.metadata.name}</h3>
             <p>{pendingTemplate.metadata.description}</p>
             <dl>
               <div>
-                <dt>Locale</dt>
+                <dt>{t("Locale")}</dt>
                 <dd>{pendingTemplate.metadata.locale}</dd>
               </div>
               <div>
-                <dt>Version</dt>
+                <dt>{t("Version")}</dt>
                 <dd>{pendingTemplate.metadata.version}</dd>
               </div>
               <div>
-                <dt>Variables</dt>
+                <dt>{t("Variables")}</dt>
                 <dd>{pendingTemplate.variables.length}</dd>
               </div>
               <div>
-                <dt>Sections</dt>
+                <dt>{t("Sections")}</dt>
                 <dd>{pendingTemplate.sections.length}</dd>
               </div>
             </dl>
@@ -1986,7 +2040,7 @@
               </p>
             {/if}
             <details>
-              <summary>System prompt</summary>
+              <summary>{t("System prompt")}</summary>
               <pre>{pendingTemplate.system_prompt}</pre>
             </details>
             <div class="template-preview-actions">
@@ -1995,14 +2049,14 @@
                 onclick={savePendingTemplate}
                 disabled={templateBusy}
               >
-                Save template
+                {t("Save template")}
               </button>
               <button
                 class="template-discard"
                 onclick={() => (pendingTemplate = null)}
                 disabled={templateBusy}
               >
-                Cancel
+                {t("Cancel")}
               </button>
             </div>
           </div>
@@ -2012,7 +2066,7 @@
 
     <footer class="rail-footer">
       <span class="local-indicator" aria-hidden="true"></span>
-      <span>{desktopAvailable ? "Desktop session" : "Preview session"}</span>
+      <span>{t(desktopAvailable ? "Desktop session" : "Preview session")}</span>
     </footer>
   </aside>
 
@@ -2040,15 +2094,15 @@
       >
         <div class="dialog-heading">
           <div>
-            <p class="eyebrow">Template editor</p>
+            <p class="eyebrow">{t("Template editor")}</p>
             <h2 id="template-editor-title">
-              {templateEditDraft.metadata.name || "Untitled template"}
+              {templateEditDraft.metadata.name || t("Untitled template")}
             </h2>
           </div>
           <button
             class="dialog-close"
             type="button"
-            aria-label="Close template editor"
+            aria-label={t("Close template editor")}
             onclick={() => templateEditorDialog?.close()}
           >
             ×
@@ -2057,7 +2111,7 @@
 
         <div class="template-editor-meta">
           <label>
-            Template name
+            {t("Template name")}
             <input
               value={templateEditDraft.metadata.name}
               required
@@ -2066,7 +2120,7 @@
             />
           </label>
           <label>
-            Description
+            {t("Description")}
             <input
               value={templateEditDraft.metadata.description}
               oninput={(event) =>
@@ -2074,7 +2128,7 @@
             />
           </label>
           <label>
-            Locale
+            {t("Locale")}
             <input
               value={templateEditDraft.metadata.locale}
               required
@@ -2083,7 +2137,7 @@
             />
           </label>
           <label>
-            Version
+            {t("Version")}
             <input
               value={templateEditDraft.metadata.version}
               required
@@ -2092,7 +2146,7 @@
             />
           </label>
           <label>
-            Author
+            {t("Author")}
             <input
               value={templateEditDraft.metadata.author}
               oninput={(event) =>
@@ -2102,10 +2156,10 @@
         </div>
 
         <section class="template-output-rules" aria-labelledby="output-rules-title">
-          <p class="eyebrow" id="output-rules-title">Output rules</p>
+          <p class="eyebrow" id="output-rules-title">{t("Output rules")}</p>
           <div class="template-output-rule-terms">
             <label>
-              Forbidden terms
+              {t("Forbidden terms")}
               <textarea
                 rows="3"
                 value={(templateEditDraft.output_rules?.forbidden_terms ?? []).join(
@@ -2119,7 +2173,7 @@
                   )}></textarea>
             </label>
             <label>
-              Required terms
+              {t("Required terms")}
               <textarea
                 rows="3"
                 value={(templateEditDraft.output_rules?.required_terms ?? []).join(
@@ -2144,7 +2198,7 @@
                     forbid_code_fences: event.currentTarget.checked,
                   })}
               />
-              <span>Forbid code fences</span>
+              <span>{t("Forbid code fences")}</span>
             </label>
             <label class="template-checkbox">
               <input
@@ -2157,7 +2211,7 @@
                     forbid_leading_whitespace: event.currentTarget.checked,
                   })}
               />
-              <span>Forbid leading whitespace</span>
+              <span>{t("Forbid leading whitespace")}</span>
             </label>
             <label class="template-checkbox">
               <input
@@ -2170,7 +2224,7 @@
                     forbid_bullet_characters: event.currentTarget.checked,
                   })}
               />
-              <span>Forbid bullet characters</span>
+              <span>{t("Forbid bullet characters")}</span>
             </label>
             <label class="template-checkbox">
               <input
@@ -2183,7 +2237,7 @@
                     forbid_parenthesized_dates: event.currentTarget.checked,
                   })}
               />
-              <span>Forbid parenthesized dates</span>
+              <span>{t("Forbid parenthesized dates")}</span>
             </label>
           </div>
         </section>
@@ -2193,23 +2247,23 @@
           aria-labelledby="sections-editor-title"
         >
           <div class="template-sections-heading">
-            <p class="eyebrow" id="sections-editor-title">Sections</p>
+            <p class="eyebrow" id="sections-editor-title">{t("Sections editor")}</p>
             <button
               class="template-export-button"
               type="button"
               onclick={addTemplateEditorSection}
               disabled={templateSaveBusy}
             >
-              Add section
+              {t("Add section")}
             </button>
           </div>
           {#if templateEditDraft.sections.length}
-            <ol class="template-section-list" aria-label="Template sections">
+            <ol class="template-section-list" aria-label={t("Template sections")}>
               {#each templateEditDraft.sections as section, index (section.order)}
                 <li class="template-section-item">
                   <div class="template-section-item-fields">
                     <label>
-                      Section ID
+                      {t("Section ID")}
                       <input
                         value={section.id}
                         required
@@ -2221,7 +2275,7 @@
                       />
                     </label>
                     <label>
-                      Heading
+                      {t("Heading")}
                       <input
                         value={section.heading}
                         required
@@ -2233,7 +2287,8 @@
                       />
                     </label>
                     <label>
-                      Display label ({templateEditDraft.metadata.locale || "locale"})
+                      {t("Display label")} ({templateEditDraft.metadata.locale ||
+                        t("Locale")})
                       <input
                         value={templateSectionEditorLabel(section)}
                         disabled={templateSaveBusy}
@@ -2256,7 +2311,7 @@
                             enabled_by_default: event.currentTarget.checked,
                           })}
                       />
-                      <span>Enabled by default</span>
+                      <span>{t("Enabled by default")}</span>
                     </label>
                     <div class="template-section-order">
                       <button
@@ -2264,7 +2319,7 @@
                         onclick={() => moveTemplateEditorSection(index, -1)}
                         disabled={templateSaveBusy || index === 0}
                       >
-                        Move up
+                        {t("Move up")}
                       </button>
                       <button
                         type="button"
@@ -2272,7 +2327,7 @@
                         disabled={templateSaveBusy ||
                           index === templateEditDraft.sections.length - 1}
                       >
-                        Move down
+                        {t("Move down")}
                       </button>
                       <button
                         class="template-section-delete"
@@ -2280,7 +2335,7 @@
                         onclick={() => deleteTemplateEditorSection(index)}
                         disabled={templateSaveBusy}
                       >
-                        Delete
+                        {t("Delete")}
                       </button>
                     </div>
                   </div>
@@ -2288,12 +2343,14 @@
               {/each}
             </ol>
           {:else}
-            <p class="setting-hint">No sections. Add one to include a heading.</p>
+            <p class="setting-hint">
+              {t("No sections. Add one to include a heading.")}
+            </p>
           {/if}
         </section>
 
         <div class="template-editor-body">
-          <label for="template-system-prompt">System prompt · MiniJinja</label>
+          <label for="template-system-prompt">{t("System prompt · MiniJinja")}</label>
           <textarea
             id="template-system-prompt"
             spellcheck="false"
@@ -2305,12 +2362,12 @@
             aria-labelledby="template-preview-title"
           >
             <div class="preview-heading">
-              <h3 id="template-preview-title">Rendered preview</h3>
+              <h3 id="template-preview-title">{t("Rendered preview")}</h3>
               <span class:error={templatePreviewIsError} role="status">
-                {templatePreviewMessage}
+                {t(templatePreviewMessage)}
               </span>
             </div>
-            <pre>{templatePreview || "Preview output will appear here."}</pre>
+            <pre>{templatePreview || t("Preview output will appear here.")}</pre>
           </section>
         </div>
 
@@ -2321,10 +2378,10 @@
             onclick={() => templateEditorDialog?.close()}
             disabled={templateSaveBusy}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button class="connection-button" type="submit" disabled={templateSaveBusy}>
-            {templateSaveBusy ? "Validating..." : "Validate and save"}
+            {templateSaveBusy ? t("Validating...") : t("Validate and save")}
           </button>
         </div>
       </form>
@@ -2334,27 +2391,25 @@
   <main class="work-area">
     {#if isFirstRun}
       <section class="first-run-panel" aria-labelledby="first-run-title">
-        <p class="eyebrow">Getting started / Template setup</p>
-        <h2 id="first-run-title">Bring your clinical template</h2>
+        <p class="eyebrow">{t("Getting started / Template setup")}</p>
+        <h2 id="first-run-title">{t("Bring your clinical template")}</h2>
         <p>
-          Institutional templates are not included. Import an .epitpl file from your
-          clinic's designated template source, or use the generic starter and adapt it
-          later. Case content and template field values stay in memory only.
+          {t("first-run-template-guidance")}
         </p>
 
         <div class="onboarding-actions">
           <button class="connection-button" onclick={openTemplateSettings}>
-            Open template settings
+            {t("Open template settings")}
           </button>
         </div>
       </section>
     {:else}
       <header class="page-header">
         <div>
-          <p class="eyebrow">Clinical writing</p>
-          <h2>New discharge summary</h2>
+          <p class="eyebrow">{t("Clinical writing")}</p>
+          <h2>{t("New discharge summary")}</h2>
         </div>
-        <span class="draft-tag"><span aria-hidden="true"></span> Draft</span>
+        <span class="draft-tag"><span aria-hidden="true"></span> {t("Draft")}</span>
       </header>
 
       <div class="writing-grid">
@@ -2366,8 +2421,8 @@
         >
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">01 / Source</p>
-              <h3 id="source-title">Clinical material</h3>
+              <p class="eyebrow">{t("01 / Source")}</p>
+              <h3 id="source-title">{t("Clinical material")}</h3>
             </div>
             <span class="field-count">{inputCharacterCount} chars</span>
           </div>
@@ -2379,7 +2434,7 @@
             multiple
             bind:this={sourceFileInput}
             onchange={handleFileSelection}
-            aria-label="Choose clinical files"
+            aria-label={t("Choose clinical files")}
           />
           <div class="input-tools">
             <button
@@ -2388,7 +2443,7 @@
               onclick={() => sourceFileInput?.click()}
               disabled={ingestBusy || isGenerating || isPreparingGeneration}
             >
-              Add files or screenshots
+              {t("Add files or screenshots")}
             </button>
             <form
               class="url-import"
@@ -2401,7 +2456,7 @@
                 type="url"
                 bind:value={sourceUrl}
                 placeholder="https://..."
-                aria-label="Clinical source URL"
+                aria-label={t("Clinical source URL")}
                 disabled={ingestBusy || isGenerating || isPreparingGeneration}
               />
               <button
@@ -2412,17 +2467,17 @@
                   isGenerating ||
                   isPreparingGeneration}
               >
-                Add URL
+                {t("Add URL")}
               </button>
             </form>
           </div>
           {#if ingestMessage}
             <p class="ingest-message" class:error={ingestIsError} role="status">
-              {ingestMessage}
+              {t(ingestMessage)}
             </p>
           {/if}
           {#if sourceBlocks.length}
-            <ul class="source-input-list" aria-label="Inputs for this round">
+            <ul class="source-input-list" aria-label={t("Inputs for this round")}>
               {#each sourceBlocks as block (block.id)}
                 {@const provenanceLabel = sourceProvenanceLabel(block)}
                 <li class="source-input-item">
@@ -2433,23 +2488,23 @@
                   <div class="source-input-details">
                     <span
                       >{block.round + 1 === 1
-                        ? "New round"
-                        : `Round ${block.round + 1}`}</span
+                        ? t("New round")
+                        : t("round-number", { round: block.round + 1 })}</span
                     >
                     <span>{extractionMethodLabel(block.extraction_method)}</span>
-                    <span>{block.images?.[0]?.mime_type ?? "Extracted text"}</span>
+                    <span>{block.images?.[0]?.mime_type ?? t("Extracted text")}</span>
                   </div>
                   <button
                     class="source-input-remove"
                     type="button"
-                    aria-label={`Remove ${provenanceLabel}`}
+                    aria-label={t("remove-input", { name: provenanceLabel })}
                     onclick={() => removeSourceBlock(block.id)}
                     disabled={isGenerating || isPreparingGeneration}
                   >
-                    Remove
+                    {t("Remove")}
                   </button>
                   <details>
-                    <summary>Preview input</summary>
+                    <summary>{t("Preview input")}</summary>
                     <pre>{block.content}</pre>
                   </details>
                 </li>
@@ -2460,14 +2515,14 @@
           <textarea
             id="source-material"
             bind:value={prompt}
-            placeholder="Paste anonymized notes, findings, and relevant history..."
-            aria-label="Anonymized clinical material"
+            placeholder={t("Paste anonymized notes, findings, and relevant history...")}
+            aria-label={t("Anonymized clinical material")}
             onpaste={handleInputPaste}></textarea>
 
           <div class="source-actions">
             {#if isGenerating}
               <button class="cancel-button" type="button" onclick={cancelGeneration}>
-                Cancel generation
+                {t("Cancel generation")}
               </button>
             {:else}
               <button
@@ -2479,38 +2534,42 @@
                   isPreparingGeneration ||
                   !isOutputTokenLimitValid}
               >
-                {isPreparingGeneration ? "Preparing..." : "Generate draft"}
+                {isPreparingGeneration ? t("Preparing...") : t("Generate draft")}
               </button>
             {/if}
-            <p>Use anonymized clinical material.</p>
+            <p>{t("Use anonymized clinical material.")}</p>
           </div>
         </section>
 
         <section class="draft-panel" aria-labelledby="draft-title">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">02 / Review</p>
-              <h3 id="draft-title">Generated summary</h3>
+              <p class="eyebrow">{t("02 / Review")}</p>
+              <h3 id="draft-title">{t("Generated summary")}</h3>
             </div>
             {#if copyReviewMessage}
-              <span class="generation-status">{copyReviewMessage}</span>
+              <span class="generation-status">{t(copyReviewMessage)}</span>
             {:else if generationMessage}
               <span class="generation-status" class:error={generationIsError}>
-                {generationMessage}
+                {t(generationMessage)}
               </span>
             {/if}
           </div>
 
           <div class="output-toolbar">
-            <span>Output view</span>
-            <div class="preview-toggle" role="group" aria-label="Output preview format">
+            <span>{t("Output view")}</span>
+            <div
+              class="preview-toggle"
+              role="group"
+              aria-label={t("Output preview format")}
+            >
               <button
                 type="button"
                 aria-pressed={outputPreviewMode === "plain"}
                 class:active={outputPreviewMode === "plain"}
                 onclick={() => (outputPreviewMode = "plain")}
               >
-                Plain text
+                {t("Plain text")}
               </button>
               <button
                 type="button"
@@ -2518,7 +2577,7 @@
                 class:active={outputPreviewMode === "formatted"}
                 onclick={() => (outputPreviewMode = "formatted")}
               >
-                Formatted
+                {t("Formatted")}
               </button>
             </div>
           </div>
@@ -2548,15 +2607,19 @@
               {/if}
             {:else if isGenerating}
               <p class="empty-state">
-                Preparing draft<span class="typing-dots" aria-hidden="true">...</span>
+                {t("Preparing draft")}<span class="typing-dots" aria-hidden="true"
+                  >...</span
+                >
               </p>
             {:else}
-              <p class="empty-state">No draft yet</p>
+              <p class="empty-state">{t("No draft yet")}</p>
             {/if}
           </article>
           {#if outputViolations.length}
-            <aside class="lint-warnings" aria-label="Output checks" role="status">
-              <p>{outputViolations.length} output checks need review</p>
+            <aside class="lint-warnings" aria-label={t("Output checks")} role="status">
+              <p>
+                {t("output-checks-need-review", { count: outputViolations.length })}
+              </p>
               <ul>
                 {#each outputViolations as violation, index (`${violation.line}-${violation.kind}-${index}`)}
                   <li>
@@ -2567,9 +2630,9 @@
                           .getElementById(`draft-line-${violation.line}`)
                           ?.scrollIntoView({ behavior: "auto", block: "center" })}
                     >
-                      Line {violation.line}: {outputViolationMessages[
-                        violation.kind
-                      ]}{violation.term ? `: ${violation.term}` : ""}
+                      {t("line", { line: violation.line })}: {t(
+                        outputViolationMessages[violation.kind],
+                      )}{violation.term ? `: ${violation.term}` : ""}
                     </button>
                   </li>
                 {/each}
@@ -2579,7 +2642,7 @@
                 onclick={regenerateWithCorrections}
                 disabled={isGenerating || isPreparingGeneration}
               >
-                Regenerate with corrections
+                {t("Regenerate with corrections")}
               </button>
             </aside>
           {/if}
@@ -2594,14 +2657,14 @@
                     isInvalidatingReview}
                   onchange={setOutputReview}
                 />
-                <span>Ich habe die Ausgabe geprüft und verantworte sie.</span>
+                <span>{t("I have reviewed the output and take responsibility.")}</span>
               </label>
               <button
                 class="review-copy-button"
                 onclick={copyReviewedOutput}
                 disabled={!canCopyOutput}
               >
-                In die Krankengeschichte kopieren
+                {t("Copy to medical record")}
               </button>
             </div>
           {/if}
@@ -2609,8 +2672,8 @@
       </div>
 
       <footer class="work-footer">
-        <span>Review generated text before use in the medical record.</span>
-        <span>Epikrise <span class="footer-separator">/</span> Workspace</span>
+        <span>{t("Review generated text before use in the medical record.")}</span>
+        <span>{t("Epikrise / Workspace")}</span>
       </footer>
     {/if}
   </main>
@@ -4151,11 +4214,6 @@
     padding: 26px 0 16px;
     color: #77857e;
     font-size: 11px;
-  }
-
-  .footer-separator {
-    padding: 0 4px;
-    color: #c56a4f;
   }
 
   @keyframes rise-in {

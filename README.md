@@ -143,6 +143,19 @@ low, medium, high, extra high, or maximum. These are provider hints: supported
 values and their effect vary by provider and model, and unsupported settings may
 be ignored or rejected.
 
+## Interface language
+
+The interface defaults to German (Switzerland) and also supports English. On
+first launch, Epikrise uses the operating-system language when it is supported;
+otherwise it uses the default. Choose a language in Provider settings to save
+an override on this device. Template names, field labels and clinical content
+continue to use the locale defined by each template.
+
+Interface messages live in `locales/<locale>/app.ftl`. Keep message IDs aligned
+between shipped catalogs and run `pnpm test -- tests/i18n.test.ts` after editing
+them. During development, the settings dialog also offers a temporary
+pseudo-localized preview to expose untranslated or layout-sensitive text.
+
 ## Safety and scope
 
 Epikrise sends material and a template to the selected language model to create

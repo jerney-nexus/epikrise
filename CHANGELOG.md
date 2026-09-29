@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Fluent-based German (Switzerland) and English interface localization, OS
+  language detection, a persisted language selector, and a development-only
+  pseudo-localization preview.
 - Responsive fit-to-window layout, separate provider/model/template settings
   dialogs, keychain-backed credential selection, and connection checks that
   populate available models.
