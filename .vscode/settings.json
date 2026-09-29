@@ -13,5 +13,5 @@
     "${test_name}",
     "${exact}",
     "${include_ignored}"
-  ],
+  ]
 }
