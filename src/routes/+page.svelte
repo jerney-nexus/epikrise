@@ -2430,6 +2430,25 @@
     gap: 4px 14px;
   }
 
+  .credential-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .credential-actions > .connection-button,
+  .credential-actions > .credential-remove-button {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    margin-top: 0;
+    padding: 6px 8px;
+    font-size: 12px;
+    line-height: 1.25;
+    white-space: normal;
+  }
+
   .credential-remove-button,
   .credential-cancel-button {
     min-height: 36px;
