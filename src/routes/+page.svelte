@@ -484,6 +484,22 @@
     }
   }
 
+  function preventUnreviewedOutputCopy(event: ClipboardEvent) {
+    if (canCopyOutput) return;
+    const output = document.querySelector(".draft-output");
+    const selection = window.getSelection();
+    if (!output || !selection || selection.isCollapsed) return;
+
+    for (let index = 0; index < selection.rangeCount; index += 1) {
+      if (selection.getRangeAt(index).intersectsNode(output)) {
+        event.preventDefault();
+        generationMessage = "Review the output before copying.";
+        generationIsError = false;
+        return;
+      }
+    }
+  }
+
   function templateVariableLabel(
     variable: ClinicalTemplate["variables"][number],
   ): string {
@@ -991,6 +1007,8 @@
   <title>Epikrise | Draft workspace</title>
   <meta name="theme-color" content="#f2f5f1" />
 </svelte:head>
+
+<svelte:window oncopy={preventUnreviewedOutputCopy} />
 
 <div class="app-shell">
   <aside class="provider-rail" aria-label="Provider settings">
