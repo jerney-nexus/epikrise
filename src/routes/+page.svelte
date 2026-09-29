@@ -424,6 +424,8 @@
         required_terms: [],
         forbid_code_fences: true,
         forbid_leading_whitespace: true,
+        forbid_bullet_characters: false,
+        forbid_parenthesized_dates: false,
       },
     };
 

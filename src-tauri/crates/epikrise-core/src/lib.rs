@@ -94,6 +94,10 @@ pub struct OutputRules {
     pub forbid_code_fences: bool,
     #[serde(default)]
     pub forbid_leading_whitespace: bool,
+    #[serde(default)]
+    pub forbid_bullet_characters: bool,
+    #[serde(default)]
+    pub forbid_parenthesized_dates: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
@@ -116,22 +120,10 @@ pub struct OutputViolation {
 
 pub fn lint_output(output: &str, rules: &OutputRules) -> Vec<OutputViolation> {
     let mut violations = Vec::new();
-    let forbidden_terms = [
-        "ß",
-        "St.n.",
-        "Status nach",
-        "Antibiose",
-        "Erstdiagnose",
-        "TTE",
-    ];
 
     for (line_index, line) in output.lines().enumerate() {
         let line_number = (line_index as u32).saturating_add(1);
-        for term in forbidden_terms
-            .iter()
-            .copied()
-            .chain(rules.forbidden_terms.iter().map(String::as_str))
-        {
+        for term in rules.forbidden_terms.iter().map(String::as_str) {
             if line.contains(term) {
                 violations.push(OutputViolation {
                     line: line_number,
@@ -155,7 +147,10 @@ pub fn lint_output(output: &str, rules: &OutputRules) -> Vec<OutputViolation> {
             });
         }
         let trimmed = line.trim_start();
-        if trimmed.starts_with("- ") || trimmed.starts_with("* ") || trimmed.starts_with('\u{2022}')
+        if rules.forbid_bullet_characters
+            && (trimmed.starts_with("- ")
+                || trimmed.starts_with("* ")
+                || trimmed.starts_with('\u{2022}'))
         {
             violations.push(OutputViolation {
                 line: line_number,
@@ -163,7 +158,7 @@ pub fn lint_output(output: &str, rules: &OutputRules) -> Vec<OutputViolation> {
                 term: None,
             });
         }
-        if has_parenthesized_date(line) {
+        if rules.forbid_parenthesized_dates && has_parenthesized_date(line) {
             violations.push(OutputViolation {
                 line: line_number,
                 kind: OutputViolationKind::ParenthesizedDate,
@@ -793,12 +788,14 @@ mod tests {
     }
 
     #[test]
-    fn output_linter_reports_fixed_and_template_rules_with_line_numbers() {
+    fn output_linter_reports_template_rules_with_line_numbers() {
         let rules = OutputRules {
-            forbidden_terms: vec!["internal code".to_owned()],
+            forbidden_terms: vec!["St.n.".to_owned(), "internal code".to_owned()],
             required_terms: vec!["BEFUNDE".to_owned()],
             forbid_code_fences: true,
             forbid_leading_whitespace: true,
+            forbid_bullet_characters: true,
+            forbid_parenthesized_dates: true,
         };
         let output = "**Diagnosen**\n  St.n. am (01.02.2025)\n- internal code\n```text\n";
         let violations = lint_output(output, &rules);
@@ -826,6 +823,13 @@ mod tests {
             violation.kind == OutputViolationKind::MissingRequiredTerm
                 && violation.term.as_deref() == Some("BEFUNDE")
         }));
+    }
+
+    #[test]
+    fn output_linter_does_not_apply_undeclared_rules() {
+        let output = "ß\n- bullet\n* bullet\n• bullet\n(01.02.2025)\nSt.n.\nAntibiose\nTTE";
+
+        assert!(lint_output(output, &OutputRules::default()).is_empty());
     }
 
     #[test]

@@ -183,6 +183,8 @@ export type OutputRules = {
   required_terms?: string[];
   forbid_code_fences?: boolean;
   forbid_leading_whitespace?: boolean;
+  forbid_bullet_characters?: boolean;
+  forbid_parenthesized_dates?: boolean;
 };
 
 export type OutputViolation = {

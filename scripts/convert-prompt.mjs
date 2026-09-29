@@ -137,6 +137,8 @@ async function main() {
       required_terms: [],
       forbid_code_fences: true,
       forbid_leading_whitespace: true,
+      forbid_bullet_characters: true,
+      forbid_parenthesized_dates: true,
     },
   };
   const serialized = `${JSON.stringify(template, null, 2)}\n`;
