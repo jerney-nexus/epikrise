@@ -2,7 +2,10 @@
   import { onMount } from "svelte";
   import { resolve } from "$app/paths";
   import { isTauri } from "@tauri-apps/api/core";
-  import { load as loadStore } from "@tauri-apps/plugin-store";
+  import {
+    readText as readClipboardText,
+    writeText as writeClipboardText,
+  } from "@tauri-apps/plugin-clipboard-manager";
   import {
     commands,
     events,
@@ -55,6 +58,7 @@
     unknown_variable: "The template contains an unknown variable.",
     invalid_system_prompt: "The template prompt is invalid.",
     rendering_failed: "The template could not be rendered.",
+    storage_failed: "The template library could not be saved or loaded.",
   };
 
   const outputViolationMessages: Record<OutputViolation["kind"], string> = {
@@ -67,7 +71,6 @@
   };
 
   const maxTemplateBytes = 1_048_576;
-  let templateStore: Awaited<ReturnType<typeof loadStore>> | null = null;
   let templateFileInput: HTMLInputElement | undefined;
   let importedTemplates = $state<ClinicalTemplate[]>([]);
   let templateLibraryReady = $state(false);
@@ -279,9 +282,31 @@
       .filter((item) => item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
       .filter((file): file is File => file !== null);
-    if (!images.length) return;
+    if (images.length) {
+      event.preventDefault();
+      void importFiles(images);
+      return;
+    }
+    if (!desktopAvailable) return;
     event.preventDefault();
-    void importFiles(images);
+    const textarea = event.currentTarget as HTMLTextAreaElement;
+    void pasteClipboardText(textarea, textarea.selectionStart, textarea.selectionEnd);
+  }
+
+  async function pasteClipboardText(
+    textarea: HTMLTextAreaElement,
+    selectionStart: number,
+    selectionEnd: number,
+  ) {
+    try {
+      const text = await readClipboardText();
+      if (!text) return;
+      textarea.setRangeText(text, selectionStart, selectionEnd, "end");
+      prompt = textarea.value;
+    } catch {
+      ingestMessage = "The clipboard text could not be read.";
+      ingestIsError = true;
+    }
   }
 
   async function importUrl() {
@@ -450,7 +475,7 @@
         generationIsError = true;
         return;
       }
-      await navigator.clipboard.writeText(result.data);
+      await writeClipboardText(result.data);
       generationMessage = "Reviewed output copied";
       generationIsError = false;
     } catch {
@@ -496,29 +521,11 @@
     );
   }
 
-  async function getTemplateStore() {
-    templateStore ??= await loadStore("templates.json", {
-      autoSave: false,
-      defaults: { templates: [] },
-    });
-    return templateStore;
-  }
-
   async function restoreTemplates() {
-    const store = await getTemplateStore();
-    const savedTemplates = (await store.get<unknown[]>("templates")) ?? [];
-    const validatedTemplates: ClinicalTemplate[] = [];
-
-    for (const savedTemplate of savedTemplates) {
-      const serialized = JSON.stringify(savedTemplate);
-      if (!serialized) continue;
-      const bytes = new TextEncoder().encode(serialized);
-      const result = await commands.validateTemplate(Array.from(bytes));
-      if (result.status === "ok") validatedTemplates.push(result.data);
-    }
-
-    importedTemplates = validatedTemplates;
-    activateTemplate(validatedTemplates[0]?.metadata.id ?? "");
+    const result = await commands.loadTemplates();
+    if (result.status === "error") throw new Error("Template library unavailable");
+    importedTemplates = result.data;
+    activateTemplate(result.data[0]?.metadata.id ?? "");
   }
 
   async function importTemplate(event: Event) {
@@ -631,9 +638,12 @@
         ),
         template,
       ];
-      const store = await getTemplateStore();
-      await store.set("templates", updatedTemplates);
-      await store.save();
+      const result = await commands.saveTemplates(updatedTemplates);
+      if (result.status === "error") {
+        templateMessage = formatTemplateError(result.error);
+        templateIsError = true;
+        return;
+      }
       importedTemplates = updatedTemplates;
       activateTemplate(template.metadata.id);
       pendingTemplate = null;
@@ -647,11 +657,16 @@
     }
   }
 
-  function exportActiveTemplate() {
+  async function exportActiveTemplate() {
     if (!activeTemplate) return;
     try {
-      const serialized = JSON.stringify(activeTemplate, null, 2);
-      const blob = new Blob([serialized], { type: "application/json" });
+      const result = await commands.exportTemplate(activeTemplate);
+      if (result.status === "error") {
+        templateMessage = formatTemplateError(result.error);
+        templateIsError = true;
+        return;
+      }
+      const blob = new Blob([result.data], { type: "application/toml" });
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       const filename = activeTemplate.metadata.id.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -1223,7 +1238,7 @@
         id="template-file"
         class="template-file-input"
         type="file"
-        accept=".epitpl,application/json"
+        accept=".epitpl,text/plain,application/toml,application/json"
         bind:this={templateFileInput}
         onchange={importTemplate}
         disabled={templateBusy}

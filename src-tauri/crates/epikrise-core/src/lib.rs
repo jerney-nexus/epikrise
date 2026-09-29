@@ -223,8 +223,10 @@ pub enum TemplateError {
     InvalidSection(String),
     #[error("template section selection is invalid")]
     InvalidSectionSelection,
-    #[error("template JSON is invalid")]
+    #[error("template data is invalid")]
     InvalidSerializedTemplate,
+    #[error("template storage failed")]
+    StorageFailed,
     #[error("template exceeds the maximum file size")]
     TemplateTooLarge,
     #[error("required template variable is missing: {0}")]
@@ -240,6 +242,26 @@ pub enum TemplateError {
 }
 
 impl ClinicalTemplate {
+    pub fn from_epitpl(bytes: &[u8]) -> Result<Self, TemplateError> {
+        if bytes.len() > MAX_TEMPLATE_FILE_BYTES {
+            return Err(TemplateError::TemplateTooLarge);
+        }
+        let text =
+            std::str::from_utf8(bytes).map_err(|_| TemplateError::InvalidSerializedTemplate)?;
+        let template: Self = if text.trim_start().starts_with('{') {
+            serde_json::from_str(text).map_err(|_| TemplateError::InvalidSerializedTemplate)?
+        } else {
+            toml::from_str(text).map_err(|_| TemplateError::InvalidSerializedTemplate)?
+        };
+        template.validate()?;
+        Ok(template)
+    }
+
+    pub fn to_toml(&self) -> Result<String, TemplateError> {
+        self.validate()?;
+        toml::to_string_pretty(self).map_err(|_| TemplateError::InvalidSerializedTemplate)
+    }
+
     pub fn from_json(bytes: &[u8]) -> Result<Self, TemplateError> {
         if bytes.len() > MAX_TEMPLATE_FILE_BYTES {
             return Err(TemplateError::TemplateTooLarge);
@@ -853,6 +875,16 @@ mod tests {
         let json = template.to_json().expect("template should serialize");
         let restored = ClinicalTemplate::from_json(&json).expect("template should deserialize");
         assert_eq!(restored, template);
+
+        let toml = template
+            .to_toml()
+            .expect("template should serialize as TOML");
+        let restored = ClinicalTemplate::from_epitpl(toml.as_bytes())
+            .expect("TOML template should deserialize");
+        assert_eq!(restored, template);
+        let restored_legacy = ClinicalTemplate::from_epitpl(&json)
+            .expect("legacy JSON template should remain importable");
+        assert_eq!(restored_legacy, template);
 
         let mut unsupported_template = template;
         unsupported_template.schema_version += 1;

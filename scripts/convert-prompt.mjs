@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import TOML from "@iarna/toml";
 
 const maxTemplateBytes = 1_048_576;
 
@@ -141,7 +142,7 @@ async function main() {
       forbid_parenthesized_dates: true,
     },
   };
-  const serialized = `${JSON.stringify(template, null, 2)}\n`;
+  const serialized = `${TOML.stringify(template)}\n`;
   if (Buffer.byteLength(serialized, "utf8") > maxTemplateBytes) {
     throw new Error("The converted template exceeds the 1 MiB import limit");
   }

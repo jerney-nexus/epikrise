@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   endpoints, OpenRouter, xAI and Groq, with model discovery, OS-keychain
   credentials, connection checks, streamed generation and cancellation.
 - Configurable generation output limits and reasoning-effort settings.
-- Versioned JSON `.epitpl` templates with validation, preview, local storage,
+- Versioned TOML `.epitpl` templates with JSON IPC, validation, preview, local
+  `templates.toml` storage and one-time migration from the earlier JSON store,
   import/export, variables, toggleable sections and output rules. Added a
   generic starter and a local plain-text prompt converter.
 - In-memory cumulative case sessions with provenance-tagged inputs, output
@@ -37,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   text/image input.
 - Private temporary OCR directories with stale-directory cleanup and
   overwrite-before-removal handling for temporary image files.
+- Native text clipboard access with the Tauri clipboard-manager plugin; image
+  paste remains handled by the webview and is sent over IPC.
 - ESLint for TypeScript and Svelte, Prettier formatting, and Cargo Nextest for
   Rust tests.
 

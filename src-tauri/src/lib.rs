@@ -29,6 +29,14 @@ use sha2::{Digest, Sha256};
 static PDFIUM: OnceLock<Result<Pdfium, ()>> = OnceLock::new();
 const MAX_PDF_VISION_PAGES: usize = 12;
 const MAX_PDF_VISION_BYTES: usize = 20 * 1024 * 1024;
+const TEMPLATE_LIBRARY_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TemplateLibraryFile {
+    schema_version: u32,
+    templates: Vec<ClinicalTemplate>,
+}
 
 struct SensitiveImageFile(tempfile::NamedTempFile);
 
@@ -278,7 +286,121 @@ impl Drop for SensitiveImageFile {
 #[tauri::command]
 #[specta::specta]
 fn validate_template(bytes: Vec<u8>) -> Result<ClinicalTemplate, TemplateError> {
-    ClinicalTemplate::from_json(&bytes)
+    ClinicalTemplate::from_epitpl(&bytes)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn export_template(template: ClinicalTemplate) -> Result<String, TemplateError> {
+    template.to_toml()
+}
+
+#[tauri::command]
+#[specta::specta]
+fn load_templates(app: AppHandle) -> Result<Vec<ClinicalTemplate>, TemplateError> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| TemplateError::StorageFailed)?;
+    load_template_library_from_paths(
+        &app_data_dir.join("templates.toml"),
+        &app_data_dir.join("templates.json"),
+    )
+}
+
+fn load_template_library_from_paths(
+    templates_path: &Path,
+    legacy_path: &Path,
+) -> Result<Vec<ClinicalTemplate>, TemplateError> {
+    match fs::read_to_string(templates_path) {
+        Ok(contents) => {
+            let templates = parse_template_library(&contents)?;
+            match fs::remove_file(legacy_path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(_) => return Err(TemplateError::StorageFailed),
+            }
+            return Ok(templates);
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(_) => return Err(TemplateError::StorageFailed),
+    }
+
+    let legacy_contents = match fs::read(legacy_path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(_) => return Err(TemplateError::StorageFailed),
+    };
+    let templates = parse_legacy_template_store(&legacy_contents)?;
+    write_template_library(templates_path, &templates)?;
+    fs::remove_file(legacy_path).map_err(|_| TemplateError::StorageFailed)?;
+    Ok(templates)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn save_templates(app: AppHandle, templates: Vec<ClinicalTemplate>) -> Result<(), TemplateError> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| TemplateError::StorageFailed)?;
+    write_template_library(&app_data_dir.join("templates.toml"), &templates)
+}
+
+fn parse_template_library(contents: &str) -> Result<Vec<ClinicalTemplate>, TemplateError> {
+    let library: TemplateLibraryFile =
+        toml::from_str(contents).map_err(|_| TemplateError::InvalidSerializedTemplate)?;
+    if library.schema_version != TEMPLATE_LIBRARY_SCHEMA_VERSION {
+        return Err(TemplateError::InvalidSerializedTemplate);
+    }
+    for template in &library.templates {
+        template.validate()?;
+    }
+    Ok(library.templates)
+}
+
+fn parse_legacy_template_store(bytes: &[u8]) -> Result<Vec<ClinicalTemplate>, TemplateError> {
+    let store: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|_| TemplateError::InvalidSerializedTemplate)?;
+    let values = store
+        .get("templates")
+        .and_then(serde_json::Value::as_array)
+        .ok_or(TemplateError::InvalidSerializedTemplate)?;
+    let templates: Vec<ClinicalTemplate> = values
+        .iter()
+        .filter_map(|value| serde_json::from_value(value.clone()).ok())
+        .filter(|template: &ClinicalTemplate| template.validate().is_ok())
+        .collect();
+    Ok(templates)
+}
+
+fn write_template_library(
+    path: &Path,
+    templates: &[ClinicalTemplate],
+) -> Result<(), TemplateError> {
+    for template in templates {
+        template.validate()?;
+    }
+    let parent = path.parent().ok_or(TemplateError::StorageFailed)?;
+    fs::create_dir_all(parent).map_err(|_| TemplateError::StorageFailed)?;
+    let contents = toml::to_string_pretty(&TemplateLibraryFile {
+        schema_version: TEMPLATE_LIBRARY_SCHEMA_VERSION,
+        templates: templates.to_vec(),
+    })
+    .map_err(|_| TemplateError::InvalidSerializedTemplate)?;
+    let mut temporary_file =
+        tempfile::NamedTempFile::new_in(parent).map_err(|_| TemplateError::StorageFailed)?;
+    temporary_file
+        .write_all(contents.as_bytes())
+        .map_err(|_| TemplateError::StorageFailed)?;
+    temporary_file
+        .as_file()
+        .sync_all()
+        .map_err(|_| TemplateError::StorageFailed)?;
+    temporary_file
+        .persist(path)
+        .map_err(|_| TemplateError::StorageFailed)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -1015,10 +1137,13 @@ pub fn run() -> Result<(), tauri::Error> {
             extract_raw_text,
             extract_text_file,
             extract_url,
+            export_template,
             generate,
             greet,
+            load_templates,
             list_models,
             render_template_system_prompt,
+            save_templates,
             set_case_review,
             set_provider_credential,
             test_provider,
@@ -1041,9 +1166,9 @@ pub fn run() -> Result<(), tauri::Error> {
         })?;
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(CaseSessionRegistry::default())
         .manage(GenerationRegistry::default())
         .invoke_handler(builder.invoke_handler())
@@ -1060,12 +1185,14 @@ pub fn run() -> Result<(), tauri::Error> {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_PDF_VISION_PAGES, OcrTempSession, commit_case_generation, ocr_pdf_pages_with,
+        MAX_PDF_VISION_PAGES, OcrTempSession, commit_case_generation,
+        load_template_library_from_paths, ocr_pdf_pages_with, parse_template_library,
         prepare_case_generation, provider_probe_profile, render_pdf_pages_for_vision,
         wipe_directory_contents,
     };
     use epikrise_core::{
-        CaseSession, ExtractedBlock, ImageAttachment, InputProvenance, TemplateValue,
+        CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
+        TemplateValue,
     };
     use epikrise_llm::{
         AuthSource, ChatMessage, GenerationParams, LlmClient, LlmError, ModelCapabilities,
@@ -1073,6 +1200,7 @@ mod tests {
     };
     use std::{
         collections::{BTreeMap, VecDeque},
+        fs,
         path::{Path, PathBuf},
         process::Command,
         sync::Mutex,
@@ -1144,6 +1272,30 @@ mod tests {
 
         assert_eq!(probe.generation.max_tokens, Some(64));
         assert_eq!(probe.generation.reasoning_effort, None);
+    }
+
+    #[test]
+    fn legacy_json_template_store_migrates_to_versioned_toml() {
+        let template =
+            ClinicalTemplate::from_epitpl(include_bytes!("../../templates/generic-starter.epitpl"))
+                .expect("checked-in starter should be valid TOML");
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let templates_path = directory.path().join("templates.toml");
+        let legacy_path = directory.path().join("templates.json");
+        let legacy_store = serde_json::json!({ "templates": [template] });
+        fs::write(
+            &legacy_path,
+            serde_json::to_vec(&legacy_store).expect("legacy store should serialize"),
+        )
+        .expect("legacy store should be written");
+
+        let migrated = load_template_library_from_paths(&templates_path, &legacy_path)
+            .expect("legacy store should migrate");
+        let persisted = fs::read_to_string(&templates_path).expect("TOML library should exist");
+        let restored = parse_template_library(&persisted).expect("TOML library should parse");
+
+        assert_eq!(migrated, restored);
+        assert!(!legacy_path.exists());
     }
 
     #[test]

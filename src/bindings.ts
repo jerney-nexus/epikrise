@@ -15,10 +15,13 @@ export const commands = {
 	extractRawText: (text: string) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_raw_text", { text })),
 	extractTextFile: (fileName: string, bytes: number[]) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_text_file", { fileName, bytes })),
 	extractUrl: (address: string) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_url", { address })),
+	exportTemplate: (template: ClinicalTemplate) => typedError<string, TemplateError>(__TAURI_INVOKE("export_template", { template })),
 	generate: (request: GenerateRequest) => typedError<null, LlmError>(__TAURI_INVOKE("generate", { request })),
 	greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
+	loadTemplates: () => typedError<ClinicalTemplate[], TemplateError>(__TAURI_INVOKE("load_templates")),
 	listModels: (profile: ProviderProfile) => typedError<string[], LlmError>(__TAURI_INVOKE("list_models", { profile })),
 	renderTemplateSystemPrompt: (template: ClinicalTemplate, values: { [key in string]: TemplateValue }, enabledSectionIds: string[]) => typedError<string, TemplateError>(__TAURI_INVOKE("render_template_system_prompt", { template, values, enabledSectionIds })),
+	saveTemplates: (templates: ClinicalTemplate[]) => typedError<null, TemplateError>(__TAURI_INVOKE("save_templates", { templates })),
 	setCaseReview: (caseId: string, reviewed: boolean) => typedError<boolean, LlmError>(__TAURI_INVOKE("set_case_review", { caseId, reviewed })),
 	setProviderCredential: (credentialId: string, secret: string) => typedError<null, LlmError>(__TAURI_INVOKE("set_provider_credential", { credentialId, secret })),
 	testProvider: (profile: ProviderProfile) => typedError<null, LlmError>(__TAURI_INVOKE("test_provider", { profile })),
@@ -151,7 +154,7 @@ export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "
 
 export type TemplateDefault = { kind: "text"; value: string } | { kind: "boolean"; value: boolean };
 
-export type TemplateError = { key: "unsupported_schema_version"; value: number } | { key: "invalid_template" } | { key: "invalid_variable_name"; value: string } | { key: "duplicate_variable"; value: string } | { key: "invalid_variable_definition"; value: string } | { key: "invalid_section"; value: string } | { key: "invalid_section_selection" } | { key: "invalid_serialized_template" } | { key: "template_too_large" } | { key: "missing_required_variable"; value: string } | { key: "invalid_variable_value"; value: string } | { key: "unknown_variable"; value: string } | { key: "invalid_system_prompt" } | { key: "rendering_failed" };
+export type TemplateError = { key: "unsupported_schema_version"; value: number } | { key: "invalid_template" } | { key: "invalid_variable_name"; value: string } | { key: "duplicate_variable"; value: string } | { key: "invalid_variable_definition"; value: string } | { key: "invalid_section"; value: string } | { key: "invalid_section_selection" } | { key: "invalid_serialized_template" } | { key: "storage_failed" } | { key: "template_too_large" } | { key: "missing_required_variable"; value: string } | { key: "invalid_variable_value"; value: string } | { key: "unknown_variable"; value: string } | { key: "invalid_system_prompt" } | { key: "rendering_failed" };
 
 export type TemplateMetadata = {
 	id: string,

@@ -15,7 +15,8 @@ Paste text or images, import documents, or provide a URL. Epikrise extracts
 text from plain-text files, PDF, DOCX, XLSX, RTF and HTML. PNG/JPEG images and
 sparse PDF pages can use local OCR or, when enabled and supported by the
 selected model, vision analysis. URLs are fetched and converted to readable
-text.
+text. Text clipboard access uses Tauri's clipboard plugin; image paste is
+handled by the webview and sent to Rust over IPC.
 
 The extracted material and your template are sent to the selected model. The
 app supports OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints,
@@ -99,10 +100,12 @@ hospital encode institutional know-how and stay with the institution, so the
 app ships only a minimal generic starter template.
 
 On first run you can import your own template as an `.epitpl` file or start
-from the generic template. Templates are versioned JSON files. A template
-defines the system prompt, its variables, toggleable sections and output rules.
-The app validates and previews a template before saving it; imported templates
-are persisted locally in `templates.json`.
+from the generic template. `.epitpl` files and the app's `templates.toml`
+library use versioned TOML; template objects cross the Rust/UI boundary as
+JSON. A template defines the system prompt, its variables, toggleable sections
+and output rules. The app validates and previews a template before saving it.
+Older JSON `.epitpl` files and an existing `templates.json` library are migrated
+when read.
 
 To convert a plain-text prompt locally, provide section labels explicitly:
 
@@ -112,9 +115,10 @@ pnpm template:convert -- templates/prompt.txt templates/imported.epitpl \
   --section diagnoses=Diagnosen --section findings=Befunde
 ```
 
-The converter preserves the prompt text and creates enabled sections from the
-labels you provide. It refuses to overwrite an existing output unless `--force`
-is supplied. It does not infer specialty sections or template variables;
+The converter preserves the prompt text, writes TOML, and creates enabled
+sections from the labels you provide. It refuses to overwrite an existing output unless `--force`
+is supplied. Specialty/category examples are not required defaults; the
+converter does not infer sections or template variables, and
 prompts containing MiniJinja expressions must be converted manually. Both
 `templates/` and `.epitpl` files are ignored by Git.
 
