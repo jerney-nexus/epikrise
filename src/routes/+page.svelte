@@ -642,7 +642,14 @@
 
   function openTemplateEditor() {
     if (!activeTemplate) return;
-    templateEditDraft = structuredClone($state.snapshot(activeTemplate));
+    const snapshot = structuredClone($state.snapshot(activeTemplate));
+    templateEditDraft = {
+      ...snapshot,
+      sections: orderedTemplateSections(snapshot).map((section, order) => ({
+        ...section,
+        order,
+      })),
+    };
     templatePreview = "";
     templatePreviewMessage = "Rendering preview...";
     templatePreviewIsError = false;
@@ -666,6 +673,84 @@
     if (!templateEditDraft) return;
     templateEditDraft = { ...templateEditDraft, system_prompt: value };
     queueTemplatePreview();
+  }
+
+  function setTemplateEditorSections(sections: ClinicalTemplate["sections"]) {
+    if (!templateEditDraft) return;
+    templateEditDraft = {
+      ...templateEditDraft,
+      sections: sections.map((section, order) => ({ ...section, order })),
+    };
+    queueTemplatePreview();
+  }
+
+  function updateTemplateEditorSection(
+    index: number,
+    updates: Partial<ClinicalTemplate["sections"][number]>,
+  ) {
+    if (!templateEditDraft) return;
+    setTemplateEditorSections(
+      templateEditDraft.sections.map((section, sectionIndex) =>
+        sectionIndex === index ? { ...section, ...updates } : section,
+      ),
+    );
+  }
+
+  function templateSectionEditorLabel(
+    section: ClinicalTemplate["sections"][number],
+  ): string {
+    const locale = templateEditDraft?.metadata.locale ?? "";
+    const language = locale.split("-")[0];
+    return section.labels[locale] ?? section.labels[language] ?? section.heading;
+  }
+
+  function updateTemplateEditorSectionLabel(index: number, value: string) {
+    const locale = templateEditDraft?.metadata.locale.trim();
+    const section = templateEditDraft?.sections[index];
+    if (!locale || !section) return;
+    updateTemplateEditorSection(index, {
+      labels: { ...section.labels, [locale]: value },
+    });
+  }
+
+  function addTemplateEditorSection() {
+    if (!templateEditDraft) return;
+    const sections = templateEditDraft.sections;
+    const sectionIds = new Set(sections.map((section) => section.id));
+    let id = "new_section";
+    let suffix = 2;
+    while (sectionIds.has(id)) {
+      id = `new_section_${suffix}`;
+      suffix += 1;
+    }
+    const heading = "New section";
+    const locale = templateEditDraft.metadata.locale.trim();
+    setTemplateEditorSections([
+      ...sections,
+      {
+        id,
+        heading,
+        order: sections.length,
+        enabled_by_default: true,
+        labels: locale ? { [locale]: heading } : {},
+      },
+    ]);
+  }
+
+  function deleteTemplateEditorSection(index: number) {
+    if (!templateEditDraft) return;
+    setTemplateEditorSections(
+      templateEditDraft.sections.filter((_, sectionIndex) => sectionIndex !== index),
+    );
+  }
+
+  function moveTemplateEditorSection(index: number, direction: -1 | 1) {
+    if (!templateEditDraft) return;
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= templateEditDraft.sections.length) return;
+    const sections = [...templateEditDraft.sections];
+    [sections[index], sections[targetIndex]] = [sections[targetIndex], sections[index]];
+    setTemplateEditorSections(sections);
   }
 
   function queueTemplatePreview() {
@@ -1994,6 +2079,110 @@
           </label>
         </div>
 
+        <section
+          class="template-sections-editor"
+          aria-labelledby="sections-editor-title"
+        >
+          <div class="template-sections-heading">
+            <p class="eyebrow" id="sections-editor-title">Sections</p>
+            <button
+              class="template-export-button"
+              type="button"
+              onclick={addTemplateEditorSection}
+              disabled={templateSaveBusy}
+            >
+              Add section
+            </button>
+          </div>
+          {#if templateEditDraft.sections.length}
+            <ol class="template-section-list" aria-label="Template sections">
+              {#each templateEditDraft.sections as section, index (section.order)}
+                <li class="template-section-item">
+                  <div class="template-section-item-fields">
+                    <label>
+                      Section ID
+                      <input
+                        value={section.id}
+                        required
+                        disabled={templateSaveBusy}
+                        oninput={(event) =>
+                          updateTemplateEditorSection(index, {
+                            id: event.currentTarget.value,
+                          })}
+                      />
+                    </label>
+                    <label>
+                      Heading
+                      <input
+                        value={section.heading}
+                        required
+                        disabled={templateSaveBusy}
+                        oninput={(event) =>
+                          updateTemplateEditorSection(index, {
+                            heading: event.currentTarget.value,
+                          })}
+                      />
+                    </label>
+                    <label>
+                      Display label ({templateEditDraft.metadata.locale || "locale"})
+                      <input
+                        value={templateSectionEditorLabel(section)}
+                        disabled={templateSaveBusy}
+                        oninput={(event) =>
+                          updateTemplateEditorSectionLabel(
+                            index,
+                            event.currentTarget.value,
+                          )}
+                      />
+                    </label>
+                  </div>
+                  <div class="template-section-item-controls">
+                    <label class="template-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={section.enabled_by_default}
+                        disabled={templateSaveBusy}
+                        onchange={(event) =>
+                          updateTemplateEditorSection(index, {
+                            enabled_by_default: event.currentTarget.checked,
+                          })}
+                      />
+                      <span>Enabled by default</span>
+                    </label>
+                    <div class="template-section-order">
+                      <button
+                        type="button"
+                        onclick={() => moveTemplateEditorSection(index, -1)}
+                        disabled={templateSaveBusy || index === 0}
+                      >
+                        Move up
+                      </button>
+                      <button
+                        type="button"
+                        onclick={() => moveTemplateEditorSection(index, 1)}
+                        disabled={templateSaveBusy ||
+                          index === templateEditDraft.sections.length - 1}
+                      >
+                        Move down
+                      </button>
+                      <button
+                        class="template-section-delete"
+                        type="button"
+                        onclick={() => deleteTemplateEditorSection(index)}
+                        disabled={templateSaveBusy}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              {/each}
+            </ol>
+          {:else}
+            <p class="setting-hint">No sections. Add one to include a heading.</p>
+          {/if}
+        </section>
+
         <div class="template-editor-body">
           <label for="template-system-prompt">System prompt · MiniJinja</label>
           <textarea
@@ -2874,7 +3063,7 @@
 
   .template-editor {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     gap: 17px;
     max-height: min(88dvh, 900px);
     padding: 24px;
@@ -2891,6 +3080,94 @@
     flex-direction: column;
     gap: 4px;
     margin: 0;
+  }
+
+  .template-sections-editor {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .template-sections-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .template-sections-heading .eyebrow {
+    margin: 0;
+  }
+
+  .template-section-list {
+    display: grid;
+    max-height: min(30dvh, 280px);
+    overflow: auto;
+    margin: 0;
+    padding: 0 4px 0 0;
+    border-top: 1px solid #dce4de;
+    list-style: none;
+  }
+
+  .template-section-item {
+    display: grid;
+    gap: 8px;
+    padding: 9px 0;
+    border-bottom: 1px solid #dce4de;
+  }
+
+  .template-section-item-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+  }
+
+  .template-section-item-fields label {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+    margin: 0;
+    color: #51645b;
+    font-size: 11px;
+  }
+
+  .template-section-item-fields input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .template-section-item-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .template-section-order {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .template-section-order button,
+  .template-section-delete {
+    min-height: 30px;
+    padding: 0 9px;
+    border: 1px solid #cbd7d0;
+    border-radius: 4px;
+    color: #335248;
+    background: #f8faf8;
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  .template-section-order .template-section-delete {
+    border-color: #e4b6a8;
+    color: #9a4938;
+    background: #fff8f5;
   }
 
   .template-editor-body {
@@ -3814,6 +4091,20 @@
       padding-top: 15px;
     }
 
+    .template-section-item-fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .template-section-item-controls {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .template-section-order {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .template-heading,
     .template-fields,
     .template-section-fields,
@@ -3989,10 +4280,28 @@
     .template-fields,
     .template-section-fields,
     .template-settings,
+    .template-section-list,
+    .template-section-item,
     .template-preview details,
     .provider-settings,
     .controls-actions {
       border-color: #34463b;
+    }
+
+    .template-section-item-fields label {
+      color: #a7b7ad;
+    }
+
+    .template-section-order button {
+      border-color: #45584c;
+      color: #dce7df;
+      background: #1d2c23;
+    }
+
+    .template-section-order .template-section-delete {
+      border-color: #8a574b;
+      color: #f2b6a8;
+      background: #382922;
     }
 
     .template-preview,
