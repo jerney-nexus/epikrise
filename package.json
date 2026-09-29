@@ -12,6 +12,8 @@
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "check:rust:fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all --check",
+    "check:rust:clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:rust": "cargo nextest run --manifest-path src-tauri/Cargo.toml --workspace",
