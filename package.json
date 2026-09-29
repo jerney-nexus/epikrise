@@ -22,6 +22,7 @@
     "format:file": "prettier --write",
     "format:check": "prettier --check .",
     "format:check:file": "prettier --check",
+    "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml --all",
     "tauri": "bash scripts/prepare-ocr.sh && tauri"
   },
   "license": "MIT",
