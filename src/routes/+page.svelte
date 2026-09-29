@@ -115,6 +115,7 @@
   let credentialMessage = $state("");
   let credentialIsError = $state(false);
   let credentialBusy = $state(false);
+  let credentialRemovalPending = $state(false);
   let visionEnabled = $state(false);
   let outputTokenLimit = $state<number | undefined>(8192);
   let reasoningEffort = $state<ReasoningEffort | "provider_default">(
@@ -604,6 +605,7 @@
   function changeProvider(value: string) {
     const previousCredentialId = credentialId;
     adapter = value as ProviderAdapter;
+    credentialRemovalPending = false;
     const matchingCredentials = providerCredentials.filter(
       (credential) => credential.adapter === adapter,
     );
@@ -1085,10 +1087,8 @@
   }
 
   async function deleteProviderCredential() {
-    const keychainId = credentialId.trim();
+    const keychainId = selectedCredential?.id ?? "";
     if (!desktopAvailable || !keychainId || credentialBusy) return;
-    const label = selectedCredential?.label ?? keychainId;
-    if (!window.confirm(`Remove “${label}” from the OS keychain?`)) return;
 
     credentialBusy = true;
     credentialMessage = "";
@@ -1098,6 +1098,7 @@
         credentialMessage = formatError(result.error);
         credentialIsError = true;
       } else {
+        credentialRemovalPending = false;
         const loaded = await loadProviderCredentials();
         credentialMessage = loaded
           ? "Provider credential removed from the OS keychain."
@@ -1363,6 +1364,7 @@
         <select
           id="provider-credential"
           bind:value={credentialId}
+          onchange={() => (credentialRemovalPending = false)}
           disabled={credentialBusy}
         >
           <option value="">None</option>
@@ -1380,14 +1382,41 @@
             Add new provider credential
           </button>
           <button
-            class="template-discard"
+            class="credential-remove-button"
             type="button"
-            onclick={deleteProviderCredential}
+            onclick={() => (credentialRemovalPending = true)}
             disabled={!selectedCredential || credentialBusy}
           >
-            Remove
+            Remove provider credential
           </button>
         </div>
+        {#if credentialRemovalPending && selectedCredential}
+          <div
+            class="credential-confirmation"
+            role="group"
+            aria-label="Confirm credential removal"
+          >
+            <p>Remove “{selectedCredential.label}” from the OS keychain?</p>
+            <div>
+              <button
+                class="credential-remove-button"
+                type="button"
+                onclick={deleteProviderCredential}
+                disabled={credentialBusy}
+              >
+                {credentialBusy ? "Removing..." : "Confirm removal"}
+              </button>
+              <button
+                class="credential-cancel-button"
+                type="button"
+                onclick={() => (credentialRemovalPending = false)}
+                disabled={credentialBusy}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        {/if}
         {#if credentialMessage}
           <p class="model-list-message" class:error={credentialIsError} role="status">
             {credentialMessage}
@@ -2399,6 +2428,52 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 14px;
+  }
+
+  .credential-remove-button,
+  .credential-cancel-button {
+    min-height: 36px;
+    padding: 0 11px;
+    border: 1px solid #b95848;
+    border-radius: 4px;
+    color: #8f3428;
+    background: #fff8f5;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  .credential-remove-button:hover:not(:disabled) {
+    color: #fff;
+    background: #a94435;
+  }
+
+  .credential-cancel-button {
+    border-color: #cbd8cf;
+    color: #52665c;
+    background: transparent;
+  }
+
+  .credential-confirmation {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 11px;
+    border-left: 2px solid #b95848;
+    background: #fff3ef;
+  }
+
+  .credential-confirmation p {
+    margin: 0;
+    color: #73392f;
+    font-size: 12px;
+  }
+
+  .credential-confirmation > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
   }
 
   .settings-trigger {
@@ -3596,7 +3671,7 @@
     justify-content: space-between;
     gap: 14px;
     margin-top: auto;
-    padding-top: 26px;
+    padding: 26px 0 16px;
     color: #77857e;
     font-size: 11px;
   }
