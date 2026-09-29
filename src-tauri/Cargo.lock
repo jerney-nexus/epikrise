@@ -1223,6 +1223,7 @@ dependencies = [
 name = "epikrise"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "epikrise-core",
  "epikrise-ingest",
  "epikrise-llm",
@@ -1240,8 +1241,10 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-specta",
  "tempfile",
+ "tokio",
  "tokio-util",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

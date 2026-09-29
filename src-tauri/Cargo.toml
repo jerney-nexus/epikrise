@@ -93,6 +93,11 @@ tempfile = { workspace = true }
 image = { workspace = true }
 tokio-util = { workspace = true }
 uuid = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+tokio = { workspace = true }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

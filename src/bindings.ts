@@ -70,9 +70,11 @@ export type AuthSource =
 export type CaseSession = {
   id: string;
   template_id: string;
+  template_values: { [key in string]: TemplateValue };
   inputs: ExtractedBlock[];
   current_output: string | null;
   reviewed_output_hash: string | null;
+  generation_in_progress: boolean;
 };
 
 export type ClinicalTemplate = {
@@ -97,7 +99,8 @@ export type GenerateRequest = {
   profile: ProviderProfile;
   systemPrompt: string;
   outputRules: OutputRules;
-  input: ExtractedBlock | null;
+  templateValues: { [key in string]: TemplateValue };
+  inputs: ExtractedBlock[];
   corrections: string | null;
 };
 

@@ -93,6 +93,7 @@
   let generationMessage = $state("");
   let generationIsError = $state(false);
   let isPreparingGeneration = $state(false);
+  let isInvalidatingReview = $state(false);
   let desktopAvailable = $state(false);
 
   const isGenerating = $derived(activeRequestId !== null);
@@ -103,7 +104,8 @@
         caseSessionId &&
         reviewedOutputCaseId === caseSessionId &&
         !isGenerating &&
-        !isPreparingGeneration,
+        !isPreparingGeneration &&
+        !isInvalidatingReview,
     ),
   );
   const enabledSectionCount = $derived(
@@ -234,6 +236,38 @@
       generationMessage = "The review acknowledgement could not be saved.";
       generationIsError = true;
     }
+  }
+
+  async function invalidateOutputReview() {
+    const caseId = caseSessionId;
+    reviewedOutputCaseId = null;
+    if (!caseId || !draft || !desktopAvailable) return;
+
+    isInvalidatingReview = true;
+    try {
+      const result = await commands.setCaseReview(caseId, false);
+      if (result.status === "error" && caseSessionId === caseId) {
+        generationMessage = "The review acknowledgement could not be reset.";
+        generationIsError = true;
+      }
+    } catch {
+      if (caseSessionId === caseId) {
+        generationMessage = "The review acknowledgement could not be reset.";
+        generationIsError = true;
+      }
+    } finally {
+      isInvalidatingReview = false;
+    }
+  }
+
+  function updateTemplateValue(name: string, value: string | boolean) {
+    templateValues = { ...templateValues, [name]: value };
+    void invalidateOutputReview();
+  }
+
+  function updateTemplateSection(id: string, enabled: boolean) {
+    templateSectionStates = { ...templateSectionStates, [id]: enabled };
+    void invalidateOutputReview();
   }
 
   async function copyReviewedOutput() {
@@ -638,14 +672,17 @@
         profile: createProfile(),
         systemPrompt,
         outputRules: activeTemplate.output_rules ?? {},
-        input: source
-          ? {
+        templateValues: valuesForRendering(activeTemplate),
+        inputs: source
+          ? [
+              {
               id: crypto.randomUUID(),
               round: 0,
               provenance: "RawText",
               content: source,
-            }
-          : null,
+              },
+            ]
+          : [],
         corrections: corrections || null,
       });
       if (result.status === "error" && activeRequestId === requestId) {
@@ -800,13 +837,11 @@
                 <input
                   id={fieldId}
                   type="checkbox"
+                  disabled={isGenerating || isPreparingGeneration}
                   checked={templateValues[variable.name] === true}
                   aria-required={variable.required}
                   onchange={(event) =>
-                    (templateValues = {
-                      ...templateValues,
-                      [variable.name]: event.currentTarget.checked,
-                    })}
+                    updateTemplateValue(variable.name, event.currentTarget.checked)}
                 />
                 <span
                   >{templateVariableLabel(variable)}{variable.required ? " *" : ""}</span
@@ -822,12 +857,10 @@
                   value={typeof templateValues[variable.name] === "string"
                     ? templateValues[variable.name]
                     : ""}
+                  disabled={isGenerating || isPreparingGeneration}
                   aria-required={variable.required}
                   onchange={(event) =>
-                    (templateValues = {
-                      ...templateValues,
-                      [variable.name]: event.currentTarget.value,
-                    })}
+                    updateTemplateValue(variable.name, event.currentTarget.value)}
                 >
                   <option value="" disabled={variable.required}>Select...</option>
                   {#each variable.options as option (option)}
@@ -841,13 +874,11 @@
                   value={typeof templateValues[variable.name] === "string"
                     ? templateValues[variable.name]
                     : ""}
+                  disabled={isGenerating || isPreparingGeneration}
                   aria-required={variable.required}
                   required={variable.required}
                   onchange={(event) =>
-                    (templateValues = {
-                      ...templateValues,
-                      [variable.name]: event.currentTarget.value,
-                    })}
+                    updateTemplateValue(variable.name, event.currentTarget.value)}
                 />
               {/if}
             {/if}
@@ -864,15 +895,13 @@
               <input
                 id={sectionInputId}
                 type="checkbox"
-                checked={templateSectionStates[section.id] === true}
                 disabled={
-                  templateSectionStates[section.id] === true && enabledSectionCount <= 1
+                  isGenerating ||
+                  isPreparingGeneration ||
+                  (templateSectionStates[section.id] === true && enabledSectionCount <= 1)
                 }
-                onchange={(event) =>
-                  (templateSectionStates = {
-                    ...templateSectionStates,
-                    [section.id]: event.currentTarget.checked,
-                  })}
+                checked={templateSectionStates[section.id] === true}
+                onchange={(event) => updateTemplateSection(section.id, event.currentTarget.checked)}
               />
               <span>{templateSectionLabel(section)}</span>
             </label>
@@ -1110,7 +1139,7 @@
               <input
                 type="checkbox"
                 checked={reviewedOutputCaseId === caseSessionId}
-                disabled={isGenerating || isPreparingGeneration}
+                disabled={isGenerating || isPreparingGeneration || isInvalidatingReview}
                 onchange={setOutputReview}
               />
               <span>Ich habe die Ausgabe geprüft und verantworte sie.</span>
