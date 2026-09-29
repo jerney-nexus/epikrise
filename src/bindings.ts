@@ -62,8 +62,11 @@ export type ExtractedBlock = {
 	round: number,
 	provenance: InputProvenance,
 	content: string,
+	extraction_method?: ExtractionMethod,
 	images?: ImageAttachment[],
 };
+
+export type ExtractionMethod = "manual" | "parsed" | "ocr" | "vision";
 
 export type GenerateRequest = {
 	requestId: string,

@@ -5,7 +5,7 @@
 #![forbid(unsafe_code)]
 
 use calamine::{Data, Reader as WorkbookReader, Xlsx, open_workbook_from_rs};
-use epikrise_core::{ExtractedBlock, InputProvenance};
+use epikrise_core::{ExtractedBlock, ExtractionMethod, InputProvenance};
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use rtf_parser_tt::{ControlWord, Lexer, Parser, Token};
@@ -280,11 +280,13 @@ where
     if text.trim().is_empty() {
         return Err(IngestError::ImageOcrFailed);
     }
-    Ok(ExtractedBlock::new(
+    let mut block = ExtractedBlock::new(
         uuid::Uuid::new_v4().to_string(),
         InputProvenance::File { name: file_name },
         text,
-    ))
+    );
+    block.extraction_method = ExtractionMethod::Ocr;
+    Ok(block)
 }
 
 pub fn extract_image_for_vision(
@@ -299,6 +301,7 @@ pub fn extract_image_for_vision(
         },
         "Image attached for visual analysis.",
     );
+    block.extraction_method = ExtractionMethod::Vision;
     block.images.push(epikrise_core::ImageAttachment {
         mime_type,
         data: normalized,
@@ -367,6 +370,11 @@ where
         return Err(IngestError::NoTextExtracted);
     }
     let sparse_pages = sparse_pdf_pages(&pages);
+    let extraction_method = if sparse_pages.is_empty() {
+        ExtractionMethod::Parsed
+    } else {
+        ExtractionMethod::Ocr
+    };
     if !sparse_pages.is_empty() {
         let recognized_pages = ocr_pages(&bytes, &sparse_pages)?;
         if recognized_pages.len() != sparse_pages.len() {
@@ -391,11 +399,13 @@ where
         return Err(IngestError::NoTextExtracted);
     }
 
-    Ok(ExtractedBlock::new(
+    let mut block = ExtractedBlock::new(
         uuid::Uuid::new_v4().to_string(),
         InputProvenance::File { name: file_name },
         text,
-    ))
+    );
+    block.extraction_method = extraction_method;
+    Ok(block)
 }
 
 fn extract_html_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
@@ -679,11 +689,13 @@ pub fn extract_raw_text(text: String) -> Result<ExtractedBlock, IngestError> {
         return Err(IngestError::EmptyInput);
     }
 
-    Ok(ExtractedBlock::new(
+    let mut block = ExtractedBlock::new(
         uuid::Uuid::new_v4().to_string(),
         InputProvenance::RawText,
         text,
-    ))
+    );
+    block.extraction_method = ExtractionMethod::Manual;
+    Ok(block)
 }
 
 #[cfg(test)]
@@ -693,7 +705,7 @@ mod tests {
         extract_image_with_ocr, extract_raw_text, extract_readable_html, extract_text_file,
         extract_url, is_public_ip, pdf_page_texts_and_ocr_targets, validate_url,
     };
-    use epikrise_core::InputProvenance;
+    use epikrise_core::{ExtractionMethod, InputProvenance};
     use std::{
         io::{Cursor, Write},
         net::IpAddr,
@@ -768,10 +780,12 @@ mod tests {
         })
         .expect("OCR output should be returned as text");
         assert_eq!(extracted.content, "Recognized clinical finding");
+        assert_eq!(extracted.extraction_method, ExtractionMethod::Ocr);
         assert!(extracted.images.is_empty());
 
         let vision = extract_image_for_vision("screen.png".to_owned(), &image_bytes)
             .expect("vision fallback should produce a normalized image attachment");
+        assert_eq!(vision.extraction_method, ExtractionMethod::Vision);
         assert_eq!(
             vision.images.first().map(|image| image.mime_type.as_str()),
             Some("image/png")
@@ -814,6 +828,7 @@ mod tests {
         assert!(!block.id.is_empty());
         assert_eq!(block.round, 0);
         assert_eq!(block.provenance, InputProvenance::RawText);
+        assert_eq!(block.extraction_method, ExtractionMethod::Manual);
         assert_eq!(block.content, content);
     }
 
@@ -935,6 +950,7 @@ mod tests {
         .expect("sparse pages should be supplied by the OCR callback");
 
         assert_eq!(requested_pages, vec![2]);
+        assert_eq!(block.extraction_method, ExtractionMethod::Ocr);
         assert!(block.content.contains("Short\nOCR text for page two"));
         assert!(
             block

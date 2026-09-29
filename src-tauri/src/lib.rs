@@ -17,8 +17,8 @@ use tokio_util::sync::CancellationToken;
 use zeroize::Zeroize;
 
 use epikrise_core::{
-    CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance, OutputRules,
-    OutputViolation, TemplateError, TemplateValue, lint_output,
+    CaseSession, ClinicalTemplate, ExtractedBlock, ExtractionMethod, ImageAttachment,
+    InputProvenance, OutputRules, OutputViolation, TemplateError, TemplateValue, lint_output,
 };
 use epikrise_llm::{
     ChatMessage, GenaiLlmClient, KeyringCredentialStore, LlmClient, LlmError, MessageRole,
@@ -600,6 +600,7 @@ fn extract_file(
                 InputProvenance::File { name: file_name },
                 page_texts.join("\n"),
             );
+            block.extraction_method = ExtractionMethod::Vision;
             block.images = images;
             Ok(block)
         }

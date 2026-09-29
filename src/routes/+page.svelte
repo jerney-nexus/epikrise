@@ -4,6 +4,7 @@
   import { isTauri } from "@tauri-apps/api/core";
   import {
     readText as readClipboardText,
+    writeHtml as writeClipboardHtml,
     writeText as writeClipboardText,
   } from "@tauri-apps/plugin-clipboard-manager";
   import {
@@ -11,6 +12,7 @@
     events,
     type ClinicalTemplate,
     type ExtractedBlock,
+    type ExtractionMethod,
     type IngestError,
     type LlmError,
     type OutputViolation,
@@ -84,6 +86,15 @@
   let templateMessage = $state("");
   let templateIsError = $state(false);
   let templateBusy = $state(false);
+  let providerSettingsDialog: HTMLDialogElement | undefined;
+  let templateEditorDialog: HTMLDialogElement | undefined;
+  let templateEditDraft = $state<ClinicalTemplate | null>(null);
+  let templatePreview = $state("");
+  let templatePreviewMessage = $state("");
+  let templatePreviewIsError = $state(false);
+  let templateSaveBusy = $state(false);
+  let templatePreviewTimer: ReturnType<typeof setTimeout> | undefined;
+  let templatePreviewRevision = 0;
 
   let adapter = $state<ProviderAdapter>("ollama");
   let model = $state("llama3.2");
@@ -111,6 +122,7 @@
   let ingestBusy = $state(false);
   let sourceFileInput = $state<HTMLInputElement>();
   let draft = $state("");
+  let outputPreviewMode = $state<"plain" | "formatted">("formatted");
   let outputViolations = $state<OutputViolation[]>([]);
   let activeRequestId = $state<string | null>(null);
   let connectionState = $state<"idle" | "checking" | "ready" | "error">("idle");
@@ -122,6 +134,10 @@
   let desktopAvailable = $state(false);
 
   const isGenerating = $derived(activeRequestId !== null);
+  const inputCharacterCount = $derived(
+    prompt.length +
+      sourceBlocks.reduce((count, block) => count + block.content.length, 0),
+  );
   const draftLines = $derived(draft.split("\n"));
   const isOutputTokenLimitValid = $derived(
     typeof outputTokenLimit === "number" &&
@@ -231,6 +247,37 @@
     if ("File" in provenance && provenance.File) return provenance.File.name;
     if ("Url" in provenance && provenance.Url) return provenance.Url.address;
     return "Clinical input";
+  }
+
+  function extractionMethodLabel(method: ExtractionMethod | undefined): string {
+    const labels: Record<ExtractionMethod, string> = {
+      manual: "Manual entry",
+      parsed: "Parsed",
+      ocr: "Local OCR",
+      vision: "Model vision",
+    };
+    return labels[method ?? "parsed"];
+  }
+
+  function escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (character) => {
+      const entities: Record<string, string> = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      };
+      return entities[character];
+    });
+  }
+
+  function formatOutputHtml(value: string): string {
+    const paragraphs = value
+      .split("\n")
+      .map((line) => `<p>${line ? escapeHtml(line) : "<br>"}</p>`)
+      .join("");
+    return `<div>${paragraphs}</div>`;
   }
 
   async function importFiles(files: FileList | File[]) {
@@ -475,8 +522,13 @@
         generationIsError = true;
         return;
       }
-      await writeClipboardText(result.data);
-      generationMessage = "Reviewed output copied";
+      try {
+        await writeClipboardHtml(formatOutputHtml(result.data), result.data);
+        generationMessage = "Reviewed formatted output copied";
+      } catch {
+        await writeClipboardText(result.data);
+        generationMessage = "Reviewed output copied as plain text";
+      }
       generationIsError = false;
     } catch {
       generationMessage = "The output could not be copied.";
@@ -516,6 +568,131 @@
 
   function orderedTemplateSections(template: ClinicalTemplate) {
     return [...template.sections].sort((left, right) => left.order - right.order);
+  }
+
+  function openProviderSettings() {
+    providerSettingsDialog?.showModal();
+  }
+
+  function handleDialogKeydown(event: KeyboardEvent) {
+    if (event.key !== "Escape") return;
+    if (templateEditorDialog?.open) {
+      event.preventDefault();
+      templateEditorDialog.close();
+    } else if (providerSettingsDialog?.open) {
+      event.preventDefault();
+      providerSettingsDialog.close();
+    }
+  }
+
+  function openTemplateEditor() {
+    if (!activeTemplate) return;
+    templateEditDraft = structuredClone(activeTemplate);
+    templatePreview = "";
+    templatePreviewMessage = "Rendering preview...";
+    templatePreviewIsError = false;
+    templateEditorDialog?.showModal();
+    queueTemplatePreview();
+  }
+
+  function updateTemplateMetadata(
+    field: "name" | "description" | "locale" | "version" | "author",
+    value: string,
+  ) {
+    if (!templateEditDraft) return;
+    templateEditDraft = {
+      ...templateEditDraft,
+      metadata: { ...templateEditDraft.metadata, [field]: value },
+    };
+    queueTemplatePreview();
+  }
+
+  function updateTemplatePrompt(value: string) {
+    if (!templateEditDraft) return;
+    templateEditDraft = { ...templateEditDraft, system_prompt: value };
+    queueTemplatePreview();
+  }
+
+  function queueTemplatePreview() {
+    if (templatePreviewTimer) clearTimeout(templatePreviewTimer);
+    templatePreviewTimer = setTimeout(() => void renderTemplatePreview(), 180);
+  }
+
+  async function renderTemplatePreview() {
+    const template = templateEditDraft;
+    if (!template || !desktopAvailable) return;
+    const revision = ++templatePreviewRevision;
+    const values = Object.fromEntries(
+      template.variables.map((variable) => [
+        variable.name,
+        templateValues[variable.name] ??
+          variable.default?.value ??
+          (variable.kind === "boolean" ? false : ""),
+      ]),
+    );
+    const enabledSections = template.sections
+      .filter((section) => section.enabled_by_default)
+      .map((section) => section.id);
+
+    try {
+      const result = await commands.renderTemplateSystemPrompt(
+        template,
+        values,
+        enabledSections,
+      );
+      if (revision !== templatePreviewRevision) return;
+      if (result.status === "error") {
+        templatePreview = "";
+        templatePreviewMessage = formatTemplateError(result.error);
+        templatePreviewIsError = true;
+        return;
+      }
+      templatePreview = result.data;
+      templatePreviewMessage = "Preview updates as you edit.";
+      templatePreviewIsError = false;
+    } catch {
+      if (revision === templatePreviewRevision) {
+        templatePreview = "";
+        templatePreviewMessage = "The template preview could not be rendered.";
+        templatePreviewIsError = true;
+      }
+    }
+  }
+
+  async function saveEditedTemplate() {
+    const template = templateEditDraft;
+    if (!template || templateSaveBusy) return;
+    templateSaveBusy = true;
+    templateMessage = "";
+    templateIsError = false;
+    try {
+      const bytes = new TextEncoder().encode(JSON.stringify(template));
+      const validated = await commands.validateTemplate(Array.from(bytes));
+      if (validated.status === "error") {
+        templateMessage = formatTemplateError(validated.error);
+        templateIsError = true;
+        return;
+      }
+      const updatedTemplates = importedTemplates.map((saved) =>
+        saved.metadata.id === validated.data.metadata.id ? validated.data : saved,
+      );
+      const result = await commands.saveTemplates(updatedTemplates);
+      if (result.status === "error") {
+        templateMessage = formatTemplateError(result.error);
+        templateIsError = true;
+        return;
+      }
+      importedTemplates = updatedTemplates;
+      activateTemplate(validated.data.metadata.id);
+      templateMessage = "Template saved";
+      templateEditorDialog?.close();
+      templateEditDraft = null;
+    } catch {
+      templateMessage = "The template could not be saved.";
+      templateIsError = true;
+    } finally {
+      templateSaveBusy = false;
+    }
   }
 
   function sectionsForRendering(template: ClinicalTemplate): string[] {
@@ -1008,21 +1185,137 @@
   <meta name="theme-color" content="#f2f5f1" />
 </svelte:head>
 
-<svelte:window oncopy={preventUnreviewedOutputCopy} />
+<svelte:window oncopy={preventUnreviewedOutputCopy} onkeydown={handleDialogKeydown} />
 
 <div class="app-shell">
-  <aside class="provider-rail" aria-label="Provider settings">
+  <aside class="provider-rail" aria-labelledby="controls-heading">
     <a class="brand" href={resolve("/")} aria-label="Epikrise home">
       <span class="brand-mark" aria-hidden="true">E</span>
       <span class="brand-name">Epikrise</span>
     </a>
 
-    <section class="provider-settings">
-      <p class="eyebrow">Workspace</p>
-      <h1>Connection</h1>
+    <section class="active-provider" aria-label="Active model">
+      <p class="eyebrow">Selected model</p>
+      <strong>{providerNames[adapter]}</strong>
+      <span>{model || "No model selected"}</span>
+      <button class="settings-trigger" type="button" onclick={openProviderSettings}>
+        Connection settings
+      </button>
+    </section>
 
-      <label for="adapter">Provider</label>
-      <select id="adapter" bind:value={adapter}>
+    <dialog
+      class="settings-dialog"
+      bind:this={providerSettingsDialog}
+      aria-labelledby="connection-title"
+      onkeydown={handleDialogKeydown}
+      oncancel={(event) => {
+        event.preventDefault();
+        providerSettingsDialog?.close();
+      }}
+    >
+      <section class="provider-settings" aria-labelledby="connection-title">
+        <p class="eyebrow">Workspace</p>
+        <div class="dialog-heading">
+          <div>
+            <h1 id="connection-title">Connection</h1>
+            <p>Choose a model endpoint and manage its keychain credential.</p>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            aria-label="Close connection settings"
+            onclick={() => providerSettingsDialog?.close()}
+          >
+            ×
+          </button>
+        </div>
+
+        <label for="endpoint">Endpoint</label>
+        <input
+          id="endpoint"
+          bind:value={endpoint}
+          autocomplete="url"
+          spellcheck="false"
+          placeholder={adapter === "ollama"
+            ? "http://localhost:11434"
+            : "Provider default"}
+        />
+
+        <label for="credential">Keychain ID</label>
+        <input
+          id="credential"
+          bind:value={credentialId}
+          autocomplete="off"
+          spellcheck="false"
+        />
+
+        <label for="credential-secret">API key</label>
+        <input
+          id="credential-secret"
+          type="password"
+          bind:value={credentialSecret}
+          autocomplete="new-password"
+          spellcheck="false"
+        />
+        <button
+          class="connection-button"
+          type="button"
+          onclick={saveProviderCredential}
+          disabled={credentialBusy || !credentialId.trim() || !credentialSecret}
+        >
+          {credentialBusy ? "Saving..." : "Save in OS keychain"}
+        </button>
+        <button
+          class="connection-button"
+          type="button"
+          onclick={deleteProviderCredential}
+          disabled={credentialBusy || !credentialId.trim()}
+        >
+          Remove keychain entry
+        </button>
+        {#if credentialMessage}
+          <p class="model-list-message" class:error={credentialIsError} role="status">
+            {credentialMessage}
+          </p>
+        {/if}
+
+        <label class="vision-setting" for="vision-enabled">
+          <input id="vision-enabled" type="checkbox" bind:checked={visionEnabled} />
+          <span>Allow image input for this model</span>
+        </label>
+
+        <button
+          class="connection-button"
+          onclick={testProvider}
+          disabled={connectionState === "checking"}
+        >
+          {connectionState === "checking" ? "Checking..." : "Check connection"}
+        </button>
+
+        {#if connectionMessage}
+          <p
+            class="connection-message"
+            class:error={connectionState === "error"}
+            role="status"
+          >
+            <span class="status-dot" aria-hidden="true"></span>
+            {connectionMessage}
+          </p>
+        {/if}
+      </section>
+    </dialog>
+
+    <section
+      class="template-settings"
+      aria-label="Draft controls and template settings"
+    >
+      <div class="template-heading">
+        <p class="eyebrow">Controls</p>
+        <h2 id="controls-heading">Draft setup</h2>
+      </div>
+
+      <label for="active-adapter">Provider</label>
+      <select id="active-adapter" bind:value={adapter} disabled={isGenerating}>
         <option value="ollama">Ollama</option>
         <option value="open_ai">OpenAI</option>
         <option value="anthropic">Anthropic</option>
@@ -1033,10 +1326,10 @@
         <option value="groq">Groq</option>
       </select>
 
-      <label for="model">Model</label>
+      <label for="active-model">Model</label>
       <div class="model-picker">
         <select
-          id="model"
+          id="active-model"
           bind:value={model}
           disabled={modelListLoading || isGenerating}
         >
@@ -1062,85 +1355,38 @@
         </p>
       {/if}
 
-      <label for="endpoint">Endpoint</label>
+      <label for="output-token-limit">Output token limit</label>
       <input
-        id="endpoint"
-        bind:value={endpoint}
-        autocomplete="url"
-        spellcheck="false"
-        placeholder={adapter === "ollama"
-          ? "http://localhost:11434"
-          : "Provider default"}
+        id="output-token-limit"
+        type="number"
+        bind:value={outputTokenLimit}
+        min="1"
+        max="1000000"
+        step="1"
+        required
+        aria-describedby="output-token-limit-hint"
+        aria-invalid={!isOutputTokenLimitValid}
+        disabled={isGenerating || isPreparingGeneration}
       />
+      <p id="output-token-limit-hint" class="setting-hint">
+        1 to 1,000,000 tokens. Providers may impose a lower limit.
+      </p>
 
-      <label for="credential">Keychain ID</label>
-      <input
-        id="credential"
-        bind:value={credentialId}
-        autocomplete="off"
-        spellcheck="false"
-      />
-
-      <label for="credential-secret">API key</label>
-      <input
-        id="credential-secret"
-        type="password"
-        bind:value={credentialSecret}
-        autocomplete="new-password"
-        spellcheck="false"
-      />
-      <button
-        class="connection-button"
-        type="button"
-        onclick={saveProviderCredential}
-        disabled={credentialBusy || !credentialId.trim() || !credentialSecret}
+      <label for="reasoning-effort">Reasoning effort</label>
+      <select
+        id="reasoning-effort"
+        bind:value={reasoningEffort}
+        disabled={isGenerating || isPreparingGeneration}
       >
-        {credentialBusy ? "Saving..." : "Save in OS keychain"}
-      </button>
-      <button
-        class="connection-button"
-        type="button"
-        onclick={deleteProviderCredential}
-        disabled={credentialBusy || !credentialId.trim()}
-      >
-        Remove keychain entry
-      </button>
-      {#if credentialMessage}
-        <p class="model-list-message" class:error={credentialIsError} role="status">
-          {credentialMessage}
-        </p>
-      {/if}
-
-      <label class="vision-setting" for="vision-enabled">
-        <input id="vision-enabled" type="checkbox" bind:checked={visionEnabled} />
-        <span>Allow image input for this model</span>
-      </label>
-
-      <button
-        class="connection-button"
-        onclick={testProvider}
-        disabled={connectionState === "checking"}
-      >
-        {connectionState === "checking" ? "Checking..." : "Check connection"}
-      </button>
-
-      {#if connectionMessage}
-        <p
-          class="connection-message"
-          class:error={connectionState === "error"}
-          role="status"
-        >
-          <span class="status-dot" aria-hidden="true"></span>
-          {connectionMessage}
-        </p>
-      {/if}
-    </section>
-
-    <section class="template-settings" aria-labelledby="templates-title">
-      <div class="template-heading">
-        <p class="eyebrow">Template library</p>
-        <h2 id="templates-title">My templates</h2>
-      </div>
+        <option value="provider_default">Provider default</option>
+        <option value="none">None</option>
+        <option value="minimal">Minimal</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="x_high">Extra high</option>
+        <option value="max">Maximum</option>
+      </select>
 
       {#if importedTemplates.length}
         <label for="active-template">Active template</label>
@@ -1160,6 +1406,14 @@
           disabled={templateBusy || !activeTemplate}
         >
           Export .epitpl
+        </button>
+        <button
+          class="template-export-button"
+          type="button"
+          onclick={openTemplateEditor}
+          disabled={!activeTemplate || isGenerating || isPreparingGeneration}
+        >
+          Edit template
         </button>
       {:else}
         <p class="template-empty">No templates imported</p>
@@ -1318,6 +1572,41 @@
           </div>
         </div>
       {/if}
+
+      <div class="controls-actions">
+        {#if isGenerating}
+          <button class="cancel-button" type="button" onclick={cancelGeneration}>
+            Cancel generation
+          </button>
+        {:else}
+          <button
+            class="generate-button"
+            type="button"
+            onclick={() => generateDraft()}
+            disabled={(!prompt.trim() && sourceBlocks.length === 0) ||
+              !activeTemplate ||
+              isPreparingGeneration ||
+              !isOutputTokenLimitValid}
+          >
+            {isPreparingGeneration ? "Preparing..." : "Generate draft"}
+          </button>
+        {/if}
+        {#if caseSessionId || prompt || draft}
+          <button
+            class="case-discard-button"
+            type="button"
+            onclick={discardCase}
+            disabled={isGenerating || isPreparingGeneration}
+          >
+            Discard case
+          </button>
+        {/if}
+      </div>
+      {#if generationMessage}
+        <p class="generation-status" class:error={generationIsError} role="status">
+          {generationMessage}
+        </p>
+      {/if}
     </section>
 
     <footer class="rail-footer">
@@ -1326,54 +1615,145 @@
     </footer>
   </aside>
 
+  <dialog
+    class="template-editor-dialog"
+    bind:this={templateEditorDialog}
+    aria-labelledby="template-editor-title"
+    onkeydown={handleDialogKeydown}
+    oncancel={(event) => {
+      event.preventDefault();
+      templateEditorDialog?.close();
+    }}
+    onclose={() => {
+      templateEditDraft = null;
+      if (templatePreviewTimer) clearTimeout(templatePreviewTimer);
+    }}
+  >
+    {#if templateEditDraft}
+      <form
+        class="template-editor"
+        onsubmit={(event) => {
+          event.preventDefault();
+          void saveEditedTemplate();
+        }}
+      >
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">Template editor</p>
+            <h2 id="template-editor-title">
+              {templateEditDraft.metadata.name || "Untitled template"}
+            </h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            aria-label="Close template editor"
+            onclick={() => templateEditorDialog?.close()}
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="template-editor-meta">
+          <label>
+            Template name
+            <input
+              value={templateEditDraft.metadata.name}
+              required
+              oninput={(event) =>
+                updateTemplateMetadata("name", event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            Description
+            <input
+              value={templateEditDraft.metadata.description}
+              oninput={(event) =>
+                updateTemplateMetadata("description", event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            Locale
+            <input
+              value={templateEditDraft.metadata.locale}
+              required
+              oninput={(event) =>
+                updateTemplateMetadata("locale", event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            Version
+            <input
+              value={templateEditDraft.metadata.version}
+              required
+              oninput={(event) =>
+                updateTemplateMetadata("version", event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            Author
+            <input
+              value={templateEditDraft.metadata.author}
+              oninput={(event) =>
+                updateTemplateMetadata("author", event.currentTarget.value)}
+            />
+          </label>
+        </div>
+
+        <div class="template-editor-body">
+          <label for="template-system-prompt">System prompt · MiniJinja</label>
+          <textarea
+            id="template-system-prompt"
+            spellcheck="false"
+            bind:value={templateEditDraft.system_prompt}
+            oninput={(event) => updateTemplatePrompt(event.currentTarget.value)}
+          ></textarea>
+          <section
+            class="template-live-preview"
+            aria-labelledby="template-preview-title"
+          >
+            <div class="preview-heading">
+              <h3 id="template-preview-title">Rendered preview</h3>
+              <span class:error={templatePreviewIsError} role="status">
+                {templatePreviewMessage}
+              </span>
+            </div>
+            <pre>{templatePreview || "Preview output will appear here."}</pre>
+          </section>
+        </div>
+
+        <div class="template-editor-actions">
+          <button
+            class="template-discard"
+            type="button"
+            onclick={() => templateEditorDialog?.close()}
+            disabled={templateSaveBusy}
+          >
+            Cancel
+          </button>
+          <button class="connection-button" type="submit" disabled={templateSaveBusy}>
+            {templateSaveBusy ? "Validating..." : "Validate and save"}
+          </button>
+        </div>
+      </form>
+    {/if}
+  </dialog>
+
   <main class="work-area">
     {#if isFirstRun}
       <section class="first-run-panel" aria-labelledby="first-run-title">
         <p class="eyebrow">Getting started / Template setup</p>
         <h2 id="first-run-title">Bring your clinical template</h2>
         <p>
-          Institutional templates are not included. Import an .epitpl file, or use the
-          generic starter and adapt it later. Case content and template field values
-          stay in memory only.
+          Institutional templates are not included. Import an .epitpl file from your
+          clinic's designated template source, or use the generic starter and adapt it
+          later. Case content and template field values stay in memory only.
         </p>
 
         {#if pendingTemplate}
           <div class="first-run-review">
             <div>
               <span class="eyebrow">Ready to save</span>
-              <label for="output-token-limit">Output token limit</label>
-              <input
-                id="output-token-limit"
-                type="number"
-                bind:value={outputTokenLimit}
-                min="1"
-                max="1000000"
-                step="1"
-                required
-                aria-describedby="output-token-limit-hint"
-                aria-invalid={!isOutputTokenLimitValid}
-                disabled={isGenerating || isPreparingGeneration}
-              />
-              <p id="output-token-limit-hint" class="setting-hint">
-                Includes reasoning tokens when the provider counts them toward output.
-              </p>
-
-              <label for="reasoning-effort">Reasoning effort</label>
-              <select
-                id="reasoning-effort"
-                bind:value={reasoningEffort}
-                disabled={isGenerating || isPreparingGeneration}
-              >
-                <option value="provider_default">Provider default</option>
-                <option value="none">None</option>
-                <option value="minimal">Minimal</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="x_high">Extra high</option>
-                <option value="max">Maximum</option>
-              </select>
-
               <h3>{pendingTemplate.metadata.name}</h3>
               <p>{pendingTemplate.metadata.description}</p>
             </div>
@@ -1453,7 +1833,7 @@
               <p class="eyebrow">01 / Source</p>
               <h3 id="source-title">Clinical material</h3>
             </div>
-            <span class="field-count">{prompt.length} chars</span>
+            <span class="field-count">{inputCharacterCount} chars</span>
           </div>
 
           <input
@@ -1512,11 +1892,16 @@
                 <li class="source-input-item">
                   <div class="source-input-meta">
                     <span title={provenanceLabel}>{provenanceLabel}</span>
+                    <span>{block.content.length} chars</span>
+                  </div>
+                  <div class="source-input-details">
                     <span
-                      >{(block.images?.length ?? 0) > 0
-                        ? "Vision image"
-                        : `${block.content.length} chars`}</span
+                      >{block.round + 1 === 1
+                        ? "New round"
+                        : `Round ${block.round + 1}`}</span
                     >
+                    <span>{extractionMethodLabel(block.extraction_method)}</span>
+                    <span>{block.images?.[0]?.mime_type ?? "Extracted text"}</span>
                   </div>
                   <button
                     class="source-input-remove"
@@ -1545,36 +1930,6 @@
 
           <div class="source-actions">
             <p>Use anonymized clinical material.</p>
-            {#if caseSessionId || prompt || draft}
-              <button
-                class="case-discard-button"
-                onclick={discardCase}
-                disabled={isGenerating || isPreparingGeneration}
-              >
-                Discard case
-              </button>
-            {/if}
-            {#if isGenerating}
-              <button
-                class="cancel-button"
-                onclick={cancelGeneration}
-                aria-label="Cancel generation"
-              >
-                Cancel
-              </button>
-            {:else}
-              <button
-                class="generate-button"
-                onclick={() => generateDraft()}
-                disabled={(!prompt.trim() && sourceBlocks.length === 0) ||
-                  !activeTemplate ||
-                  isPreparingGeneration ||
-                  !isOutputTokenLimitValid}
-              >
-                <span aria-hidden="true">↗</span>
-                {isPreparingGeneration ? "Preparing..." : "Generate draft"}
-              </button>
-            {/if}
           </div>
         </section>
 
@@ -1591,14 +1946,51 @@
             {/if}
           </div>
 
+          <div class="output-toolbar">
+            <span>Output view</span>
+            <div class="preview-toggle" role="group" aria-label="Output preview format">
+              <button
+                type="button"
+                aria-pressed={outputPreviewMode === "plain"}
+                class:active={outputPreviewMode === "plain"}
+                onclick={() => (outputPreviewMode = "plain")}
+              >
+                Plain text
+              </button>
+              <button
+                type="button"
+                aria-pressed={outputPreviewMode === "formatted"}
+                class:active={outputPreviewMode === "formatted"}
+                onclick={() => (outputPreviewMode = "formatted")}
+              >
+                Formatted
+              </button>
+            </div>
+          </div>
+
           <article class="draft-output" aria-live="polite" aria-busy={isGenerating}>
             {#if draft}
-              <pre>{#each draftLines as line, index (index)}<span
-                    id={`draft-line-${index + 1}`}
-                    class:linted-line={outputViolations.some(
-                      (violation) => violation.line === index + 1,
-                    )}>{line}{index < draftLines.length - 1 ? "\n" : ""}</span
-                  >{/each}</pre>
+              {#if outputPreviewMode === "plain"}
+                <pre>{#each draftLines as line, index (index)}<span
+                      id={`draft-line-${index + 1}`}
+                      class:linted-line={outputViolations.some(
+                        (violation) => violation.line === index + 1,
+                      )}>{line}{index < draftLines.length - 1 ? "\n" : ""}</span
+                    >{/each}</pre>
+              {:else}
+                <div class="rich-output">
+                  {#each draftLines as line, index (index)}
+                    <p
+                      id={`draft-line-${index + 1}`}
+                      class:linted-line={outputViolations.some(
+                        (violation) => violation.line === index + 1,
+                      )}
+                    >
+                      {line || "\u00a0"}
+                    </p>
+                  {/each}
+                </div>
+              {/if}
             {:else if isGenerating}
               <p class="empty-state">
                 Preparing draft<span class="typing-dots" aria-hidden="true">...</span>
@@ -1694,7 +2086,18 @@
 
   .app-shell {
     display: grid;
-    grid-template-columns: 278px minmax(0, 1fr);
+    grid-template-columns: minmax(260px, 0.78fr) minmax(400px, 1.35fr) minmax(
+        270px,
+        0.82fr
+      );
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "header header controls"
+      "inputs output controls"
+      "footer footer controls";
+    align-items: stretch;
+    gap: 0 18px;
+    padding: 0 22px;
     min-height: 100vh;
     background:
       radial-gradient(ellipse at 88% 10%, rgba(215, 229, 218, 0.55), transparent 30%),
@@ -1703,11 +2106,13 @@
 
   .provider-rail {
     display: flex;
+    grid-area: controls;
     flex-direction: column;
+    min-width: 0;
     min-height: 100vh;
-    padding: 27px 22px 18px;
-    border-right: 1px solid #dce4de;
-    background: rgba(249, 251, 248, 0.8);
+    padding: 24px 0 18px 18px;
+    border-left: 1px solid #dce4de;
+    background: rgba(249, 251, 248, 0.62);
   }
 
   .brand {
@@ -1735,11 +2140,116 @@
     font-size: 20px;
   }
 
+  .active-provider {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 24px;
+    padding: 12px 13px;
+    border-left: 2px solid #d46b4d;
+    background: #f7faf6;
+  }
+
+  .active-provider strong {
+    margin-top: 4px;
+    color: #30473d;
+    font-size: 13px;
+  }
+
+  .active-provider > span {
+    color: #65766e;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .settings-trigger {
+    min-height: 33px;
+    margin-top: 8px;
+    padding: 0;
+    border: 0;
+    color: #236e5d;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: left;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  :global(dialog) {
+    max-height: min(90dvh, 900px);
+    padding: 0;
+    border: 1px solid #cbd8cf;
+    border-radius: 7px;
+    color: #1d2926;
+    background: #f9fbf8;
+    box-shadow: 0 22px 70px rgba(18, 36, 29, 0.24);
+  }
+
+  :global(dialog::backdrop) {
+    background: rgba(18, 36, 29, 0.48);
+    backdrop-filter: blur(3px);
+  }
+
+  .settings-dialog {
+    width: min(510px, calc(100vw - 28px));
+    overflow: auto;
+    padding: 24px;
+  }
+
+  .dialog-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .dialog-heading h1,
+  .dialog-heading h2 {
+    margin: 3px 0 0;
+    font-family: Georgia, serif;
+    font-size: 25px;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+
+  .dialog-heading p:not(.eyebrow) {
+    margin: 7px 0 0;
+    color: #65766e;
+    font-size: 12px;
+  }
+
+  .dialog-close {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    place-items: center;
+    border: 1px solid #d4ded7;
+    border-radius: 4px;
+    color: #4b6157;
+    background: transparent;
+    cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  .settings-dialog .provider-settings {
+    margin: 0;
+    gap: 9px;
+  }
+
+  .settings-dialog .provider-settings > .eyebrow {
+    margin: 0;
+  }
+
   .provider-settings {
     display: flex;
     flex-direction: column;
     gap: 9px;
-    margin-top: 58px;
+    margin-top: 0;
   }
 
   .eyebrow {
@@ -1768,8 +2278,8 @@
     display: flex;
     flex-direction: column;
     gap: 9px;
-    margin-top: 25px;
-    padding-top: 19px;
+    margin-top: 22px;
+    padding-top: 17px;
     border-top: 1px solid #dce4de;
   }
 
@@ -1778,6 +2288,30 @@
     font-family: Georgia, serif;
     font-size: 20px;
     font-weight: 400;
+  }
+
+  .setting-hint {
+    margin: -4px 0 0;
+    color: #75847c;
+    font-size: 10px;
+  }
+
+  .controls-actions {
+    display: grid;
+    gap: 8px;
+    margin-top: 13px;
+    padding-top: 12px;
+    border-top: 1px solid #dce4de;
+  }
+
+  .controls-actions .generate-button,
+  .controls-actions .cancel-button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .controls-actions .case-discard-button {
+    width: 100%;
   }
 
   .template-empty {
@@ -1976,6 +2510,114 @@
     text-decoration: underline;
   }
 
+  .template-editor-dialog {
+    width: min(1080px, calc(100vw - 32px));
+    overflow: auto;
+  }
+
+  .template-editor {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: 17px;
+    max-height: min(88dvh, 900px);
+    padding: 24px;
+  }
+
+  .template-editor-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px 14px;
+  }
+
+  .template-editor-meta label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+  }
+
+  .template-editor-body {
+    display: grid;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(240px, 1fr);
+    gap: 7px 16px;
+  }
+
+  .template-editor-body > label {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+
+  .template-editor-body > textarea {
+    min-height: 240px;
+    resize: vertical;
+    padding: 12px;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .template-live-preview {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    border-left: 2px solid #d7e7dd;
+    background: #f3f8f3;
+  }
+
+  .preview-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 11px;
+    border-bottom: 1px solid #dce4de;
+  }
+
+  .preview-heading h3 {
+    margin: 0;
+    font-family: Georgia, serif;
+    font-size: 16px;
+    font-weight: 400;
+  }
+
+  .preview-heading span {
+    color: #718078;
+    font-size: 10px;
+    text-align: right;
+  }
+
+  .preview-heading .error {
+    color: #a64231;
+  }
+
+  .template-live-preview pre {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    margin: 0;
+    padding: 12px;
+    color: #34473e;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .template-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .template-editor-actions .connection-button {
+    min-width: 160px;
+    margin: 0;
+    padding: 0 14px;
+  }
+
   label {
     margin-top: 7px;
     color: #495a53;
@@ -2118,14 +2760,13 @@
   }
 
   .work-area {
-    display: flex;
-    width: min(100%, 1440px);
-    flex-direction: column;
-    margin: 0 auto;
-    padding: 38px clamp(24px, 5vw, 76px) 20px;
+    display: contents;
+    width: 100%;
   }
 
   .first-run-panel {
+    grid-column: 1 / 3;
+    grid-row: 1 / 4;
     width: min(100%, 720px);
     margin: auto;
     padding: clamp(24px, 5vw, 48px);
@@ -2236,11 +2877,12 @@
   }
 
   .page-header {
+    grid-area: header;
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
     gap: 18px;
-    margin-bottom: 27px;
+    margin: 26px 0 18px;
     animation: rise-in 420ms ease-out both;
   }
 
@@ -2274,27 +2916,31 @@
   }
 
   .writing-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-    gap: 20px;
-    align-items: stretch;
+    display: contents;
   }
 
   .source-panel,
   .draft-panel {
     display: flex;
+    min-height: 0;
     min-width: 0;
     flex-direction: column;
-    padding: 21px;
+    margin: 0 0 18px;
+    padding: 18px;
     border: 1px solid #dce4de;
-    border-radius: 7px;
+    border-radius: 5px;
     background: rgba(255, 255, 255, 0.82);
     box-shadow: 0 8px 24px rgba(40, 69, 57, 0.035);
     animation: rise-in 500ms 80ms ease-out both;
   }
 
   .draft-panel {
+    grid-area: output;
     animation-delay: 150ms;
+  }
+
+  .source-panel {
+    grid-area: inputs;
   }
 
   .panel-heading {
@@ -2324,6 +2970,44 @@
   .generation-status {
     color: #236e5d;
     text-align: right;
+  }
+
+  .output-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: -3px 0 11px;
+    color: #74837b;
+    font-size: 11px;
+  }
+
+  .preview-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+    padding: 2px;
+    border: 1px solid #d4ded7;
+    border-radius: 5px;
+    background: #f4f7f3;
+  }
+
+  .preview-toggle button {
+    min-height: 29px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 3px;
+    color: #586a61;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  .preview-toggle button.active {
+    color: #1d5547;
+    background: white;
+    box-shadow: 0 1px 3px rgba(25, 54, 41, 0.14);
   }
 
   .vision-setting {
@@ -2441,6 +3125,19 @@
     color: #819087;
   }
 
+  .source-input-details {
+    display: flex;
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    gap: 5px 10px;
+    color: #718078;
+    font-size: 10px;
+  }
+
+  .source-input-details span {
+    overflow-wrap: anywhere;
+  }
+
   .source-input-remove {
     grid-column: 2;
     grid-row: 1;
@@ -2511,11 +3208,6 @@
     background: #236e5d;
   }
 
-  .generate-button span {
-    font-size: 17px;
-    line-height: 1;
-  }
-
   .cancel-button {
     min-width: 100px;
     padding: 0 14px;
@@ -2562,6 +3254,20 @@
     line-height: 1.75;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  .rich-output {
+    color: #293a34;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.75;
+    overflow-wrap: anywhere;
+  }
+
+  .rich-output p {
+    min-height: 1.75em;
+    margin: 0;
+    white-space: pre-wrap;
   }
 
   .draft-output .linted-line {
@@ -2702,6 +3408,7 @@
   }
 
   .work-footer {
+    grid-area: footer;
     display: flex;
     justify-content: space-between;
     gap: 14px;
@@ -2733,71 +3440,114 @@
     }
   }
 
-  @media (max-width: 940px) {
+  @media (max-width: 1120px) {
     .app-shell {
-      grid-template-columns: 240px minmax(0, 1fr);
-    }
-
-    .work-area {
-      padding-right: 24px;
-      padding-left: 24px;
-    }
-
-    .writing-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .draft-output {
-      min-height: 260px;
-    }
-  }
-
-  @media (max-width: 640px) {
-    .app-shell {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(250px, 0.9fr) minmax(0, 1.1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto auto;
+      grid-template-areas:
+        "header header"
+        "inputs output"
+        "controls controls"
+        "footer footer";
+      padding: 0 20px;
     }
 
     .provider-rail {
       min-height: auto;
-      padding: 15px 18px 17px;
-      border-right: 0;
-      border-bottom: 1px solid #dce4de;
+      padding: 18px 0;
+      border-top: 1px solid #dce4de;
+      border-left: 0;
     }
 
-    .provider-settings {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px 12px;
-      margin-top: 19px;
-    }
-
-    .provider-settings .eyebrow,
-    .provider-settings h1,
-    .connection-button,
-    .connection-message {
-      grid-column: 1 / -1;
-    }
-
-    .provider-settings h1 {
-      margin-bottom: 1px;
+    .active-provider {
+      margin-top: 16px;
     }
 
     .template-settings {
-      margin-top: 17px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+      gap: 9px 14px;
+    }
+
+    .template-heading,
+    .template-fields,
+    .template-section-fields,
+    .template-preview,
+    .controls-actions,
+    .template-message,
+    .generation-status {
+      grid-column: 1 / -1;
+    }
+
+    .first-run-panel {
+      grid-column: 1 / -1;
+      grid-row: 1 / 4;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .app-shell {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto auto auto auto;
+      grid-template-areas:
+        "header"
+        "inputs"
+        "output"
+        "controls"
+        "footer";
+      gap: 0;
+      padding: 0 14px;
+    }
+
+    .provider-rail {
+      min-height: auto;
+      padding: 17px 0;
+      border-top: 1px solid #dce4de;
+    }
+
+    .active-provider {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 3px 12px;
+    }
+
+    .active-provider .eyebrow,
+    .active-provider > strong,
+    .active-provider > span {
+      grid-column: 1;
+    }
+
+    .active-provider .settings-trigger {
+      grid-column: 2;
+      grid-row: 1 / 4;
+      margin: 0;
+    }
+
+    .template-settings {
+      grid-template-columns: minmax(0, 1fr);
+      margin-top: 18px;
       padding-top: 15px;
+    }
+
+    .template-heading,
+    .template-fields,
+    .template-section-fields,
+    .template-preview,
+    .controls-actions,
+    .template-message,
+    .generation-status {
+      grid-column: 1;
     }
 
     .rail-footer {
       display: none;
     }
 
-    .work-area {
-      padding: 25px 16px 16px;
-    }
-
     .page-header {
       align-items: flex-start;
-      margin-bottom: 18px;
+      margin: 20px 0 14px;
     }
 
     .page-header h2 {
@@ -2807,7 +3557,9 @@
 
     .source-panel,
     .draft-panel {
-      padding: 16px;
+      min-height: 0;
+      margin-bottom: 13px;
+      padding: 14px;
     }
 
     .source-panel textarea {
@@ -2826,19 +3578,234 @@
       flex-basis: 100%;
     }
 
-    .source-actions p {
-      max-width: 130px;
-    }
-
-    .generate-button {
-      min-width: 132px;
-      padding: 0 10px;
-    }
-
     .work-footer {
       flex-direction: column;
       gap: 4px;
-      padding-top: 20px;
+      padding: 10px 0 16px;
+    }
+
+    .first-run-panel {
+      grid-column: 1;
+      grid-row: 1;
+      width: 100%;
+      margin: 18px 0;
+      padding: 22px;
+    }
+
+    .template-editor {
+      max-height: 88dvh;
+      padding: 17px;
+    }
+
+    .template-editor-meta {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .template-editor-body {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(220px, 1fr) minmax(220px, 1fr);
+    }
+
+    .template-editor-body > label {
+      grid-column: 1;
+    }
+
+    .settings-dialog {
+      padding: 18px;
+    }
+
+    .template-editor-actions {
+      flex-wrap: wrap;
+    }
+
+    .template-editor-actions .connection-button {
+      flex: 1 1 170px;
+    }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :global(body) {
+      color: #e3ebe5;
+      background: #151f1a;
+    }
+
+    .app-shell {
+      color: #e3ebe5;
+      background:
+        radial-gradient(ellipse at 88% 10%, rgba(54, 82, 66, 0.34), transparent 30%),
+        #151f1a;
+    }
+
+    .provider-rail {
+      border-color: #34463b;
+      background: rgba(24, 36, 29, 0.62);
+    }
+
+    .active-provider,
+    .source-input-item,
+    .preview-toggle {
+      background: #1d2c23;
+    }
+
+    .active-provider strong,
+    .template-preview dd,
+    .draft-output pre,
+    .rich-output,
+    .review-confirmation,
+    .source-input-item pre {
+      color: #dce7df;
+    }
+
+    .active-provider > span,
+    .template-empty,
+    .source-input-meta,
+    .source-input-details,
+    .source-input-item summary,
+    .source-actions p,
+    .work-footer {
+      color: #a7b7ad;
+    }
+
+    .brand,
+    .provider-settings h1,
+    .template-heading h2,
+    .page-header h2,
+    .panel-heading h3,
+    .first-run-panel h2 {
+      color: #eef3ef;
+    }
+
+    .source-panel,
+    .draft-panel,
+    .first-run-panel {
+      border-color: #34463b;
+      color: #e3ebe5;
+      background: rgba(27, 41, 33, 0.94);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+    }
+
+    input,
+    select,
+    textarea {
+      border-color: #45584c;
+      color: #e3ebe5;
+      background: #18251d;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: #75b29b;
+      outline-color: rgba(117, 178, 155, 0.22);
+    }
+
+    .draft-output {
+      border-color: #476454;
+      background: linear-gradient(90deg, #1b2a21, #202e26 30%);
+    }
+
+    .empty-state,
+    .field-count,
+    .generation-status,
+    .setting-hint {
+      color: #a1b0a7;
+    }
+
+    .template-fields,
+    .template-section-fields,
+    .template-settings,
+    .template-preview details,
+    .provider-settings,
+    .controls-actions {
+      border-color: #34463b;
+    }
+
+    .template-preview,
+    .template-live-preview {
+      background: #1b2a21;
+    }
+
+    .template-preview h3,
+    .template-preview pre,
+    .template-live-preview pre {
+      color: #dce7df;
+    }
+
+    .template-preview > p:not(.eyebrow),
+    .template-preview summary,
+    .first-run-panel > p:not(.eyebrow),
+    .first-run-review p {
+      color: #a7b7ad;
+    }
+
+    .settings-dialog,
+    .template-editor-dialog {
+      border-color: #45584c;
+      color: #e3ebe5;
+      background: #1a2820;
+    }
+
+    .dialog-heading p:not(.eyebrow),
+    .preview-heading span {
+      color: #a7b7ad;
+    }
+
+    .preview-heading {
+      border-color: #34463b;
+    }
+
+    .preview-heading h3 {
+      color: #e3ebe5;
+    }
+
+    .preview-toggle {
+      border-color: #45584c;
+    }
+
+    .preview-toggle button {
+      color: #b2c1b7;
+    }
+
+    .preview-toggle button.active {
+      color: #1d5547;
+      background: #dcebe1;
+    }
+
+    .input-tool-button,
+    .model-refresh-button,
+    .template-export-button {
+      border-color: #496354;
+      color: #c5e0d1;
+      background: #203329;
+    }
+
+    .input-tool-button:hover:not(:disabled),
+    .model-refresh-button:hover:not(:disabled),
+    .template-export-button:hover:not(:disabled) {
+      background: #294637;
+    }
+
+    .draft-tag {
+      border-color: #805640;
+      color: #f0b89a;
+      background: #3b2b22;
+    }
+
+    .case-discard-button,
+    .cancel-button {
+      border-color: #805447;
+      color: #ffc2ae;
+      background: #38251f;
+    }
+
+    .lint-warnings {
+      border-color: #c77b59;
+      color: #f1c6ae;
+      background: #382921;
+    }
+
+    .lint-jump {
+      color: #f1c6ae;
     }
   }
 

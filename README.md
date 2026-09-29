@@ -25,8 +25,15 @@ draft, and cancel generation. Findings can be added in several rounds and
 integrated cumulatively. Template-defined output checks are shown as warnings,
 with an option to regenerate with corrections.
 
+The desktop workspace separates clinical inputs, generated output, and draft
+controls. Input rows show provenance, extraction method, round, content type,
+and character count. Provider credentials and endpoint settings are managed in
+a dialog; templates can be edited with a live rendered MiniJinja preview.
+Output has plain and formatted preview modes.
+
 The result can be copied to the clipboard only after the clinician reviews and
-acknowledges the current output. It is pasted manually into the target system;
+acknowledges the current output. Copy writes formatted HTML with the approved
+text as a plain-text fallback. It is pasted manually into the target system;
 Epikrise does not connect to a hospital information system.
 
 ## Privacy posture
