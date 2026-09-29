@@ -4,7 +4,7 @@ import path from "node:path";
 const maxTemplateBytes = 1_048_576;
 
 function usage() {
-  return `Usage: npm run template:convert -- <prompt.txt> <output.epitpl> [options]
+  return `Usage: pnpm template:convert -- <prompt.txt> <output.epitpl> [options]
 
 Options:
   --name <name>          Template display name

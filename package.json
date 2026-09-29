@@ -4,6 +4,7 @@
   "description": "Local-only assistant that turns anonymized clinical material into a structured diagnosis and findings list",
   "type": "module",
   "private": true,
+  "packageManager": "pnpm@12.6.0",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
@@ -39,7 +40,7 @@
     "svelte": "^5.56.3",
     "svelte-check": "^4.6.0",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.71.0",
+    "typescript-eslint": "^8.70.0",
     "vite": "^8.0.16",
     "vitest": "^5.0.2"
   }

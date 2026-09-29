@@ -8,11 +8,16 @@
     },
     "ghcr.io/devcontainers/features/desktop-lite:1": {},
     "ghcr.io/devcontainers/features/copilot-cli:1": {},
+    "ghcr.io/devcontainers-extra/features/pnpm:2": {
+      "version": "12.6.0"
+    },
     "ghcr.io/devcontainers-extra/features/ripgrep:1": {},
-    "ghcr.io/devcontainers-extra/features/prettier:1": {}
+    "ghcr.io/devcontainers-extra/features/prettier:1": {
+      "version": "3.9.9"
+    }
   },
   "onCreateCommand": "bash .devcontainer/install-deps.sh",
-  "postCreateCommand": "npm ci --include=dev",
+  "postCreateCommand": "pnpm install --frozen-lockfile",
   "forwardPorts": [1420, 6080],
   "portsAttributes": {
     "1420": {
@@ -27,7 +32,8 @@
   "remoteEnv": {
     "DISPLAY": ":1",
     // WebKitGTK's DMABUF renderer fails inside a container without GPU passthrough.
-    "WEBKIT_DISABLE_DMABUF_RENDERER": "1"
+    "WEBKIT_DISABLE_DMABUF_RENDERER": "1",
+    "CI": "1"
   },
   "customizations": {
     "vscode": {
@@ -38,7 +44,6 @@
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
         "tamasfe.even-better-toml",
-        "GitHub.copilot",
         "GitHub.copilot-chat",
         "GitHub.vscode-pull-request-github"
       ],

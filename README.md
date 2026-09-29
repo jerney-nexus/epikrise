@@ -40,7 +40,7 @@ system. Epikrise never talks to a hospital information system.
 | Tool          | Version | Notes                                                                |
 | ------------- | ------- | -------------------------------------------------------------------- |
 | Rust          | 1.98+   | stable toolchain, edition 2024                                       |
-| Node.js       | 22+     | npm is the package manager; pnpm is not used                         |
+| Node.js       | 22+     | pnpm 12.6.0, activated through Corepack                              |
 | Platform deps | —       | see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
 
 A [dev container](.devcontainer/devcontainer.json) with everything preinstalled
@@ -49,14 +49,15 @@ is included; see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Getting started
 
 ```sh
-npm install
-npm run tauri dev
+corepack enable pnpm
+pnpm install
+pnpm tauri dev
 ```
 
 To produce installers for the current platform:
 
 ```sh
-npm run tauri build
+pnpm tauri build
 ```
 
 Tauri must be able to find `cargo` on `PATH`. If the build fails while running
@@ -69,8 +70,8 @@ Install Cargo Nextest once, then run both test suites from the project root:
 
 ```sh
 cargo install cargo-nextest --locked
-npm test
-npm run test:rust
+pnpm test
+pnpm test:rust
 ```
 
 ## Templates
@@ -86,7 +87,7 @@ per specialty, and the output rules to apply to generated responses.
 To convert a plain-text prompt locally, provide section labels explicitly:
 
 ```sh
-npm run template:convert -- templates/prompt.txt templates/imported.epitpl \
+pnpm template:convert -- templates/prompt.txt templates/imported.epitpl \
   --name "Institutional template" --locale de-CH \
   --section diagnoses=Diagnosen --section findings=Befunde
 ```

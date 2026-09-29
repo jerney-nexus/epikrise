@@ -35,7 +35,7 @@ Homebrew Tesseract and German language data:
 brew install tesseract tesseract-lang
 ```
 
-`npm run tauri` prepares the ignored, target-specific OCR files before
+`pnpm tauri` prepares the ignored, target-specific OCR files before
 invoking the Tauri CLI. It downloads the matching PDFium library from the
 upstream release and verifies its SHA-256 digest. Tesseract itself and its
 language data are taken from the host installation.
@@ -43,11 +43,12 @@ language data are taken from the host installation.
 Then:
 
 ```sh
-npm install
-npm run tauri dev
+corepack enable pnpm
+pnpm install
+pnpm tauri dev
 ```
 
-On macOS, `cargo` must be on `PATH` in the terminal that runs npm. With
+On macOS, `cargo` must be on `PATH` in the terminal that runs pnpm. With
 Homebrew's keg-only `rustup`, add both the rustup executable and its Cargo
 shims. For Apple Silicon, run:
 
@@ -65,7 +66,7 @@ cargo --version
 ```
 
 If `command -v cargo` prints nothing, install Rust with [rustup](https://rustup.rs/)
-and open a new terminal. Then retry `npm run tauri build`.
+and open a new terminal. Then retry `pnpm tauri build`.
 
 ## Project layout
 
@@ -93,8 +94,8 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cd ..
-npm run check
-npm run build
+pnpm check
+pnpm build
 ```
 
 Lint levels live in `[workspace.lints]` in src-tauri/Cargo.toml. Tests are

@@ -33,7 +33,6 @@ build/
 .vite/
 .turbo/
 *.tsbuildinfo
-.npm/
 .eslintcache
 
 # --- Tauri ---
@@ -54,7 +53,6 @@ coverage/
 
 # --- Logs & temp ---
 *.log
-npm-debug.log*
 tmp/
 .tmp/
 
