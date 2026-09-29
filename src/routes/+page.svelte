@@ -11,6 +11,7 @@
     commands,
     events,
     type ClinicalTemplate,
+    type CredentialSummary,
     type ExtractedBlock,
     type ExtractionMethod,
     type IngestError,
@@ -87,6 +88,9 @@
   let templateIsError = $state(false);
   let templateBusy = $state(false);
   let providerSettingsDialog: HTMLDialogElement | undefined;
+  let modelSettingsDialog: HTMLDialogElement | undefined;
+  let templateSettingsDialog: HTMLDialogElement | undefined;
+  let addCredentialDialog: HTMLDialogElement | undefined;
   let templateEditorDialog: HTMLDialogElement | undefined;
   let templateEditDraft = $state<ClinicalTemplate | null>(null);
   let templatePreview = $state("");
@@ -105,6 +109,8 @@
   let modelListIsError = $state(false);
   let endpoint = $state("");
   let credentialId = $state("");
+  let providerCredentials = $state<CredentialSummary[]>([]);
+  let newCredentialLabel = $state("");
   let credentialSecret = $state("");
   let credentialMessage = $state("");
   let credentialIsError = $state(false);
@@ -167,6 +173,12 @@
   );
   const currentModels = $derived(
     modelsForProfile === modelProfileKey ? availableModels : [],
+  );
+  const credentialsForProvider = $derived(
+    providerCredentials.filter((credential) => credential.adapter === adapter),
+  );
+  const selectedCredential = $derived(
+    credentialsForProvider.find((credential) => credential.id === credentialId) ?? null,
   );
   const isFirstRun = $derived(
     desktopAvailable && templateLibraryReady && importedTemplates.length === 0,
@@ -574,15 +586,53 @@
     providerSettingsDialog?.showModal();
   }
 
+  function openModelSettings() {
+    modelSettingsDialog?.showModal();
+  }
+
+  function openTemplateSettings() {
+    templateSettingsDialog?.showModal();
+  }
+
+  function openAddCredential() {
+    newCredentialLabel = "";
+    credentialSecret = "";
+    credentialMessage = "";
+    addCredentialDialog?.showModal();
+  }
+
+  function changeProvider(value: string) {
+    const previousCredentialId = credentialId;
+    adapter = value as ProviderAdapter;
+    const matchingCredentials = providerCredentials.filter(
+      (credential) => credential.adapter === adapter,
+    );
+    credentialId = matchingCredentials.some(
+      (credential) => credential.id === previousCredentialId,
+    )
+      ? previousCredentialId
+      : matchingCredentials.length === 1
+        ? matchingCredentials[0].id
+        : "";
+    availableModels = [];
+    modelsForProfile = "";
+    connectionState = "idle";
+    connectionMessage = "";
+  }
+
   function handleDialogKeydown(event: KeyboardEvent) {
     if (event.key !== "Escape") return;
-    if (templateEditorDialog?.open) {
-      event.preventDefault();
-      templateEditorDialog.close();
-    } else if (providerSettingsDialog?.open) {
-      event.preventDefault();
-      providerSettingsDialog.close();
-    }
+    const topDialog = [
+      addCredentialDialog,
+      templateEditorDialog,
+      providerSettingsDialog,
+      modelSettingsDialog,
+      templateSettingsDialog,
+    ].find((dialog) => dialog?.open);
+    if (!topDialog) return;
+    event.preventDefault();
+    event.stopPropagation();
+    topDialog.close();
   }
 
   function openTemplateEditor() {
@@ -922,6 +972,8 @@
         }
       });
 
+    void loadProviderCredentials();
+
     return () => {
       disposed = true;
       unlisten.forEach((stop) => stop());
@@ -935,25 +987,69 @@
       return;
     }
 
+    const requestedProfileKey = modelProfileKey;
     connectionState = "checking";
     connectionMessage = "";
     try {
       const result = await commands.testProvider(createProfile());
-      connectionState = result.status === "ok" ? "ready" : "error";
-      connectionMessage =
-        result.status === "ok" ? "Connected" : formatError(result.error);
+      if (requestedProfileKey !== modelProfileKey) return;
+      if (result.status === "error") {
+        connectionState = "error";
+        connectionMessage = formatError(result.error);
+        return;
+      }
+      availableModels = result.data;
+      modelsForProfile = requestedProfileKey;
+      if (result.data.length > 0 && !result.data.includes(model)) {
+        model = result.data[0];
+      }
+      connectionState = "ready";
+      connectionMessage = result.data.length
+        ? `Connected · ${result.data.length} models available`
+        : "Connected · no models returned";
     } catch {
-      connectionState = "error";
-      connectionMessage = "The connection check failed.";
+      if (requestedProfileKey === modelProfileKey) {
+        connectionState = "error";
+        connectionMessage = "The connection check failed.";
+      }
+    }
+  }
+
+  async function loadProviderCredentials(preferredId = ""): Promise<boolean> {
+    if (!desktopAvailable) return false;
+    try {
+      const result = await commands.listProviderCredentials();
+      if (result.status === "error") {
+        credentialMessage = formatError(result.error);
+        credentialIsError = true;
+        return false;
+      }
+      providerCredentials = result.data;
+      const matchingCredentials = result.data.filter(
+        (credential) => credential.adapter === adapter,
+      );
+      const requestedId = preferredId || credentialId;
+      credentialId = matchingCredentials.some(
+        (credential) => credential.id === requestedId,
+      )
+        ? requestedId
+        : matchingCredentials.length === 1
+          ? matchingCredentials[0].id
+          : "";
+      return true;
+    } catch {
+      credentialMessage = "Saved provider credentials could not be loaded.";
+      credentialIsError = true;
+      return false;
     }
   }
 
   async function saveProviderCredential() {
-    const keychainId = credentialId.trim();
-    if (!desktopAvailable || !keychainId || !credentialSecret.trim()) {
-      credentialMessage = !keychainId
-        ? "Enter a keychain ID and API key."
-        : "Enter an API key in the desktop app.";
+    const label = newCredentialLabel.trim();
+    if (!desktopAvailable || !label || !credentialSecret.trim()) {
+      credentialMessage = !desktopAvailable
+        ? "Credentials can only be added in the desktop app."
+        : "Enter a label and API key.";
       credentialIsError = true;
       credentialSecret = "";
       return;
@@ -962,13 +1058,22 @@
     credentialBusy = true;
     credentialMessage = "";
     try {
-      const result = await commands.setProviderCredential(keychainId, credentialSecret);
+      const result = await commands.setProviderCredential(
+        adapter,
+        label,
+        credentialSecret,
+      );
       if (result.status === "error") {
         credentialMessage = formatError(result.error);
         credentialIsError = true;
       } else {
-        credentialMessage = "API key saved in the OS keychain.";
-        credentialIsError = false;
+        credentialId = result.data.id;
+        addCredentialDialog?.close();
+        const loaded = await loadProviderCredentials(result.data.id);
+        credentialMessage = loaded
+          ? "Provider credential added to the OS keychain."
+          : "Credential saved, but the list could not be refreshed.";
+        credentialIsError = !loaded;
       }
     } catch {
       credentialMessage = "The API key could not be saved.";
@@ -982,6 +1087,8 @@
   async function deleteProviderCredential() {
     const keychainId = credentialId.trim();
     if (!desktopAvailable || !keychainId || credentialBusy) return;
+    const label = selectedCredential?.label ?? keychainId;
+    if (!window.confirm(`Remove “${label}” from the OS keychain?`)) return;
 
     credentialBusy = true;
     credentialMessage = "";
@@ -991,8 +1098,11 @@
         credentialMessage = formatError(result.error);
         credentialIsError = true;
       } else {
-        credentialMessage = "API key removed from the OS keychain.";
-        credentialIsError = false;
+        const loaded = await loadProviderCredentials();
+        credentialMessage = loaded
+          ? "Provider credential removed from the OS keychain."
+          : "Credential removed, but the list could not be refreshed.";
+        credentialIsError = !loaded;
       }
     } catch {
       credentialMessage = "The API key could not be removed.";
@@ -1194,41 +1304,49 @@
       <span class="brand-name">Epikrise</span>
     </a>
 
-    <section class="active-provider" aria-label="Active model">
-      <p class="eyebrow">Selected model</p>
-      <strong>{providerNames[adapter]}</strong>
-      <span>{model || "No model selected"}</span>
-      <button class="settings-trigger" type="button" onclick={openProviderSettings}>
-        Connection settings
-      </button>
-    </section>
-
     <dialog
       class="settings-dialog"
       bind:this={providerSettingsDialog}
-      aria-labelledby="connection-title"
+      aria-labelledby="provider-settings-title"
       onkeydown={handleDialogKeydown}
       oncancel={(event) => {
         event.preventDefault();
         providerSettingsDialog?.close();
       }}
     >
-      <section class="provider-settings" aria-labelledby="connection-title">
+      <section class="provider-settings" aria-labelledby="provider-settings-title">
         <p class="eyebrow">Workspace</p>
         <div class="dialog-heading">
           <div>
-            <h1 id="connection-title">Connection</h1>
-            <p>Choose a model endpoint and manage its keychain credential.</p>
+            <h1 id="provider-settings-title">Provider settings</h1>
+            <p>Choose a provider endpoint and saved keychain credential.</p>
           </div>
           <button
             class="dialog-close"
             type="button"
-            aria-label="Close connection settings"
+            aria-label="Close provider settings"
             onclick={() => providerSettingsDialog?.close()}
           >
             ×
           </button>
         </div>
+
+        <label for="active-adapter">Provider</label>
+        <select
+          id="active-adapter"
+          value={adapter}
+          disabled={isGenerating || isPreparingGeneration}
+          onchange={(event) => changeProvider(event.currentTarget.value)}
+        >
+          <option value="ollama">Ollama</option>
+          <option value="open_ai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="gemini">Gemini</option>
+          <option value="open_ai_compatible">OpenAI compatible</option>
+          <option value="open_router">OpenRouter</option>
+          <option value="xai">xAI</option>
+          <option value="groq">Groq</option>
+        </select>
 
         <label for="endpoint">Endpoint</label>
         <input
@@ -1241,51 +1359,44 @@
             : "Provider default"}
         />
 
-        <label for="credential">Keychain ID</label>
-        <input
-          id="credential"
+        <label for="provider-credential">Provider credential</label>
+        <select
+          id="provider-credential"
           bind:value={credentialId}
-          autocomplete="off"
-          spellcheck="false"
-        />
-
-        <label for="credential-secret">API key</label>
-        <input
-          id="credential-secret"
-          type="password"
-          bind:value={credentialSecret}
-          autocomplete="new-password"
-          spellcheck="false"
-        />
-        <button
-          class="connection-button"
-          type="button"
-          onclick={saveProviderCredential}
-          disabled={credentialBusy || !credentialId.trim() || !credentialSecret}
+          disabled={credentialBusy}
         >
-          {credentialBusy ? "Saving..." : "Save in OS keychain"}
-        </button>
-        <button
-          class="connection-button"
-          type="button"
-          onclick={deleteProviderCredential}
-          disabled={credentialBusy || !credentialId.trim()}
-        >
-          Remove keychain entry
-        </button>
+          <option value="">None</option>
+          {#each credentialsForProvider as credential (credential.id)}
+            <option value={credential.id}>{credential.label}</option>
+          {/each}
+        </select>
+        <div class="credential-actions">
+          <button
+            class="connection-button"
+            type="button"
+            onclick={openAddCredential}
+            disabled={!desktopAvailable || credentialBusy || isGenerating}
+          >
+            Add new provider credential
+          </button>
+          <button
+            class="template-discard"
+            type="button"
+            onclick={deleteProviderCredential}
+            disabled={!selectedCredential || credentialBusy}
+          >
+            Remove
+          </button>
+        </div>
         {#if credentialMessage}
           <p class="model-list-message" class:error={credentialIsError} role="status">
             {credentialMessage}
           </p>
         {/if}
 
-        <label class="vision-setting" for="vision-enabled">
-          <input id="vision-enabled" type="checkbox" bind:checked={visionEnabled} />
-          <span>Allow image input for this model</span>
-        </label>
-
         <button
           class="connection-button"
+          type="button"
           onclick={testProvider}
           disabled={connectionState === "checking"}
         >
@@ -1305,93 +1416,106 @@
       </section>
     </dialog>
 
-    <section
-      class="template-settings"
-      aria-label="Draft controls and template settings"
+    <dialog
+      class="settings-dialog"
+      bind:this={addCredentialDialog}
+      aria-labelledby="add-credential-title"
+      onkeydown={handleDialogKeydown}
+      oncancel={(event) => {
+        event.preventDefault();
+        addCredentialDialog?.close();
+      }}
     >
-      <div class="template-heading">
-        <p class="eyebrow">Controls</p>
-        <h2 id="controls-heading">Draft setup</h2>
-      </div>
+      <form
+        class="provider-settings"
+        onsubmit={(event) => {
+          event.preventDefault();
+          void saveProviderCredential();
+        }}
+      >
+        <p class="eyebrow">{providerNames[adapter]}</p>
+        <div class="dialog-heading">
+          <div>
+            <h2 id="add-credential-title">Add provider credential</h2>
+            <p>The API key is stored in the OS keychain.</p>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            aria-label="Close add credential dialog"
+            onclick={() => addCredentialDialog?.close()}
+          >
+            ×
+          </button>
+        </div>
+        <label for="new-credential-label">Credential label</label>
+        <input
+          id="new-credential-label"
+          bind:value={newCredentialLabel}
+          autocomplete="off"
+          maxlength="109"
+          required
+          disabled={credentialBusy}
+        />
+        <label for="credential-secret">API key</label>
+        <input
+          id="credential-secret"
+          type="password"
+          bind:value={credentialSecret}
+          autocomplete="new-password"
+          spellcheck="false"
+          required
+          disabled={credentialBusy}
+        />
+        {#if credentialMessage}
+          <p class="model-list-message" class:error={credentialIsError} role="status">
+            {credentialMessage}
+          </p>
+        {/if}
+        <button class="connection-button" type="submit" disabled={credentialBusy}>
+          {credentialBusy ? "Saving..." : "Add credential"}
+        </button>
+      </form>
+    </dialog>
 
-      <label for="active-adapter">Provider</label>
-      <select id="active-adapter" bind:value={adapter} disabled={isGenerating}>
-        <option value="ollama">Ollama</option>
-        <option value="open_ai">OpenAI</option>
-        <option value="anthropic">Anthropic</option>
-        <option value="gemini">Gemini</option>
-        <option value="open_ai_compatible">OpenAI compatible</option>
-        <option value="open_router">OpenRouter</option>
-        <option value="xai">xAI</option>
-        <option value="groq">Groq</option>
-      </select>
-
-      <label for="active-model">Model</label>
-      <div class="model-picker">
-        <select
-          id="active-model"
-          bind:value={model}
-          disabled={modelListLoading || isGenerating}
-        >
-          {#if !currentModels.includes(model)}
-            <option value={model}>{model} (current)</option>
-          {/if}
-          {#each currentModels as availableModel (availableModel)}
-            <option value={availableModel}>{availableModel}</option>
-          {/each}
-        </select>
-        <button
-          class="model-refresh-button"
-          type="button"
-          onclick={refreshModels}
-          disabled={modelListLoading || isGenerating || isPreparingGeneration}
-        >
-          {modelListLoading ? "Loading..." : "Refresh models"}
+    <section class="active-provider" aria-label="Active model and settings">
+      <p class="eyebrow">Active configuration</p>
+      <dl class="provider-summary">
+        <div>
+          <dt>Provider</dt>
+          <dd>{providerNames[adapter]}</dd>
+        </div>
+        <div>
+          <dt>Credential</dt>
+          <dd>{selectedCredential?.label ?? "None"}</dd>
+        </div>
+        <div>
+          <dt>Model</dt>
+          <dd>{model || "No model selected"}</dd>
+        </div>
+        <div>
+          <dt>Template</dt>
+          <dd>{activeTemplate?.metadata.name ?? "None"}</dd>
+        </div>
+      </dl>
+      <div class="settings-actions">
+        <button class="settings-trigger" type="button" onclick={openProviderSettings}>
+          Provider settings
+        </button>
+        <button class="settings-trigger" type="button" onclick={openModelSettings}>
+          Model settings
+        </button>
+        <button class="settings-trigger" type="button" onclick={openTemplateSettings}>
+          Template settings
         </button>
       </div>
-      {#if modelListMessage}
-        <p class="model-list-message" class:error={modelListIsError} role="status">
-          {modelListMessage}
-        </p>
-      {/if}
+    </section>
 
-      <label for="output-token-limit">Output token limit</label>
-      <input
-        id="output-token-limit"
-        type="number"
-        bind:value={outputTokenLimit}
-        min="1"
-        max="1000000"
-        step="1"
-        required
-        aria-describedby="output-token-limit-hint"
-        aria-invalid={!isOutputTokenLimitValid}
-        disabled={isGenerating || isPreparingGeneration}
-      />
-      <p id="output-token-limit-hint" class="setting-hint">
-        1 to 1,000,000 tokens. Providers may impose a lower limit.
-      </p>
-
-      <label for="reasoning-effort">Reasoning effort</label>
-      <select
-        id="reasoning-effort"
-        bind:value={reasoningEffort}
-        disabled={isGenerating || isPreparingGeneration}
-      >
-        <option value="provider_default">Provider default</option>
-        <option value="none">None</option>
-        <option value="minimal">Minimal</option>
-        <option value="low">Low</option>
-        <option value="medium">Medium</option>
-        <option value="high">High</option>
-        <option value="x_high">Extra high</option>
-        <option value="max">Maximum</option>
-      </select>
-
-      {#if importedTemplates.length}
-        <label for="active-template">Active template</label>
+    {#if importedTemplates.length}
+      <div class="rail-template-picker">
+        <label for="active-template-rail">Active template</label>
         <select
-          id="active-template"
+          id="active-template-rail"
           value={activeTemplateId}
           disabled={isGenerating || isPreparingGeneration}
           onchange={(event) => activateTemplate(event.currentTarget.value)}
@@ -1400,214 +1524,368 @@
             <option value={template.metadata.id}>{template.metadata.name}</option>
           {/each}
         </select>
-        <button
-          class="template-export-button"
-          onclick={exportActiveTemplate}
-          disabled={templateBusy || !activeTemplate}
-        >
-          Export .epitpl
-        </button>
-        <button
-          class="template-export-button"
-          type="button"
-          onclick={openTemplateEditor}
-          disabled={!activeTemplate || isGenerating || isPreparingGeneration}
-        >
-          Edit template
+      </div>
+    {:else}
+      <p class="template-empty">No templates imported</p>
+    {/if}
+
+    <section
+      class="controls-actions rail-generation-actions"
+      aria-label="Draft actions"
+    >
+      {#if isGenerating}
+        <button class="cancel-button" type="button" onclick={cancelGeneration}>
+          Cancel generation
         </button>
       {:else}
-        <p class="template-empty">No templates imported</p>
+        <button
+          class="generate-button"
+          type="button"
+          onclick={() => generateDraft()}
+          disabled={(!prompt.trim() && sourceBlocks.length === 0) ||
+            !activeTemplate ||
+            isPreparingGeneration ||
+            !isOutputTokenLimitValid}
+        >
+          {isPreparingGeneration ? "Preparing..." : "Generate draft"}
+        </button>
       {/if}
+      {#if caseSessionId || prompt || draft}
+        <button
+          class="case-discard-button"
+          type="button"
+          onclick={discardCase}
+          disabled={isGenerating || isPreparingGeneration}
+        >
+          Discard case
+        </button>
+      {/if}
+    </section>
+    {#if generationMessage}
+      <p class="generation-status" class:error={generationIsError} role="status">
+        {generationMessage}
+      </p>
+    {/if}
 
-      {#if activeTemplate?.variables.length}
-        <div class="template-fields">
-          <p class="eyebrow">Template fields</p>
-          {#each activeTemplate.variables as variable (variable.name)}
-            {@const fieldId = `template-variable-${variable.name}`}
-            {#if variable.kind === "boolean"}
-              <label class="template-checkbox" for={fieldId}>
-                <input
-                  id={fieldId}
-                  type="checkbox"
-                  disabled={isGenerating || isPreparingGeneration}
-                  checked={templateValues[variable.name] === true}
-                  aria-required={variable.required}
-                  onchange={(event) =>
-                    updateTemplateValue(variable.name, event.currentTarget.checked)}
-                />
-                <span
-                  >{templateVariableLabel(variable)}{variable.required
-                    ? " *"
-                    : ""}</span
-                >
-              </label>
-            {:else}
-              <label for={fieldId}>
-                {templateVariableLabel(variable)}{variable.required ? " *" : ""}
-              </label>
-              {#if variable.kind === "select"}
-                <select
-                  id={fieldId}
-                  value={typeof templateValues[variable.name] === "string"
-                    ? templateValues[variable.name]
-                    : ""}
-                  disabled={isGenerating || isPreparingGeneration}
-                  aria-required={variable.required}
-                  onchange={(event) =>
-                    updateTemplateValue(variable.name, event.currentTarget.value)}
-                >
-                  <option value="" disabled={variable.required}>Select...</option>
-                  {#each variable.options as option (option)}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </select>
-              {:else}
-                <input
-                  id={fieldId}
-                  type={variable.kind === "date" ? "date" : "text"}
-                  value={typeof templateValues[variable.name] === "string"
-                    ? templateValues[variable.name]
-                    : ""}
-                  disabled={isGenerating || isPreparingGeneration}
-                  aria-required={variable.required}
-                  required={variable.required}
-                  onchange={(event) =>
-                    updateTemplateValue(variable.name, event.currentTarget.value)}
-                />
-              {/if}
+    <dialog
+      class="settings-dialog"
+      bind:this={modelSettingsDialog}
+      aria-labelledby="model-settings-title"
+      onkeydown={handleDialogKeydown}
+      oncancel={(event) => {
+        event.preventDefault();
+        modelSettingsDialog?.close();
+      }}
+    >
+      <section class="provider-settings" aria-labelledby="model-settings-title">
+        <p class="eyebrow">Generation</p>
+        <div class="dialog-heading">
+          <div>
+            <h2 id="model-settings-title">Model settings</h2>
+            <p>{providerNames[adapter]} · {model || "No model selected"}</p>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            aria-label="Close model settings"
+            onclick={() => modelSettingsDialog?.close()}
+          >
+            ×
+          </button>
+        </div>
+
+        <label for="active-model">Model</label>
+        <div class="model-picker">
+          <select
+            id="active-model"
+            bind:value={model}
+            disabled={modelListLoading || isGenerating}
+          >
+            {#if !currentModels.includes(model)}
+              <option value={model}>{model} (current)</option>
             {/if}
-          {/each}
+            {#each currentModels as availableModel (availableModel)}
+              <option value={availableModel}>{availableModel}</option>
+            {/each}
+          </select>
+          <button
+            class="model-refresh-button"
+            type="button"
+            onclick={refreshModels}
+            disabled={modelListLoading || isGenerating || isPreparingGeneration}
+          >
+            {modelListLoading ? "Loading..." : "Refresh models"}
+          </button>
         </div>
-      {/if}
+        {#if modelListMessage}
+          <p class="model-list-message" class:error={modelListIsError} role="status">
+            {modelListMessage}
+          </p>
+        {/if}
 
-      {#if activeTemplate?.sections.length}
-        <div class="template-fields template-section-fields">
-          <p class="eyebrow">Sections</p>
-          {#each orderedTemplateSections(activeTemplate) as section (section.id)}
-            {@const sectionInputId = `template-section-${section.id}`}
-            <label class="template-checkbox" for={sectionInputId}>
-              <input
-                id={sectionInputId}
-                type="checkbox"
-                disabled={isGenerating ||
-                  isPreparingGeneration ||
-                  (templateSectionStates[section.id] === true &&
-                    enabledSectionCount <= 1)}
-                checked={templateSectionStates[section.id] === true}
-                onchange={(event) =>
-                  updateTemplateSection(section.id, event.currentTarget.checked)}
-              />
-              <span>{templateSectionLabel(section)}</span>
-            </label>
-          {/each}
-        </div>
-      {/if}
-
-      <label class="template-file-label" for="template-file">
-        {templateBusy ? "Working..." : "Import .epitpl"}
-      </label>
-      <input
-        id="template-file"
-        class="template-file-input"
-        type="file"
-        accept=".epitpl,text/plain,application/toml,application/json"
-        bind:this={templateFileInput}
-        onchange={importTemplate}
-        disabled={templateBusy}
-      />
-
-      {#if templateMessage}
-        <p class="template-message" class:error={templateIsError} role="status">
-          {templateMessage}
+        <label for="output-token-limit">Output token limit</label>
+        <input
+          id="output-token-limit"
+          type="number"
+          bind:value={outputTokenLimit}
+          min="1"
+          max="1000000"
+          step="1"
+          required
+          aria-describedby="output-token-limit-hint"
+          aria-invalid={!isOutputTokenLimitValid}
+          disabled={isGenerating || isPreparingGeneration}
+        />
+        <p id="output-token-limit-hint" class="setting-hint">
+          1 to 1,000,000 tokens. Providers may impose a lower limit.
         </p>
-      {/if}
 
-      {#if pendingTemplate && !isFirstRun}
-        <div class="template-preview" aria-label="Template preview">
-          <p class="eyebrow">Review import</p>
-          <h3>{pendingTemplate.metadata.name}</h3>
-          <p>{pendingTemplate.metadata.description}</p>
-          <dl>
+        <label for="reasoning-effort">Reasoning effort</label>
+        <select
+          id="reasoning-effort"
+          bind:value={reasoningEffort}
+          disabled={isGenerating || isPreparingGeneration}
+        >
+          <option value="provider_default">Provider default</option>
+          <option value="none">None</option>
+          <option value="minimal">Minimal</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="x_high">Extra high</option>
+          <option value="max">Maximum</option>
+        </select>
+
+        <label class="vision-setting" for="vision-enabled">
+          <input id="vision-enabled" type="checkbox" bind:checked={visionEnabled} />
+          <span>Allow image input for this model</span>
+        </label>
+      </section>
+    </dialog>
+
+    <dialog
+      class="settings-dialog template-settings-dialog"
+      bind:this={templateSettingsDialog}
+      aria-labelledby="template-settings-title"
+      onkeydown={handleDialogKeydown}
+      oncancel={(event) => {
+        event.preventDefault();
+        templateSettingsDialog?.close();
+      }}
+    >
+      <section class="template-settings" aria-label="Template settings">
+        <div class="template-heading">
+          <p class="eyebrow">Workspace</p>
+          <div class="dialog-heading">
             <div>
-              <dt>Locale</dt>
-              <dd>{pendingTemplate.metadata.locale}</dd>
+              <h2 id="template-settings-title">Template settings</h2>
+              <p>Select, import, and configure the active template.</p>
             </div>
-            <div>
-              <dt>Version</dt>
-              <dd>{pendingTemplate.metadata.version}</dd>
-            </div>
-            <div>
-              <dt>Variables</dt>
-              <dd>{pendingTemplate.variables.length}</dd>
-            </div>
-            <div>
-              <dt>Sections</dt>
-              <dd>{pendingTemplate.sections.length}</dd>
-            </div>
-          </dl>
-          {#if pendingTemplate.metadata.specialty_tags.length}
-            <p class="template-tags">
-              {pendingTemplate.metadata.specialty_tags.join(" · ")}
-            </p>
-          {/if}
-          <details>
-            <summary>System prompt</summary>
-            <pre>{pendingTemplate.system_prompt}</pre>
-          </details>
-          <div class="template-preview-actions">
             <button
-              class="connection-button"
-              onclick={savePendingTemplate}
-              disabled={templateBusy}
+              class="dialog-close"
+              type="button"
+              aria-label="Close template settings"
+              onclick={() => templateSettingsDialog?.close()}
             >
-              Save template
-            </button>
-            <button
-              class="template-discard"
-              onclick={() => (pendingTemplate = null)}
-              disabled={templateBusy}
-            >
-              Cancel
+              ×
             </button>
           </div>
         </div>
-      {/if}
 
-      <div class="controls-actions">
-        {#if isGenerating}
-          <button class="cancel-button" type="button" onclick={cancelGeneration}>
-            Cancel generation
+        {#if importedTemplates.length}
+          <label for="active-template">Active template</label>
+          <select
+            id="active-template"
+            value={activeTemplateId}
+            disabled={isGenerating || isPreparingGeneration}
+            onchange={(event) => activateTemplate(event.currentTarget.value)}
+          >
+            {#each importedTemplates as template (template.metadata.id)}
+              <option value={template.metadata.id}>{template.metadata.name}</option>
+            {/each}
+          </select>
+          <button
+            class="template-export-button"
+            onclick={exportActiveTemplate}
+            disabled={templateBusy || !activeTemplate}
+          >
+            Export .epitpl
+          </button>
+          <button
+            class="template-export-button"
+            type="button"
+            onclick={openTemplateEditor}
+            disabled={!activeTemplate || isGenerating || isPreparingGeneration}
+          >
+            Edit template
           </button>
         {:else}
+          <p class="template-empty">No templates imported</p>
           <button
-            class="generate-button"
+            class="template-export-button"
             type="button"
-            onclick={() => generateDraft()}
-            disabled={(!prompt.trim() && sourceBlocks.length === 0) ||
-              !activeTemplate ||
-              isPreparingGeneration ||
-              !isOutputTokenLimitValid}
+            onclick={createGenericStarter}
+            disabled={templateBusy}
           >
-            {isPreparingGeneration ? "Preparing..." : "Generate draft"}
+            Use generic starter
           </button>
         {/if}
-        {#if caseSessionId || prompt || draft}
-          <button
-            class="case-discard-button"
-            type="button"
-            onclick={discardCase}
-            disabled={isGenerating || isPreparingGeneration}
-          >
-            Discard case
-          </button>
+
+        {#if activeTemplate?.variables.length}
+          <div class="template-fields">
+            <p class="eyebrow">Template fields</p>
+            {#each activeTemplate.variables as variable (variable.name)}
+              {@const fieldId = `template-variable-${variable.name}`}
+              {#if variable.kind === "boolean"}
+                <label class="template-checkbox" for={fieldId}>
+                  <input
+                    id={fieldId}
+                    type="checkbox"
+                    disabled={isGenerating || isPreparingGeneration}
+                    checked={templateValues[variable.name] === true}
+                    aria-required={variable.required}
+                    onchange={(event) =>
+                      updateTemplateValue(variable.name, event.currentTarget.checked)}
+                  />
+                  <span
+                    >{templateVariableLabel(variable)}{variable.required
+                      ? " *"
+                      : ""}</span
+                  >
+                </label>
+              {:else}
+                <label for={fieldId}>
+                  {templateVariableLabel(variable)}{variable.required ? " *" : ""}
+                </label>
+                {#if variable.kind === "select"}
+                  <select
+                    id={fieldId}
+                    value={typeof templateValues[variable.name] === "string"
+                      ? templateValues[variable.name]
+                      : ""}
+                    disabled={isGenerating || isPreparingGeneration}
+                    aria-required={variable.required}
+                    onchange={(event) =>
+                      updateTemplateValue(variable.name, event.currentTarget.value)}
+                  >
+                    <option value="" disabled={variable.required}>Select...</option>
+                    {#each variable.options as option (option)}
+                      <option value={option}>{option}</option>
+                    {/each}
+                  </select>
+                {:else}
+                  <input
+                    id={fieldId}
+                    type={variable.kind === "date" ? "date" : "text"}
+                    value={typeof templateValues[variable.name] === "string"
+                      ? templateValues[variable.name]
+                      : ""}
+                    disabled={isGenerating || isPreparingGeneration}
+                    aria-required={variable.required}
+                    required={variable.required}
+                    onchange={(event) =>
+                      updateTemplateValue(variable.name, event.currentTarget.value)}
+                  />
+                {/if}
+              {/if}
+            {/each}
+          </div>
         {/if}
-      </div>
-      {#if generationMessage}
-        <p class="generation-status" class:error={generationIsError} role="status">
-          {generationMessage}
-        </p>
-      {/if}
-    </section>
+
+        {#if activeTemplate?.sections.length}
+          <div class="template-fields template-section-fields">
+            <p class="eyebrow">Sections</p>
+            {#each orderedTemplateSections(activeTemplate) as section (section.id)}
+              {@const sectionInputId = `template-section-${section.id}`}
+              <label class="template-checkbox" for={sectionInputId}>
+                <input
+                  id={sectionInputId}
+                  type="checkbox"
+                  disabled={isGenerating ||
+                    isPreparingGeneration ||
+                    (templateSectionStates[section.id] === true &&
+                      enabledSectionCount <= 1)}
+                  checked={templateSectionStates[section.id] === true}
+                  onchange={(event) =>
+                    updateTemplateSection(section.id, event.currentTarget.checked)}
+                />
+                <span>{templateSectionLabel(section)}</span>
+              </label>
+            {/each}
+          </div>
+        {/if}
+
+        <label class="template-file-label" for="template-file">
+          {templateBusy ? "Working..." : "Import .epitpl"}
+        </label>
+        <input
+          id="template-file"
+          class="template-file-input"
+          type="file"
+          accept=".epitpl,text/plain,application/toml,application/json"
+          bind:this={templateFileInput}
+          onchange={importTemplate}
+          disabled={templateBusy}
+        />
+
+        {#if templateMessage}
+          <p class="template-message" class:error={templateIsError} role="status">
+            {templateMessage}
+          </p>
+        {/if}
+
+        {#if pendingTemplate}
+          <div class="template-preview" aria-label="Template preview">
+            <p class="eyebrow">Review import</p>
+            <h3>{pendingTemplate.metadata.name}</h3>
+            <p>{pendingTemplate.metadata.description}</p>
+            <dl>
+              <div>
+                <dt>Locale</dt>
+                <dd>{pendingTemplate.metadata.locale}</dd>
+              </div>
+              <div>
+                <dt>Version</dt>
+                <dd>{pendingTemplate.metadata.version}</dd>
+              </div>
+              <div>
+                <dt>Variables</dt>
+                <dd>{pendingTemplate.variables.length}</dd>
+              </div>
+              <div>
+                <dt>Sections</dt>
+                <dd>{pendingTemplate.sections.length}</dd>
+              </div>
+            </dl>
+            {#if pendingTemplate.metadata.specialty_tags.length}
+              <p class="template-tags">
+                {pendingTemplate.metadata.specialty_tags.join(" · ")}
+              </p>
+            {/if}
+            <details>
+              <summary>System prompt</summary>
+              <pre>{pendingTemplate.system_prompt}</pre>
+            </details>
+            <div class="template-preview-actions">
+              <button
+                class="connection-button"
+                onclick={savePendingTemplate}
+                disabled={templateBusy}
+              >
+                Save template
+              </button>
+              <button
+                class="template-discard"
+                onclick={() => (pendingTemplate = null)}
+                disabled={templateBusy}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        {/if}
+      </section>
+    </dialog>
 
     <footer class="rail-footer">
       <span class="local-indicator" aria-hidden="true"></span>
@@ -1750,67 +2028,11 @@
           later. Case content and template field values stay in memory only.
         </p>
 
-        {#if pendingTemplate}
-          <div class="first-run-review">
-            <div>
-              <span class="eyebrow">Ready to save</span>
-              <h3>{pendingTemplate.metadata.name}</h3>
-              <p>{pendingTemplate.metadata.description}</p>
-            </div>
-            <dl>
-              <div>
-                <dt>Locale</dt>
-                <dd>{pendingTemplate.metadata.locale}</dd>
-              </div>
-              <div>
-                <dt>Sections</dt>
-                <dd>{pendingTemplate.sections.length}</dd>
-              </div>
-            </dl>
-            <details>
-              <summary>Review system prompt</summary>
-              <pre>{pendingTemplate.system_prompt}</pre>
-            </details>
-            <div class="onboarding-actions">
-              <button
-                class="connection-button"
-                onclick={savePendingTemplate}
-                disabled={templateBusy}
-              >
-                {templateBusy ? "Saving..." : "Save and continue"}
-              </button>
-              <button
-                class="template-discard"
-                onclick={() => (pendingTemplate = null)}
-                disabled={templateBusy}
-              >
-                Choose another
-              </button>
-            </div>
-          </div>
-        {:else}
-          <div class="onboarding-actions">
-            <button
-              class="connection-button"
-              onclick={() => templateFileInput?.click()}
-              disabled={templateBusy}
-            >
-              {templateBusy ? "Working..." : "Import .epitpl"}
-            </button>
-            <button
-              class="onboarding-secondary"
-              onclick={createGenericStarter}
-              disabled={templateBusy}
-            >
-              Use generic starter
-            </button>
-          </div>
-          {#if templateMessage}
-            <p class="template-message" class:error={templateIsError} role="status">
-              {templateMessage}
-            </p>
-          {/if}
-        {/if}
+        <div class="onboarding-actions">
+          <button class="connection-button" onclick={openTemplateSettings}>
+            Open template settings
+          </button>
+        </div>
       </section>
     {:else}
       <header class="page-header">
@@ -2145,28 +2367,43 @@
   .active-provider {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 8px;
     margin-top: 24px;
     padding: 12px 13px;
     border-left: 2px solid #d46b4d;
     background: #f7faf6;
   }
 
-  .active-provider strong {
-    margin-top: 4px;
-    color: #30473d;
-    font-size: 13px;
+  .provider-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px 12px;
+    margin: 0;
   }
 
-  .active-provider > span {
+  .provider-summary dt {
     color: #65766e;
+    font-size: 10px;
+  }
+
+  .provider-summary dd {
+    margin: 1px 0 0;
+    color: #30473d;
     font-size: 12px;
     overflow-wrap: anywhere;
   }
 
+  .settings-actions,
+  .credential-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 14px;
+  }
+
   .settings-trigger {
     min-height: 33px;
-    margin-top: 8px;
+    margin: 0;
     padding: 0;
     border: 0;
     color: #236e5d;
@@ -2199,6 +2436,22 @@
     width: min(510px, calc(100vw - 28px));
     overflow: auto;
     padding: 24px;
+  }
+
+  .settings-dialog.template-settings-dialog {
+    width: min(760px, calc(100vw - 28px));
+  }
+
+  .settings-dialog .template-settings {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .settings-dialog .template-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
   }
 
   .dialog-heading {
@@ -2791,61 +3044,6 @@
     color: #5e6f66;
   }
 
-  .first-run-review {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    margin-top: 24px;
-    padding-top: 18px;
-    border-top: 1px solid #dce4de;
-  }
-
-  .first-run-review h3 {
-    margin: 4px 0;
-    font-family: Georgia, serif;
-    font-size: 20px;
-    font-weight: 400;
-    overflow-wrap: anywhere;
-  }
-
-  .first-run-review p {
-    margin: 0;
-    color: #5e6f66;
-  }
-
-  .first-run-review dl {
-    display: flex;
-    gap: 28px;
-    margin: 0;
-  }
-
-  .first-run-review dt {
-    color: #819087;
-    font-size: 11px;
-  }
-
-  .first-run-review dd {
-    margin: 0;
-  }
-
-  .first-run-review details {
-    padding-top: 12px;
-    border-top: 1px solid #dce4de;
-  }
-
-  .first-run-review summary {
-    color: #4c6258;
-    cursor: pointer;
-    font-weight: 650;
-  }
-
-  .first-run-review pre {
-    max-height: 240px;
-    overflow: auto;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
   .onboarding-actions {
     display: flex;
     flex-wrap: wrap;
@@ -2858,24 +3056,6 @@
     min-height: 42px;
     margin: 0;
     padding: 0 18px;
-  }
-
-  .onboarding-secondary {
-    min-height: 40px;
-    padding: 0 8px;
-    border: 0;
-    color: #50665c;
-    background: transparent;
-    cursor: pointer;
-    font: inherit;
-    font-weight: 650;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-
-  .onboarding-secondary:disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
   }
 
   .page-header {
@@ -3521,25 +3701,6 @@
       border-top: 1px solid #dce4de;
     }
 
-    .active-provider {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 3px 12px;
-    }
-
-    .active-provider .eyebrow,
-    .active-provider > strong,
-    .active-provider > span {
-      grid-column: 1;
-    }
-
-    .active-provider .settings-trigger {
-      grid-column: 2;
-      grid-row: 1 / 4;
-      margin: 0;
-    }
-
     .template-settings {
       grid-template-columns: minmax(0, 1fr);
       margin-top: 18px;
@@ -3662,7 +3823,7 @@
       background: #1d2c23;
     }
 
-    .active-provider strong,
+    .provider-summary dd,
     .template-preview dd,
     .draft-output pre,
     .rich-output,
@@ -3671,7 +3832,7 @@
       color: #dce7df;
     }
 
-    .active-provider > span,
+    .provider-summary dt,
     .template-empty,
     .source-input-meta,
     .source-input-details,
@@ -3748,8 +3909,7 @@
 
     .template-preview > p:not(.eyebrow),
     .template-preview summary,
-    .first-run-panel > p:not(.eyebrow),
-    .first-run-review p {
+    .first-run-panel > p:not(.eyebrow) {
       color: #a7b7ad;
     }
 
