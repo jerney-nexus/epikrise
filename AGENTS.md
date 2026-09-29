@@ -24,5 +24,7 @@
 - Check (Rust changes): `pnpm check:rust:fmt` and `pnpm check:rust:clippy`
 - Test (Rust changes): `pnpm test:rust`
 - Check formatting: `pnpm format:check`
-- Format code: `pnpm format`
+- Check formatting (specific file): `pnpm format:check:file <filename>`
+- Format all files: `pnpm format`
+- Format specific file: `pnpm format:file <filename>`
 - Lint code: `pnpm lint`

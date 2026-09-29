@@ -19,7 +19,9 @@
     "test:rust": "cargo nextest run --manifest-path src-tauri/Cargo.toml --workspace",
     "template:convert": "node scripts/convert-prompt.mjs",
     "format": "prettier --write .",
+    "format:file": "prettier --write",
     "format:check": "prettier --check .",
+    "format:check:file": "prettier --check",
     "tauri": "bash scripts/prepare-ocr.sh && tauri"
   },
   "license": "MIT",
