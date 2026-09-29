@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Responsive fit-to-window layout, separate provider/model/template settings
+  dialogs, keychain-backed credential selection, and connection checks that
+  populate available models.
 - Three-pane clinical drafting workspace with responsive input and output panes,
   provider/template controls, connection settings dialog, and a live-preview
   template editor.

@@ -3402,6 +3402,24 @@
     padding: 0 14px;
   }
 
+  .template-editor-actions .template-discard {
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid #cbd7d0;
+    border-radius: 5px;
+    color: #335248;
+    background: #f8faf8;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 650;
+    text-decoration: none;
+  }
+
+  .template-editor-actions .template-discard:hover:not(:disabled) {
+    background: #edf3ef;
+  }
+
   label {
     margin-top: 7px;
     color: #495a53;
