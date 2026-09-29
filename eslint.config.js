@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import eslintConfigPrettier from "eslint-config-prettier/flat";
 import globals from "globals";
 import svelte from "eslint-plugin-svelte";
 import tseslint from "typescript-eslint";
@@ -30,4 +31,5 @@ export default tseslint.config(
       globals: { ...globals.browser, ...globals.node },
     },
   },
+  eslintConfigPrettier,
 );

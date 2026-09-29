@@ -1,2 +1,5 @@
 # Keep pnpm's generated lockfile in its canonical format.
 pnpm-lock.yaml
+
+# Keep Tauri Specta bindings in their generated format.
+src/bindings.ts
