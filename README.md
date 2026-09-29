@@ -1,8 +1,8 @@
 # Epikrise
 
-A local-only desktop assistant that turns anonymized clinical material into a
-strictly formatted diagnosis and findings list, ready to be pasted into a
-clinic information system.
+A desktop drafting aid that turns user-supplied clinical material into a
+structured draft for review and manual use in a clinic information system.
+Epikrise does not anonymize input; remove identifying details before use.
 
 > [!IMPORTANT]
 > Epikrise is a **drafting aid**, not a medical device and not a diagnostic
@@ -11,27 +11,42 @@ clinic information system.
 
 ## What it does
 
-You drop in raw material — free text, documents, screenshots, clipboard
-contents or a URL — and Epikrise extracts the text, sends it to an LLM provider
-of your choosing together with your own formatting template, and returns a
-structured list. Findings can be added in several rounds; each round is
-integrated cumulatively into one document.
+Paste text or images, import documents, or provide a URL. Epikrise extracts
+text from plain-text files, PDF, DOCX, XLSX, RTF and HTML. PNG/JPEG images and
+sparse PDF pages can use local OCR or, when enabled and supported by the
+selected model, vision analysis. URLs are fetched and converted to readable
+text.
 
-The result is copied to the clipboard and pasted manually into the target
-system. Epikrise never talks to a hospital information system.
+The extracted material and your template are sent to the selected model. The
+app supports OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints,
+OpenRouter, xAI and Groq. It can discover models, check a connection, stream a
+draft, and cancel generation. Findings can be added in several rounds and
+integrated cumulatively. Template-defined output checks are shown as warnings,
+with an option to regenerate with corrections.
+
+The result can be copied to the clipboard only after the clinician reviews and
+acknowledges the current output. It is pasted manually into the target system;
+Epikrise does not connect to a hospital information system.
 
 ## Privacy posture
 
-- **No backend.** The app runs entirely on your machine. There is no server
-  component, no telemetry and no account.
-- **Clinical content is never written to disk.** Case material lives in memory
-  for the lifetime of a session and is wiped when the session is cleared or the
-  app exits. Only templates, settings and API keys persist.
-- **API keys live in the OS keychain**, never in a config file.
-- **Cloud providers still see your input.** If you configure OpenAI, Anthropic,
-  Gemini, Grok, Groq or OpenRouter, the text you supply is transmitted to them.
-  Use a local provider such as Ollama if that is unacceptable. The UI always
-  names the exact endpoint that will receive the data.
+- **No hosted backend, telemetry or account.** The desktop app processes input
+  locally except for requests sent to the configured model endpoint.
+- **Case content is not saved as history.** Case inputs and generated output
+  are held in process memory; Rust-owned case state is cleared when a case is
+  discarded or the app exits. OCR may create temporary image files in private
+  temporary directories; those files are overwritten before removal, and
+  abandoned directories are cleaned up on a later launch. The OS and runtime
+  may retain copies, so forensic erasure cannot be guaranteed.
+- **Templates and credentials persist separately.** Imported templates are
+  stored by the app; API keys are stored in the OS keychain. Provider choice,
+  model, endpoint, output limit and reasoning settings are not persisted by the
+  current UI.
+- **Remote endpoints receive your input.** OpenAI, Anthropic, Gemini, xAI,
+  Groq, OpenRouter and any remote OpenAI-compatible or Ollama endpoint receive
+  the material included in a request. Ollama is local only when its configured
+  endpoint is local. A blank Endpoint field uses the adapter's default; there
+  is no separate first-send confirmation.
 - **Anonymization is your responsibility.** Epikrise does not de-identify
   anything and does not attempt to detect identifying data.
 
@@ -74,15 +89,20 @@ pnpm test
 pnpm test:rust
 ```
 
+Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`,
+`pnpm format:check`, `pnpm check:rust:fmt` and `pnpm check:rust:clippy`.
+
 ## Templates
 
 No clinical templates ship with Epikrise. The formatting rules used in a
 hospital encode institutional know-how and stay with the institution, so the
 app ships only a minimal generic starter template.
 
-On first run you are asked to import your own template as an `.epitpl` file.
-A template defines the system prompt, its variables, the toggleable sections
-per specialty, and the output rules to apply to generated responses.
+On first run you can import your own template as an `.epitpl` file or start
+from the generic template. Templates are versioned JSON files. A template
+defines the system prompt, its variables, toggleable sections and output rules.
+The app validates and previews a template before saving it; imported templates
+are persisted locally in `templates.json`.
 
 To convert a plain-text prompt locally, provide section labels explicitly:
 
@@ -92,11 +112,11 @@ pnpm template:convert -- templates/prompt.txt templates/imported.epitpl \
   --section diagnoses=Diagnosen --section findings=Befunde
 ```
 
-The converter preserves the prompt text, creates enabled sections from the
-provided labels, and refuses to overwrite an existing output unless `--force`
-is supplied. It does not infer template variables; prompts containing MiniJinja
-expressions must be converted manually. Both `templates/` and `.epitpl` files
-are ignored by Git.
+The converter preserves the prompt text and creates enabled sections from the
+labels you provide. It refuses to overwrite an existing output unless `--force`
+is supplied. It does not infer specialty sections or template variables;
+prompts containing MiniJinja expressions must be converted manually. Both
+`templates/` and `.epitpl` files are ignored by Git.
 
 ## Provider generation settings
 
@@ -114,10 +134,13 @@ be ignored or rejected.
 
 ## Safety and scope
 
-Epikrise formats text. It does not interpret findings, does not suggest
-diagnoses, and makes no claim of conformity with MDR, IVDR or any comparable
-regulation. Output cannot be copied until you explicitly confirm that you have
-reviewed it, and that confirmation is reset whenever the output changes.
+Epikrise sends material and a template to the selected language model to create
+a draft. The model may interpret findings or suggest diagnoses, and its output
+may be incomplete or incorrect. Epikrise does not independently validate
+clinical correctness and makes no claim of conformity with MDR, IVDR or any
+comparable regulation. Output cannot be copied until you explicitly confirm
+that you have reviewed it; that confirmation is reset when the output or case
+changes.
 
 Material you ingest — especially fetched web pages — is untrusted input that
 may contain text crafted to influence the model. Epikrise labels and delimits

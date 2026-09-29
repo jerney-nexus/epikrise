@@ -7,10 +7,10 @@ project layout and the rules that keep the codebase safe for clinical use.
 
 Epikrise handles clinical text. Two constraints override normal convenience:
 
-1. **Clinical content must never reach disk or a log.** Not in a temp file that
-   outlives the session, not in a debug print, not in an error message. If you
-   need to write something during extraction, put it in the session temp
-   directory that is wiped on exit.
+1. **Clinical content must never be persisted or logged.** Temporary OCR image
+   files may be written only to private temporary directories; overwrite them
+   before removal and clean up abandoned directories on the next launch. Never
+   include clinical content in debug output or error messages.
 2. **No panicking code paths.** `unwrap`, `expect`, `panic!` and friends are
    denied by clippy outside of tests. Return a typed error instead.
 

@@ -18,16 +18,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dev container definition with the Rust, Node and Linux GUI toolchain
   preinstalled.
 - Project documentation: README, contributing guide, changelog and license.
-- OpenRouter, xAI and Groq provider profiles.
+- Provider profiles for OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible
+  endpoints, OpenRouter, xAI and Groq, with model discovery, OS-keychain
+  credentials, connection checks, streamed generation and cancellation.
+- Configurable generation output limits and reasoning-effort settings.
+- Versioned JSON `.epitpl` templates with validation, preview, local storage,
+  import/export, variables, toggleable sections and output rules. Added a
+  generic starter and a local plain-text prompt converter.
+- In-memory cumulative case sessions with provenance-tagged inputs, output
+  lint warnings, corrective regeneration and a Rust-enforced review gate before
+  copying.
+- Text, PDF, DOCX, XLSX, RTF and HTML extraction, plus PNG/JPEG OCR and
+  capability-gated model vision support.
 - URL ingestion with DNS-pinned requests, private/reserved address rejection,
   bounded redirects, response size limits, timeouts and article readability
   extraction.
-- PNG/JPEG screenshot input with local OCR and an explicit, capability-gated
-  vision fallback, scanned-PDF page vision fallback after OCR failure, plus
-  file drop and clipboard-image workflows.
-- Private, launch-scoped OCR temporary directories with stale-session cleanup
-  on startup and per-file buffer overwriting on exit.
-- Project-local ESLint support for Svelte and TypeScript, and Prettier support
-  for Svelte files, plus a Cargo Nextest workflow for Rust tests.
+- Scanned-PDF OCR and bounded page-vision fallback, file drop, and clipboard
+  text/image input.
+- Private temporary OCR directories with stale-directory cleanup and
+  overwrite-before-removal handling for temporary image files.
+- ESLint for TypeScript and Svelte, Prettier formatting, and Cargo Nextest for
+  Rust tests.
 
 [Unreleased]: https://github.com/pascaljerney/epikrise/compare/HEAD
