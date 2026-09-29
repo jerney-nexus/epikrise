@@ -527,7 +527,7 @@ async fn test_provider(profile: ProviderProfile) -> Result<(), LlmError> {
 }
 
 fn provider_probe_profile(mut profile: ProviderProfile) -> ProviderProfile {
-    profile.generation.max_tokens = Some(1);
+    profile.generation.max_tokens = Some(64);
     profile.generation.reasoning_effort = None;
     profile
 }
@@ -1135,14 +1135,14 @@ mod tests {
     }
 
     #[test]
-    fn provider_connection_check_uses_one_token_without_reasoning() {
+    fn provider_connection_check_uses_small_output_budget_without_reasoning() {
         let mut profile = test_provider_profile();
         profile.generation.max_tokens = Some(8192);
         profile.generation.reasoning_effort = Some(epikrise_llm::ReasoningEffort::High);
 
         let probe = provider_probe_profile(profile);
 
-        assert_eq!(probe.generation.max_tokens, Some(1));
+        assert_eq!(probe.generation.max_tokens, Some(64));
         assert_eq!(probe.generation.reasoning_effort, None);
     }
 
