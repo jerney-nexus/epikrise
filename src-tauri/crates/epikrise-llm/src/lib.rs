@@ -131,13 +131,41 @@ pub trait CredentialStore: Send + Sync {
 
 pub struct KeyringCredentialStore;
 
+fn credential_entry(credential_id: &str) -> Result<keyring::Entry, LlmError> {
+    if credential_id.trim().is_empty()
+        || credential_id.len() > 128
+        || credential_id.chars().any(char::is_control)
+    {
+        return Err(LlmError::InvalidProfile);
+    }
+    keyring::Entry::new("com.pascaljerney.epikrise", credential_id)
+        .map_err(|_| LlmError::Authentication)
+}
+
 impl CredentialStore for KeyringCredentialStore {
     fn get(&self, credential_id: &str) -> Result<Option<String>, LlmError> {
-        let entry = keyring::Entry::new("com.pascaljerney.epikrise", credential_id)
-            .map_err(|_| LlmError::Authentication)?;
+        let entry = credential_entry(credential_id)?;
         match entry.get_password() {
             Ok(password) => Ok(Some(password)),
             Err(keyring::Error::NoEntry) => Ok(None),
+            Err(_) => Err(LlmError::Authentication),
+        }
+    }
+}
+
+impl KeyringCredentialStore {
+    pub fn set(&self, credential_id: &str, secret: &str) -> Result<(), LlmError> {
+        if secret.trim().is_empty() {
+            return Err(LlmError::InvalidProfile);
+        }
+        credential_entry(credential_id)?
+            .set_password(secret)
+            .map_err(|_| LlmError::Authentication)
+    }
+
+    pub fn delete(&self, credential_id: &str) -> Result<(), LlmError> {
+        match credential_entry(credential_id)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(_) => Err(LlmError::Authentication),
         }
     }
@@ -445,9 +473,10 @@ fn map_http_status(status: u16) -> LlmError {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthSource, ChatMessage, GenaiLlmClient, GenerationParams, LlmClient, LlmError,
-        MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile, ReasoningEffort,
-        genai_adapter, map_http_status, prepare_request, validate_endpoint,
+        AuthSource, ChatMessage, GenaiLlmClient, GenerationParams, KeyringCredentialStore,
+        LlmClient, LlmError, MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile,
+        ReasoningEffort, credential_entry, genai_adapter, map_http_status, prepare_request,
+        validate_endpoint,
     };
     use std::sync::Arc;
 
@@ -542,6 +571,30 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<ProviderProfile>(encoded).expect("profile should deserialize"),
             profile
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_keychain_credential_ids_before_access() {
+        assert!(matches!(
+            credential_entry(""),
+            Err(LlmError::InvalidProfile)
+        ));
+        assert!(matches!(
+            credential_entry("bad\ncredential"),
+            Err(LlmError::InvalidProfile)
+        ));
+        assert!(matches!(
+            credential_entry(&"x".repeat(129)),
+            Err(LlmError::InvalidProfile)
+        ));
+    }
+
+    #[test]
+    fn rejects_empty_keychain_secrets() {
+        assert_eq!(
+            KeyringCredentialStore.set("test", "  "),
+            Err(LlmError::InvalidProfile)
         );
     }
 

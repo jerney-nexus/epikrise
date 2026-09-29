@@ -91,6 +91,10 @@
   let modelListIsError = $state(false);
   let endpoint = $state("");
   let credentialId = $state("");
+  let credentialSecret = $state("");
+  let credentialMessage = $state("");
+  let credentialIsError = $state(false);
+  let credentialBusy = $state(false);
   let visionEnabled = $state(false);
   let outputTokenLimit = $state<number | undefined>(8192);
   let reasoningEffort = $state<ReasoningEffort | "provider_default">(
@@ -191,6 +195,9 @@
         "Local image OCR is unavailable and vision fallback is disabled.",
       image_ocr_failed: "Image OCR returned no text and vision fallback is disabled.",
       pdf_ocr_required: "This PDF contains scanned pages that could not be extracted.",
+      pdf_vision_too_many_pages:
+        "This PDF has more than 12 scanned pages. Split it or provide fewer pages.",
+      pdf_vision_too_large: "The scanned pages exceed the 20 MB vision limit.",
     };
     return (
       messages[error.key] ??
@@ -200,9 +207,10 @@
 
   function appendSourceBlock(block: ExtractedBlock) {
     sourceBlocks = [...sourceBlocks, block];
-    ingestMessage = block.image
-      ? "Added image for provider vision analysis"
-      : "Input extracted and added";
+    ingestMessage =
+      (block.images?.length ?? 0) > 0
+        ? "Added image for provider vision analysis"
+        : "Input extracted and added";
     ingestIsError = false;
     void invalidateOutputReview();
   }
@@ -237,7 +245,7 @@
         const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
         const result = file.type.startsWith("image/")
           ? await commands.extractImage(file.name, bytes, visionEnabled)
-          : await commands.extractFile(file.name, bytes);
+          : await commands.extractFile(file.name, bytes, visionEnabled);
         if (result.status === "error") {
           ingestMessage = `${file.name}: ${formatIngestError(result.error)}`;
           ingestIsError = true;
@@ -732,6 +740,60 @@
     }
   }
 
+  async function saveProviderCredential() {
+    const keychainId = credentialId.trim();
+    if (!desktopAvailable || !keychainId || !credentialSecret.trim()) {
+      credentialMessage = !keychainId
+        ? "Enter a keychain ID and API key."
+        : "Enter an API key in the desktop app.";
+      credentialIsError = true;
+      credentialSecret = "";
+      return;
+    }
+
+    credentialBusy = true;
+    credentialMessage = "";
+    try {
+      const result = await commands.setProviderCredential(keychainId, credentialSecret);
+      if (result.status === "error") {
+        credentialMessage = formatError(result.error);
+        credentialIsError = true;
+      } else {
+        credentialMessage = "API key saved in the OS keychain.";
+        credentialIsError = false;
+      }
+    } catch {
+      credentialMessage = "The API key could not be saved.";
+      credentialIsError = true;
+    } finally {
+      credentialSecret = "";
+      credentialBusy = false;
+    }
+  }
+
+  async function deleteProviderCredential() {
+    const keychainId = credentialId.trim();
+    if (!desktopAvailable || !keychainId || credentialBusy) return;
+
+    credentialBusy = true;
+    credentialMessage = "";
+    try {
+      const result = await commands.deleteProviderCredential(keychainId);
+      if (result.status === "error") {
+        credentialMessage = formatError(result.error);
+        credentialIsError = true;
+      } else {
+        credentialMessage = "API key removed from the OS keychain.";
+        credentialIsError = false;
+      }
+    } catch {
+      credentialMessage = "The API key could not be removed.";
+      credentialIsError = true;
+    } finally {
+      credentialBusy = false;
+    }
+  }
+
   async function refreshModels() {
     if (modelListLoading) return;
     if (!desktopAvailable) {
@@ -864,7 +926,7 @@
                   round: 0,
                   provenance: "RawText" as const,
                   content: source,
-                  image: null,
+                  images: [],
                 },
               ]
             : []),
@@ -985,6 +1047,36 @@
         autocomplete="off"
         spellcheck="false"
       />
+
+      <label for="credential-secret">API key</label>
+      <input
+        id="credential-secret"
+        type="password"
+        bind:value={credentialSecret}
+        autocomplete="new-password"
+        spellcheck="false"
+      />
+      <button
+        class="connection-button"
+        type="button"
+        onclick={saveProviderCredential}
+        disabled={credentialBusy || !credentialId.trim() || !credentialSecret}
+      >
+        {credentialBusy ? "Saving..." : "Save in OS keychain"}
+      </button>
+      <button
+        class="connection-button"
+        type="button"
+        onclick={deleteProviderCredential}
+        disabled={credentialBusy || !credentialId.trim()}
+      >
+        Remove keychain entry
+      </button>
+      {#if credentialMessage}
+        <p class="model-list-message" class:error={credentialIsError} role="status">
+          {credentialMessage}
+        </p>
+      {/if}
 
       <label class="vision-setting" for="vision-enabled">
         <input id="vision-enabled" type="checkbox" bind:checked={visionEnabled} />
@@ -1388,7 +1480,7 @@
                   <div class="source-input-meta">
                     <span title={provenanceLabel}>{provenanceLabel}</span>
                     <span
-                      >{block.image
+                      >{(block.images?.length ?? 0) > 0
                         ? "Vision image"
                         : `${block.content.length} chars`}</span
                     >

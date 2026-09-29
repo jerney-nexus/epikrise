@@ -47,6 +47,10 @@ pub enum IngestError {
     PdfOcrUnavailable,
     #[error("PDF OCR failed")]
     PdfOcrFailed,
+    #[error("scanned PDF contains too many pages for vision fallback")]
+    PdfVisionTooManyPages,
+    #[error("scanned PDF exceeds the vision attachment size limit")]
+    PdfVisionTooLarge,
     #[error("invalid DOCX archive")]
     InvalidDocxArchive,
     #[error("DOCX is missing word/document.xml")]
@@ -171,8 +175,9 @@ pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError>
         }
 
         let text = match content_type.as_str() {
-            "text/html" | "application/xhtml+xml" => html2text::from_read(bytes.as_slice(), 120)
-                .map_err(|_| IngestError::HtmlConversionFailed)?,
+            "text/html" | "application/xhtml+xml" => {
+                extract_readable_html(&bytes, current_url.as_str())?
+            }
             "text/plain" => String::from_utf8(bytes).map_err(|_| IngestError::InvalidUtf8)?,
             _ => return Err(IngestError::UnsupportedUrlContent),
         };
@@ -188,6 +193,29 @@ pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError>
         ));
     }
     Err(IngestError::TooManyUrlRedirects)
+}
+
+fn extract_readable_html(bytes: &[u8], document_url: &str) -> Result<String, IngestError> {
+    let html = std::str::from_utf8(bytes).map_err(|_| IngestError::InvalidUtf8)?;
+    let mut readability = dom_smoothie::Readability::new(
+        html,
+        Some(document_url),
+        Some(dom_smoothie::Config {
+            max_elements_to_parse: 50_000,
+            char_threshold: 100,
+            text_mode: dom_smoothie::TextMode::Markdown,
+            ..dom_smoothie::Config::default()
+        }),
+    )
+    .map_err(|_| IngestError::HtmlConversionFailed)?;
+    let article = readability
+        .parse()
+        .map_err(|_| IngestError::HtmlConversionFailed)?;
+    let text = article.text_content.trim();
+    if text.is_empty() {
+        return Err(IngestError::NoHtmlText);
+    }
+    Ok(text.to_owned())
 }
 
 fn validate_url(address: &str) -> Result<url::Url, IngestError> {
@@ -271,7 +299,7 @@ pub fn extract_image_for_vision(
         },
         "Image attached for visual analysis.",
     );
-    block.image = Some(epikrise_core::ImageAttachment {
+    block.images.push(epikrise_core::ImageAttachment {
         mime_type,
         data: normalized,
         name: file_name,
@@ -505,6 +533,17 @@ fn extract_pdf_pages(bytes: &[u8]) -> Result<Vec<String>, IngestError> {
     pdf_extract::extract_text_from_mem_by_pages(bytes).map_err(|_| IngestError::PdfExtractionFailed)
 }
 
+pub fn pdf_page_texts_and_ocr_targets(
+    bytes: &[u8],
+) -> Result<(Vec<String>, Vec<u32>), IngestError> {
+    let pages = extract_pdf_pages(bytes)?;
+    if pages.is_empty() {
+        return Err(IngestError::NoTextExtracted);
+    }
+    let targets = sparse_pdf_pages(&pages);
+    Ok((pages, targets))
+}
+
 fn sparse_pdf_pages(pages: &[String]) -> Vec<u32> {
     pages
         .iter()
@@ -651,8 +690,8 @@ pub fn extract_raw_text(text: String) -> Result<ExtractedBlock, IngestError> {
 mod tests {
     use super::{
         IngestError, extract_file, extract_file_with_ocr, extract_image_for_vision,
-        extract_image_with_ocr, extract_raw_text, extract_text_file, extract_url, is_public_ip,
-        validate_url,
+        extract_image_with_ocr, extract_raw_text, extract_readable_html, extract_text_file,
+        extract_url, is_public_ip, pdf_page_texts_and_ocr_targets, validate_url,
     };
     use epikrise_core::InputProvenance;
     use std::{
@@ -729,17 +768,16 @@ mod tests {
         })
         .expect("OCR output should be returned as text");
         assert_eq!(extracted.content, "Recognized clinical finding");
-        assert!(extracted.image.is_none());
+        assert!(extracted.images.is_empty());
 
         let vision = extract_image_for_vision("screen.png".to_owned(), &image_bytes)
             .expect("vision fallback should produce a normalized image attachment");
         assert_eq!(
-            vision.image.as_ref().map(|image| image.mime_type.as_str()),
+            vision.images.first().map(|image| image.mime_type.as_str()),
             Some("image/png")
         );
         assert_eq!(
-            infer::get(&vision.image.expect("vision image is attached").data)
-                .map(|kind| kind.mime_type()),
+            infer::get(&vision.images[0].data).map(|kind| kind.mime_type()),
             Some("image/png")
         );
 
@@ -752,8 +790,8 @@ mod tests {
                 .expect("JPEG should be normalized for vision");
         assert_eq!(
             jpeg_vision
-                .image
-                .as_ref()
+                .images
+                .first()
                 .map(|image| image.mime_type.as_str()),
             Some("image/png")
         );
@@ -871,6 +909,10 @@ mod tests {
             "This final page also contains enough text to pass the quality threshold.",
         ]);
 
+        let (pages, vision_targets) =
+            pdf_page_texts_and_ocr_targets(&pdf).expect("PDF pages should be classified");
+        assert_eq!(pages.len(), 3);
+        assert_eq!(vision_targets, vec![2]);
         assert_eq!(
             extract_file("mixed.pdf".to_owned(), pdf),
             Err(IngestError::PdfOcrRequired { pages: vec![2] })
@@ -987,6 +1029,27 @@ mod tests {
         assert!(block.content.contains("Diagnoses"));
         assert!(block.content.contains("Hypertension & diabetes"));
         assert!(!block.content.contains("ignored()"));
+    }
+
+    #[test]
+    fn url_readability_excludes_navigation_and_footer_content() {
+        let html = br#"<!doctype html><html><head><title>Clinical article</title></head><body>
+            <nav><a href="/">Home</a> <a href="/news">News</a> Navigation-only label</nav>
+            <article><h1>Study findings</h1>
+                <p>The study reports a clinically relevant finding that was observed during follow-up. The patient remained stable, and the measurements were documented in the report.</p>
+                <p>Additional examination results are described with their dates, values, and uncertainty. These details belong to the article body and should remain available for careful review.</p>
+                <p>The authors conclude that the findings should be interpreted in context and do not establish a new diagnosis without further clinical assessment.</p>
+            </article>
+            <footer>Privacy policy Terms of service Footer-only label</footer>
+        </body></html>"#;
+
+        let text = extract_readable_html(html, "https://example.org/article")
+            .expect("readability should extract the main article");
+
+        assert!(text.contains("Study findings"));
+        assert!(text.contains("clinically relevant finding"));
+        assert!(!text.contains("Navigation-only label"));
+        assert!(!text.contains("Footer-only label"));
     }
 
     #[test]

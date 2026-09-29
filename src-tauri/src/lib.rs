@@ -5,7 +5,8 @@ use specta_typescript::Typescript;
 use std::{
     collections::{BTreeMap, HashMap},
     ffi::OsString,
-    io::{Seek, SeekFrom, Write},
+    fs::{self, File, OpenOptions},
+    io::{self, Cursor, Seek, SeekFrom, Write},
     path::Path,
     sync::{Mutex, OnceLock},
 };
@@ -16,8 +17,8 @@ use tokio_util::sync::CancellationToken;
 use zeroize::Zeroize;
 
 use epikrise_core::{
-    CaseSession, ClinicalTemplate, ExtractedBlock, OutputRules, OutputViolation, TemplateError,
-    TemplateValue, lint_output,
+    CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance, OutputRules,
+    OutputViolation, TemplateError, TemplateValue, lint_output,
 };
 use epikrise_llm::{
     ChatMessage, GenaiLlmClient, KeyringCredentialStore, LlmClient, LlmError, MessageRole,
@@ -26,8 +27,152 @@ use epikrise_llm::{
 use sha2::{Digest, Sha256};
 
 static PDFIUM: OnceLock<Result<Pdfium, ()>> = OnceLock::new();
+const MAX_PDF_VISION_PAGES: usize = 12;
+const MAX_PDF_VISION_BYTES: usize = 20 * 1024 * 1024;
 
 struct SensitiveImageFile(tempfile::NamedTempFile);
+
+struct OcrTempSession {
+    _lease: File,
+    directory: tempfile::TempDir,
+}
+
+impl OcrTempSession {
+    fn create() -> io::Result<Self> {
+        let app_root = std::env::temp_dir().join("epikrise");
+        ensure_private_directory(&app_root)?;
+        Self::create_in_root(&app_root.join("sessions"))
+    }
+
+    fn create_in_root(root: &Path) -> io::Result<Self> {
+        ensure_private_directory(root)?;
+        let cleanup_lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(root.join(".cleanup.lock"))?;
+        fs4::FileExt::lock(&cleanup_lock)?;
+        remove_abandoned_ocr_sessions(root)?;
+
+        let directory = tempfile::Builder::new()
+            .prefix("epikrise-session-")
+            .tempdir_in(root)?;
+        ensure_private_directory(directory.path())?;
+        let lease = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(directory.path().join(".lease"))?;
+        fs4::FileExt::lock(&lease)?;
+        drop(cleanup_lock);
+
+        Ok(Self {
+            _lease: lease,
+            directory,
+        })
+    }
+
+    fn path(&self) -> &Path {
+        self.directory.path()
+    }
+}
+
+fn ensure_private_directory(path: &Path) -> io::Result<()> {
+    let create_result = create_private_directory(path);
+    if let Err(error) = create_result
+        && error.kind() != io::ErrorKind::AlreadyExists
+    {
+        return Err(error);
+    }
+
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "temporary session path is not a directory",
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o777 != 0o700 {
+            fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn create_private_directory(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    let mut builder = fs::DirBuilder::new();
+    builder.mode(0o700).create(path)
+}
+
+#[cfg(not(unix))]
+fn create_private_directory(path: &Path) -> io::Result<()> {
+    fs::create_dir(path)
+}
+
+fn remove_abandoned_ocr_sessions(root: &Path) -> io::Result<()> {
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir()
+            || !entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("epikrise-session-")
+        {
+            continue;
+        }
+
+        let session_path = entry.path();
+        let lease_path = session_path.join(".lease");
+        let lease = match OpenOptions::new().read(true).write(true).open(&lease_path) {
+            Ok(lease) => lease,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                wipe_directory_contents(&session_path)?;
+                fs::remove_dir_all(session_path)?;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+
+        match fs4::FileExt::try_lock(&lease) {
+            Ok(()) => {
+                drop(lease);
+                wipe_directory_contents(&session_path)?;
+                fs::remove_dir_all(session_path)?;
+            }
+            Err(fs4::TryLockError::WouldBlock) => {}
+            Err(fs4::TryLockError::Error(error)) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+fn wipe_directory_contents(directory: &Path) -> io::Result<()> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let path = entry.path();
+        if file_type.is_dir() {
+            wipe_directory_contents(&path)?;
+        } else if file_type.is_file() {
+            let mut file = OpenOptions::new().write(true).open(path)?;
+            let mut remaining = file.metadata()?.len();
+            file.seek(SeekFrom::Start(0))?;
+            let zeros = [0_u8; 8192];
+            while remaining > 0 {
+                let chunk_length = remaining.min(zeros.len() as u64) as usize;
+                file.write_all(&zeros[..chunk_length])?;
+                remaining -= chunk_length as u64;
+            }
+            file.sync_all()?;
+        }
+    }
+    Ok(())
+}
 
 #[derive(Default)]
 struct GenerationRegistry(Mutex<HashMap<String, GenerationTask>>);
@@ -296,24 +441,61 @@ async fn extract_url(
 #[specta::specta]
 fn extract_file(
     app: AppHandle,
+    temp_session: State<'_, OcrTempSession>,
     file_name: String,
     bytes: Vec<u8>,
+    vision_enabled: bool,
 ) -> Result<epikrise_core::ExtractedBlock, epikrise_ingest::IngestError> {
-    epikrise_ingest::extract_file_with_ocr(file_name, bytes, |pdf, pages| {
-        ocr_pdf_pages(&app, pdf, pages)
-    })
+    let pdf_for_vision = (vision_enabled
+        && infer::get(&bytes).map(|kind| kind.mime_type()) == Some("application/pdf"))
+    .then(|| bytes.clone());
+    let result = epikrise_ingest::extract_file_with_ocr(file_name.clone(), bytes, |pdf, pages| {
+        ocr_pdf_pages(&app, temp_session.path(), pdf, pages)
+    });
+    match result {
+        Ok(block) => Ok(block),
+        Err(
+            error @ (epikrise_ingest::IngestError::PdfOcrUnavailable
+            | epikrise_ingest::IngestError::PdfOcrFailed),
+        ) if pdf_for_vision.is_some() => {
+            let Some(pdf) = pdf_for_vision else {
+                return Err(error);
+            };
+            let (page_texts, pages) = epikrise_ingest::pdf_page_texts_and_ocr_targets(&pdf)?;
+            if pages.is_empty() {
+                return Err(error);
+            }
+            let resources = app
+                .path()
+                .resolve("resources/ocr", BaseDirectory::Resource)
+                .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+            let pdfium_path = resources
+                .join("pdfium")
+                .join(Pdfium::pdfium_platform_library_name());
+            let images = render_pdf_pages_for_vision(&pdf, &pages, &pdfium_path, &file_name)?;
+            let mut block = ExtractedBlock::new(
+                uuid::Uuid::new_v4().to_string(),
+                InputProvenance::File { name: file_name },
+                page_texts.join("\n"),
+            );
+            block.images = images;
+            Ok(block)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 #[tauri::command]
 #[specta::specta]
 fn extract_image(
     app: AppHandle,
+    temp_session: State<'_, OcrTempSession>,
     file_name: String,
     bytes: Vec<u8>,
     vision_enabled: bool,
 ) -> Result<epikrise_core::ExtractedBlock, epikrise_ingest::IngestError> {
     match epikrise_ingest::extract_image_with_ocr(file_name.clone(), &bytes, |png| {
-        ocr_image_bytes(&app, png)
+        ocr_image_bytes(&app, temp_session.path(), png)
     }) {
         Ok(block) => Ok(block),
         Err(
@@ -329,6 +511,7 @@ fn extract_image(
 #[tauri::command]
 #[specta::specta]
 async fn test_provider(profile: ProviderProfile) -> Result<(), LlmError> {
+    let profile = provider_probe_profile(profile);
     let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
     client
         .complete(
@@ -343,11 +526,31 @@ async fn test_provider(profile: ProviderProfile) -> Result<(), LlmError> {
         .map(|_| ())
 }
 
+fn provider_probe_profile(mut profile: ProviderProfile) -> ProviderProfile {
+    profile.generation.max_tokens = Some(1);
+    profile.generation.reasoning_effort = None;
+    profile
+}
+
 #[tauri::command]
 #[specta::specta]
 async fn list_models(profile: ProviderProfile) -> Result<Vec<String>, LlmError> {
     let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
     client.list_models(&profile).await
+}
+
+#[tauri::command]
+#[specta::specta]
+fn set_provider_credential(credential_id: String, mut secret: String) -> Result<(), LlmError> {
+    let result = KeyringCredentialStore.set(&credential_id, &secret);
+    secret.zeroize();
+    result
+}
+
+#[tauri::command]
+#[specta::specta]
+fn delete_provider_credential(credential_id: String) -> Result<(), LlmError> {
+    KeyringCredentialStore.delete(&credential_id)
 }
 
 fn prepare_case_generation(
@@ -388,7 +591,7 @@ fn prepare_case_generation(
     let mut user_prompt = session.assemble_user_prompt(&inputs);
     let images = inputs
         .iter()
-        .filter_map(|input| input.image.clone())
+        .flat_map(|input| input.images.iter().cloned())
         .collect();
     if let Some(corrections) = corrections
         .map(str::trim)
@@ -596,6 +799,7 @@ fn cancel_generation(
 
 fn ocr_pdf_pages(
     app: &AppHandle,
+    temp_directory: &Path,
     bytes: &[u8],
     page_numbers: &[u32],
 ) -> Result<Vec<String>, epikrise_ingest::IngestError> {
@@ -613,11 +817,16 @@ fn ocr_pdf_pages(
         page_numbers,
         &pdfium_path,
         &tessdata_dir,
+        temp_directory,
         |image_path, tessdata_dir| run_tesseract(app, image_path, tessdata_dir),
     )
 }
 
-fn ocr_image_bytes(app: &AppHandle, png: &[u8]) -> Result<String, epikrise_ingest::IngestError> {
+fn ocr_image_bytes(
+    app: &AppHandle,
+    temp_directory: &Path,
+    png: &[u8],
+) -> Result<String, epikrise_ingest::IngestError> {
     let resources = app
         .path()
         .resolve("resources/ocr", BaseDirectory::Resource)
@@ -626,7 +835,7 @@ fn ocr_image_bytes(app: &AppHandle, png: &[u8]) -> Result<String, epikrise_inges
     let temp_file = tempfile::Builder::new()
         .prefix("epikrise-image-ocr-")
         .suffix(".png")
-        .tempfile()
+        .tempfile_in(temp_directory)
         .map(SensitiveImageFile)
         .map_err(|_| epikrise_ingest::IngestError::ImageOcrUnavailable)?;
     let mut temp_file = temp_file;
@@ -675,6 +884,7 @@ fn ocr_pdf_pages_with<F>(
     page_numbers: &[u32],
     pdfium_path: &Path,
     tessdata_dir: &Path,
+    temp_directory: &Path,
     mut recognize: F,
 ) -> Result<Vec<String>, epikrise_ingest::IngestError>
 where
@@ -714,7 +924,7 @@ where
         let temp_file = tempfile::Builder::new()
             .prefix("epikrise-ocr-")
             .suffix(".png")
-            .tempfile()
+            .tempfile_in(temp_directory)
             .map(SensitiveImageFile)
             .map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)?;
         image
@@ -724,6 +934,65 @@ where
     }
 
     Ok(recognized_pages)
+}
+
+fn render_pdf_pages_for_vision(
+    bytes: &[u8],
+    page_numbers: &[u32],
+    pdfium_path: &Path,
+    file_name: &str,
+) -> Result<Vec<ImageAttachment>, epikrise_ingest::IngestError> {
+    if page_numbers.len() > MAX_PDF_VISION_PAGES {
+        return Err(epikrise_ingest::IngestError::PdfVisionTooManyPages);
+    }
+    let pdfium = PDFIUM
+        .get_or_init(|| {
+            Pdfium::bind_to_library(pdfium_path)
+                .map(Pdfium::new)
+                .map_err(|_| ())
+        })
+        .as_ref()
+        .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+    let document = pdfium
+        .load_pdf_from_byte_vec(bytes.to_vec(), None)
+        .map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)?;
+    let mut images = Vec::with_capacity(page_numbers.len());
+    let mut total_bytes = 0_usize;
+
+    for page_number in page_numbers {
+        let page_index = page_number
+            .checked_sub(1)
+            .and_then(|page| i32::try_from(page).ok())
+            .ok_or(epikrise_ingest::IngestError::PdfOcrFailed)?;
+        let image = document
+            .pages()
+            .get(page_index)
+            .and_then(|page| {
+                page.render_with_config(
+                    &PdfRenderConfig::new()
+                        .set_target_width(1800)
+                        .set_maximum_width(2200)
+                        .set_maximum_height(3000),
+                )?
+                .as_image()
+            })
+            .map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)?;
+        let mut encoded = Cursor::new(Vec::new());
+        image
+            .write_to(&mut encoded, image::ImageFormat::Png)
+            .map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)?;
+        let data = encoded.into_inner();
+        total_bytes = total_bytes.saturating_add(data.len());
+        if total_bytes > MAX_PDF_VISION_BYTES {
+            return Err(epikrise_ingest::IngestError::PdfVisionTooLarge);
+        }
+        images.push(ImageAttachment {
+            mime_type: "image/png".to_owned(),
+            data,
+            name: format!("{file_name} page {page_number}"),
+        });
+    }
+    Ok(images)
 }
 
 #[tauri::command]
@@ -740,6 +1009,7 @@ pub fn run() -> Result<(), tauri::Error> {
             clear_case_session,
             copy_case_output,
             create_case_session,
+            delete_provider_credential,
             extract_file,
             extract_image,
             extract_raw_text,
@@ -750,6 +1020,7 @@ pub fn run() -> Result<(), tauri::Error> {
             list_models,
             render_template_system_prompt,
             set_case_review,
+            set_provider_credential,
             test_provider,
             validate_template
         ])
@@ -778,6 +1049,9 @@ pub fn run() -> Result<(), tauri::Error> {
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
+            let temp_session = OcrTempSession::create()
+                .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
+            app.manage(temp_session);
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -785,15 +1059,21 @@ pub fn run() -> Result<(), tauri::Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::{commit_case_generation, ocr_pdf_pages_with, prepare_case_generation};
-    use epikrise_core::{CaseSession, ExtractedBlock, InputProvenance, TemplateValue};
+    use super::{
+        MAX_PDF_VISION_PAGES, OcrTempSession, commit_case_generation, ocr_pdf_pages_with,
+        prepare_case_generation, provider_probe_profile, render_pdf_pages_for_vision,
+        wipe_directory_contents,
+    };
+    use epikrise_core::{
+        CaseSession, ExtractedBlock, ImageAttachment, InputProvenance, TemplateValue,
+    };
     use epikrise_llm::{
         AuthSource, ChatMessage, GenerationParams, LlmClient, LlmError, ModelCapabilities,
         ProviderAdapter, ProviderProfile,
     };
     use std::{
         collections::{BTreeMap, VecDeque},
-        path::PathBuf,
+        path::{Path, PathBuf},
         process::Command,
         sync::Mutex,
     };
@@ -852,6 +1132,115 @@ mod tests {
                 reasoning_effort: None,
             },
         }
+    }
+
+    #[test]
+    fn provider_connection_check_uses_one_token_without_reasoning() {
+        let mut profile = test_provider_profile();
+        profile.generation.max_tokens = Some(8192);
+        profile.generation.reasoning_effort = Some(epikrise_llm::ReasoningEffort::High);
+
+        let probe = provider_probe_profile(profile);
+
+        assert_eq!(probe.generation.max_tokens, Some(1));
+        assert_eq!(probe.generation.reasoning_effort, None);
+    }
+
+    #[test]
+    fn generation_preparation_preserves_every_image_attachment() {
+        let mut input = ExtractedBlock::new("input-1", InputProvenance::RawText, "Scanned pages");
+        input.images = (1..=2)
+            .map(|page| ImageAttachment {
+                mime_type: "image/png".to_owned(),
+                data: vec![page],
+                name: format!("scan.pdf page {page}"),
+            })
+            .collect();
+        let mut session = CaseSession::new("case-1", "template-1");
+
+        let (messages, _) = prepare_case_generation(
+            &mut session,
+            "Review attached pages.".to_owned(),
+            BTreeMap::new(),
+            vec![input],
+            None,
+        )
+        .expect("generation request should be prepared");
+
+        assert_eq!(messages[1].images.len(), 2);
+        assert_eq!(messages[1].images[1].name, "scan.pdf page 2");
+    }
+
+    #[test]
+    fn pdf_vision_fallback_rejects_too_many_pages_before_rendering() {
+        let page_numbers = (1..=MAX_PDF_VISION_PAGES as u32 + 1).collect::<Vec<_>>();
+
+        assert_eq!(
+            render_pdf_pages_for_vision(
+                b"",
+                &page_numbers,
+                Path::new("missing.pdfium"),
+                "scan.pdf"
+            ),
+            Err(epikrise_ingest::IngestError::PdfVisionTooManyPages)
+        );
+    }
+
+    #[test]
+    fn ocr_temp_sessions_are_private_and_recover_abandoned_directories() {
+        let temp_root = tempfile::tempdir().expect("test root should be created");
+        let sessions_root = temp_root.path().join("sessions");
+        let active = OcrTempSession::create_in_root(&sessions_root)
+            .expect("first temp session should be created");
+        let active_path = active.path().to_path_buf();
+        let abandoned_path = sessions_root.join("epikrise-session-crashed");
+        std::fs::create_dir(&abandoned_path).expect("stale session directory should be created");
+        std::fs::write(abandoned_path.join(".lease"), [])
+            .expect("stale lease file should be created");
+
+        assert!(active_path.exists());
+        assert!(abandoned_path.exists());
+
+        let _next = OcrTempSession::create_in_root(&sessions_root)
+            .expect("next launch should recover abandoned temp sessions");
+
+        assert!(active_path.exists());
+        assert!(!abandoned_path.exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&sessions_root)
+                    .expect("session root should exist")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700
+            );
+            assert_eq!(
+                std::fs::metadata(&active_path)
+                    .expect("active session should exist")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700
+            );
+        }
+    }
+
+    #[test]
+    fn stale_ocr_files_are_overwritten_before_removal() {
+        let temp_root = tempfile::tempdir().expect("test directory should be created");
+        let file_path = temp_root.path().join("synthetic-ocr.png");
+        let contents = b"synthetic OCR pixels";
+        std::fs::write(&file_path, contents).expect("synthetic OCR data should be written");
+
+        wipe_directory_contents(temp_root.path()).expect("stale files should be overwritten");
+
+        assert_eq!(
+            std::fs::read(&file_path).expect("overwritten file should remain for assertion"),
+            vec![0; contents.len()]
+        );
     }
 
     #[tokio::test]
@@ -942,12 +1331,14 @@ mod tests {
         let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/ocr");
         let pdfium_path = resources.join("pdfium/libpdfium.so");
         let tessdata_dir = resources.join("tessdata");
+        let temp_directory = tempfile::tempdir().expect("OCR temp directory should be created");
         let pdf = synthetic_text_pdf("OCR TEST 123");
         let recognized = ocr_pdf_pages_with(
             &pdf,
             &[1],
             &pdfium_path,
             &tessdata_dir,
+            temp_directory.path(),
             |image_path, tessdata_dir| {
                 let output = Command::new("tesseract")
                     .arg(image_path)
@@ -969,6 +1360,15 @@ mod tests {
 
         assert!(recognized[0].contains("OCR"), "{recognized:?}");
         assert!(recognized[0].contains("123"), "{recognized:?}");
+
+        let vision_images = render_pdf_pages_for_vision(&pdf, &[1], &pdfium_path, "synthetic.pdf")
+            .expect("synthetic PDF page should render for vision");
+        assert_eq!(vision_images.len(), 1);
+        assert_eq!(vision_images[0].mime_type, "image/png");
+        assert_eq!(
+            infer::get(&vision_images[0].data).map(|kind| kind.mime_type()),
+            Some("image/png")
+        );
     }
 
     fn synthetic_text_pdf(text: &str) -> Vec<u8> {

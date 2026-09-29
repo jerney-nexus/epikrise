@@ -15,9 +15,13 @@ export const commands = {
     typedError<CaseSession, LlmError>(
       __TAURI_INVOKE("create_case_session", { id, templateId }),
     ),
-  extractFile: (fileName: string, bytes: number[]) =>
+  deleteProviderCredential: (credentialId: string) =>
+    typedError<null, LlmError>(
+      __TAURI_INVOKE("delete_provider_credential", { credentialId }),
+    ),
+  extractFile: (fileName: string, bytes: number[], visionEnabled: boolean) =>
     typedError<ExtractedBlock, IngestError>(
-      __TAURI_INVOKE("extract_file", { fileName, bytes }),
+      __TAURI_INVOKE("extract_file", { fileName, bytes, visionEnabled }),
     ),
   extractImage: (fileName: string, bytes: number[], visionEnabled: boolean) =>
     typedError<ExtractedBlock, IngestError>(
@@ -53,6 +57,10 @@ export const commands = {
   setCaseReview: (caseId: string, reviewed: boolean) =>
     typedError<boolean, LlmError>(
       __TAURI_INVOKE("set_case_review", { caseId, reviewed }),
+    ),
+  setProviderCredential: (credentialId: string, secret: string) =>
+    typedError<null, LlmError>(
+      __TAURI_INVOKE("set_provider_credential", { credentialId, secret }),
     ),
   testProvider: (profile: ProviderProfile) =>
     typedError<null, LlmError>(__TAURI_INVOKE("test_provider", { profile })),
@@ -97,7 +105,7 @@ export type ExtractedBlock = {
   round: number;
   provenance: InputProvenance;
   content: string;
-  image?: ImageAttachment | null;
+  images?: ImageAttachment[];
 };
 
 export type GenerateRequest = {
@@ -149,6 +157,8 @@ export type IngestError =
   | { key: "pdf_ocr_required"; pages: number[] }
   | { key: "pdf_ocr_unavailable" }
   | { key: "pdf_ocr_failed" }
+  | { key: "pdf_vision_too_many_pages" }
+  | { key: "pdf_vision_too_large" }
   | { key: "invalid_docx_archive" }
   | { key: "missing_docx_document" }
   | { key: "docx_document_too_large" }

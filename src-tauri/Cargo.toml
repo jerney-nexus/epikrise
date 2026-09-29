@@ -29,6 +29,8 @@ authors = ["Pascal Jerney"]
 calamine = "0.36"
 base64 = "0.22"
 async-trait = "0.1"
+dom_smoothie = "0.18.2"
+fs4 = "1.1"
 epikrise-core = { path = "crates/epikrise-core" }
 epikrise-ingest = { path = "crates/epikrise-ingest" }
 epikrise-llm = { path = "crates/epikrise-llm" }
@@ -80,6 +82,7 @@ tauri-build = { version = "2", features = [] }
 epikrise-core = { workspace = true }
 epikrise-ingest = { workspace = true }
 epikrise-llm = { workspace = true }
+fs4 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -96,6 +99,7 @@ image = { workspace = true }
 tokio-util = { workspace = true }
 uuid = { workspace = true }
 zeroize = { workspace = true }
+ infer = "0.19"
 
 [dev-dependencies]
 async-trait = { workspace = true }
