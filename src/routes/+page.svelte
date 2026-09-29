@@ -2669,6 +2669,10 @@
     font-size: 12px;
   }
 
+  .provider-rail > .template-empty {
+    margin-top: 12px;
+  }
+
   .template-export-button {
     min-height: 34px;
     border: 1px solid #bfd1c7;
