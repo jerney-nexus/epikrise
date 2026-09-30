@@ -1,5 +1,9 @@
 {
   "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "eslint.validate": ["javascript", "typescript", "svelte"],
   "svelte.enable-ts-plugin": true,
   "chat.sessionSync.enabled": true,
   "rust-analyzer.runnables.test.overrideCommand": [
