@@ -42,6 +42,58 @@ describe("Windows cross-build versions", () => {
   });
 });
 
+describe("Tauri localization contract", () => {
+  it("keeps command failures structured and serializable for frontend localization", async () => {
+    const rustSource = await readFile(
+      path.join(repoRoot, "src-tauri/src/lib.rs"),
+      "utf8",
+    );
+    const commandBlocks = rustSource.split("#[tauri::command]").slice(1);
+
+    for (const block of commandBlocks) {
+      const functionMatch = block.match(/\b(?:async\s+)?fn\s+([a-z_]\w*)\s*\(/);
+      expect(
+        functionMatch,
+        "each command annotation must define a function",
+      ).not.toBeNull();
+      const functionStart = functionMatch!.index!;
+      const bodyStart = block.indexOf("{", functionStart);
+      const signature = block.slice(functionStart, bodyStart);
+      const returnType = signature.match(/->\s*([\s\S]+)$/)?.[1].trim();
+
+      expect(returnType, functionMatch![1]).toMatch(/^Result</);
+      expect(returnType, functionMatch![1]).toMatch(
+        /,\s*(?:TemplateError|LlmError|epikrise_ingest::IngestError)>$/,
+      );
+    }
+
+    expect(rustSource).not.toMatch(/\bErr\s*\(\s*["']/);
+
+    const structuredErrors = [
+      [
+        "src-tauri/crates/epikrise-core/src/lib.rs",
+        'tag = "key", content = "value", rename_all = "snake_case"',
+        "TemplateError",
+      ],
+      [
+        "src-tauri/crates/epikrise-ingest/src/lib.rs",
+        'tag = "key", rename_all = "snake_case"',
+        "IngestError",
+      ],
+      [
+        "src-tauri/crates/epikrise-llm/src/lib.rs",
+        'tag = "key", rename_all = "snake_case"',
+        "LlmError",
+      ],
+    ] as const;
+
+    for (const [file, serdeTag, errorType] of structuredErrors) {
+      const source = await readFile(path.join(repoRoot, file), "utf8");
+      expect(source).toContain(`#[serde(${serdeTag})]\npub enum ${errorType}`);
+    }
+  });
+});
+
 async function writeExecutable(filePath: string, contents: string) {
   await writeFile(filePath, contents, "utf8");
   await chmod(filePath, 0o755);

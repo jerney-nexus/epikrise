@@ -164,7 +164,7 @@ be ignored or rejected.
 
 The interface defaults to German (Switzerland) and also supports English. On
 first launch, Epikrise uses the operating-system language when it is supported;
-otherwise it uses the default. Choose a language in Provider settings to save
+otherwise it uses the default. Choose a language in General settings to save
 an override on this device. Template names, field labels and clinical content
 continue to use the locale defined by each template.
 

@@ -17,7 +17,6 @@ export const commands = {
 	extractUrl: (address: string) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_url", { address })),
 	exportTemplate: (template: ClinicalTemplate) => typedError<string, TemplateError>(__TAURI_INVOKE("export_template", { template })),
 	generate: (request: GenerateRequest) => typedError<null, LlmError>(__TAURI_INVOKE("generate", { request })),
-	greet: (name: string) => __TAURI_INVOKE<string>("greet", { name }),
 	loadTemplates: () => typedError<ClinicalTemplate[], TemplateError>(__TAURI_INVOKE("load_templates")),
 	listProviderCredentials: () => typedError<CredentialSummary[], LlmError>(__TAURI_INVOKE("list_provider_credentials")),
 	listModels: (profile: ProviderProfile) => typedError<string[], LlmError>(__TAURI_INVOKE("list_models", { profile })),

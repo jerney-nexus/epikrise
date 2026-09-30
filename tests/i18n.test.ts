@@ -102,4 +102,49 @@ describe("Fluent localization", () => {
     expect(resolveLocale("en-GB")).toBe("en");
     expect(translate(pseudoLocale, "Provider")).toMatch(/^［.*］$/);
   });
+
+  it("pseudo-localizes every UI message and finds no untranslated markup text", async () => {
+    const source = await readFile(
+      new URL("../src/routes/+page.svelte", import.meta.url),
+      "utf8",
+    );
+    const markup = source.split("</svelte:head>")[1]?.split("<style>")[0] ?? "";
+    const staticText = [
+      ...new Set(
+        [...markup.matchAll(/>([^<>{}]+)</g)]
+          .map((match) => match[1].trim().replace(/\s+/g, " "))
+          .filter((value) => /[A-Za-z]/.test(value)),
+      ),
+    ].sort();
+    expect(staticText).toEqual(
+      [
+        "E",
+        "Epikrise",
+        "Ollama",
+        "OpenAI",
+        "OpenAI compatible",
+        "OpenRouter",
+        "Anthropic",
+        "Gemini",
+        "xAI",
+        "Groq",
+      ].sort(),
+    );
+
+    const usedSources = [...source.matchAll(/\bt\("([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    const args = {
+      count: 2,
+      error: "sample error",
+      label: "sample label",
+      line: 1,
+      name: "sample.txt",
+      round: 2,
+      status: 418,
+    };
+    for (const message of usedSources) {
+      expect(translate(pseudoLocale, message, args), message).toMatch(/^［.+］$/);
+    }
+  });
 });

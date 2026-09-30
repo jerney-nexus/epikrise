@@ -1118,12 +1118,6 @@ fn render_pdf_pages_for_vision(
     Ok(images)
 }
 
-#[tauri::command]
-#[specta::specta]
-fn greet(name: &str) -> String {
-    format!("Hello, {name}! You've been greeted from Rust!")
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<(), tauri::Error> {
     let builder = Builder::<tauri::Wry>::new()
@@ -1140,7 +1134,6 @@ pub fn run() -> Result<(), tauri::Error> {
             extract_url,
             export_template,
             generate,
-            greet,
             load_templates,
             list_provider_credentials,
             list_models,
