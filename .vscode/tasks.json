@@ -1,0 +1,90 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Epikrise: Dev",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["dev"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Build",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["build"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Check",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Check UI",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check:ui"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test UI",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:ui"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test i18n",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:i18n"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test Rust",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:rust"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Lint",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["lint"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Format Check",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["format:check"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}
