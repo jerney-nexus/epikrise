@@ -260,3 +260,5 @@ ui-cancel-generation = Cancel generation
 ui-02-review = 02 / Review
 ui-input-file-too-large = { $name }: image or file exceeds the 20 MB limit.
 ui-file-extraction-failed = { $name }: { $error }
+ui-general-settings = General settings
+ui-close-general-settings = Close general settings

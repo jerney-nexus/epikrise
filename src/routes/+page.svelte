@@ -97,6 +97,7 @@
   let templateIsError = $state(false);
   let templateBusy = $state(false);
   let providerSettingsDialog: HTMLDialogElement | undefined;
+  let generalSettingsDialog: HTMLDialogElement | undefined;
   let modelSettingsDialog: HTMLDialogElement | undefined;
   let templateSettingsDialog: HTMLDialogElement | undefined;
   let addCredentialDialog: HTMLDialogElement | undefined;
@@ -614,6 +615,10 @@
     providerSettingsDialog?.showModal();
   }
 
+  function openGeneralSettings() {
+    generalSettingsDialog?.showModal();
+  }
+
   function openModelSettings() {
     modelSettingsDialog?.showModal();
   }
@@ -655,6 +660,7 @@
       addCredentialDialog,
       templateEditorDialog,
       providerSettingsDialog,
+      generalSettingsDialog,
       modelSettingsDialog,
       templateSettingsDialog,
     ].find((dialog) => dialog?.open);
@@ -1476,22 +1482,6 @@
           </button>
         </div>
 
-        <label for="interface-language">{t("language")}</label>
-        <select
-          id="interface-language"
-          value={uiLocale}
-          onchange={(event) => changeUiLocale(event.currentTarget.value)}
-        >
-          {#each supportedLocales as locale (locale)}
-            <option value={locale}>
-              {t(locale === "de-CH" ? "language-de-ch" : "language-en")}
-            </option>
-          {/each}
-          {#if import.meta.env.DEV}
-            <option value={pseudoLocale}>{t("language-pseudo")}</option>
-          {/if}
-        </select>
-
         <label for="active-adapter">{t("Provider")}</label>
         <select
           id="active-adapter"
@@ -1611,6 +1601,50 @@
 
     <dialog
       class="settings-dialog"
+      bind:this={generalSettingsDialog}
+      aria-labelledby="general-settings-title"
+      onkeydown={handleDialogKeydown}
+      oncancel={(event) => {
+        event.preventDefault();
+        generalSettingsDialog?.close();
+      }}
+    >
+      <section class="provider-settings" aria-labelledby="general-settings-title">
+        <p class="eyebrow">{t("Workspace")}</p>
+        <div class="dialog-heading">
+          <div>
+            <h2 id="general-settings-title">{t("General settings")}</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            aria-label={t("Close general settings")}
+            onclick={() => generalSettingsDialog?.close()}
+          >
+            ×
+          </button>
+        </div>
+
+        <label for="interface-language">{t("language")}</label>
+        <select
+          id="interface-language"
+          value={uiLocale}
+          onchange={(event) => changeUiLocale(event.currentTarget.value)}
+        >
+          {#each supportedLocales as locale (locale)}
+            <option value={locale}>
+              {t(locale === "de-CH" ? "language-de-ch" : "language-en")}
+            </option>
+          {/each}
+          {#if import.meta.env.DEV}
+            <option value={pseudoLocale}>{t("language-pseudo")}</option>
+          {/if}
+        </select>
+      </section>
+    </dialog>
+
+    <dialog
+      class="settings-dialog"
       bind:this={addCredentialDialog}
       aria-labelledby="add-credential-title"
       onkeydown={handleDialogKeydown}
@@ -1692,6 +1726,9 @@
         </div>
       </dl>
       <div class="settings-actions">
+        <button class="settings-trigger" type="button" onclick={openGeneralSettings}>
+          {t("General settings")}
+        </button>
         <button class="settings-trigger" type="button" onclick={openProviderSettings}>
           {t("Provider settings")}
         </button>
