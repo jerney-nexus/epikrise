@@ -78,7 +78,8 @@ PDFium and language resources are staged per target. If setup reports that the
 include is missing, rebuild the dev container to apply the updated provisioning.
 
 Run setup interactively once. It displays the Microsoft SDK/CRT license link
-and downloads the pinned Windows 10 SDK 10.0.26100.0 and CRT 14.44.35220 only
+and downloads the pinned Windows SDK package `10.0.26100` and Visual C++
+toolset component `14.44.17.14` only
 after you type `ACCEPT`:
 
 ```sh

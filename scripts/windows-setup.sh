@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-sdk_version="10.0.26100.0"
-crt_version="14.44.35220"
+sdk_version="10.0.26100"
+crt_version="14.44.17.14"
 visual_studio_version="17"
 cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/epikrise/windows"
 license_marker="$cache_root/sdk-license-accepted-$visual_studio_version-$sdk_version-$crt_version"

@@ -22,6 +22,26 @@ const windowsOcrTargets = [
   },
 ];
 
+describe("Windows cross-build versions", () => {
+  it("uses the same available CRT version for setup and builds", async () => {
+    const setupScript = await readFile(
+      path.join(repoRoot, "scripts/windows-setup.sh"),
+      "utf8",
+    );
+    const buildScript = await readFile(
+      path.join(repoRoot, "scripts/build-windows.sh"),
+      "utf8",
+    );
+    const setupSdkVersion = setupScript.match(/sdk_version="([^"]+)"/)?.[1];
+    const setupCrtVersion = setupScript.match(/crt_version="([^"]+)"/)?.[1];
+
+    expect(setupSdkVersion).toBe("10.0.26100");
+    expect(setupCrtVersion).toBe("14.44.17.14");
+    expect(buildScript).toContain(`sdk_version="${setupSdkVersion}"`);
+    expect(buildScript).toContain(`crt_version="${setupCrtVersion}"`);
+  });
+});
+
 async function writeExecutable(filePath: string, contents: string) {
   await writeFile(filePath, contents, "utf8");
   await chmod(filePath, 0o755);
