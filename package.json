@@ -4,7 +4,7 @@
   "description": "Local-only assistant that turns anonymized clinical material into a structured diagnosis and findings list",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@12.6.0",
+  "packageManager": "pnpm@12.8.1",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
