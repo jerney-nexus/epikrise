@@ -3272,10 +3272,9 @@
   }
 
   .template-editor {
-    display: grid;
-    grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+    display: flex;
+    flex-direction: column;
     gap: 17px;
-    max-height: min(88dvh, 900px);
     padding: 24px;
   }
 
@@ -3425,7 +3424,7 @@
     display: grid;
     min-height: 0;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: auto minmax(240px, 1fr);
+    grid-template-rows: auto minmax(240px, min(36dvh, 340px));
     gap: 7px 16px;
   }
 
@@ -3446,6 +3445,7 @@
   .template-live-preview {
     display: flex;
     min-width: 0;
+    min-height: 0;
     flex-direction: column;
     border-left: 2px solid #d7e7dd;
     background: #f3f8f3;
@@ -4423,7 +4423,6 @@
     }
 
     .template-editor {
-      max-height: 88dvh;
       padding: 17px;
     }
 
@@ -4438,7 +4437,10 @@
 
     .template-editor-body {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: auto minmax(220px, 1fr) minmax(220px, 1fr);
+      grid-template-rows: auto minmax(220px, min(32dvh, 320px)) minmax(
+          220px,
+          min(32dvh, 320px)
+        );
     }
 
     .template-editor-body > label {
