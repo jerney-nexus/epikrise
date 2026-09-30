@@ -33,12 +33,14 @@ esac
 
 tool_wrapper_dir="$cache_root/bin"
 mkdir -p "$tool_wrapper_dir"
+clang_path="$(command -v clang || true)"
+if [[ -z "$clang_path" ]]; then
+  printf 'clang is required by cargo-xwin.\n' >&2
+  exit 1
+fi
+export EPIKRISE_WINDOWS_CLANG="$clang_path"
+ln -sfn "$repo_root/scripts/clang-xwin.sh" "$tool_wrapper_dir/clang"
 if ! command -v clang-cl >/dev/null 2>&1; then
-  clang_path="$(command -v clang || true)"
-  if [[ -z "$clang_path" ]]; then
-    printf 'clang is required by cargo-xwin.\n' >&2
-    exit 1
-  fi
   ln -sfn "$clang_path" "$tool_wrapper_dir/clang-cl"
 fi
 export PATH="$tool_wrapper_dir:$PATH"
