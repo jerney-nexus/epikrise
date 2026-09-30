@@ -35,6 +35,30 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Cargo Deny",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check:rust:deny"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Cargo Audit",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["audit:rust"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: pnpm Audit",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["audit:pnpm"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Test",
       "type": "process",
       "command": "pnpm",

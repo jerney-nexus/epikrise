@@ -41,11 +41,14 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - `pnpm install --frozen-lockfile`: Install project dependencies without modifying the lockfile.
 - `pnpm dev`: Start the development server and frontend environment.
 - `pnpm build`: Build the project for production.
+- `pnpm audit:rust`: Run a security audit for Rust dependencies.
+- `pnpm audit:pnpm`: Run a security audit for pnpm dependencies.
 - `pnpm check`: Run all checks for the project, including UI and Rust code.
 - `pnpm check:ui`: Run UI-specific checks.
 - `pnpm check:rust`: Run Rust-specific checks.
 - `pnpm check:rust:fmt`: Check Rust code formatting.
 - `pnpm check:rust:clippy`: Lint Rust code with Clippy.
+- `pnpm check:deny`: Run to ensure dependency and security policies are met.
 - `pnpm test`: Run all test suites, including UI, internationalization, and Rust tests (fallback when Test Explorer is unavailable).
 - `pnpm test:ui`: Run UI tests (fallback when Test Explorer is unavailable).
 - `pnpm test:i18n`: Test internationalization (fallback when Test Explorer is unavailable).
