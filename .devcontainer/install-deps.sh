@@ -28,6 +28,22 @@ sudo apt-get install -y --no-install-recommends \
   tesseract-ocr-deu \
   tesseract-ocr-eng
 
+restart_manager_version="v312"
+restart_manager_sha256="67149978412da9b283e2e1abe48a360093df9caf6363373e2cabe463978b7c0e"
+restart_manager_temp="$(mktemp)"
+trap 'rm -f "$restart_manager_temp"' EXIT
+curl --fail --location --silent --show-error \
+  "https://raw.githubusercontent.com/NSIS-Dev/NSIS/$restart_manager_version/Include/Win/RestartManager.nsh" \
+  -o "$restart_manager_temp"
+printf '%s  %s\n' "$restart_manager_sha256" "$restart_manager_temp" | sha256sum --check --status || {
+  printf 'SHA-256 mismatch for NSIS RestartManager.nsh.\n' >&2
+  exit 1
+}
+sudo install -D -m 0644 "$restart_manager_temp" \
+  /usr/share/nsis/Include/Win/RestartManager.nsh
+rm -f "$restart_manager_temp"
+trap - EXIT
+
 sudo apt-get clean
 sudo rm -rf /var/lib/apt/lists/*
 

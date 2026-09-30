@@ -72,8 +72,10 @@ and open a new terminal. Then retry `pnpm tauri build`.
 
 Windows cross-compilation is configured for the ARM64 Linux dev container. Its
 setup installs LLVM, CMake, Ninja, NSIS and `cargo-xwin`; OCR sidecars and their
-static dependencies are compiled separately for x64 and ARM64. The pinned
-Windows PDFium and language resources are staged per target.
+static dependencies are compiled separately for x64 and ARM64. Provisioning
+also installs Tauri's required NSIS Restart Manager include. The pinned Windows
+PDFium and language resources are staged per target. If setup reports that the
+include is missing, rebuild the dev container to apply the updated provisioning.
 
 Run setup interactively once. It displays the Microsoft SDK/CRT license link
 and downloads the pinned Windows 10 SDK 10.0.26100.0 and CRT 14.44.35220 only

@@ -19,6 +19,11 @@ for tool in cargo rustup clang llvm-rc llvm-ar lld-link cmake ninja makensis; do
   fi
 done
 
+if [[ ! -f /usr/share/nsis/Include/Win/RestartManager.nsh ]]; then
+  printf 'NSIS is missing Win/RestartManager.nsh; rebuild the dev container to install the required header.\n' >&2
+  exit 1
+fi
+
 if ! cargo xwin --version >/dev/null 2>&1; then
   cargo install cargo-xwin --version 0.23.1 --locked
 fi
