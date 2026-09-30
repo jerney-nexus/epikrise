@@ -18,7 +18,7 @@
     "check:rust:clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets",
     "check:rust:deny": "cargo deny --manifest-path src-tauri/Cargo.toml --config src-tauri/deny.toml check",
     "audit:rust": "cargo audit --file src-tauri/Cargo.lock",
-    "audit:pnpm": "pnpm audit",
+    "audit:pnpm": "pnpm audit --audit-level high",
     "lint": "eslint . --max-warnings 0",
     "test": "pnpm test:ui && pnpm test:i18n && pnpm test:rust",
     "test:ui": "vitest run",

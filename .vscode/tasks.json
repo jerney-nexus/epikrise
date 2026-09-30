@@ -35,6 +35,14 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Check Rust",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check:rust"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Cargo Deny",
       "type": "process",
       "command": "pnpm",
