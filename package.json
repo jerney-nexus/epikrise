@@ -24,7 +24,11 @@
     "format:check": "prettier --check .",
     "format:check:file": "prettier --check",
     "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml --all",
-    "tauri": "bash scripts/prepare-ocr.sh && tauri"
+    "tauri": "bash scripts/prepare-ocr.sh && tauri",
+    "windows:setup": "bash scripts/windows-setup.sh",
+    "windows:build:x64": "bash scripts/build-windows.sh x64",
+    "windows:build:arm64": "bash scripts/build-windows.sh arm64",
+    "windows:build": "bash scripts/build-windows.sh all"
   },
   "license": "MIT",
   "dependencies": {

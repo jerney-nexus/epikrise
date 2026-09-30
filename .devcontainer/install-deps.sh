@@ -8,8 +8,14 @@ export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   build-essential \
+  clang \
+  cmake \
   curl \
   file \
+  lld \
+  llvm \
+  ninja-build \
+  nsis \
   wget \
   libssl-dev \
   libayatana-appindicator3-dev \
@@ -27,6 +33,7 @@ sudo rm -rf /var/lib/apt/lists/*
 
 rustup component add clippy rustfmt
 cargo install cargo-nextest --locked
+cargo install cargo-xwin --version 0.23.1 --locked
 
 host_target="$(rustc -vV | sed -n 's/^host: //p')"
 case "$(uname -m)" in

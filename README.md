@@ -83,6 +83,23 @@ To produce installers for the current platform:
 pnpm tauri build
 ```
 
+## Windows Installers
+
+From the ARM64 Linux dev container, run `pnpm windows:setup` once and review
+the Microsoft SDK/CRT license when prompted. Then build one architecture or both
+sequentially:
+
+```sh
+pnpm windows:build:x64
+pnpm windows:build:arm64
+pnpm windows:build
+```
+
+The installers are written under `src-tauri/target/<target>/release/bundle/nsis/`.
+They include local OCR resources and the offline WebView2 installer. Initial
+tool and asset downloads require network access; native Windows testing is still
+required. See [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
+
 Tauri must be able to find `cargo` on `PATH`. If the build fails while running
 `cargo metadata` with “No such file or directory”, see the [local Rust setup
 instructions](CONTRIBUTING.md#local-setup).

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- ARM64 Linux cross-compilation for separate Windows x64 and ARM64 NSIS
+  installers, with static bundled OCR and offline WebView2 installation.
 - Fluent-based German (Switzerland) and English interface localization, OS
   language detection, a persisted language selector, and a development-only
   pseudo-localization preview.

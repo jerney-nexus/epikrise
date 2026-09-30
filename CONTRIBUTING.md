@@ -68,6 +68,43 @@ cargo --version
 If `command -v cargo` prints nothing, install Rust with [rustup](https://rustup.rs/)
 and open a new terminal. Then retry `pnpm tauri build`.
 
+### Building Windows installers
+
+Windows cross-compilation is configured for the ARM64 Linux dev container. Its
+setup installs LLVM, CMake, Ninja, NSIS and `cargo-xwin`; OCR sidecars and their
+static dependencies are compiled separately for x64 and ARM64. The pinned
+Windows PDFium and language resources are staged per target.
+
+Run setup interactively once. It displays the Microsoft SDK/CRT license link
+and downloads the pinned Windows 10 SDK 10.0.26100.0 and CRT 14.44.35220 only
+after you type `ACCEPT`:
+
+```sh
+pnpm windows:setup
+```
+
+Then run an architecture-specific build or build both installers
+sequentially:
+
+```sh
+pnpm windows:build:x64
+pnpm windows:build:arm64
+pnpm windows:build
+```
+
+Installers are written to
+`src-tauri/target/<target>/release/bundle/nsis/`. Each includes the offline
+WebView2 installer, adding about 127 MB. The first build downloads and verifies
+LLVM-MinGW, Tesseract, its dependencies, and PDFium; subsequent builds use
+target-specific caches. Tesseract's CMake TIFF capability probe is given an
+explicit cross-build result, so no Windows executable is run in Linux. TIFF
+input is not needed by the app's OCR path, which passes PNG images to Tesseract.
+
+A successful cross-build does not replace runtime acceptance testing. Test
+installation without WebView2, launch, OCR with German and English synthetic
+images, clipboard and credentials, and uninstall on native Windows x64 and
+ARM64 systems.
+
 ## Project layout
 
 ```

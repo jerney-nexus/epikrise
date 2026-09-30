@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -7,6 +7,121 @@ import TOML from "@iarna/toml";
 import { describe, expect, it } from "vitest";
 
 const execFile = promisify(execFileCallback);
+const repoRoot = path.resolve(new URL("../", import.meta.url).pathname);
+
+const windowsOcrTargets = [
+  {
+    target: "x86_64-pc-windows-msvc",
+    archive: "pdfium-win-x64.tgz",
+    checksum: "739a57d597d864297909cc40a2411eba728490c76a0fa25e3ea299c7f6b07020",
+  },
+  {
+    target: "aarch64-pc-windows-msvc",
+    archive: "pdfium-win-arm64.tgz",
+    checksum: "5d04b6d0281e78613ef836dea2e0fefe6831f3ae92b3573e8fdf55330de67d3d",
+  },
+];
+
+async function writeExecutable(filePath: string, contents: string) {
+  await writeFile(filePath, contents, "utf8");
+  await chmod(filePath, 0o755);
+}
+
+async function createWindowsOcrFixture(
+  directory: string,
+  expectedChecksum: string,
+  mockChecksumCommand = true,
+) {
+  const binDir = path.join(directory, "bin");
+  const tessdataDir = path.join(directory, "tessdata");
+  const resourceDir = path.join(directory, "resources");
+  const binaryDir = path.join(directory, "binaries");
+  const cacheRoot = path.join(directory, "cache");
+  const curlLog = path.join(directory, "curl.log");
+  const tarLog = path.join(directory, "tar.log");
+  const builderPath = path.join(directory, "build-ocr.sh");
+  await Promise.all([
+    mkdir(binDir, { recursive: true }),
+    mkdir(tessdataDir, { recursive: true }),
+  ]);
+  await writeFile(path.join(tessdataDir, "deu.traineddata"), "deu", "utf8");
+  await writeFile(path.join(tessdataDir, "eng.traineddata"), "eng", "utf8");
+  await writeExecutable(
+    path.join(binDir, "tesseract"),
+    '#!/usr/bin/env bash\nprintf \'List of available languages in "%s":\\n\' "$TESSDATA_DIR"\n',
+  );
+  await writeExecutable(
+    path.join(binDir, "curl"),
+    [
+      "#!/usr/bin/env bash",
+      'output=""',
+      'url=""',
+      "while [[ $# -gt 0 ]]; do",
+      '  if [[ "$1" == "-o" ]]; then output="$2"; shift 2; else url="$1"; shift; fi',
+      "done",
+      'printf "%s\\n" "$url" >> "$CURL_LOG"',
+      'printf "fake pdfium archive" > "$output"',
+      "",
+    ].join("\n"),
+  );
+  await writeExecutable(
+    path.join(binDir, "tar"),
+    [
+      "#!/usr/bin/env bash",
+      'destination=""',
+      'member=""',
+      "while [[ $# -gt 0 ]]; do",
+      '  if [[ "$1" == "-C" ]]; then destination="$2"; shift 2; else member="$1"; shift; fi',
+      "done",
+      'mkdir -p "$destination/$(dirname "$member")"',
+      'printf "fake pdfium dll" > "$destination/$member"',
+      'printf "%s" "$member" > "$TAR_LOG"',
+      "",
+    ].join("\n"),
+  );
+  if (mockChecksumCommand) {
+    await writeExecutable(
+      path.join(binDir, "sha256sum"),
+      '#!/usr/bin/env bash\nprintf "%s  %s\\n" "$EXPECTED_CHECKSUM" "$1"\n',
+    );
+    await writeExecutable(
+      path.join(binDir, "shasum"),
+      '#!/usr/bin/env bash\nprintf "%s  %s\\n" "$EXPECTED_CHECKSUM" "$2"\n',
+    );
+  }
+  await writeExecutable(
+    builderPath,
+    [
+      "#!/usr/bin/env bash",
+      'mkdir -p "$EPIKRISE_OCR_BINARY_DIR"',
+      'printf "fake tesseract exe" > "$EPIKRISE_OCR_BINARY_DIR/tesseract-$1.exe"',
+      "",
+    ].join("\n"),
+  );
+
+  return {
+    binDir,
+    builderPath,
+    cacheRoot,
+    curlLog,
+    resourceDir,
+    binaryDir,
+    tarLog,
+    tessdataDir,
+    environment: {
+      ...process.env,
+      PATH: `${binDir}:${process.env.PATH ?? ""}`,
+      TESSDATA_DIR: tessdataDir,
+      EXPECTED_CHECKSUM: expectedChecksum,
+      CURL_LOG: curlLog,
+      TAR_LOG: tarLog,
+      EPIKRISE_OCR_RESOURCE_DIR: resourceDir,
+      EPIKRISE_OCR_BINARY_DIR: binaryDir,
+      EPIKRISE_WINDOWS_OCR_CACHE: cacheRoot,
+      EPIKRISE_WINDOWS_OCR_BUILDER: builderPath,
+    },
+  };
+}
 
 describe("frontend test harness", () => {
   it("executes Vitest with the project configuration", () => {
@@ -33,3 +148,90 @@ describe("frontend test harness", () => {
     }
   });
 });
+
+if (process.platform !== "win32") {
+  describe("Windows OCR preparation", () => {
+    const prepareScript = path.join(repoRoot, "scripts/prepare-ocr.sh");
+
+    it.each(windowsOcrTargets)(
+      "stages the matching PDFium and Tesseract for $target",
+      async ({ target, archive, checksum }) => {
+        const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-"));
+        try {
+          const fixture = await createWindowsOcrFixture(directory, checksum);
+          await execFile("bash", [prepareScript, "--target", target], {
+            cwd: repoRoot,
+            env: fixture.environment,
+          });
+
+          expect(await readFile(fixture.tarLog, "utf8")).toBe("bin/pdfium.dll");
+          expect(
+            await readFile(path.join(fixture.resourceDir, "pdfium/pdfium.dll"), "utf8"),
+          ).toBe("fake pdfium dll");
+          expect(
+            await readFile(
+              path.join(fixture.resourceDir, "tessdata/deu.traineddata"),
+              "utf8",
+            ),
+          ).toBe("deu");
+          expect(
+            await readFile(
+              path.join(fixture.resourceDir, "tessdata/eng.traineddata"),
+              "utf8",
+            ),
+          ).toBe("eng");
+          expect(
+            await readFile(
+              path.join(fixture.binaryDir, `tesseract-${target}.exe`),
+              "utf8",
+            ),
+          ).toBe("fake tesseract exe");
+          expect(await readFile(fixture.curlLog, "utf8")).toContain(archive);
+          expect(
+            await readFile(
+              path.join(fixture.cacheRoot, "pdfium", target, archive),
+              "utf8",
+            ),
+          ).toBe("fake pdfium archive");
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      },
+    );
+
+    it("invalidates a corrupt cached archive and rejects a bad download", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-cache-"));
+      const { target, archive, checksum } = windowsOcrTargets[0];
+      try {
+        const fixture = await createWindowsOcrFixture(directory, checksum, false);
+        const cachePath = path.join(fixture.cacheRoot, "pdfium", target, archive);
+        await mkdir(path.dirname(cachePath), { recursive: true });
+        await writeFile(cachePath, "corrupt cached archive", "utf8");
+
+        await expect(
+          execFile("bash", [prepareScript, "--target", target], {
+            cwd: repoRoot,
+            env: fixture.environment,
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("PDFium checksum mismatch"),
+        });
+        expect(await readFile(fixture.curlLog, "utf8")).toContain(archive);
+        await expect(readFile(cachePath)).rejects.toThrow();
+        await expect(
+          readFile(path.join(fixture.resourceDir, "pdfium/pdfium.dll")),
+        ).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("rejects targets without a configured OCR asset mapping", async () => {
+      await expect(
+        execFile("bash", [prepareScript, "--target", "wasm32-unknown-unknown"]),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("OCR asset preparation is not configured"),
+      });
+    });
+  });
+}
