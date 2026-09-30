@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(debug_assertions)]
 use specta_typescript::Typescript;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     ffi::OsString,
     fs::{self, File, OpenOptions},
     io::{self, Cursor, Seek, SeekFrom, Write},
@@ -25,6 +25,9 @@ use epikrise_llm::{
     MessageRole, ProviderAdapter, ProviderProfile, credential_account_id,
 };
 use sha2::{Digest, Sha256};
+
+mod policy;
+use policy::{LoadedPolicy, PolicyState, PolicyStatus, egress_key};
 
 static PDFIUM: OnceLock<Result<Pdfium, ()>> = OnceLock::new();
 const MAX_PDF_VISION_PAGES: usize = 12;
@@ -185,6 +188,9 @@ fn wipe_directory_contents(directory: &Path) -> io::Result<()> {
 #[derive(Default)]
 struct GenerationRegistry(Mutex<HashMap<String, GenerationTask>>);
 
+#[derive(Default)]
+struct EgressConfirmationRegistry(Mutex<HashSet<String>>);
+
 struct GenerationTask {
     case_id: String,
     cancellation: CancellationToken,
@@ -213,7 +219,7 @@ impl Drop for CaseSessionRegistry {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, specta::Type)]
+#[derive(Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 struct GenerateRequest {
     request_id: String,
@@ -226,7 +232,7 @@ struct GenerateRequest {
     corrections: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 struct GenerationDelta {
     request_id: String,
@@ -237,7 +243,7 @@ impl Event for GenerationDelta {
     const NAME: &'static str = "generation://delta";
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 struct GenerationDone {
     request_id: String,
@@ -555,8 +561,48 @@ fn extract_text_file(
 #[specta::specta]
 async fn extract_url(
     address: String,
+    policy: State<'_, PolicyState>,
 ) -> Result<epikrise_core::ExtractedBlock, epikrise_ingest::IngestError> {
+    if !policy.0.allows_url_ingestion() {
+        return Err(epikrise_ingest::IngestError::UrlIngestionDisabled);
+    }
     epikrise_ingest::extract_url(address).await
+}
+
+#[tauri::command]
+#[specta::specta]
+fn get_policy_status(policy: State<'_, PolicyState>) -> Result<PolicyStatus, LlmError> {
+    Ok(policy.0.status.clone())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn authorize_provider_egress(
+    case_id: String,
+    profile: ProviderProfile,
+    confirmed: bool,
+    policy: State<'_, PolicyState>,
+    confirmations: State<'_, EgressConfirmationRegistry>,
+) -> Result<bool, LlmError> {
+    let case_id = uuid::Uuid::parse_str(&case_id)
+        .map_err(|_| LlmError::InvalidRequest)?
+        .to_string();
+    if !policy.0.allows_provider(&profile) {
+        return Err(LlmError::InvalidProfile);
+    }
+    if !policy.0.requires_egress_confirmation(&profile) {
+        return Ok(true);
+    }
+    let key = egress_key(&case_id, &profile);
+    let mut confirmed_egress = confirmations.0.lock().map_err(|_| LlmError::Internal)?;
+    if confirmed_egress.contains(&key) {
+        return Ok(true);
+    }
+    if confirmed {
+        confirmed_egress.insert(key);
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 #[tauri::command]
@@ -633,14 +679,26 @@ fn extract_image(
 
 #[tauri::command]
 #[specta::specta]
-async fn test_provider(profile: ProviderProfile) -> Result<Vec<String>, LlmError> {
+async fn test_provider(
+    profile: ProviderProfile,
+    policy: State<'_, PolicyState>,
+) -> Result<Vec<String>, LlmError> {
+    if !policy.0.allows_provider(&profile) {
+        return Err(LlmError::InvalidProfile);
+    }
     let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
     client.check_connection(&profile).await
 }
 
 #[tauri::command]
 #[specta::specta]
-async fn list_models(profile: ProviderProfile) -> Result<Vec<String>, LlmError> {
+async fn list_models(
+    profile: ProviderProfile,
+    policy: State<'_, PolicyState>,
+) -> Result<Vec<String>, LlmError> {
+    if !policy.0.allows_provider(&profile) {
+        return Err(LlmError::InvalidProfile);
+    }
     let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
     client.list_models(&profile).await
 }
@@ -757,6 +815,8 @@ async fn generate(
     app: AppHandle,
     registry: State<'_, GenerationRegistry>,
     sessions: State<'_, CaseSessionRegistry>,
+    policy: State<'_, PolicyState>,
+    confirmations: State<'_, EgressConfirmationRegistry>,
     request: GenerateRequest,
 ) -> Result<(), LlmError> {
     let GenerateRequest {
@@ -782,6 +842,19 @@ async fn generate(
     if (!has_input && !has_corrections)
         || inputs.iter().any(|input| input.content.trim().is_empty())
         || system_prompt.trim().is_empty()
+    {
+        return Err(LlmError::InvalidRequest);
+    }
+    if !policy.0.allows_provider(&profile) {
+        return Err(LlmError::InvalidProfile);
+    }
+    let confirmation_key = egress_key(&case_id, &profile);
+    if policy.0.requires_egress_confirmation(&profile)
+        && !confirmations
+            .0
+            .lock()
+            .map_err(|_| LlmError::Internal)?
+            .contains(&confirmation_key)
     {
         return Err(LlmError::InvalidRequest);
     }
@@ -1120,8 +1193,13 @@ fn render_pdf_pages_for_vision(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<(), tauri::Error> {
+    let policy = LoadedPolicy::load().map_err(|error| {
+        let setup_error: Box<dyn std::error::Error> = Box::new(error);
+        tauri::Error::Setup(setup_error.into())
+    })?;
     let builder = Builder::<tauri::Wry>::new()
         .commands(collect_commands![
+            authorize_provider_egress,
             cancel_generation,
             clear_case_session,
             copy_case_output,
@@ -1133,6 +1211,7 @@ pub fn run() -> Result<(), tauri::Error> {
             extract_text_file,
             extract_url,
             export_template,
+            get_policy_status,
             generate,
             load_templates,
             list_provider_credentials,
@@ -1162,13 +1241,18 @@ pub fn run() -> Result<(), tauri::Error> {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .manage(CaseSessionRegistry::default())
         .manage(GenerationRegistry::default())
+        .manage(EgressConfirmationRegistry::default())
+        .manage(PolicyState(policy))
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
+            #[cfg(debug_assertions)]
+            if let Some(window) = app.get_webview_window("main") {
+                window.open_devtools();
+            }
             let temp_session = OcrTempSession::create()
                 .map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })?;
             app.manage(temp_session);

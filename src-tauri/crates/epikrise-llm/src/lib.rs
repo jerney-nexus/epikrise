@@ -4,7 +4,7 @@
 
 #![forbid(unsafe_code)]
 
-use epikrise_core::ImageAttachment;
+use epikrise_core::{ImageAttachment, Redacted};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::sync::Arc;
@@ -85,12 +85,23 @@ pub enum MessageRole {
     Assistant,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 pub struct ChatMessage {
     pub role: MessageRole,
     pub content: String,
     #[serde(default)]
     pub images: Vec<ImageAttachment>,
+}
+
+impl std::fmt::Debug for ChatMessage {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ChatMessage")
+            .field("role", &self.role)
+            .field("content", &Redacted(&self.content))
+            .field("images", &Redacted(&self.images))
+            .finish()
+    }
 }
 
 #[derive(Debug, Error, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
@@ -615,6 +626,19 @@ mod tests {
         validate_endpoint,
     };
     use std::sync::Arc;
+
+    #[test]
+    fn chat_message_debug_redacts_clinical_prompt_and_response_text() {
+        let message = ChatMessage {
+            role: MessageRole::User,
+            content: "synthetic clinical secret".to_owned(),
+            images: Vec::new(),
+        };
+        let debug = format!("{message:?}");
+
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains("synthetic"));
+    }
 
     #[test]
     fn openai_gpt_five_and_six_use_the_responses_api() {

@@ -91,15 +91,16 @@ sha2 = { workspace = true }
 specta = { workspace = true }
 specta-typescript = "0.0.12"
 tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2.6.0"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-shell = "2"
+thiserror = { workspace = true }
 tauri-specta = { version = "2.0.0-rc.25", features = ["typescript"] }
 toml = { workspace = true }
 pdfium-render = { workspace = true }
 tempfile = { workspace = true }
 image = { workspace = true }
 tokio-util = { workspace = true }
+url = { workspace = true }
 uuid = { workspace = true }
 zeroize = { workspace = true }
  infer = "0.19"

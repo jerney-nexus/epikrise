@@ -53,8 +53,9 @@ Epikrise does not connect to a hospital information system.
 - **Remote endpoints receive your input.** OpenAI, Anthropic, Gemini, xAI,
   Groq, OpenRouter and any remote OpenAI-compatible or Ollama endpoint receive
   the material included in a request. Ollama is local only when its configured
-  endpoint is local. A blank Endpoint field uses the adapter's default; there
-  is no separate first-send confirmation.
+  endpoint is local. The active provider and endpoint are shown in the controls
+  rail. Before the first remote generation in each case, Epikrise asks you to
+  confirm the provider and endpoint that will receive the case and template.
 - **Anonymization is your responsibility.** Epikrise does not de-identify
   anything and does not attempt to detect identifying data.
 
@@ -169,7 +170,7 @@ an override on this device. Template names, field labels and clinical content
 continue to use the locale defined by each template.
 
 Interface messages live in `locales/<locale>/app.ftl`. Keep message IDs aligned
-between shipped catalogs and run `pnpm test -- tests/i18n.test.ts` after editing
+between shipped catalogs and run `pnpm test:i18n` after editing
 them. During development, the settings dialog also offers a temporary
 pseudo-localized preview to expose untranslated or layout-sensitive text.
 
@@ -187,6 +188,34 @@ Material you ingest — especially fetched web pages — is untrusted input that
 may contain text crafted to influence the model. Epikrise labels and delimits
 every block to mitigate this, but the mitigation is not a guarantee. Review the
 output.
+
+## Administrator Egress Policy
+
+IT can install a machine-wide `policy.toml` to restrict providers and URL
+ingestion. The app reads it once at startup; the UI cannot loosen it. A malformed
+policy prevents startup rather than silently disabling the restrictions.
+Supported locations are `/etc/epikrise/policy.toml` on Linux,
+`/Library/Application Support/Epikrise/policy.toml` on macOS, and
+`%ProgramData%\Epikrise\policy.toml` on Windows. The file and containing
+directory should be administrator-owned and not writable by standard users.
+Epikrise warns when it cannot verify that protection.
+On Linux and macOS, use a root-owned directory (mode `0755`) and policy file
+(mode `0644`). On Windows, grant write/modify access only to Administrators
+and SYSTEM; standard users should have read access only.
+
+Start from [`policy.example.toml`](policy.example.toml). `allowed_providers`
+uses adapter IDs (`open_ai`, `anthropic`, `gemini`, `ollama`,
+`open_ai_compatible`, `open_router`, `xai`, `groq`); omitted means all
+providers. `local_only = true` additionally restricts endpoints to `localhost`
+or a loopback IP, regardless of the allowlist. `allow_url_ingestion = false`
+disables URL extraction. `allow_updater` is reserved for updater support; the
+current app has no updater. The review gate remains mandatory even if a policy
+sets `require_review_gate = false`.
+
+The webview CSP restricts network connections to Tauri IPC. The app does not
+configure clinical-content logging; debug representations of case, extraction,
+image and chat payloads redact their contents. Production devtools and the
+context menu are disabled.
 
 ## Documentation
 

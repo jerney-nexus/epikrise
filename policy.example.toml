@@ -1,0 +1,7 @@
+# Install as an administrator-owned file at the machine-specific path documented
+# in README.md. `local_only` also restricts compatible endpoints to loopback.
+allowed_providers = ["ollama", "open_ai_compatible"]
+local_only = true
+allow_url_ingestion = false
+allow_updater = false
+require_review_gate = true

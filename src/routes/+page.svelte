@@ -32,6 +32,22 @@
     type TemplateError,
   } from "../bindings";
 
+  type PolicyStatus = {
+    active: boolean;
+    localOnly: boolean;
+    allowedProviders: ProviderAdapter[] | null;
+    allowUrlIngestion: boolean;
+    allowUpdater: boolean;
+    requireReviewGate: boolean;
+    permissionsWarning: boolean;
+  };
+
+  type PendingEgressConfirmation = {
+    caseId: string;
+    profile: ProviderProfile;
+    corrections: string;
+  };
+
   const providerNames: Record<ProviderAdapter, string> = {
     open_ai: "OpenAI",
     anthropic: "Anthropic",
@@ -109,6 +125,10 @@
   let templateSaveBusy = $state(false);
   let templatePreviewTimer: ReturnType<typeof setTimeout> | undefined;
   let templatePreviewRevision = 0;
+  let egressConfirmationDialog: HTMLDialogElement | undefined;
+  let pendingEgressConfirmation = $state<PendingEgressConfirmation | null>(null);
+  let egressConfirmationBusy = $state(false);
+  let policyStatus = $state<PolicyStatus | null>(null);
 
   let adapter = $state<ProviderAdapter>("ollama");
   let model = $state("llama3.2");
@@ -206,6 +226,8 @@
   const isFirstRun = $derived(
     desktopAvailable && templateLibraryReady && importedTemplates.length === 0,
   );
+  const currentEndpoint = $derived(displayedEndpoint(adapter, endpoint));
+  const currentProviderIsLocal = $derived(isLoopbackEndpoint(currentEndpoint));
 
   function createProfile(): ProviderProfile {
     const keychainId = credentialId.trim();
@@ -229,6 +251,53 @@
     };
   }
 
+  function displayedEndpoint(
+    selectedAdapter: ProviderAdapter,
+    configuredEndpoint: string,
+  ): string {
+    if (configuredEndpoint.trim()) return configuredEndpoint.trim();
+    const defaults: Record<ProviderAdapter, string> = {
+      open_ai: "https://api.openai.com/v1",
+      anthropic: "https://api.anthropic.com/v1",
+      gemini: "https://generativelanguage.googleapis.com/v1beta",
+      ollama: "http://localhost:11434",
+      open_ai_compatible: "https://api.openai.com/v1",
+      open_router: "https://openrouter.ai/api/v1",
+      xai: "https://api.x.ai/v1",
+      groq: "https://api.groq.com/openai/v1",
+    };
+    return defaults[selectedAdapter];
+  }
+
+  function isLoopbackEndpoint(value: string): boolean {
+    try {
+      const host = new URL(value).hostname.toLowerCase();
+      return (
+        host === "localhost" ||
+        host === "::1" ||
+        host.startsWith("127.") ||
+        host === "[::1]"
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  function isProviderAllowed(selectedAdapter: ProviderAdapter): boolean {
+    if (!policyStatus?.active) return true;
+    if (
+      policyStatus.allowedProviders &&
+      !policyStatus.allowedProviders.includes(selectedAdapter)
+    ) {
+      return false;
+    }
+    return (
+      !policyStatus.localOnly ||
+      ((selectedAdapter === "ollama" || selectedAdapter === "open_ai_compatible") &&
+        isLoopbackEndpoint(displayedEndpoint(selectedAdapter, endpoint)))
+    );
+  }
+
   function formatError(error: LlmError): string {
     if (error.key === "provider_rejected") {
       return t("provider-rejected", { status: error.status });
@@ -245,6 +314,7 @@
       unsafe_url: "This URL resolves to a private or reserved network address.",
       invalid_url: "Enter an HTTP or HTTPS URL without embedded credentials.",
       url_response_too_large: "The URL response exceeds the 5 MB limit.",
+      url_ingestion_disabled: "URL ingestion is disabled by administrator policy.",
       image_ocr_unavailable:
         "Local image OCR is unavailable and vision fallback is disabled.",
       image_ocr_failed: "Image OCR returned no text and vision fallback is disabled.",
@@ -414,6 +484,37 @@
       ingestIsError = true;
     } finally {
       ingestBusy = false;
+    }
+  }
+
+  async function confirmProviderEgress() {
+    const pending = pendingEgressConfirmation;
+    if (!pending || egressConfirmationBusy) return;
+    egressConfirmationBusy = true;
+    try {
+      const result = await commands.authorizeProviderEgress(
+        pending.caseId,
+        pending.profile,
+        true,
+      );
+      if (result.status === "error") {
+        generationMessage = formatError(result.error);
+        generationIsError = true;
+        return;
+      }
+      if (!result.data) {
+        generationMessage = "Provider authorization was not recorded.";
+        generationIsError = true;
+        return;
+      }
+      pendingEgressConfirmation = null;
+      egressConfirmationDialog?.close();
+      await generateDraft(pending.corrections || null);
+    } catch {
+      generationMessage = "Provider authorization could not be recorded.";
+      generationIsError = true;
+    } finally {
+      egressConfirmationBusy = false;
     }
   }
 
@@ -1079,6 +1180,9 @@
     document.documentElement.lang = uiLocale;
     desktopAvailable = isTauri();
     if (!desktopAvailable) return;
+    void commands.getPolicyStatus().then((status) => {
+      if (status.status === "ok") policyStatus = status.data;
+    });
     void restoreTemplates()
       .catch(() => {
         templateMessage = "Saved templates could not be loaded.";
@@ -1125,9 +1229,15 @@
 
     void loadProviderCredentials();
 
+    const blockContextMenu = (event: MouseEvent) => event.preventDefault();
+    if (!import.meta.env.DEV) {
+      document.addEventListener("contextmenu", blockContextMenu);
+    }
+
     return () => {
       disposed = true;
       unlisten.forEach((stop) => stop());
+      document.removeEventListener("contextmenu", blockContextMenu);
     };
   });
 
@@ -1372,6 +1482,28 @@
       generationIsError = true;
       return;
     }
+    const profile = createProfile();
+    try {
+      const authorization = await commands.authorizeProviderEgress(
+        currentCaseId,
+        profile,
+        false,
+      );
+      if (authorization.status === "error") {
+        generationMessage = formatError(authorization.error);
+        generationIsError = true;
+        return;
+      }
+      if (!authorization.data) {
+        pendingEgressConfirmation = { caseId: currentCaseId, profile, corrections };
+        egressConfirmationDialog?.showModal();
+        return;
+      }
+    } catch {
+      generationMessage = "Provider authorization could not be checked.";
+      generationIsError = true;
+      return;
+    }
     activeRequestId = requestId;
     generationMessage = "Generating";
     generationIsError = false;
@@ -1382,7 +1514,7 @@
       const result = await commands.generate({
         requestId,
         caseId: currentCaseId,
-        profile: createProfile(),
+        profile,
         systemPrompt,
         outputRules: activeTemplate.output_rules ?? {},
         templateValues: valuesForRendering(activeTemplate),
@@ -1482,24 +1614,44 @@
           </button>
         </div>
 
-        <label for="active-adapter">{t("Provider")}</label>
+        <label for="active-adapter">
+          {t("Provider")}
+          {#if policyStatus?.active && (policyStatus.localOnly || policyStatus.allowedProviders !== null)}
+            <span class="policy-badge">{t("Administrator managed")}</span>
+          {/if}
+        </label>
         <select
           id="active-adapter"
           value={adapter}
           disabled={isGenerating || isPreparingGeneration}
           onchange={(event) => changeProvider(event.currentTarget.value)}
         >
-          <option value="ollama">Ollama</option>
-          <option value="open_ai">OpenAI</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="gemini">Gemini</option>
-          <option value="open_ai_compatible">OpenAI compatible</option>
-          <option value="open_router">OpenRouter</option>
-          <option value="xai">xAI</option>
-          <option value="groq">Groq</option>
+          <option value="ollama" disabled={!isProviderAllowed("ollama")}>Ollama</option>
+          <option value="open_ai" disabled={!isProviderAllowed("open_ai")}
+            >OpenAI</option
+          >
+          <option value="anthropic" disabled={!isProviderAllowed("anthropic")}
+            >Anthropic</option
+          >
+          <option value="gemini" disabled={!isProviderAllowed("gemini")}>Gemini</option>
+          <option
+            value="open_ai_compatible"
+            disabled={!isProviderAllowed("open_ai_compatible")}
+            >OpenAI compatible</option
+          >
+          <option value="open_router" disabled={!isProviderAllowed("open_router")}
+            >OpenRouter</option
+          >
+          <option value="xai" disabled={!isProviderAllowed("xai")}>xAI</option>
+          <option value="groq" disabled={!isProviderAllowed("groq")}>Groq</option>
         </select>
 
-        <label for="endpoint">{t("Endpoint")}</label>
+        <label for="endpoint">
+          {t("Endpoint")}
+          {#if policyStatus?.active && policyStatus.localOnly}
+            <span class="policy-badge">{t("Administrator managed")}</span>
+          {/if}
+        </label>
         <input
           id="endpoint"
           bind:value={endpoint}
@@ -1509,6 +1661,11 @@
             ? "http://localhost:11434"
             : t("Provider default")}
         />
+        {#if policyStatus?.active && policyStatus.localOnly}
+          <p class="setting-hint">
+            {t("Only localhost and loopback endpoints are allowed.")}
+          </p>
+        {/if}
 
         <label for="provider-credential">{t("Provider credential")}</label>
         <select
@@ -1725,6 +1882,22 @@
           <dd>{activeTemplate?.metadata.name ?? t("None")}</dd>
         </div>
       </dl>
+      <div class="egress-indicator" aria-label={t("Data recipient")}>
+        <span class="eyebrow">{t("Data recipient")}</span>
+        <strong>{providerNames[adapter]}</strong>
+        <span class="egress-endpoint">{currentEndpoint}</span>
+        <span class:local={currentProviderIsLocal} class="egress-state">
+          {currentProviderIsLocal ? t("Stays on this machine") : t("Remote provider")}
+        </span>
+        {#if policyStatus?.active}
+          <span class="policy-badge">{t("Administrator managed")}</span>
+        {/if}
+        {#if policyStatus?.permissionsWarning}
+          <p class="policy-warning" role="alert">
+            {t("Policy file permissions could allow non-admin changes. Contact IT.")}
+          </p>
+        {/if}
+      </div>
       <div class="settings-actions">
         <button class="settings-trigger" type="button" onclick={openGeneralSettings}>
           {t("General settings")}
@@ -2426,6 +2599,69 @@
     {/if}
   </dialog>
 
+  <dialog
+    class="settings-dialog egress-confirmation-dialog"
+    bind:this={egressConfirmationDialog}
+    aria-labelledby="egress-confirmation-title"
+    onkeydown={handleDialogKeydown}
+    oncancel={(event) => {
+      event.preventDefault();
+      pendingEgressConfirmation = null;
+      egressConfirmationDialog?.close();
+    }}
+  >
+    <section class="provider-settings" aria-labelledby="egress-confirmation-title">
+      <p class="eyebrow">{t("Data transfer")}</p>
+      <div class="dialog-heading">
+        <div>
+          <h2 id="egress-confirmation-title">
+            {t("Confirm sending clinical material")}
+          </h2>
+          <p>{t("Remote endpoint confirmation details")}</p>
+        </div>
+      </div>
+      {#if pendingEgressConfirmation}
+        <dl class="provider-summary egress-target">
+          <div>
+            <dt>{t("Provider")}</dt>
+            <dd>{pendingEgressConfirmation.profile.display_name}</dd>
+          </div>
+          <div>
+            <dt>{t("Endpoint")}</dt>
+            <dd>
+              {displayedEndpoint(
+                pendingEgressConfirmation.profile.adapter,
+                pendingEgressConfirmation.profile.endpoint ?? "",
+              )}
+            </dd>
+          </div>
+        </dl>
+      {/if}
+      <p>{t("Current case material and template will be sent to this endpoint.")}</p>
+      <div class="template-editor-actions">
+        <button
+          class="template-discard"
+          type="button"
+          onclick={() => {
+            pendingEgressConfirmation = null;
+            egressConfirmationDialog?.close();
+          }}
+          disabled={egressConfirmationBusy}
+        >
+          {t("Cancel")}
+        </button>
+        <button
+          class="connection-button"
+          type="button"
+          onclick={confirmProviderEgress}
+          disabled={egressConfirmationBusy}
+        >
+          {egressConfirmationBusy ? t("Checking...") : t("Send to provider")}
+        </button>
+      </div>
+    </section>
+  </dialog>
+
   <main class="work-area">
     {#if isFirstRun}
       <section class="first-run-panel" aria-labelledby="first-run-title">
@@ -2495,12 +2731,16 @@
                 bind:value={sourceUrl}
                 placeholder="https://..."
                 aria-label={t("Clinical source URL")}
-                disabled={ingestBusy || isGenerating || isPreparingGeneration}
+                disabled={ingestBusy ||
+                  isGenerating ||
+                  isPreparingGeneration ||
+                  (policyStatus?.active && !policyStatus.allowUrlIngestion)}
               />
               <button
                 class="input-tool-button"
                 type="submit"
                 disabled={!sourceUrl.trim() ||
+                  (policyStatus?.active && !policyStatus.allowUrlIngestion) ||
                   ingestBusy ||
                   isGenerating ||
                   isPreparingGeneration}
@@ -2509,6 +2749,12 @@
               </button>
             </form>
           </div>
+          {#if policyStatus?.active && !policyStatus.allowUrlIngestion}
+            <p class="policy-note">
+              <span class="policy-badge">{t("Administrator managed")}</span>
+              {t("URL ingestion is disabled by administrator policy.")}
+            </p>
+          {/if}
           {#if ingestMessage}
             <p class="ingest-message" class:error={ingestIsError} role="status">
               {t(ingestMessage)}
@@ -2825,6 +3071,79 @@
     color: #30473d;
     font-size: 12px;
     overflow-wrap: anywhere;
+  }
+
+  .egress-indicator {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 3px 8px;
+    padding: 8px 0;
+    border-top: 1px solid #dce4de;
+    border-bottom: 1px solid #dce4de;
+    font-size: 11px;
+  }
+
+  .egress-indicator > .eyebrow,
+  .egress-indicator > strong,
+  .egress-endpoint {
+    grid-column: 1 / -1;
+  }
+
+  .egress-indicator > strong {
+    color: #30473d;
+  }
+
+  .egress-endpoint {
+    overflow-wrap: anywhere;
+    color: #65766e;
+  }
+
+  .egress-state {
+    color: #9a4e35;
+  }
+
+  .egress-state.local {
+    color: #236e5d;
+  }
+
+  .policy-badge {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    padding: 2px 5px;
+    border: 1px solid #d7c6a3;
+    border-radius: 3px;
+    color: #72551e;
+    background: #fbf7ed;
+    font-size: 10px;
+    font-weight: 650;
+  }
+
+  .policy-warning {
+    grid-column: 1 / -1;
+    margin: 3px 0 0;
+    color: #9a3d2e;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+
+  .policy-note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 8px;
+    color: #72551e;
+    font-size: 11px;
+  }
+
+  .egress-target {
+    margin: 14px 0;
+  }
+
+  .egress-confirmation-dialog .provider-settings > p:not(.eyebrow) {
+    color: #53665d;
+    line-height: 1.5;
   }
 
   .settings-actions,

@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use thiserror::Error;
 use zeroize::Zeroize;
 
@@ -459,7 +460,7 @@ fn value_matches_variable(variable: &TemplateVariable, value: &serde_json::Value
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 pub enum InputProvenance {
     RawText,
     File { name: String },
@@ -467,7 +468,7 @@ pub enum InputProvenance {
     Url { address: String },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 pub struct ImageAttachment {
     pub mime_type: String,
     pub data: Vec<u8>,
@@ -484,7 +485,7 @@ pub enum ExtractionMethod {
     Vision,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 pub struct ExtractedBlock {
     pub id: String,
     pub round: u32,
@@ -526,7 +527,7 @@ impl ExtractedBlock {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 pub struct CaseSession {
     pub id: String,
     pub template_id: String,
@@ -535,6 +536,57 @@ pub struct CaseSession {
     pub current_output: Option<String>,
     pub reviewed_output_hash: Option<String>,
     pub generation_in_progress: bool,
+}
+
+pub struct Redacted<T>(pub T);
+
+impl<T> fmt::Debug for Redacted<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("<redacted>")
+    }
+}
+
+impl<T> fmt::Display for Redacted<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("<redacted>")
+    }
+}
+
+impl fmt::Debug for InputProvenance {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("InputProvenance(<redacted>)")
+    }
+}
+
+impl fmt::Debug for ImageAttachment {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ImageAttachment")
+            .field("mime_type", &self.mime_type)
+            .field("data", &Redacted(&self.data))
+            .field("name", &Redacted(&self.name))
+            .finish()
+    }
+}
+
+impl fmt::Debug for ExtractedBlock {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ExtractedBlock")
+            .field("id", &self.id)
+            .field("round", &self.round)
+            .field("provenance", &Redacted(&self.provenance))
+            .field("content", &Redacted(&self.content))
+            .field("extraction_method", &self.extraction_method)
+            .field("images", &Redacted(&self.images))
+            .finish()
+    }
+}
+
+impl fmt::Debug for CaseSession {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("CaseSession(<redacted>)")
+    }
 }
 
 impl CaseSession {
@@ -683,11 +735,30 @@ fn serialize_prompt_json(value: &impl Serialize) -> String {
 mod tests {
     use super::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ExtractionMethod, InputProvenance,
-        MAX_TEMPLATE_FILE_BYTES, OutputRules, OutputViolationKind, TEMPLATE_SCHEMA_VERSION,
-        TemplateDefault, TemplateError, TemplateMetadata, TemplateSection, TemplateVariable,
-        TemplateVariableKind, lint_output,
+        MAX_TEMPLATE_FILE_BYTES, OutputRules, OutputViolationKind, Redacted,
+        TEMPLATE_SCHEMA_VERSION, TemplateDefault, TemplateError, TemplateMetadata, TemplateSection,
+        TemplateVariable, TemplateVariableKind, lint_output,
     };
     use std::collections::BTreeMap;
+
+    #[test]
+    fn debug_and_display_redact_clinical_text_and_provenance() {
+        let block = ExtractedBlock::new(
+            "input-id",
+            InputProvenance::Url {
+                address: "https://example.invalid/?patient=synthetic-secret".to_owned(),
+            },
+            "synthetic clinical secret",
+        );
+        let debug = format!("{block:?}");
+
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains("synthetic"));
+        assert_eq!(
+            format!("{}", Redacted("synthetic clinical secret")),
+            "<redacted>"
+        );
+    }
 
     fn sample_template() -> ClinicalTemplate {
         ClinicalTemplate {

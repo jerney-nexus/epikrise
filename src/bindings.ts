@@ -5,6 +5,7 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 
 /** Commands */
 export const commands = {
+	authorizeProviderEgress: (caseId: string, profile: ProviderProfile, confirmed: boolean) => typedError<boolean, LlmError>(__TAURI_INVOKE("authorize_provider_egress", { caseId, profile, confirmed })),
 	cancelGeneration: (requestId: string) => typedError<boolean, LlmError>(__TAURI_INVOKE("cancel_generation", { requestId })),
 	clearCaseSession: (caseId: string) => typedError<boolean, LlmError>(__TAURI_INVOKE("clear_case_session", { caseId })),
 	copyCaseOutput: (caseId: string) => typedError<string, LlmError>(__TAURI_INVOKE("copy_case_output", { caseId })),
@@ -16,6 +17,7 @@ export const commands = {
 	extractTextFile: (fileName: string, bytes: number[]) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_text_file", { fileName, bytes })),
 	extractUrl: (address: string) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_url", { address })),
 	exportTemplate: (template: ClinicalTemplate) => typedError<string, TemplateError>(__TAURI_INVOKE("export_template", { template })),
+	getPolicyStatus: () => typedError<PolicyStatus, LlmError>(__TAURI_INVOKE("get_policy_status")),
 	generate: (request: GenerateRequest) => typedError<null, LlmError>(__TAURI_INVOKE("generate", { request })),
 	loadTemplates: () => typedError<ClinicalTemplate[], TemplateError>(__TAURI_INVOKE("load_templates")),
 	listProviderCredentials: () => typedError<CredentialSummary[], LlmError>(__TAURI_INVOKE("list_provider_credentials")),
@@ -113,7 +115,7 @@ export type ImageAttachment = {
 	name: string,
 };
 
-export type IngestError = { key: "empty_input" } | { key: "invalid_utf8" } | { key: "unsupported_binary"; mime: string } | { key: "unsupported_control_characters" } | { key: "pdf_extraction_failed" } | { key: "no_text_extracted" } | { key: "pdf_ocr_required"; pages: number[] } | { key: "pdf_ocr_unavailable" } | { key: "pdf_ocr_failed" } | { key: "pdf_vision_too_many_pages" } | { key: "pdf_vision_too_large" } | { key: "invalid_docx_archive" } | { key: "missing_docx_document" } | { key: "docx_document_too_large" } | { key: "invalid_docx_xml" } | { key: "invalid_xlsx" } | { key: "no_xlsx_worksheets" } | { key: "no_xlsx_text" } | { key: "html_conversion_failed" } | { key: "no_html_text" } | { key: "invalid_rtf" } | { key: "no_rtf_text" } | { key: "invalid_url" } | { key: "unsafe_url" } | { key: "url_request_failed" } | { key: "url_response_too_large" } | { key: "too_many_url_redirects" } | { key: "unsupported_url_content" } | { key: "image_too_large" } | { key: "unsupported_image" } | { key: "invalid_image" } | { key: "image_ocr_unavailable" } | { key: "image_ocr_failed" };
+export type IngestError = { key: "empty_input" } | { key: "invalid_utf8" } | { key: "unsupported_binary"; mime: string } | { key: "unsupported_control_characters" } | { key: "pdf_extraction_failed" } | { key: "no_text_extracted" } | { key: "pdf_ocr_required"; pages: number[] } | { key: "pdf_ocr_unavailable" } | { key: "pdf_ocr_failed" } | { key: "pdf_vision_too_many_pages" } | { key: "pdf_vision_too_large" } | { key: "invalid_docx_archive" } | { key: "missing_docx_document" } | { key: "docx_document_too_large" } | { key: "invalid_docx_xml" } | { key: "invalid_xlsx" } | { key: "no_xlsx_worksheets" } | { key: "no_xlsx_text" } | { key: "html_conversion_failed" } | { key: "no_html_text" } | { key: "invalid_rtf" } | { key: "no_rtf_text" } | { key: "invalid_url" } | { key: "unsafe_url" } | { key: "url_request_failed" } | { key: "url_response_too_large" } | { key: "too_many_url_redirects" } | { key: "unsupported_url_content" } | { key: "url_ingestion_disabled" } | { key: "image_too_large" } | { key: "unsupported_image" } | { key: "invalid_image" } | { key: "image_ocr_unavailable" } | { key: "image_ocr_failed" };
 
 export type InputProvenance = "RawText" | ({ File: {
 	name: string,
@@ -145,6 +147,16 @@ export type OutputViolation = {
 };
 
 export type OutputViolationKind = "forbidden_term" | "missing_required_term" | "code_fence" | "leading_whitespace" | "parenthesized_date" | "bullet_character";
+
+export type PolicyStatus = {
+	active: boolean,
+	localOnly: boolean,
+	allowedProviders: ProviderAdapter[] | null,
+	allowUrlIngestion: boolean,
+	allowUpdater: boolean,
+	requireReviewGate: boolean,
+	permissionsWarning: boolean,
+};
 
 export type ProviderAdapter = "open_ai" | "anthropic" | "gemini" | "ollama" | "open_ai_compatible" | "open_router" | "xai" | "groq";
 

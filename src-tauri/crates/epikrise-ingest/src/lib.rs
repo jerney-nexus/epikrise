@@ -85,6 +85,8 @@ pub enum IngestError {
     TooManyUrlRedirects,
     #[error("URL did not return extractable HTML or text")]
     UnsupportedUrlContent,
+    #[error("URL ingestion is disabled by administrator policy")]
+    UrlIngestionDisabled,
     #[error("image input exceeds the size or dimension limit")]
     ImageTooLarge,
     #[error("image format is unsupported; use PNG or JPEG")]

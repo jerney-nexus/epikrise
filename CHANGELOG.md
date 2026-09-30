@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Machine-wide administrator egress policy, Rust-enforced local-only/provider
+  restrictions, URL-ingestion control, and first-send confirmation for remote
+  generation. Added redacted debug output for clinical payload types, a strict
+  webview CSP, production devtools/context-menu hardening, and dependency audit
+  checks in CI.
 - ARM64 Linux cross-compilation for separate Windows x64 and ARM64 NSIS
   installers, with static bundled OCR and offline WebView2 installation.
 - Fluent-based German (Switzerland) and English interface localization, OS
