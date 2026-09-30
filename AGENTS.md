@@ -21,6 +21,8 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - Never commit secrets or API keys.
 - Do not add telemetry or commit real patient data, prompts, or generated clinical output.
 - All PRs require passing tests before merge.
+- Run Rust and UI/internationalization tests via the VS Code Test Explorer. If the Test Explorer is unavailable or fails to discover tests, run `pnpm test:ui` and `pnpm test:rust` from the integrated terminal instead.
+- Use the commands listed in the "Commands" section below for development, testing, and formatting tasks.
 - When working in the dev container, use `/workspaces/epikrise` as the project root.
 - Follow nearby patterns and keep changes focused.
 - Do not hand-edit generated files in `build/`, `src-tauri/target/`, or generated bindings.
@@ -36,16 +38,21 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 
 ## Commands
 
-- `pnpm install --frozen-lockfile`: Install dependencies.
-- `pnpm dev`: Start the server and frontend development environment.
-- `pnpm build`: Production build.
-- `pnpm check`: Check after UI changes.
-- `pnpm test`: Test after UI changes.
-- `pnpm test:i18n`: Test internationalization.
-- `pnpm check:rust:fmt` and `pnpm check:rust:clippy`: Check after Rust changes.
-- `pnpm test:rust`: Test after Rust changes.
-- `pnpm format:check`: Check formatting for all files.
-- `pnpm format:check:file <filename>`: Check formatting for a specific file.
-- `pnpm format`: Format all files in the project.
-- `pnpm format:file <filename>`: Format a specific file.
-- `pnpm lint`: Lint all files in the project.
+- `pnpm install --frozen-lockfile`: Install project dependencies without modifying the lockfile.
+- `pnpm dev`: Start the development server and frontend environment.
+- `pnpm build`: Build the project for production.
+- `pnpm check`: Run all checks for the project, including UI and Rust code.
+- `pnpm check:ui`: Run UI-specific checks.
+- `pnpm check:rust`: Run Rust-specific checks.
+- `pnpm check:rust:fmt`: Check Rust code formatting.
+- `pnpm check:rust:clippy`: Lint Rust code with Clippy.
+- `pnpm test`: Run all test suites, including UI, internationalization, and Rust tests (fallback when Test Explorer is unavailable).
+- `pnpm test:ui`: Run UI tests (fallback when Test Explorer is unavailable).
+- `pnpm test:i18n`: Test internationalization (fallback when Test Explorer is unavailable).
+- `pnpm test:rust`: Run all Rust tests (fallback when Test Explorer is unavailable).
+- `pnpm test:rust:package <package> [<args>]`: Test a specific Rust package with optional arguments (fallback when Test Explorer is unavailable).
+- `pnpm format:check`: Check formatting for all files with Prettier.
+- `pnpm format:check:file <filename>`: Check formatting for a specific file with Prettier.
+- `pnpm format`: Format all files in the project with Prettier.
+- `pnpm format:file <filename>`: Format a specific file with Prettier.
+- `pnpm lint`: Lint all files in the project with ESLint.
