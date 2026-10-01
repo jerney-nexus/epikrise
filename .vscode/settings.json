@@ -11,6 +11,8 @@
   },
   "chat.sessionSync.enabled": true,
   "rust-analyzer.runnables.test.overrideCommand": [
+    "bash",
+    "../scripts/with-cargo-host-target.sh",
     "cargo",
     "nextest",
     "run",
