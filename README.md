@@ -113,7 +113,11 @@ Install Cargo Nextest once, then run both test suites from the project root:
 cargo install cargo-nextest --locked
 pnpm test
 pnpm test:rust
+pnpm test:ui:coverage
 ```
+
+The coverage command runs the UI tests with V8 coverage, prints a summary, and
+writes an HTML report to `coverage/index.html`.
 
 Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`,
 `pnpm format:check`, `pnpm check:rust:fmt` and `pnpm check:rust:clippy`.

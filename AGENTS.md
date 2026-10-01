@@ -51,6 +51,7 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - `pnpm check:rust:deny`: Check Rust dependency, license, and source policies with cargo-deny.
 - `pnpm test`: Run all test suites, including UI, internationalization, and Rust tests (fallback when Test Explorer is unavailable).
 - `pnpm test:ui`: Run UI tests (fallback when Test Explorer is unavailable).
+- `pnpm test:ui:coverage`: Run UI tests with V8 coverage; writes text and HTML reports under `coverage/`.
 - `pnpm test:i18n`: Test internationalization (fallback when Test Explorer is unavailable).
 - `pnpm test:rust`: Run all Rust tests (fallback when Test Explorer is unavailable).
 - `pnpm test:rust:package <package> [<args>]`: Test a specific Rust package with optional arguments (fallback when Test Explorer is unavailable).

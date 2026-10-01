@@ -85,6 +85,15 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Test UI Coverage",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:ui:coverage"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Test i18n",
       "type": "process",
       "command": "pnpm",
