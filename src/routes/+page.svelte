@@ -3110,6 +3110,7 @@
     display: inline-flex;
     width: fit-content;
     align-items: center;
+    margin-left: 6px;
     padding: 2px 5px;
     border: 1px solid #d7c6a3;
     border-radius: 3px;
