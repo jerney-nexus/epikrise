@@ -75,6 +75,8 @@ Desktop.ini
 $RECYCLE.BIN/
 
 # --- Miscellaneous ---
+# Root-level plan prompts
+/plan-*.prompt.md
 # SvelteKit library packaging output
 /package
 # Vite writes these when the config is transpiled on the fly
