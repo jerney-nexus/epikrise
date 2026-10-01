@@ -9,13 +9,9 @@
 
 ## Enhancements
 
-### High Urgency
-
-- Check attack vectors and security vulnerabilities (DOM injection?).
-
 ### Medium Urgency
 
-- Refine `CHANGELOG.md` for the first release.
+- Refine `CHANGELOG.md` for the first release with only `Added` entries.
 - Use CalVer for versioning the project.
 - Search the institutional template for output rules and patterns.
 - Use MiniJinja placeholders in the institutional template.
