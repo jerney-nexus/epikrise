@@ -38,25 +38,11 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 
 ## Commands
 
-- `pnpm install --frozen-lockfile`: Install project dependencies without modifying the lockfile.
-- `pnpm dev`: Start the development server and frontend environment.
-- `pnpm build`: Build the project for production.
-- `pnpm audit:rust`: Audit dependencies in `src-tauri/Cargo.lock`.
-- `pnpm audit:pnpm`: Audit pnpm dependencies; fail on high-severity findings, matching CI.
-- `pnpm check`: Run all checks for the project, including UI and Rust code.
-- `pnpm check:ui`: Run UI-specific checks.
-- `pnpm check:rust`: Run Rust formatting, Clippy, and cargo-deny policy checks.
-- `pnpm check:rust:fmt`: Check Rust code formatting.
-- `pnpm check:rust:clippy`: Lint Rust code with Clippy.
-- `pnpm check:rust:deny`: Check Rust dependency, license, and source policies with cargo-deny.
-- `pnpm test`: Run all test suites, including UI, internationalization, and Rust tests (fallback when Test Explorer is unavailable).
-- `pnpm test:ui`: Run UI tests (fallback when Test Explorer is unavailable).
-- `pnpm test:ui:coverage`: Run UI tests with V8 coverage; writes text and HTML reports under `coverage/`.
-- `pnpm test:i18n`: Test internationalization (fallback when Test Explorer is unavailable).
-- `pnpm test:rust`: Run all Rust tests (fallback when Test Explorer is unavailable).
-- `pnpm test:rust:package <package> [<args>]`: Test a specific Rust package with optional arguments (fallback when Test Explorer is unavailable).
-- `pnpm format:check`: Check formatting for all files with Prettier.
-- `pnpm format:check:file <filename>`: Check formatting for a specific file with Prettier.
-- `pnpm format`: Format all files in the project with Prettier.
-- `pnpm format:file <filename>`: Format a specific file with Prettier.
-- `pnpm lint`: Lint all files in the project with ESLint.
+- Install dependencies with `pnpm install --frozen-lockfile`.
+- Run the app with `pnpm dev`; build or preview it with `pnpm build` and `pnpm preview`. Use `pnpm tauri dev` or `pnpm tauri build` for desktop runs and bundles.
+- Run checks with `pnpm check` (UI and Rust), `pnpm check:ui`, or `pnpm check:rust`. Rust checks can also be run individually with `pnpm check:rust:fmt`, `pnpm check:rust:clippy` (warnings denied), and `pnpm check:rust:deny`.
+- Run tests with `pnpm test` (UI, i18n, and Rust), or use `pnpm test:ui`, `pnpm test:i18n`, `pnpm test:rust`, and `pnpm test:rust:package <package> [<args>]`. Use these scripts when the VS Code Test Explorer is unavailable or cannot discover tests. `pnpm test:ui:coverage` runs UI tests with coverage reports under `coverage/`.
+- Check or apply formatting with `pnpm format:check`, `pnpm format`, `pnpm format:check:file <file>`, `pnpm format:file <file>`, and `pnpm format:rust:fmt`. Run ESLint with `pnpm lint`.
+- Audit dependencies with `pnpm audit:rust` and `pnpm audit:pnpm`.
+- Prepare a CalVer release with `pnpm release:prepare [YYYY.MM.PATCH]`; convert a prompt with `pnpm template:convert`.
+- Set up and build Windows installers with `pnpm windows:setup`, `pnpm windows:build:x64`, `pnpm windows:build:arm64`, or `pnpm windows:build`.

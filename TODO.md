@@ -4,7 +4,7 @@
 
 ### High Urgency
 
-- Change all identifiers from `pascaljerney` to `jerney-nexus`.
+- Change **all** identifiers from `pascaljerney` to `jerney-nexus`.
 
 ### Medium Urgency
 

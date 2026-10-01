@@ -129,12 +129,9 @@ spinning up a webview.
 Run before opening a pull request:
 
 ```sh
-cd src-tauri
-cargo fmt --all
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cd ..
+pnpm format:rust:fmt
 pnpm check
+pnpm test
 pnpm build
 ```
 
