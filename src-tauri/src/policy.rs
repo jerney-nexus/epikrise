@@ -219,12 +219,14 @@ impl LoadedPolicy {
             );
         }
         if let Some(max_effort) = self.policy.max_reasoning_effort {
-            let requested = profile.generation.reasoning_effort.as_ref();
-            let capped = requested
-                .filter(|requested| reasoning_rank(requested) <= reasoning_rank(&max_effort))
-                .cloned()
-                .unwrap_or(max_effort);
-            profile.generation.reasoning_effort = Some(capped);
+            if profile
+                .generation
+                .reasoning_effort
+                .as_ref()
+                .is_some_and(|requested| reasoning_rank(requested) > reasoning_rank(&max_effort))
+            {
+                profile.generation.reasoning_effort = Some(max_effort);
+            }
         }
     }
 
@@ -543,10 +545,7 @@ mod tests {
         allowed.generation.reasoning_effort = None;
         policy.apply_generation_limits(&mut allowed);
         assert_eq!(allowed.generation.max_tokens, Some(2048));
-        assert_eq!(
-            allowed.generation.reasoning_effort,
-            Some(ReasoningEffort::Medium)
-        );
+        assert_eq!(allowed.generation.reasoning_effort, None);
     }
 
     #[test]

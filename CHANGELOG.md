@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   webview CSP, production devtools/context-menu hardening, dependency audit
   checks in CI, and administrator controls for template operations, model
   allowlists, output-token ceilings, reasoning effort, fixed provider endpoints,
-  and credential-management controls.
+  and credential-management controls. Policy restrictions provide clear
+  feedback when they block a generation configuration, while an unset reasoning
+  effort remains provider-defined.
 - ARM64 Linux cross-compilation for separate Windows x64 and ARM64 NSIS
   installers, with static bundled OCR and offline WebView2 installation.
 - Fluent-based German (Switzerland) and English interface localization, OS

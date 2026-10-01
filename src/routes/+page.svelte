@@ -242,6 +242,23 @@
     ];
   });
   const isCurrentModelAllowed = $derived(isModelAllowed(adapter, model));
+  const generationConfigurationIssue = $derived.by(() => {
+    if (!isProviderAllowed(adapter)) {
+      return "Selected provider or endpoint is not allowed by administrator policy.";
+    }
+    if (!isCurrentModelAllowed) {
+      return "Selected model is not allowed by administrator policy.";
+    }
+    if (!isOutputTokenLimitValid) {
+      return policyStatus?.active &&
+        policyStatus.maxOutputTokens !== null &&
+        typeof outputTokenLimit === "number" &&
+        outputTokenLimit > maxOutputTokenLimit
+        ? "Output token limit exceeds administrator policy."
+        : "Set an output token limit between 1 and 1,000,000.";
+    }
+    return "";
+  });
   const credentialsForProvider = $derived(
     providerCredentials.filter((credential) => credential.adapter === adapter),
   );
@@ -1549,8 +1566,8 @@
       isPreparingGeneration
     )
       return;
-    if (!isOutputTokenLimitValid) {
-      generationMessage = "Set an output token limit between 1 and 1,000,000.";
+    if (generationConfigurationIssue) {
+      generationMessage = generationConfigurationIssue;
       generationIsError = true;
       return;
     }
@@ -3019,12 +3036,15 @@
                 disabled={(!prompt.trim() && sourceBlocks.length === 0) ||
                   !activeTemplate ||
                   isPreparingGeneration ||
-                  !isProviderAllowed(adapter) ||
-                  !isCurrentModelAllowed ||
-                  !isOutputTokenLimitValid}
+                  generationConfigurationIssue !== ""}
               >
                 {isPreparingGeneration ? t("Preparing...") : t("Generate draft")}
               </button>
+            {/if}
+            {#if generationConfigurationIssue}
+              <p class="generation-status error" role="alert">
+                {t(generationConfigurationIssue)}
+              </p>
             {/if}
             <p>{t("Use anonymized clinical material.")}</p>
           </div>
@@ -3131,9 +3151,7 @@
                 onclick={regenerateWithCorrections}
                 disabled={isGenerating ||
                   isPreparingGeneration ||
-                  !isProviderAllowed(adapter) ||
-                  !isCurrentModelAllowed ||
-                  !isOutputTokenLimitValid}
+                  generationConfigurationIssue !== ""}
               >
                 {t("Regenerate with corrections")}
               </button>

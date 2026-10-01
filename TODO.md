@@ -2,11 +2,6 @@
 
 ## Bugs
 
-### Medium Urgency
-
-- `max_reasoning_effort` sets directly instead of leaving at provider defined.
-- Incompatible settings only disable the "Generate draft" button instead of providing a clear error message.
-
 ## Enhancements
 
 ### Medium Urgency
