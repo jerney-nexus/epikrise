@@ -4,6 +4,8 @@
 
 Epikrise is a local-only desktop assistant for anonymized clinical material. Node.js 22 + Rust 2024 + Tauri v2.
 
+This file is the shared foundation for all coding assistants. Keep tool-specific guidance in `.github/copilot-instructions.md` and `CLAUDE.md`.
+
 ## Architecture
 
 Epikrise follows a modular architecture with a clear separation of concerns:
@@ -21,7 +23,6 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - Never commit secrets or API keys.
 - Do not add telemetry or commit real patient data, prompts, or generated clinical output.
 - All PRs require passing tests before merge.
-- Run Rust and UI/internationalization tests via the VS Code Test Explorer. If the Test Explorer is unavailable or fails to discover tests, run `pnpm test:ui` and `pnpm test:rust` from the integrated terminal instead.
 - Use the commands listed in the "Commands" section below for development, testing, and formatting tasks.
 - When working in the dev container, use `/workspaces/epikrise` as the project root.
 - Follow nearby patterns and keep changes focused.
@@ -41,7 +42,7 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - Install dependencies with `pnpm install --frozen-lockfile`.
 - Run the app with `pnpm dev`; build or preview it with `pnpm build` and `pnpm preview`. Use `pnpm tauri dev` or `pnpm tauri build` for desktop runs and bundles.
 - Run checks with `pnpm check` (UI and Rust), `pnpm check:ui`, or `pnpm check:rust`. Rust checks can also be run individually with `pnpm check:rust:fmt`, `pnpm check:rust:clippy` (warnings denied), and `pnpm check:rust:deny`.
-- Run tests with `pnpm test` (UI, i18n, and Rust), or use `pnpm test:ui`, `pnpm test:i18n`, `pnpm test:rust`, and `pnpm test:rust:package <package> [<args>]`. Use these scripts when the VS Code Test Explorer is unavailable or cannot discover tests. `pnpm test:coverage` runs UI and Rust tests with coverage, writing reports to `coverage/` and `lcov.info`; use `pnpm test:ui:coverage` or `pnpm test:rust:coverage` for a targeted coverage run.
+- Run tests with `pnpm test` (UI, i18n, and Rust), or use `pnpm test:ui`, `pnpm test:i18n`, `pnpm test:rust`, and `pnpm test:rust:package <package> [<args>]`. `pnpm test:coverage` runs UI and Rust tests with coverage, writing reports to `coverage/` and `lcov.info`; use `pnpm test:ui:coverage` or `pnpm test:rust:coverage` for a targeted coverage run.
 - Check or apply formatting with `pnpm format:check`, `pnpm format`, `pnpm format:check:file <file>`, `pnpm format:file <file>`, and `pnpm format:rust:fmt`. Run ESLint with `pnpm lint`.
 - Audit dependencies with `pnpm audit:rust` and `pnpm audit:pnpm`.
 - Prepare a CalVer release with `pnpm release:prepare [YYYY.MM.PATCH]`; convert a prompt with `pnpm template:convert`.
