@@ -3,12 +3,16 @@
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ## [Unreleased]
 
 ### Added
 
+- Markdown-formatted output previews and sanitized rich clipboard output, with
+  plain-text preview and reviewed-output copy safeguards retained. Switched to
+  CalVer and added a GitHub Actions workflow that prepares version and
+  changelog updates for review.
 - Machine-wide administrator egress policy, Rust-enforced local-only/provider
   restrictions, URL-ingestion control, and first-send confirmation for remote
   generation. Added redacted debug output for clinical payload types, a strict

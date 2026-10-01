@@ -2,12 +2,6 @@
 
 ## Enhancements
 
-### High Urgency
-
-- Formatted text should be properly handled and displayed in the UI. Currently, toggling between `Plain Text` and `Formatted` modes doesn't have any effect.
-- Use CalVer (https://calver.org) for versioning the project.
-- Add workflow for version bumping and changelog generation.
-
 ### Medium Urgency
 
 - Refine `CHANGELOG.md` for the first release with only `Added` entries.

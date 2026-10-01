@@ -5,6 +5,11 @@ import path from "node:path";
 import { promisify } from "node:util";
 import TOML from "@iarna/toml";
 import { describe, expect, it } from "vitest";
+import {
+  createReleasedChangelog,
+  nextCalverVersion,
+  validateCalverVersion,
+} from "../scripts/prepare-release.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(new URL("../", import.meta.url).pathname);
@@ -21,6 +26,66 @@ const windowsOcrTargets = [
     checksum: "5d04b6d0281e78613ef836dea2e0fefe6831f3ae92b3573e8fdf55330de67d3d",
   },
 ];
+
+describe("CalVer release versions", () => {
+  it("increments the patch within the current month", () => {
+    expect(nextCalverVersion("2026.10.2", new Date("2026-10-01T12:00:00Z"))).toBe(
+      "2026.10.3",
+    );
+  });
+
+  it("starts a new month at patch zero", () => {
+    expect(nextCalverVersion("2026.09.4", new Date("2026-10-01T12:00:00Z"))).toBe(
+      "2026.10.0",
+    );
+  });
+
+  it("rejects invalid dates and versions earlier than the project version", () => {
+    expect(() => validateCalverVersion("2026.13.0")).toThrow();
+    expect(() =>
+      nextCalverVersion("2026.10.0", new Date("2026-09-30T12:00:00Z")),
+    ).toThrow();
+  });
+
+  it("moves unreleased and generated notes into a dated release section", () => {
+    const changelog = [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      "### Added",
+      "",
+      "- Authored release note.",
+      "",
+      "[Unreleased]: https://github.com/pascaljerney/epikrise/compare/HEAD",
+      "",
+    ].join("\n");
+    const generatedNotes = [
+      "## [2026.10.1] - 2026-10-01",
+      "",
+      "### Fixed",
+      "",
+      "- Generated release note.",
+    ].join("\n");
+
+    const result = createReleasedChangelog(
+      changelog,
+      generatedNotes,
+      "2026.10.1",
+      "2026.10.0",
+    );
+
+    expect(result).toMatch(/## \[2026\.10\.1\] - \d{4}-\d{2}-\d{2}/);
+    expect(result).toContain("- Authored release note.");
+    expect(result).toContain("- Generated release note.");
+    expect(result).toContain(
+      "[2026.10.1]: https://github.com/pascaljerney/epikrise/compare/v2026.10.0...v2026.10.1",
+    );
+    expect(result).toContain(
+      "[Unreleased]: https://github.com/pascaljerney/epikrise/compare/v2026.10.1...HEAD",
+    );
+  });
+});
 
 describe("Windows cross-build versions", () => {
   it("uses the same available CRT version for setup and builds", async () => {

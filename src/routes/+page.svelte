@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { resolve } from "$app/paths";
   import { isTauri } from "@tauri-apps/api/core";
+  import { renderOutputHtml } from "$lib/output-format";
   import {
     defaultLocale,
     initializeLocale,
@@ -199,6 +200,12 @@
       sourceBlocks.reduce((count, block) => count + block.content.length, 0),
   );
   const draftLines = $derived(draft.split("\n"));
+  const formattedOutput = $derived(
+    renderOutputHtml(
+      draft,
+      outputViolations.map((violation) => violation.line),
+    ),
+  );
   const maxOutputTokenLimit = $derived(
     policyStatus?.active ? (policyStatus.maxOutputTokens ?? 1_000_000) : 1_000_000,
   );
@@ -482,27 +489,6 @@
     return t(labels[method ?? "parsed"]);
   }
 
-  function escapeHtml(value: string): string {
-    return value.replace(/[&<>"']/g, (character) => {
-      const entities: Record<string, string> = {
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      };
-      return entities[character];
-    });
-  }
-
-  function formatOutputHtml(value: string): string {
-    const paragraphs = value
-      .split("\n")
-      .map((line) => `<p>${line ? escapeHtml(line) : "<br>"}</p>`)
-      .join("");
-    return `<div>${paragraphs}</div>`;
-  }
-
   async function importFiles(files: FileList | File[]) {
     if (ingestBusy || !files.length) return;
     ingestBusy = true;
@@ -783,7 +769,7 @@
         return;
       }
       try {
-        await writeClipboardHtml(formatOutputHtml(result.data), result.data);
+        await writeClipboardHtml(renderOutputHtml(result.data), result.data);
         copyReviewMessage = "Reviewed formatted output copied";
       } catch {
         await writeClipboardText(result.data);
@@ -810,6 +796,31 @@
         return;
       }
     }
+  }
+
+  function scrollToOutputLine(line: number) {
+    const plainLine = document.getElementById(`draft-line-${line}`);
+    if (plainLine) {
+      plainLine.scrollIntoView({ behavior: "auto", block: "center" });
+      return;
+    }
+
+    const formattedBlocks = Array.from(
+      document.querySelectorAll<HTMLElement>(".rich-output [data-source-start-line]"),
+    )
+      .filter((block) => {
+        const startLine = Number(block.dataset.sourceStartLine);
+        const endLine = Number(block.dataset.sourceEndLine);
+        return line >= startLine && line <= endLine;
+      })
+      .sort(
+        (left, right) =>
+          Number(left.dataset.sourceEndLine) -
+          Number(left.dataset.sourceStartLine) -
+          (Number(right.dataset.sourceEndLine) - Number(right.dataset.sourceStartLine)),
+      );
+
+    formattedBlocks[0]?.scrollIntoView({ behavior: "auto", block: "center" });
   }
 
   function templateVariableLabel(
@@ -3111,16 +3122,8 @@
                     >{/each}</pre>
               {:else}
                 <div class="rich-output">
-                  {#each draftLines as line, index (index)}
-                    <p
-                      id={`draft-line-${index + 1}`}
-                      class:linted-line={outputViolations.some(
-                        (violation) => violation.line === index + 1,
-                      )}
-                    >
-                      {line || "\u00a0"}
-                    </p>
-                  {/each}
+                  <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                  {@html formattedOutput}
                 </div>
               {/if}
             {:else if isGenerating}
@@ -3143,10 +3146,7 @@
                   <li>
                     <button
                       class="lint-jump"
-                      onclick={() =>
-                        document
-                          .getElementById(`draft-line-${violation.line}`)
-                          ?.scrollIntoView({ behavior: "auto", block: "center" })}
+                      onclick={() => scrollToOutputLine(violation.line)}
                     >
                       {t("line", { line: violation.line })}: {t(
                         outputViolationMessages[violation.kind],
@@ -4656,10 +4656,44 @@
     overflow-wrap: anywhere;
   }
 
-  .rich-output p {
-    min-height: 1.75em;
-    margin: 0;
+  .rich-output :global(p) {
+    margin: 0 0 0.75em;
     white-space: pre-wrap;
+  }
+
+  .rich-output :global(h1),
+  .rich-output :global(h2),
+  .rich-output :global(h3),
+  .rich-output :global(h4),
+  .rich-output :global(h5),
+  .rich-output :global(h6) {
+    margin: 1em 0 0.45em;
+    color: #243a32;
+    font-size: 1.05em;
+    line-height: 1.4;
+  }
+
+  .rich-output :global(ul),
+  .rich-output :global(ol) {
+    margin: 0.25em 0 0.75em;
+    padding-left: 1.5em;
+  }
+
+  .rich-output :global(li) {
+    padding-left: 0.2em;
+  }
+
+  .rich-output :global(blockquote) {
+    margin: 0.5em 0 0.75em;
+    padding-left: 0.9em;
+    border-left: 2px solid #b7cfc0;
+    color: #53675f;
+  }
+
+  .rich-output :global(code),
+  .rich-output :global(pre) {
+    font-family: ui-monospace, monospace;
+    overflow-wrap: anywhere;
   }
 
   .draft-output .linted-line {

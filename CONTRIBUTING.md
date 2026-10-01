@@ -143,9 +143,14 @@ exempted from the panic and printing rules via `src-tauri/clippy.toml`.
 
 ## Commits and changelog
 
-Write commit subjects in the imperative mood ("Add template importer"), and
-keep each commit focused on one change. User-visible changes get an entry under
-`## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
+Use Conventional Commit subjects (`feat: add template importer`, `fix: handle
+formatted output`) and keep each commit focused on one change. User-visible
+changes get an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
+
+To prepare a release, run the **Release preparation** workflow from the GitHub
+Actions tab. Enter a `YYYY.MM.PATCH` version or leave it blank to select the
+next CalVer version. The workflow updates npm, Cargo, and Tauri metadata,
+generates release notes, and opens a pull request for review.
 
 ## Localization
 

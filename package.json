@@ -1,6 +1,6 @@
 {
   "name": "epikrise",
-  "version": "0.1.0",
+  "version": "2026.10.0",
   "description": "Local-only assistant that turns anonymized clinical material into a structured diagnosis and findings list",
   "type": "module",
   "private": true,
@@ -42,7 +42,9 @@
   "dependencies": {
     "@fluent/bundle": "^0.19.1",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-clipboard-manager": "^2.4.0"
+    "@tauri-apps/plugin-clipboard-manager": "^2.4.0",
+    "dompurify": "^3.4.16",
+    "markdown-it": "^15.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
