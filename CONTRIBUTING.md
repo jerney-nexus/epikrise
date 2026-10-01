@@ -135,6 +135,20 @@ pnpm test
 pnpm build
 ```
 
+The dev container installs the required Rust tools during setup. For a local
+setup, install them once:
+
+```sh
+rustup component add clippy rustfmt llvm-tools-preview
+cargo install cargo-deny --locked
+cargo install cargo-nextest --locked
+cargo install cargo-llvm-cov --locked
+```
+
+`cargo-deny` is required by `pnpm check`; `cargo-nextest` is required by
+`pnpm test:rust`, and `cargo-llvm-cov` plus `llvm-tools-preview` are required
+for Rust coverage.
+
 Lint levels live in `[workspace.lints]` in src-tauri/Cargo.toml. Tests are
 exempted from the panic and printing rules via `src-tauri/clippy.toml`.
 

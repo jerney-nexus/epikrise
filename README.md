@@ -107,13 +107,11 @@ instructions](CONTRIBUTING.md#local-setup).
 
 ## Testing
 
-The dev container installs the Rust test tools during setup. For a local setup,
-install them once, then run the test suites from the project root:
+For Rust tool prerequisites, including `cargo-deny` required by `pnpm check`,
+see [Quality gates in CONTRIBUTING.md](CONTRIBUTING.md#quality-gates). Run the
+test suites from the project root:
 
 ```sh
-cargo install cargo-nextest --locked
-cargo install cargo-llvm-cov --locked
-rustup component add llvm-tools-preview
 pnpm test
 pnpm test:coverage
 ```
@@ -128,7 +126,7 @@ directory under `src-tauri/target`, so macOS builds and dev-container builds do
 not share incompatible host artifacts.
 
 Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`,
-`pnpm format:check`, `pnpm check:rust:fmt` and `pnpm check:rust:clippy`.
+and `pnpm format:check`.
 
 ## Templates
 
