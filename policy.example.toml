@@ -5,3 +5,17 @@ local_only = true
 allow_url_ingestion = false
 allow_updater = false
 require_review_gate = true
+allow_template_import = true
+allow_template_export = true
+allow_template_edit = true
+
+# Optional exact model allowlist. Omit the field to allow every model from the
+# permitted providers. Each model is scoped to one provider adapter.
+# allowed_models = [
+#   { adapter = "ollama", model = "llama3.2" },
+#   { adapter = "open_ai_compatible", model = "medllama" },
+# ]
+
+# Optional generation ceilings; the app clamps user-selected values to these.
+# max_output_tokens = 4096
+# max_reasoning_effort = "medium"

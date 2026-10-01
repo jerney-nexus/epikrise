@@ -1,4 +1,4 @@
-use epikrise_llm::{ProviderAdapter, ProviderProfile};
+use epikrise_llm::{ProviderAdapter, ProviderProfile, ReasoningEffort};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::{
@@ -21,6 +21,25 @@ pub struct EgressPolicy {
     pub allow_updater: bool,
     #[serde(default = "require_review")]
     pub require_review_gate: bool,
+    #[serde(default = "allow_by_default")]
+    pub allow_template_import: bool,
+    #[serde(default = "allow_by_default")]
+    pub allow_template_export: bool,
+    #[serde(default = "allow_by_default")]
+    pub allow_template_edit: bool,
+    #[serde(default)]
+    pub allowed_models: Option<Vec<AllowedModel>>,
+    #[serde(default)]
+    pub max_output_tokens: Option<u32>,
+    #[serde(default)]
+    pub max_reasoning_effort: Option<ReasoningEffort>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(deny_unknown_fields)]
+pub struct AllowedModel {
+    pub adapter: ProviderAdapter,
+    pub model: String,
 }
 
 impl Default for EgressPolicy {
@@ -31,6 +50,12 @@ impl Default for EgressPolicy {
             allow_url_ingestion: true,
             allow_updater: true,
             require_review_gate: true,
+            allow_template_import: true,
+            allow_template_export: true,
+            allow_template_edit: true,
+            allowed_models: None,
+            max_output_tokens: None,
+            max_reasoning_effort: None,
         }
     }
 }
@@ -44,6 +69,12 @@ pub struct PolicyStatus {
     pub allow_url_ingestion: bool,
     pub allow_updater: bool,
     pub require_review_gate: bool,
+    pub allow_template_import: bool,
+    pub allow_template_export: bool,
+    pub allow_template_edit: bool,
+    pub allowed_models: Option<Vec<AllowedModel>>,
+    pub max_output_tokens: Option<u32>,
+    pub max_reasoning_effort: Option<ReasoningEffort>,
     pub permissions_warning: bool,
 }
 
@@ -55,6 +86,8 @@ pub enum PolicyLoadError {
     InspectFailed(#[source] io::Error),
     #[error("policy file must be a regular, non-symlink file")]
     UnsafeFile,
+    #[error("policy contains an invalid restriction")]
+    InvalidPolicy,
     #[error("policy file is malformed")]
     Malformed(#[source] toml::de::Error),
 }
@@ -87,7 +120,15 @@ impl LoadedPolicy {
         }
         let permissions_warning = !administrator_controls_file(path, &metadata);
         let contents = fs::read_to_string(path).map_err(PolicyLoadError::InspectFailed)?;
-        let policy = toml::from_str(&contents).map_err(PolicyLoadError::Malformed)?;
+        let policy: EgressPolicy = toml::from_str(&contents).map_err(PolicyLoadError::Malformed)?;
+        if policy.max_output_tokens == Some(0)
+            || policy
+                .allowed_models
+                .as_ref()
+                .is_some_and(|models| models.iter().any(|model| model.model.trim().is_empty()))
+        {
+            return Err(PolicyLoadError::InvalidPolicy);
+        }
         Ok(Self::from_policy(policy, true, permissions_warning))
     }
 
@@ -99,6 +140,12 @@ impl LoadedPolicy {
             allow_url_ingestion: policy.allow_url_ingestion,
             allow_updater: policy.allow_updater,
             require_review_gate: true,
+            allow_template_import: policy.allow_template_import,
+            allow_template_export: policy.allow_template_export,
+            allow_template_edit: policy.allow_template_edit,
+            allowed_models: policy.allowed_models.clone(),
+            max_output_tokens: policy.max_output_tokens,
+            max_reasoning_effort: policy.max_reasoning_effort,
             permissions_warning,
         };
         Self { policy, status }
@@ -116,12 +163,67 @@ impl LoadedPolicy {
         !self.policy.local_only || is_local_endpoint(profile)
     }
 
+    pub fn allows_model(&self, profile: &ProviderProfile) -> bool {
+        self.policy.allowed_models.as_ref().is_none_or(|models| {
+            models
+                .iter()
+                .any(|allowed| allowed.adapter == profile.adapter && allowed.model == profile.model)
+        })
+    }
+
+    pub fn filter_models(&self, adapter: &ProviderAdapter, models: Vec<String>) -> Vec<String> {
+        self.policy
+            .allowed_models
+            .as_ref()
+            .map_or(models.clone(), |allowed| {
+                models
+                    .into_iter()
+                    .filter(|model| {
+                        allowed
+                            .iter()
+                            .any(|entry| entry.adapter == *adapter && entry.model == *model)
+                    })
+                    .collect()
+            })
+    }
+
+    pub fn apply_generation_limits(&self, profile: &mut ProviderProfile) {
+        if let Some(max_tokens) = self.policy.max_output_tokens {
+            profile.generation.max_tokens = Some(
+                profile
+                    .generation
+                    .max_tokens
+                    .map_or(max_tokens, |tokens| tokens.min(max_tokens)),
+            );
+        }
+        if let Some(max_effort) = self.policy.max_reasoning_effort {
+            let requested = profile.generation.reasoning_effort.as_ref();
+            let capped = requested
+                .filter(|requested| reasoning_rank(requested) <= reasoning_rank(&max_effort))
+                .cloned()
+                .unwrap_or(max_effort);
+            profile.generation.reasoning_effort = Some(capped);
+        }
+    }
+
     pub fn requires_egress_confirmation(&self, profile: &ProviderProfile) -> bool {
         !is_local_endpoint(profile)
     }
 
     pub fn allows_url_ingestion(&self) -> bool {
         self.policy.allow_url_ingestion
+    }
+}
+
+fn reasoning_rank(effort: &ReasoningEffort) -> u8 {
+    match effort {
+        ReasoningEffort::None => 0,
+        ReasoningEffort::Minimal => 1,
+        ReasoningEffort::Low => 2,
+        ReasoningEffort::Medium => 3,
+        ReasoningEffort::High => 4,
+        ReasoningEffort::XHigh => 5,
+        ReasoningEffort::Max => 6,
     }
 }
 
@@ -369,6 +471,55 @@ mod tests {
             Some("https://api.openai.com/v1"),
         )));
         assert!(!policy.allows_url_ingestion());
+    }
+
+    #[test]
+    fn model_allowlist_and_generation_limits_are_enforced() {
+        use epikrise_llm::ReasoningEffort;
+
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let policy = load_policy(
+            directory.path(),
+            "allowed_models = [{ adapter = 'ollama', model = 'approved-model' }]\nmax_output_tokens = 2048\nmax_reasoning_effort = 'medium'\n",
+        );
+        let mut allowed = profile(ProviderAdapter::Ollama, None);
+        allowed.model = "approved-model".to_owned();
+        allowed.generation.max_tokens = Some(8192);
+        allowed.generation.reasoning_effort = Some(ReasoningEffort::Max);
+
+        assert!(policy.allows_model(&allowed));
+        assert!(!policy.allows_model(&profile(ProviderAdapter::Ollama, None)));
+        assert_eq!(
+            policy.filter_models(
+                &ProviderAdapter::Ollama,
+                vec!["approved-model".to_owned(), "blocked-model".to_owned()],
+            ),
+            vec!["approved-model"]
+        );
+
+        policy.apply_generation_limits(&mut allowed);
+        assert_eq!(allowed.generation.max_tokens, Some(2048));
+        assert_eq!(
+            allowed.generation.reasoning_effort,
+            Some(ReasoningEffort::Medium)
+        );
+
+        allowed.generation.max_tokens = None;
+        allowed.generation.reasoning_effort = None;
+        policy.apply_generation_limits(&mut allowed);
+        assert_eq!(allowed.generation.max_tokens, Some(2048));
+        assert_eq!(
+            allowed.generation.reasoning_effort,
+            Some(ReasoningEffort::Medium)
+        );
+    }
+
+    #[test]
+    fn policy_rejects_zero_output_token_ceiling() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let path = directory.path().join("policy.toml");
+        fs::write(&path, "max_output_tokens = 0\n").expect("test policy should be written");
+        assert!(LoadedPolicy::load_from(&path).is_err());
     }
 
     #[test]

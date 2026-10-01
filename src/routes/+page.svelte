@@ -21,6 +21,7 @@
     events,
     type ClinicalTemplate,
     type CredentialSummary,
+    type AllowedModel,
     type ExtractedBlock,
     type ExtractionMethod,
     type IngestError,
@@ -39,6 +40,12 @@
     allowUrlIngestion: boolean;
     allowUpdater: boolean;
     requireReviewGate: boolean;
+    allowTemplateImport: boolean;
+    allowTemplateExport: boolean;
+    allowTemplateEdit: boolean;
+    allowedModels: AllowedModel[] | null;
+    maxOutputTokens: number | null;
+    maxReasoningEffort: ReasoningEffort | null;
     permissionsWarning: boolean;
   };
 
@@ -87,6 +94,7 @@
     invalid_system_prompt: "The template prompt is invalid.",
     rendering_failed: "The template could not be rendered.",
     storage_failed: "The template library could not be saved or loaded.",
+    policy_restricted: "This template action is restricted by administrator policy.",
   };
 
   const outputViolationMessages: Record<OutputViolation["kind"], string> = {
@@ -188,11 +196,14 @@
       sourceBlocks.reduce((count, block) => count + block.content.length, 0),
   );
   const draftLines = $derived(draft.split("\n"));
+  const maxOutputTokenLimit = $derived(
+    policyStatus?.active ? (policyStatus.maxOutputTokens ?? 1_000_000) : 1_000_000,
+  );
   const isOutputTokenLimitValid = $derived(
     typeof outputTokenLimit === "number" &&
       Number.isInteger(outputTokenLimit) &&
       outputTokenLimit >= 1 &&
-      outputTokenLimit <= 1_000_000,
+      outputTokenLimit <= maxOutputTokenLimit,
   );
   const canCopyOutput = $derived(
     Boolean(
@@ -214,9 +225,20 @@
   const modelProfileKey = $derived(
     JSON.stringify([adapter, endpoint.trim(), credentialId.trim()]),
   );
-  const currentModels = $derived(
-    modelsForProfile === modelProfileKey ? availableModels : [],
-  );
+  const currentModels = $derived.by(() => {
+    const providerModels = modelsForProfile === modelProfileKey ? availableModels : [];
+    if (!policyStatus?.active || !policyStatus.allowedModels) return providerModels;
+    const allowedForAdapter = policyStatus.allowedModels
+      .filter((allowed) => allowed.adapter === adapter)
+      .map((allowed) => allowed.model);
+    return [
+      ...new Set([
+        ...providerModels.filter((name) => isModelAllowed(adapter, name)),
+        ...allowedForAdapter,
+      ]),
+    ];
+  });
+  const isCurrentModelAllowed = $derived(isModelAllowed(adapter, model));
   const credentialsForProvider = $derived(
     providerCredentials.filter((credential) => credential.adapter === adapter),
   );
@@ -296,6 +318,50 @@
       ((selectedAdapter === "ollama" || selectedAdapter === "open_ai_compatible") &&
         isLoopbackEndpoint(displayedEndpoint(selectedAdapter, endpoint)))
     );
+  }
+
+  function isModelAllowed(
+    selectedAdapter: ProviderAdapter,
+    selectedModel: string,
+  ): boolean {
+    if (!policyStatus?.active || !policyStatus.allowedModels) return true;
+    return policyStatus.allowedModels.some(
+      (allowed) =>
+        allowed.adapter === selectedAdapter && allowed.model === selectedModel,
+    );
+  }
+
+  function reasoningEffortRank(effort: ReasoningEffort): number {
+    return ["none", "minimal", "low", "medium", "high", "x_high", "max"].indexOf(
+      effort,
+    );
+  }
+
+  function isReasoningEffortAllowed(effort: ReasoningEffort): boolean {
+    const maximum = policyStatus?.active ? policyStatus.maxReasoningEffort : null;
+    return (
+      maximum === null || reasoningEffortRank(effort) <= reasoningEffortRank(maximum)
+    );
+  }
+
+  function applyPolicyStatus(status: PolicyStatus) {
+    policyStatus = status;
+    if (!status.active) return;
+    if (
+      status.maxOutputTokens !== null &&
+      typeof outputTokenLimit === "number" &&
+      outputTokenLimit > status.maxOutputTokens
+    ) {
+      outputTokenLimit = status.maxOutputTokens;
+    }
+    const maximumEffort = status.maxReasoningEffort;
+    if (
+      maximumEffort !== null &&
+      (reasoningEffort === "provider_default" ||
+        reasoningEffortRank(reasoningEffort) > reasoningEffortRank(maximumEffort))
+    ) {
+      reasoningEffort = maximumEffort;
+    }
   }
 
   function formatError(error: LlmError): string {
@@ -1181,7 +1247,7 @@
     desktopAvailable = isTauri();
     if (!desktopAvailable) return;
     void commands.getPolicyStatus().then((status) => {
-      if (status.status === "ok") policyStatus = status.data;
+      if (status.status === "ok") applyPolicyStatus(status.data);
     });
     void restoreTemplates()
       .catch(() => {
@@ -1980,7 +2046,12 @@
           </button>
         </div>
 
-        <label for="active-model">{t("Model")}</label>
+        <label for="active-model">
+          {t("Model")}
+          {#if policyStatus?.active && policyStatus.allowedModels !== null}
+            <span class="policy-badge">{t("Administrator managed")}</span>
+          {/if}
+        </label>
         <div class="model-picker">
           <select
             id="active-model"
@@ -1988,7 +2059,9 @@
             disabled={modelListLoading || isGenerating}
           >
             {#if !currentModels.includes(model)}
-              <option value={model}>{model} ({t("current")})</option>
+              <option value={model} disabled={!isModelAllowed(adapter, model)}
+                >{model} ({t("current")})</option
+              >
             {/if}
             {#each currentModels as availableModel (availableModel)}
               <option value={availableModel}>{availableModel}</option>
@@ -2009,13 +2082,18 @@
           </p>
         {/if}
 
-        <label for="output-token-limit">{t("Output token limit")}</label>
+        <label for="output-token-limit">
+          {t("Output token limit")}
+          {#if policyStatus?.active && policyStatus.maxOutputTokens !== null}
+            <span class="policy-badge">{t("Administrator managed")}</span>
+          {/if}
+        </label>
         <input
           id="output-token-limit"
           type="number"
           bind:value={outputTokenLimit}
           min="1"
-          max="1000000"
+          max={maxOutputTokenLimit}
           step="1"
           required
           aria-describedby="output-token-limit-hint"
@@ -2026,7 +2104,12 @@
           {t("token-limit-hint")}
         </p>
 
-        <label for="reasoning-effort">{t("Reasoning effort")}</label>
+        <label for="reasoning-effort">
+          {t("Reasoning effort")}
+          {#if policyStatus?.active && policyStatus.maxReasoningEffort !== null}
+            <span class="policy-badge">{t("Administrator managed")}</span>
+          {/if}
+        </label>
         <select
           id="reasoning-effort"
           bind:value={reasoningEffort}
@@ -2034,12 +2117,24 @@
         >
           <option value="provider_default">{t("Provider default")}</option>
           <option value="none">{t("None")}</option>
-          <option value="minimal">{t("Minimal")}</option>
-          <option value="low">{t("Low")}</option>
-          <option value="medium">{t("Medium")}</option>
-          <option value="high">{t("High")}</option>
-          <option value="x_high">{t("Extra high")}</option>
-          <option value="max">{t("Maximum")}</option>
+          <option value="minimal" disabled={!isReasoningEffortAllowed("minimal")}
+            >{t("Minimal")}</option
+          >
+          <option value="low" disabled={!isReasoningEffortAllowed("low")}
+            >{t("Low")}</option
+          >
+          <option value="medium" disabled={!isReasoningEffortAllowed("medium")}
+            >{t("Medium")}</option
+          >
+          <option value="high" disabled={!isReasoningEffortAllowed("high")}
+            >{t("High")}</option
+          >
+          <option value="x_high" disabled={!isReasoningEffortAllowed("x_high")}
+            >{t("Extra high")}</option
+          >
+          <option value="max" disabled={!isReasoningEffortAllowed("max")}
+            >{t("Maximum")}</option
+          >
         </select>
 
         <label class="vision-setting" for="vision-enabled">
@@ -2093,17 +2188,28 @@
           <button
             class="template-export-button"
             onclick={exportActiveTemplate}
-            disabled={templateBusy || !activeTemplate}
+            disabled={templateBusy ||
+              !activeTemplate ||
+              (policyStatus?.active && !policyStatus.allowTemplateExport)}
           >
             {t("Export .epitpl")}
+            {#if policyStatus?.active && !policyStatus.allowTemplateExport}
+              <span class="policy-badge">{t("Administrator managed")}</span>
+            {/if}
           </button>
           <button
             class="template-export-button"
             type="button"
             onclick={openTemplateEditor}
-            disabled={!activeTemplate || isGenerating || isPreparingGeneration}
+            disabled={!activeTemplate ||
+              isGenerating ||
+              isPreparingGeneration ||
+              (policyStatus?.active && !policyStatus.allowTemplateEdit)}
           >
             {t("Edit template")}
+            {#if policyStatus?.active && !policyStatus.allowTemplateEdit}
+              <span class="policy-badge">{t("Administrator managed")}</span>
+            {/if}
           </button>
         {:else}
           <p class="template-empty">{t("No templates imported")}</p>
@@ -2111,9 +2217,13 @@
             class="template-export-button"
             type="button"
             onclick={createGenericStarter}
-            disabled={templateBusy}
+            disabled={templateBusy ||
+              (policyStatus?.active && !policyStatus.allowTemplateImport)}
           >
             {t("Use generic starter")}
+            {#if policyStatus?.active && !policyStatus.allowTemplateImport}
+              <span class="policy-badge">{t("Administrator managed")}</span>
+            {/if}
           </button>
         {/if}
 
@@ -2205,6 +2315,9 @@
 
         <label class="template-file-label" for="template-file">
           {templateBusy ? t("Working...") : t("Import .epitpl")}
+          {#if policyStatus?.active && !policyStatus.allowTemplateImport}
+            <span class="policy-badge">{t("Administrator managed")}</span>
+          {/if}
         </label>
         <input
           id="template-file"
@@ -2213,7 +2326,8 @@
           accept=".epitpl,text/plain,application/toml,application/json"
           bind:this={templateFileInput}
           onchange={importTemplate}
-          disabled={templateBusy}
+          disabled={templateBusy ||
+            (policyStatus?.active && !policyStatus.allowTemplateImport)}
         />
 
         {#if templateMessage}
@@ -2258,7 +2372,8 @@
               <button
                 class="connection-button"
                 onclick={savePendingTemplate}
-                disabled={templateBusy}
+                disabled={templateBusy ||
+                  (policyStatus?.active && !policyStatus.allowTemplateImport)}
               >
                 {t("Save template")}
               </button>
@@ -2591,7 +2706,12 @@
           >
             {t("Cancel")}
           </button>
-          <button class="connection-button" type="submit" disabled={templateSaveBusy}>
+          <button
+            class="connection-button"
+            type="submit"
+            disabled={templateSaveBusy ||
+              (policyStatus?.active && !policyStatus.allowTemplateEdit)}
+          >
             {templateSaveBusy ? t("Validating...") : t("Validate and save")}
           </button>
         </div>
@@ -2816,6 +2936,8 @@
                 disabled={(!prompt.trim() && sourceBlocks.length === 0) ||
                   !activeTemplate ||
                   isPreparingGeneration ||
+                  !isProviderAllowed(adapter) ||
+                  !isCurrentModelAllowed ||
                   !isOutputTokenLimitValid}
               >
                 {isPreparingGeneration ? t("Preparing...") : t("Generate draft")}
@@ -2924,7 +3046,11 @@
               <button
                 class="lint-regenerate-button"
                 onclick={regenerateWithCorrections}
-                disabled={isGenerating || isPreparingGeneration}
+                disabled={isGenerating ||
+                  isPreparingGeneration ||
+                  !isProviderAllowed(adapter) ||
+                  !isCurrentModelAllowed ||
+                  !isOutputTokenLimitValid}
               >
                 {t("Regenerate with corrections")}
               </button>

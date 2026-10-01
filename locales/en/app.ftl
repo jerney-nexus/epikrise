@@ -277,3 +277,4 @@ ui-provider-authorization-could-not-be-recorded = Provider authorization could n
 ui-provider-authorization-could-not-be-checked = Provider authorization could not be checked.
 ui-url-ingestion-is-disabled-by-administrator-policy = URL ingestion is disabled by administrator policy.
 ui-only-localhost-and-loopback-endpoints-are-allowed = Only localhost and loopback endpoints are allowed.
+ui-this-template-action-is-restricted-by-administrator-policy = This template action is restricted by administrator policy.

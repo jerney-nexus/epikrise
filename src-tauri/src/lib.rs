@@ -297,7 +297,13 @@ fn validate_template(bytes: Vec<u8>) -> Result<ClinicalTemplate, TemplateError> 
 
 #[tauri::command]
 #[specta::specta]
-fn export_template(template: ClinicalTemplate) -> Result<String, TemplateError> {
+fn export_template(
+    template: ClinicalTemplate,
+    policy: State<'_, PolicyState>,
+) -> Result<String, TemplateError> {
+    if !policy.0.policy.allow_template_export {
+        return Err(TemplateError::PolicyRestricted);
+    }
     template.to_toml()
 }
 
@@ -345,12 +351,53 @@ fn load_template_library_from_paths(
 
 #[tauri::command]
 #[specta::specta]
-fn save_templates(app: AppHandle, templates: Vec<ClinicalTemplate>) -> Result<(), TemplateError> {
+fn save_templates(
+    app: AppHandle,
+    policy: State<'_, PolicyState>,
+    templates: Vec<ClinicalTemplate>,
+) -> Result<(), TemplateError> {
     let app_data_dir = app
         .path()
         .app_data_dir()
         .map_err(|_| TemplateError::StorageFailed)?;
-    write_template_library(&app_data_dir.join("templates.toml"), &templates)
+    let template_path = app_data_dir.join("templates.toml");
+    let existing_templates =
+        load_template_library_from_paths(&template_path, &app_data_dir.join("templates.json"))?;
+    validate_template_changes(
+        &existing_templates,
+        &templates,
+        policy.0.policy.allow_template_import,
+        policy.0.policy.allow_template_edit,
+    )?;
+    write_template_library(&template_path, &templates)
+}
+
+fn validate_template_changes(
+    existing: &[ClinicalTemplate],
+    proposed: &[ClinicalTemplate],
+    allow_import: bool,
+    allow_edit: bool,
+) -> Result<(), TemplateError> {
+    if !allow_edit
+        && existing.iter().any(|saved| {
+            proposed
+                .iter()
+                .find(|candidate| candidate.metadata.id == saved.metadata.id)
+                != Some(saved)
+        })
+    {
+        return Err(TemplateError::PolicyRestricted);
+    }
+    if !allow_import
+        && proposed.iter().any(|candidate| {
+            !existing
+                .iter()
+                .any(|saved| saved.metadata.id == candidate.metadata.id)
+        })
+    {
+        return Err(TemplateError::PolicyRestricted);
+    }
+    Ok(())
 }
 
 fn parse_template_library(contents: &str) -> Result<Vec<ClinicalTemplate>, TemplateError> {
@@ -587,7 +634,7 @@ fn authorize_provider_egress(
     let case_id = uuid::Uuid::parse_str(&case_id)
         .map_err(|_| LlmError::InvalidRequest)?
         .to_string();
-    if !policy.0.allows_provider(&profile) {
+    if !policy.0.allows_provider(&profile) || !policy.0.allows_model(&profile) {
         return Err(LlmError::InvalidProfile);
     }
     if !policy.0.requires_egress_confirmation(&profile) {
@@ -683,7 +730,7 @@ async fn test_provider(
     profile: ProviderProfile,
     policy: State<'_, PolicyState>,
 ) -> Result<Vec<String>, LlmError> {
-    if !policy.0.allows_provider(&profile) {
+    if !policy.0.allows_provider(&profile) || !policy.0.allows_model(&profile) {
         return Err(LlmError::InvalidProfile);
     }
     let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
@@ -700,7 +747,8 @@ async fn list_models(
         return Err(LlmError::InvalidProfile);
     }
     let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
-    client.list_models(&profile).await
+    let models = client.list_models(&profile).await?;
+    Ok(policy.0.filter_models(&profile.adapter, models))
 }
 
 #[tauri::command]
@@ -822,7 +870,7 @@ async fn generate(
     let GenerateRequest {
         request_id,
         case_id,
-        profile,
+        mut profile,
         system_prompt,
         output_rules,
         template_values,
@@ -845,9 +893,10 @@ async fn generate(
     {
         return Err(LlmError::InvalidRequest);
     }
-    if !policy.0.allows_provider(&profile) {
+    if !policy.0.allows_provider(&profile) || !policy.0.allows_model(&profile) {
         return Err(LlmError::InvalidProfile);
     }
+    policy.0.apply_generation_limits(&mut profile);
     let confirmation_key = egress_key(&case_id, &profile);
     if policy.0.requires_egress_confirmation(&profile)
         && !confirmations
@@ -1266,11 +1315,12 @@ mod tests {
     use super::{
         MAX_PDF_VISION_PAGES, OcrTempSession, commit_case_generation,
         load_template_library_from_paths, ocr_pdf_pages_with, parse_template_library,
-        prepare_case_generation, render_pdf_pages_for_vision, wipe_directory_contents,
+        prepare_case_generation, render_pdf_pages_for_vision, validate_template_changes,
+        wipe_directory_contents,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
-        TemplateValue,
+        TemplateError, TemplateValue,
     };
     use epikrise_llm::{
         AuthSource, ChatMessage, GenerationParams, LlmClient, LlmError, ModelCapabilities,
@@ -1362,6 +1412,45 @@ mod tests {
 
         assert_eq!(migrated, restored);
         assert!(!legacy_path.exists());
+    }
+
+    #[test]
+    fn template_policy_distinguishes_imports_from_edits() {
+        let template =
+            ClinicalTemplate::from_epitpl(include_bytes!("../../templates/generic-starter.epitpl"))
+                .expect("checked-in starter should be valid TOML");
+        let mut edited = template.clone();
+        edited.metadata.description.push_str(" Updated.");
+        let mut added = template.clone();
+        added.metadata.id.push_str("-copy");
+
+        assert!(matches!(
+            validate_template_changes(
+                std::slice::from_ref(&template),
+                std::slice::from_ref(&edited),
+                true,
+                false,
+            ),
+            Err(TemplateError::PolicyRestricted)
+        ));
+        assert!(matches!(
+            validate_template_changes(
+                std::slice::from_ref(&template),
+                &[template.clone(), added],
+                false,
+                true,
+            ),
+            Err(TemplateError::PolicyRestricted)
+        ));
+        assert!(
+            validate_template_changes(
+                std::slice::from_ref(&template),
+                std::slice::from_ref(&template),
+                false,
+                false,
+            )
+            .is_ok()
+        );
     }
 
     #[test]

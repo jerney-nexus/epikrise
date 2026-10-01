@@ -209,8 +209,18 @@ uses adapter IDs (`open_ai`, `anthropic`, `gemini`, `ollama`,
 providers. `local_only = true` additionally restricts endpoints to `localhost`
 or a loopback IP, regardless of the allowlist. `allow_url_ingestion = false`
 disables URL extraction. `allow_updater` is reserved for updater support; the
-current app has no updater. The review gate remains mandatory even if a policy
-sets `require_review_gate = false`.
+current app has no updater. Set `allow_template_import`, `allow_template_export`,
+or `allow_template_edit` to `false` to block adding templates, exporting
+templates, or changing/removing saved templates respectively. These restrictions
+are enforced by the backend as well as the settings UI.
+
+`allowed_models` optionally lists exact, case-sensitive model identifiers scoped
+by provider, for example `[{ adapter = "ollama", model = "llama3.2" }]`;
+omitting it allows every model under the provider policy. `max_output_tokens`
+sets a hard ceiling on generated output tokens. `max_reasoning_effort` caps the
+selected reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `x_high`,
+or `max`); a provider-default selection is also capped. The review gate remains
+mandatory even if a policy sets `require_review_gate = false`.
 
 The webview CSP restricts network connections to Tauri IPC. The app does not
 configure clinical-content logging; debug representations of case, extraction,

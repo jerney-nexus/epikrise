@@ -38,6 +38,11 @@ export const events = {
 };
 
 /* Types */
+export type AllowedModel = {
+	adapter: ProviderAdapter,
+	model: string,
+};
+
 export type AuthSource = { source: "none" } | { source: "keychain"; credential_id: string };
 
 export type CaseSession = {
@@ -155,6 +160,12 @@ export type PolicyStatus = {
 	allowUrlIngestion: boolean,
 	allowUpdater: boolean,
 	requireReviewGate: boolean,
+	allowTemplateImport: boolean,
+	allowTemplateExport: boolean,
+	allowTemplateEdit: boolean,
+	allowedModels: AllowedModel[] | null,
+	maxOutputTokens: number | null,
+	maxReasoningEffort: ReasoningEffort | null,
 	permissionsWarning: boolean,
 };
 
@@ -175,7 +186,7 @@ export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "
 
 export type TemplateDefault = { kind: "text"; value: string } | { kind: "boolean"; value: boolean };
 
-export type TemplateError = { key: "unsupported_schema_version"; value: number } | { key: "invalid_template" } | { key: "invalid_variable_name"; value: string } | { key: "duplicate_variable"; value: string } | { key: "invalid_variable_definition"; value: string } | { key: "invalid_section"; value: string } | { key: "invalid_section_selection" } | { key: "invalid_serialized_template" } | { key: "storage_failed" } | { key: "template_too_large" } | { key: "missing_required_variable"; value: string } | { key: "invalid_variable_value"; value: string } | { key: "unknown_variable"; value: string } | { key: "invalid_system_prompt" } | { key: "rendering_failed" };
+export type TemplateError = { key: "unsupported_schema_version"; value: number } | { key: "invalid_template" } | { key: "invalid_variable_name"; value: string } | { key: "duplicate_variable"; value: string } | { key: "invalid_variable_definition"; value: string } | { key: "invalid_section"; value: string } | { key: "invalid_section_selection" } | { key: "invalid_serialized_template" } | { key: "storage_failed" } | { key: "template_too_large" } | { key: "missing_required_variable"; value: string } | { key: "invalid_variable_value"; value: string } | { key: "unknown_variable"; value: string } | { key: "invalid_system_prompt" } | { key: "rendering_failed" } | { key: "policy_restricted" };
 
 export type TemplateMetadata = {
 	id: string,

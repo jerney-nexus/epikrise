@@ -240,6 +240,8 @@ pub enum TemplateError {
     InvalidSystemPrompt,
     #[error("template system prompt rendering failed")]
     RenderingFailed,
+    #[error("template operation is restricted by administrator policy")]
+    PolicyRestricted,
 }
 
 impl ClinicalTemplate {
