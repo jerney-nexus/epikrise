@@ -9,7 +9,7 @@
     "ghcr.io/devcontainers/features/desktop-lite:1": {},
     "ghcr.io/devcontainers/features/copilot-cli:1": {},
     "ghcr.io/devcontainers-extra/features/pnpm:2": {
-      "version": "12.6.0"
+      "version": "12.8.1"
     },
     "ghcr.io/devcontainers-extra/features/ripgrep:1": {},
     "ghcr.io/devcontainers-extra/features/prettier:1": {
@@ -17,7 +17,7 @@
     }
   },
   "onCreateCommand": "bash .devcontainer/install-deps.sh",
-  "postCreateCommand": "pnpm install --frozen-lockfile",
+  "postCreateCommand": "pnpm install --frozen-lockfile && node --input-type=module -e 'await import(\"vite\"); console.log(\"Vite native binding ready\")'",
   "forwardPorts": [1420, 6080],
   "portsAttributes": {
     "1420": {
