@@ -69,6 +69,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   paste remains handled by the webview and is sent over IPC.
 - ESLint for TypeScript and Svelte, Prettier formatting, and Cargo Nextest for
   Rust tests.
+- Rust workspace LCOV coverage via `cargo-llvm-cov` and Coverage Gutters, and
+  updated Tauri and keyring identifiers for `jerney-nexus`.
 
 ### Changed
 

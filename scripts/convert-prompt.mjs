@@ -5,7 +5,7 @@ import TOML from "@iarna/toml";
 const maxTemplateBytes = 1_048_576;
 
 function usage() {
-  return `Usage: pnpm template:convert -- <prompt.txt> <output.epitpl> [options]
+  return `Usage: pnpm template:convert <prompt.txt> <output.epitpl> [options]
 
 Options:
   --name <name>          Template display name

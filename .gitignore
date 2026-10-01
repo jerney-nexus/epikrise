@@ -46,6 +46,7 @@ src-tauri/WixTools/
 # --- Test & coverage output ---
 coverage/
 *.lcov
+/lcov.info
 /playwright-report/
 /test-results/
 /blob-report/

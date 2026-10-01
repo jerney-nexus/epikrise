@@ -152,7 +152,7 @@ pub trait CredentialStore: Send + Sync {
 
 pub struct KeyringCredentialStore;
 
-const KEYRING_SERVICE: &str = "com.pascaljerney.epikrise";
+const KEYRING_SERVICE: &str = "com.jerney-nexus.epikrise";
 
 fn adapter_key(adapter: &ProviderAdapter) -> &'static str {
     match adapter {

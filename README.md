@@ -64,7 +64,7 @@ Epikrise does not connect to a hospital information system.
 | Tool          | Version | Notes                                                                |
 | ------------- | ------- | -------------------------------------------------------------------- |
 | Rust          | 1.98+   | stable toolchain, edition 2024                                       |
-| Node.js       | 22+     | pnpm 12.6.0, activated through Corepack                              |
+| Node.js       | 22+     | pnpm 12.8.1, activated through Corepack                              |
 | Platform deps | —       | see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
 
 A [dev container](.devcontainer/devcontainer.json) with everything preinstalled
@@ -107,17 +107,21 @@ instructions](CONTRIBUTING.md#local-setup).
 
 ## Testing
 
-Install Cargo Nextest once, then run both test suites from the project root:
+Install the Rust test tools once, then run the test suites from the project root:
 
 ```sh
 cargo install cargo-nextest --locked
+cargo install cargo-llvm-cov --locked
+rustup component add llvm-tools-preview
 pnpm test
-pnpm test:rust
-pnpm test:ui:coverage
+pnpm test:coverage
 ```
 
-The coverage command runs the UI tests with V8 coverage, prints a summary, and
-writes an HTML report to `coverage/index.html`.
+The combined coverage command runs UI tests with V8 coverage and the Rust
+workspace with `cargo-llvm-cov`. It writes an HTML report to
+`coverage/index.html` and an LCOV report to `lcov.info`, which is read by the
+recommended Coverage Gutters VS Code extension. Use `pnpm test:ui:coverage` or
+`pnpm test:rust:coverage` for a targeted coverage run.
 Rust tests, Clippy, and Tauri builds keep Cargo artifacts in a host-triple-specific
 directory under `src-tauri/target`, so macOS builds and dev-container builds do
 not share incompatible host artifacts.
@@ -142,7 +146,7 @@ when read.
 To convert a plain-text prompt locally, provide section labels explicitly:
 
 ```sh
-pnpm template:convert -- templates/prompt.txt templates/imported.epitpl \
+  pnpm template:convert templates/prompt.txt templates/imported.epitpl \
   --name "Institutional template" --locale de-CH \
   --section diagnoses=Diagnosen --section findings=Befunde
 ```

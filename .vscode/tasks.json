@@ -76,6 +76,15 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Test Coverage",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:coverage"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Test UI",
       "type": "process",
       "command": "pnpm",
@@ -107,6 +116,15 @@
       "type": "process",
       "command": "pnpm",
       "args": ["test:rust"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test Rust Coverage",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:rust:coverage"],
       "options": { "cwd": "${workspaceFolder}" },
       "group": "test",
       "problemMatcher": []

@@ -4,6 +4,7 @@
     "esbenp.prettier-vscode",
     "svelte.svelte-vscode",
     "tauri-apps.tauri-vscode",
-    "rust-lang.rust-analyzer"
+    "rust-lang.rust-analyzer",
+    "ryanluker.vscode-coverage-gutters"
   ]
 }
