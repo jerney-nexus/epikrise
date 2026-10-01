@@ -753,6 +753,7 @@
   }
 
   function updateTemplateSection(id: string, enabled: boolean) {
+    if (policyStatus?.active && !policyStatus.allowTemplateEdit) return;
     templateSectionStates = { ...templateSectionStates, [id]: enabled };
     void invalidateOutputReview();
   }
@@ -1148,6 +1149,7 @@
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     input.value = "";
+    if (policyStatus?.active && !policyStatus.allowTemplateImport) return;
     if (!file) return;
 
     pendingTemplate = null;
@@ -2421,6 +2423,7 @@
                   type="checkbox"
                   disabled={isGenerating ||
                     isPreparingGeneration ||
+                    (policyStatus?.active && !policyStatus.allowTemplateEdit) ||
                     (templateSectionStates[section.id] === true &&
                       enabledSectionCount <= 1)}
                   checked={templateSectionStates[section.id] === true}
@@ -2433,7 +2436,14 @@
           </div>
         {/if}
 
-        <label class="template-file-label" for="template-file">
+        <label
+          class="template-file-label"
+          class:disabled={templateBusy ||
+            (policyStatus?.active && !policyStatus.allowTemplateImport)}
+          for="template-file"
+          aria-disabled={templateBusy ||
+            (policyStatus?.active && !policyStatus.allowTemplateImport)}
+        >
           {templateBusy ? t("Working...") : t("Import .epitpl")}
           {#if policyStatus?.active && !policyStatus.allowTemplateImport}
             <span class="policy-badge">{t("Administrator managed")}</span>
@@ -3703,6 +3713,17 @@
 
   .template-file-label:hover {
     background: #eaf3ec;
+  }
+
+  .template-file-label.disabled {
+    color: #78877f;
+    background: #f0f3f1;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  .template-file-label.disabled:hover {
+    background: #f0f3f1;
   }
 
   .template-file-input {
