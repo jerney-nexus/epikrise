@@ -118,6 +118,9 @@ pnpm test:ui:coverage
 
 The coverage command runs the UI tests with V8 coverage, prints a summary, and
 writes an HTML report to `coverage/index.html`.
+Rust tests, Clippy, and Tauri builds keep Cargo artifacts in a host-triple-specific
+directory under `src-tauri/target`, so macOS builds and dev-container builds do
+not share incompatible host artifacts.
 
 Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`,
 `pnpm format:check`, `pnpm check:rust:fmt` and `pnpm check:rust:clippy`.

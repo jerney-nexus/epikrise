@@ -14,7 +14,7 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - `src-tauri/crates/epikrise-ingest/`: Data extraction and ingestion.
 - `src-tauri/crates/epikrise-llm/`: Model integrations and language processing.
 - `build/`: Generated files.
-- `src-tauri/target/`: Rust build artifacts.
+- `src-tauri/target/`: Rust build artifacts, isolated by host triple.
 
 ## Global Rules
 

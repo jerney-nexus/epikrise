@@ -53,5 +53,6 @@ for target in "${targets[@]}"; do
     XWIN_SDK_VERSION="$sdk_version" \
     XWIN_CRT_VERSION="$crt_version" \
     XWIN_CROSS_COMPILER=clang-cl \
-    pnpm exec tauri build --runner cargo-xwin --target "$target"
+    bash scripts/with-cargo-host-target.sh \
+      pnpm exec tauri build --runner cargo-xwin --target "$target"
 done
