@@ -126,6 +126,22 @@
       "args": ["format:check"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Prepare Release",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["release:prepare", "${input:releaseVersion}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "releaseVersion",
+      "type": "promptString",
+      "description": "CalVer YYYY.MM.PATCH; leave blank to select the next version",
+      "default": ""
     }
   ]
 }

@@ -24,6 +24,7 @@
     "test:ui": "vitest run",
     "test:ui:coverage": "vitest run --coverage",
     "test:i18n": "vitest run tests/i18n.test.ts",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "test:rust": "cargo nextest run --manifest-path src-tauri/Cargo.toml --workspace",
     "test:rust:package": "cargo nextest run --manifest-path src-tauri/Cargo.toml --package",
     "template:convert": "node scripts/convert-prompt.mjs",

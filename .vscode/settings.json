@@ -5,6 +5,10 @@
   },
   "eslint.validate": ["javascript", "typescript", "svelte"],
   "svelte.enable-ts-plugin": true,
+  "vitest.vitestPackagePath": "node_modules/vitest/package.json",
+  "json.schemaDownload.trustedDomains": {
+    "https://schema.tauri.app/": true
+  },
   "chat.sessionSync.enabled": true,
   "rust-analyzer.runnables.test.overrideCommand": [
     "cargo",

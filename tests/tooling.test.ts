@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
 import { describe, expect, it } from "vitest";
 import {
@@ -12,7 +13,7 @@ import {
 } from "../scripts/prepare-release.mjs";
 
 const execFile = promisify(execFileCallback);
-const repoRoot = path.resolve(new URL("../", import.meta.url).pathname);
+const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 
 const windowsOcrTargets = [
   {
@@ -57,7 +58,7 @@ describe("CalVer release versions", () => {
       "",
       "- Authored release note.",
       "",
-      "[Unreleased]: https://github.com/pascaljerney/epikrise/compare/HEAD",
+      "[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/HEAD",
       "",
     ].join("\n");
     const generatedNotes = [
@@ -79,10 +80,10 @@ describe("CalVer release versions", () => {
     expect(result).toContain("- Authored release note.");
     expect(result).toContain("- Generated release note.");
     expect(result).toContain(
-      "[2026.10.1]: https://github.com/pascaljerney/epikrise/compare/v2026.10.0...v2026.10.1",
+      "[2026.10.1]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.0...v2026.10.1",
     );
     expect(result).toContain(
-      "[Unreleased]: https://github.com/pascaljerney/epikrise/compare/v2026.10.1...HEAD",
+      "[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.1...HEAD",
     );
   });
 });
@@ -269,8 +270,9 @@ describe("frontend test harness", () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-template-"));
     const inputPath = path.join(directory, "prompt.txt");
     const outputPath = path.join(directory, "converted.epitpl");
-    const scriptPath = new URL("../scripts/convert-prompt.mjs", import.meta.url)
-      .pathname;
+    const scriptPath = fileURLToPath(
+      new URL("../scripts/convert-prompt.mjs", import.meta.url),
+    );
 
     try {
       await writeFile(inputPath, "Synthetic test prompt", "utf8");
@@ -290,13 +292,12 @@ if (process.platform !== "win32") {
   describe("Windows OCR preparation", () => {
     const prepareScript = path.join(repoRoot, "scripts/prepare-ocr.sh");
 
-    it.each(windowsOcrTargets)(
-      "stages the matching PDFium and Tesseract for $target",
-      async ({ target, archive, checksum }) => {
+    for (const targetCase of windowsOcrTargets) {
+      it(`stages the matching PDFium and Tesseract for ${targetCase.target}`, async () => {
         const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-"));
         try {
-          const fixture = await createWindowsOcrFixture(directory, checksum);
-          await execFile("bash", [prepareScript, "--target", target], {
+          const fixture = await createWindowsOcrFixture(directory, targetCase.checksum);
+          await execFile("bash", [prepareScript, "--target", targetCase.target], {
             cwd: repoRoot,
             env: fixture.environment,
           });
@@ -319,22 +320,27 @@ if (process.platform !== "win32") {
           ).toBe("eng");
           expect(
             await readFile(
-              path.join(fixture.binaryDir, `tesseract-${target}.exe`),
+              path.join(fixture.binaryDir, `tesseract-${targetCase.target}.exe`),
               "utf8",
             ),
           ).toBe("fake tesseract exe");
-          expect(await readFile(fixture.curlLog, "utf8")).toContain(archive);
+          expect(await readFile(fixture.curlLog, "utf8")).toContain(targetCase.archive);
           expect(
             await readFile(
-              path.join(fixture.cacheRoot, "pdfium", target, archive),
+              path.join(
+                fixture.cacheRoot,
+                "pdfium",
+                targetCase.target,
+                targetCase.archive,
+              ),
               "utf8",
             ),
           ).toBe("fake pdfium archive");
         } finally {
           await rm(directory, { recursive: true, force: true });
         }
-      },
-    );
+      });
+    }
 
     it("invalidates a corrupt cached archive and rejects a bad download", async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-cache-"));

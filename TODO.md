@@ -2,6 +2,10 @@
 
 ## Enhancements
 
+### High Urgency
+
+- Change all identifiers from `pascaljerney` to `jerney-nexus`.
+
 ### Medium Urgency
 
 - Refine `CHANGELOG.md` for the first release with only `Added` entries.

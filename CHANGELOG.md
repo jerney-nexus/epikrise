@@ -81,4 +81,4 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 - Spaced the active-template picker away from configuration and allowed the
   template editor to clone reactive Svelte state safely.
 
-[Unreleased]: https://github.com/pascaljerney/epikrise/compare/HEAD
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/HEAD

@@ -87,7 +87,7 @@ export function createReleasedChangelog(
   const suffix = changelog.slice(bodyEnd).trimStart();
   let updated = `${prefix}${heading}\n\n${releasedSection}\n\n${suffix}`;
 
-  const baseUrl = "https://github.com/pascaljerney/epikrise/compare";
+  const baseUrl = "https://github.com/jerney-nexus/epikrise/compare";
   const versionReference = `[${version}]: ${baseUrl}/v${previousVersion}...v${version}`;
   const unreleasedReference = `[Unreleased]: ${baseUrl}/v${version}...HEAD`;
   if (!/^\[Unreleased\]:/m.test(updated)) {
@@ -114,6 +114,13 @@ async function prepareRelease(requestedVersion) {
     );
   }
 
+  const { stdout: generatedNotes } = await execFile(
+    "git-cliff",
+    ["--tag", `v${version}`],
+    { cwd: repoRoot, maxBuffer: 10 * 1024 * 1024 },
+  );
+  if (!generatedNotes.trim()) throw new Error("git-cliff generated no release notes.");
+
   packageJson.version = version;
   await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
 
@@ -137,12 +144,6 @@ async function prepareRelease(requestedVersion) {
     { cwd: repoRoot, maxBuffer: 10 * 1024 * 1024 },
   );
 
-  const { stdout: generatedNotes } = await execFile(
-    "git-cliff",
-    ["--tag", `v${version}`],
-    { cwd: repoRoot, maxBuffer: 10 * 1024 * 1024 },
-  );
-  if (!generatedNotes.trim()) throw new Error("git-cliff generated no release notes.");
   const changelogPath = path.join(repoRoot, "CHANGELOG.md");
   const changelog = await readFile(changelogPath, "utf8");
   await writeFile(
