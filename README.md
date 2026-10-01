@@ -107,7 +107,8 @@ instructions](CONTRIBUTING.md#local-setup).
 
 ## Testing
 
-Install the Rust test tools once, then run the test suites from the project root:
+The dev container installs the Rust test tools during setup. For a local setup,
+install them once, then run the test suites from the project root:
 
 ```sh
 cargo install cargo-nextest --locked

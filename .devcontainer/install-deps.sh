@@ -47,8 +47,9 @@ trap - EXIT
 sudo apt-get clean
 sudo rm -rf /var/lib/apt/lists/*
 
-rustup component add clippy rustfmt
+rustup component add clippy rustfmt llvm-tools-preview
 cargo install cargo-nextest --locked
+cargo install cargo-llvm-cov --locked
 cargo install cargo-xwin --version 0.23.1 --locked
 
 host_target="$(rustc -vV | sed -n 's/^host: //p')"
