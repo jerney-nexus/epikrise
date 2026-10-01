@@ -5,6 +5,7 @@
 ### High Urgency
 
 - Change **all** identifiers from `pascaljerney` to `jerney-nexus`.
+- Implement Rust code coverage with `cargo-llvm-cov` and `Coverage Gutters` extension in VS Code.
 
 ### Medium Urgency
 
