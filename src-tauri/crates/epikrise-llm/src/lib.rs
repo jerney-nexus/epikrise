@@ -109,6 +109,8 @@ impl std::fmt::Debug for ChatMessage {
 pub enum LlmError {
     #[error("provider profile is invalid")]
     InvalidProfile,
+    #[error("operation is restricted by administrator policy")]
+    PolicyRestricted,
     #[error("chat request is invalid")]
     InvalidRequest,
     #[error("provider authentication failed")]

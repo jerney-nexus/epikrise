@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   generation. Added redacted debug output for clinical payload types, a strict
   webview CSP, production devtools/context-menu hardening, dependency audit
   checks in CI, and administrator controls for template operations, model
-  allowlists, output-token ceilings, and reasoning effort.
+  allowlists, output-token ceilings, reasoning effort, fixed provider endpoints,
+  and credential-management controls.
 - ARM64 Linux cross-compilation for separate Windows x64 and ARM64 NSIS
   installers, with static bundled OCR and offline WebView2 installation.
 - Fluent-based German (Switzerland) and English interface localization, OS

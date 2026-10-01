@@ -277,4 +277,5 @@ ui-provider-authorization-could-not-be-recorded = Die Anbieterfreigabe konnte ni
 ui-provider-authorization-could-not-be-checked = Die Anbieterfreigabe konnte nicht geprüft werden.
 ui-url-ingestion-is-disabled-by-administrator-policy = Der URL-Import ist durch die IT-Richtlinie deaktiviert.
 ui-only-localhost-and-loopback-endpoints-are-allowed = Nur localhost- und Loopback-Endpunkte sind erlaubt.
+ui-credential-changes-are-restricted-by-administrator-policy = Änderungen an Zugangsdaten sind durch die IT-Richtlinie eingeschränkt.
 ui-this-template-action-is-restricted-by-administrator-policy = Diese Vorlagenaktion ist durch die IT-Richtlinie eingeschränkt.

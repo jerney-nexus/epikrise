@@ -128,7 +128,7 @@ export type InputProvenance = "RawText" | ({ File: {
 	address: string,
 } }) & { File?: never };
 
-export type LlmError = { key: "invalid_profile" } | { key: "invalid_request" } | { key: "authentication" } | { key: "network" } | { key: "model" } | { key: "provider_rejected"; status: number } | { key: "quota" } | { key: "cancelled" } | { key: "internal" };
+export type LlmError = { key: "invalid_profile" } | { key: "policy_restricted" } | { key: "invalid_request" } | { key: "authentication" } | { key: "network" } | { key: "model" } | { key: "provider_rejected"; status: number } | { key: "quota" } | { key: "cancelled" } | { key: "internal" };
 
 export type ModelCapabilities = {
 	vision: boolean,
@@ -166,6 +166,8 @@ export type PolicyStatus = {
 	allowedModels: AllowedModel[] | null,
 	maxOutputTokens: number | null,
 	maxReasoningEffort: ReasoningEffort | null,
+	fixedEndpoint: string | null,
+	allowCredentialManagement: boolean,
 	permissionsWarning: boolean,
 };
 

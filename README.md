@@ -219,7 +219,10 @@ by provider, for example `[{ adapter = "ollama", model = "llama3.2" }]`;
 omitting it allows every model under the provider policy. `max_output_tokens`
 sets a hard ceiling on generated output tokens. `max_reasoning_effort` caps the
 selected reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `x_high`,
-or `max`); a provider-default selection is also capped. The review gate remains
+or `max`); a provider-default selection is also capped. `fixed_endpoint` forces
+all provider operations to use one validated HTTP(S) endpoint, overriding the
+endpoint entered in settings. `allow_credential_management = false` prevents
+adding or removing credentials from the OS keychain. The review gate remains
 mandatory even if a policy sets `require_review_gate = false`.
 
 The webview CSP restricts network connections to Tauri IPC. The app does not

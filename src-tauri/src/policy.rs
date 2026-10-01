@@ -33,6 +33,10 @@ pub struct EgressPolicy {
     pub max_output_tokens: Option<u32>,
     #[serde(default)]
     pub max_reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default)]
+    pub fixed_endpoint: Option<String>,
+    #[serde(default = "allow_by_default")]
+    pub allow_credential_management: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
@@ -56,6 +60,8 @@ impl Default for EgressPolicy {
             allowed_models: None,
             max_output_tokens: None,
             max_reasoning_effort: None,
+            fixed_endpoint: None,
+            allow_credential_management: true,
         }
     }
 }
@@ -75,6 +81,8 @@ pub struct PolicyStatus {
     pub allowed_models: Option<Vec<AllowedModel>>,
     pub max_output_tokens: Option<u32>,
     pub max_reasoning_effort: Option<ReasoningEffort>,
+    pub fixed_endpoint: Option<String>,
+    pub allow_credential_management: bool,
     pub permissions_warning: bool,
 }
 
@@ -120,7 +128,8 @@ impl LoadedPolicy {
         }
         let permissions_warning = !administrator_controls_file(path, &metadata);
         let contents = fs::read_to_string(path).map_err(PolicyLoadError::InspectFailed)?;
-        let policy: EgressPolicy = toml::from_str(&contents).map_err(PolicyLoadError::Malformed)?;
+        let mut policy: EgressPolicy =
+            toml::from_str(&contents).map_err(PolicyLoadError::Malformed)?;
         if policy.max_output_tokens == Some(0)
             || policy
                 .allowed_models
@@ -128,6 +137,17 @@ impl LoadedPolicy {
                 .is_some_and(|models| models.iter().any(|model| model.model.trim().is_empty()))
         {
             return Err(PolicyLoadError::InvalidPolicy);
+        }
+        if let Some(endpoint) = policy.fixed_endpoint.as_deref() {
+            let parsed = url::Url::parse(endpoint).map_err(|_| PolicyLoadError::InvalidPolicy)?;
+            if !matches!(parsed.scheme(), "http" | "https")
+                || parsed.host_str().is_none()
+                || !parsed.username().is_empty()
+                || parsed.password().is_some()
+            {
+                return Err(PolicyLoadError::InvalidPolicy);
+            }
+            policy.fixed_endpoint = Some(parsed.to_string());
         }
         Ok(Self::from_policy(policy, true, permissions_warning))
     }
@@ -146,6 +166,8 @@ impl LoadedPolicy {
             allowed_models: policy.allowed_models.clone(),
             max_output_tokens: policy.max_output_tokens,
             max_reasoning_effort: policy.max_reasoning_effort,
+            fixed_endpoint: policy.fixed_endpoint.clone(),
+            allow_credential_management: policy.allow_credential_management,
             permissions_warning,
         };
         Self { policy, status }
@@ -204,6 +226,16 @@ impl LoadedPolicy {
                 .unwrap_or(max_effort);
             profile.generation.reasoning_effort = Some(capped);
         }
+    }
+
+    pub fn apply_fixed_endpoint(&self, profile: &mut ProviderProfile) {
+        if let Some(endpoint) = &self.policy.fixed_endpoint {
+            profile.endpoint = Some(endpoint.clone());
+        }
+    }
+
+    pub fn allows_credential_management(&self) -> bool {
+        self.policy.allow_credential_management
     }
 
     pub fn requires_egress_confirmation(&self, profile: &ProviderProfile) -> bool {
@@ -520,6 +552,49 @@ mod tests {
         let path = directory.path().join("policy.toml");
         fs::write(&path, "max_output_tokens = 0\n").expect("test policy should be written");
         assert!(LoadedPolicy::load_from(&path).is_err());
+    }
+
+    #[test]
+    fn fixed_endpoint_overrides_provider_profiles_and_can_disable_credentials() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let policy = load_policy(
+            directory.path(),
+            "fixed_endpoint = 'https://gateway.example/v1'\nallow_credential_management = false\n",
+        );
+        let mut configured = profile(
+            ProviderAdapter::OpenAiCompatible,
+            Some("https://user.example/v1"),
+        );
+
+        policy.apply_fixed_endpoint(&mut configured);
+
+        assert_eq!(
+            configured.endpoint.as_deref(),
+            Some("https://gateway.example/v1")
+        );
+        assert!(!policy.allows_credential_management());
+        assert_eq!(
+            policy.status.fixed_endpoint.as_deref(),
+            Some("https://gateway.example/v1")
+        );
+        assert!(!policy.status.allow_credential_management);
+    }
+
+    #[test]
+    fn fixed_endpoint_rejects_invalid_schemes_and_inline_credentials() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        for (index, endpoint) in [
+            "file:///etc/passwd",
+            "https://user:secret@gateway.example/v1",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let path = directory.path().join(format!("policy-{index}.toml"));
+            fs::write(&path, format!("fixed_endpoint = '{endpoint}'\n"))
+                .expect("test policy should be written");
+            assert!(LoadedPolicy::load_from(&path).is_err());
+        }
     }
 
     #[test]

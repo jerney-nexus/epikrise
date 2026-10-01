@@ -46,6 +46,8 @@
     allowedModels: AllowedModel[] | null;
     maxOutputTokens: number | null;
     maxReasoningEffort: ReasoningEffort | null;
+    fixedEndpoint: string | null;
+    allowCredentialManagement: boolean;
     permissionsWarning: boolean;
   };
 
@@ -76,6 +78,7 @@
     quota: "The provider quota was exceeded.",
     cancelled: "Generation was cancelled.",
     internal: "The request could not be completed.",
+    policy_restricted: "Credential changes are restricted by administrator policy.",
   };
 
   const templateErrorMessages: Record<TemplateError["key"], string> = {
@@ -259,7 +262,9 @@
       adapter,
       model: model.trim(),
       endpoint:
-        endpoint.trim() || (adapter === "ollama" ? "http://localhost:11434" : null),
+        policyStatus?.active && policyStatus.fixedEndpoint !== null
+          ? policyStatus.fixedEndpoint
+          : endpoint.trim() || (adapter === "ollama" ? "http://localhost:11434" : null),
       auth: keychainId
         ? { source: "keychain", credential_id: keychainId }
         : { source: "none" },
@@ -277,6 +282,9 @@
     selectedAdapter: ProviderAdapter,
     configuredEndpoint: string,
   ): string {
+    if (policyStatus?.active && policyStatus.fixedEndpoint !== null) {
+      return policyStatus.fixedEndpoint;
+    }
     if (configuredEndpoint.trim()) return configuredEndpoint.trim();
     const defaults: Record<ProviderAdapter, string> = {
       open_ai: "https://api.openai.com/v1",
@@ -347,6 +355,19 @@
   function applyPolicyStatus(status: PolicyStatus) {
     policyStatus = status;
     if (!status.active) return;
+    if (status.fixedEndpoint !== null) {
+      endpoint = status.fixedEndpoint;
+      availableModels = [];
+      modelsForProfile = "";
+      connectionState = "idle";
+      connectionMessage = "";
+    }
+    if (!status.allowCredentialManagement) {
+      credentialRemovalPending = false;
+      credentialSecret = "";
+      newCredentialLabel = "";
+      addCredentialDialog?.close();
+    }
     if (
       status.maxOutputTokens !== null &&
       typeof outputTokenLimit === "number" &&
@@ -795,6 +816,7 @@
   }
 
   function openAddCredential() {
+    if (policyStatus?.active && !policyStatus.allowCredentialManagement) return;
     newCredentialLabel = "";
     credentialSecret = "";
     credentialMessage = "";
@@ -1373,6 +1395,12 @@
 
   async function saveProviderCredential() {
     const label = newCredentialLabel.trim();
+    if (policyStatus?.active && !policyStatus.allowCredentialManagement) {
+      credentialSecret = "";
+      credentialMessage = "Credential changes are restricted by administrator policy.";
+      credentialIsError = true;
+      return;
+    }
     if (!desktopAvailable || !label || !credentialSecret.trim()) {
       credentialMessage = !desktopAvailable
         ? "Credentials can only be added in the desktop app."
@@ -1413,6 +1441,7 @@
 
   async function deleteProviderCredential() {
     const keychainId = selectedCredential?.id ?? "";
+    if (policyStatus?.active && !policyStatus.allowCredentialManagement) return;
     if (!desktopAvailable || !keychainId || credentialBusy) return;
 
     credentialBusy = true;
@@ -1714,7 +1743,7 @@
 
         <label for="endpoint">
           {t("Endpoint")}
-          {#if policyStatus?.active && policyStatus.localOnly}
+          {#if policyStatus?.active && (policyStatus.localOnly || policyStatus.fixedEndpoint !== null)}
             <span class="policy-badge">{t("Administrator managed")}</span>
           {/if}
         </label>
@@ -1723,6 +1752,7 @@
           bind:value={endpoint}
           autocomplete="url"
           spellcheck="false"
+          disabled={policyStatus?.active && policyStatus.fixedEndpoint !== null}
           placeholder={adapter === "ollama"
             ? "http://localhost:11434"
             : t("Provider default")}
@@ -1733,7 +1763,12 @@
           </p>
         {/if}
 
-        <label for="provider-credential">{t("Provider credential")}</label>
+        <label for="provider-credential">
+          {t("Provider credential")}
+          {#if policyStatus?.active && !policyStatus.allowCredentialManagement}
+            <span class="policy-badge">{t("Administrator managed")}</span>
+          {/if}
+        </label>
         <select
           id="provider-credential"
           bind:value={credentialId}
@@ -1750,7 +1785,10 @@
             class="connection-button"
             type="button"
             onclick={openAddCredential}
-            disabled={!desktopAvailable || credentialBusy || isGenerating}
+            disabled={!desktopAvailable ||
+              credentialBusy ||
+              isGenerating ||
+              (policyStatus?.active && !policyStatus.allowCredentialManagement)}
           >
             {t("Add provider credential")}
           </button>
@@ -1758,7 +1796,9 @@
             class="credential-remove-button"
             type="button"
             onclick={() => (credentialRemovalPending = true)}
-            disabled={!selectedCredential || credentialBusy}
+            disabled={!selectedCredential ||
+              credentialBusy ||
+              (policyStatus?.active && !policyStatus.allowCredentialManagement)}
           >
             {t("Remove provider credential")}
           </button>
@@ -1779,7 +1819,8 @@
                 class="credential-remove-button"
                 type="button"
                 onclick={deleteProviderCredential}
-                disabled={credentialBusy}
+                disabled={credentialBusy ||
+                  (policyStatus?.active && !policyStatus.allowCredentialManagement)}
               >
                 {credentialBusy ? t("Removing...") : t("Confirm removal")}
               </button>
@@ -1905,7 +1946,8 @@
           autocomplete="off"
           maxlength="109"
           required
-          disabled={credentialBusy}
+          disabled={credentialBusy ||
+            (policyStatus?.active && !policyStatus.allowCredentialManagement)}
         />
         <label for="credential-secret">{t("API key")}</label>
         <input
@@ -1915,14 +1957,20 @@
           autocomplete="new-password"
           spellcheck="false"
           required
-          disabled={credentialBusy}
+          disabled={credentialBusy ||
+            (policyStatus?.active && !policyStatus.allowCredentialManagement)}
         />
         {#if credentialMessage}
           <p class="model-list-message" class:error={credentialIsError} role="status">
             {t(credentialMessage)}
           </p>
         {/if}
-        <button class="connection-button" type="submit" disabled={credentialBusy}>
+        <button
+          class="connection-button"
+          type="submit"
+          disabled={credentialBusy ||
+            (policyStatus?.active && !policyStatus.allowCredentialManagement)}
+        >
           {credentialBusy ? t("Saving...") : t("Add credential")}
         </button>
       </form>

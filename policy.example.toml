@@ -8,6 +8,10 @@ require_review_gate = true
 allow_template_import = true
 allow_template_export = true
 allow_template_edit = true
+allow_credential_management = false
+
+# Optional endpoint enforced for all provider operations.
+# fixed_endpoint = "http://localhost:11434"
 
 # Optional exact model allowlist. Omit the field to allow every model from the
 # permitted providers. Each model is scoped to one provider adapter.

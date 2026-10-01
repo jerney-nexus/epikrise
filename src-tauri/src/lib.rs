@@ -626,7 +626,7 @@ fn get_policy_status(policy: State<'_, PolicyState>) -> Result<PolicyStatus, Llm
 #[specta::specta]
 fn authorize_provider_egress(
     case_id: String,
-    profile: ProviderProfile,
+    mut profile: ProviderProfile,
     confirmed: bool,
     policy: State<'_, PolicyState>,
     confirmations: State<'_, EgressConfirmationRegistry>,
@@ -634,6 +634,7 @@ fn authorize_provider_egress(
     let case_id = uuid::Uuid::parse_str(&case_id)
         .map_err(|_| LlmError::InvalidRequest)?
         .to_string();
+    policy.0.apply_fixed_endpoint(&mut profile);
     if !policy.0.allows_provider(&profile) || !policy.0.allows_model(&profile) {
         return Err(LlmError::InvalidProfile);
     }
@@ -727,9 +728,10 @@ fn extract_image(
 #[tauri::command]
 #[specta::specta]
 async fn test_provider(
-    profile: ProviderProfile,
+    mut profile: ProviderProfile,
     policy: State<'_, PolicyState>,
 ) -> Result<Vec<String>, LlmError> {
+    policy.0.apply_fixed_endpoint(&mut profile);
     if !policy.0.allows_provider(&profile) || !policy.0.allows_model(&profile) {
         return Err(LlmError::InvalidProfile);
     }
@@ -740,9 +742,10 @@ async fn test_provider(
 #[tauri::command]
 #[specta::specta]
 async fn list_models(
-    profile: ProviderProfile,
+    mut profile: ProviderProfile,
     policy: State<'_, PolicyState>,
 ) -> Result<Vec<String>, LlmError> {
+    policy.0.apply_fixed_endpoint(&mut profile);
     if !policy.0.allows_provider(&profile) {
         return Err(LlmError::InvalidProfile);
     }
@@ -763,7 +766,12 @@ fn set_provider_credential(
     adapter: ProviderAdapter,
     label: String,
     mut secret: String,
+    policy: State<'_, PolicyState>,
 ) -> Result<CredentialSummary, LlmError> {
+    if !policy.0.allows_credential_management() {
+        secret.zeroize();
+        return Err(LlmError::PolicyRestricted);
+    }
     let result = credential_account_id(&adapter, &label).and_then(|credential_id| {
         KeyringCredentialStore.set(&credential_id, &secret)?;
         Ok(CredentialSummary {
@@ -778,7 +786,13 @@ fn set_provider_credential(
 
 #[tauri::command]
 #[specta::specta]
-fn delete_provider_credential(credential_id: String) -> Result<(), LlmError> {
+fn delete_provider_credential(
+    credential_id: String,
+    policy: State<'_, PolicyState>,
+) -> Result<(), LlmError> {
+    if !policy.0.allows_credential_management() {
+        return Err(LlmError::PolicyRestricted);
+    }
     KeyringCredentialStore.delete(&credential_id)
 }
 
@@ -893,6 +907,7 @@ async fn generate(
     {
         return Err(LlmError::InvalidRequest);
     }
+    policy.0.apply_fixed_endpoint(&mut profile);
     if !policy.0.allows_provider(&profile) || !policy.0.allows_model(&profile) {
         return Err(LlmError::InvalidProfile);
     }
