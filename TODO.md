@@ -1,7 +1,5 @@
 # TODO
 
-## Bugs
-
 ## Enhancements
 
 ### Medium Urgency

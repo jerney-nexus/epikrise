@@ -208,6 +208,15 @@
       outputTokenLimit >= 1 &&
       outputTokenLimit <= maxOutputTokenLimit,
   );
+  const outputTokenLimitIssue = $derived.by(() => {
+    if (isOutputTokenLimitValid) return "";
+    return policyStatus?.active &&
+      policyStatus.maxOutputTokens !== null &&
+      typeof outputTokenLimit === "number" &&
+      outputTokenLimit > maxOutputTokenLimit
+      ? "Output token limit exceeds administrator policy."
+      : "Set an output token limit between 1 and 1,000,000.";
+  });
   const canCopyOutput = $derived(
     Boolean(
       draft &&
@@ -249,14 +258,7 @@
     if (!isCurrentModelAllowed) {
       return "Selected model is not allowed by administrator policy.";
     }
-    if (!isOutputTokenLimitValid) {
-      return policyStatus?.active &&
-        policyStatus.maxOutputTokens !== null &&
-        typeof outputTokenLimit === "number" &&
-        outputTokenLimit > maxOutputTokenLimit
-        ? "Output token limit exceeds administrator policy."
-        : "Set an output token limit between 1 and 1,000,000.";
-    }
+    if (outputTokenLimitIssue) return outputTokenLimitIssue;
     return "";
   });
   const credentialsForProvider = $derived(
@@ -407,8 +409,8 @@
     const maximumEffort = status.maxReasoningEffort;
     if (
       maximumEffort !== null &&
-      (reasoningEffort === "provider_default" ||
-        reasoningEffortRank(reasoningEffort) > reasoningEffortRank(maximumEffort))
+      reasoningEffort !== "provider_default" &&
+      reasoningEffortRank(reasoningEffort) > reasoningEffortRank(maximumEffort)
     ) {
       reasoningEffort = maximumEffort;
     }
@@ -2196,13 +2198,20 @@
           max={maxOutputTokenLimit}
           step="1"
           required
-          aria-describedby="output-token-limit-hint"
+          aria-describedby={outputTokenLimitIssue
+            ? "output-token-limit-hint output-token-limit-error"
+            : "output-token-limit-hint"}
           aria-invalid={!isOutputTokenLimitValid}
           disabled={isGenerating || isPreparingGeneration}
         />
         <p id="output-token-limit-hint" class="setting-hint">
           {t("token-limit-hint")}
         </p>
+        {#if outputTokenLimitIssue}
+          <p id="output-token-limit-error" class="generation-status error" role="alert">
+            {t(outputTokenLimitIssue)}
+          </p>
+        {/if}
 
         <label for="reasoning-effort">
           {t("Reasoning effort")}
@@ -3041,7 +3050,7 @@
                 {isPreparingGeneration ? t("Preparing...") : t("Generate draft")}
               </button>
             {/if}
-            {#if generationConfigurationIssue}
+            {#if generationConfigurationIssue && generationConfigurationIssue !== outputTokenLimitIssue}
               <p class="generation-status error" role="alert">
                 {t(generationConfigurationIssue)}
               </p>

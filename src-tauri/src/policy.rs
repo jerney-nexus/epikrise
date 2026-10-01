@@ -218,15 +218,14 @@ impl LoadedPolicy {
                     .map_or(max_tokens, |tokens| tokens.min(max_tokens)),
             );
         }
-        if let Some(max_effort) = self.policy.max_reasoning_effort {
-            if profile
+        if let Some(max_effort) = self.policy.max_reasoning_effort
+            && profile
                 .generation
                 .reasoning_effort
                 .as_ref()
                 .is_some_and(|requested| reasoning_rank(requested) > reasoning_rank(&max_effort))
-            {
-                profile.generation.reasoning_effort = Some(max_effort);
-            }
+        {
+            profile.generation.reasoning_effort = Some(max_effort);
         }
     }
 
