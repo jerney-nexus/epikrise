@@ -78,13 +78,41 @@ pnpm install
 pnpm tauri dev
 ```
 
-To produce installers for the current platform:
+### macOS Installers
+
+Build on macOS after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+and Tesseract with German and English language data. See [Local setup in
+CONTRIBUTING.md](CONTRIBUTING.md#local-setup) for OCR setup details:
 
 ```sh
 pnpm tauri build
 ```
 
-## Windows Installers
+This creates the macOS app and disk image in
+`src-tauri/target/host-<host-triple>/release/bundle/`.
+
+### Linux Installers
+
+Build on Linux after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),
+Tesseract, and German and English language data. The dev container includes
+these dependencies. Run:
+
+```sh
+pnpm tauri build
+```
+
+This creates AppImage, Debian (`.deb`), and RPM packages under
+`src-tauri/target/host-<host-triple>/release/bundle/`.
+
+### Windows Installers
+
+#### Local Windows build
+
+Native Windows installer builds are not currently supported by the repository
+scripts. The bundled Tesseract OCR sidecar is cross-compiled on Linux ARM64, so
+use the dev container instructions below.
+
+#### Dev container build
 
 From the ARM64 Linux dev container, run `pnpm windows:setup` once and review
 the Microsoft SDK/CRT license when prompted. Then build one architecture or both
