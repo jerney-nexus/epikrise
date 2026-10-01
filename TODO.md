@@ -4,7 +4,7 @@
 
 ### Medium Urgency
 
-- Add support for native Windows build
+- Add support for native Windows build and a Linux x64 host build.
 - Refine `CHANGELOG.md` for the first release with only `Added` entries.
 - Search the institutional template for output rules and patterns.
 - Use MiniJinja placeholders in the institutional template.
