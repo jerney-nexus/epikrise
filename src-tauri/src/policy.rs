@@ -96,7 +96,7 @@ pub enum PolicyLoadError {
     UnsafeFile,
     #[error("policy contains an invalid restriction")]
     InvalidPolicy,
-    #[error("policy file is malformed")]
+    #[error("policy file is malformed: {0}")]
     Malformed(#[source] toml::de::Error),
 }
 
@@ -388,7 +388,7 @@ fn is_local_endpoint(profile: &ProviderProfile) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::LoadedPolicy;
+    use super::{LoadedPolicy, PolicyLoadError};
     use epikrise_llm::{
         AuthSource, GenerationParams, ModelCapabilities, ProviderAdapter, ProviderProfile,
     };
@@ -458,7 +458,10 @@ mod tests {
         let directory = tempfile::tempdir().expect("temporary directory should be created");
         let malformed = directory.path().join("malformed.toml");
         fs::write(&malformed, "local_only = [").expect("test policy should be written");
-        assert!(LoadedPolicy::load_from(&malformed).is_err());
+        assert!(matches!(
+            LoadedPolicy::load_from(&malformed),
+            Err(PolicyLoadError::Malformed(_))
+        ));
 
         #[cfg(unix)]
         {

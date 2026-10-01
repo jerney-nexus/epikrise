@@ -1258,6 +1258,15 @@ fn render_pdf_pages_for_vision(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<(), tauri::Error> {
     let policy = LoadedPolicy::load().map_err(|error| {
+        let message = format!(
+            "Epikrise could not start because the administrator policy file (policy.toml) could not be loaded.\n\n{error}\n\nCorrect the policy file and restart Epikrise."
+        );
+        let _ = rfd::MessageDialog::new()
+            .set_title("Epikrise could not start")
+            .set_description(message)
+            .set_level(rfd::MessageLevel::Error)
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
         let setup_error: Box<dyn std::error::Error> = Box::new(error);
         tauri::Error::Setup(setup_error.into())
     })?;

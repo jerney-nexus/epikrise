@@ -339,6 +339,17 @@
     );
   }
 
+  function selectAllowedModelForAdapter() {
+    if (isModelAllowed(adapter, model)) return;
+    const firstAllowedModel = policyStatus?.allowedModels?.find(
+      (allowed) => allowed.adapter === adapter,
+    )?.model;
+    if (!firstAllowedModel) return;
+    model = firstAllowedModel;
+    availableModels = [];
+    modelsForProfile = "";
+  }
+
   function reasoningEffortRank(effort: ReasoningEffort): number {
     return ["none", "minimal", "low", "medium", "high", "x_high", "max"].indexOf(
       effort,
@@ -368,6 +379,7 @@
       newCredentialLabel = "";
       addCredentialDialog?.close();
     }
+    selectAllowedModelForAdapter();
     if (
       status.maxOutputTokens !== null &&
       typeof outputTokenLimit === "number" &&
@@ -1336,9 +1348,32 @@
       return;
     }
 
-    const requestedProfileKey = modelProfileKey;
     connectionState = "checking";
     connectionMessage = "";
+    if (policyStatus === null) {
+      try {
+        const result = await commands.getPolicyStatus();
+        if (result.status === "error") {
+          connectionState = "error";
+          connectionMessage = formatError(result.error);
+          return;
+        }
+        applyPolicyStatus(result.data);
+      } catch {
+        connectionState = "error";
+        connectionMessage = "The connection check failed.";
+        return;
+      }
+    }
+    selectAllowedModelForAdapter();
+    if (!(await loadProviderCredentials())) {
+      connectionState = "error";
+      connectionMessage =
+        credentialMessage || "Saved provider credentials could not be loaded.";
+      return;
+    }
+
+    const requestedProfileKey = modelProfileKey;
     try {
       const result = await commands.testProvider(createProfile());
       if (requestedProfileKey !== modelProfileKey) return;

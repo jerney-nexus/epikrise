@@ -99,6 +99,7 @@ toml = { workspace = true }
 pdfium-render = { workspace = true }
 tempfile = { workspace = true }
 image = { workspace = true }
+rfd = { version = "0.16", default-features = false, features = ["gtk3"] }
 tokio-util = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
