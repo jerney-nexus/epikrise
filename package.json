@@ -23,6 +23,8 @@
     "lint": "eslint . --max-warnings 0",
     "test": "pnpm test:ui && pnpm test:i18n && pnpm test:rust",
     "test:coverage": "pnpm test:ui:coverage && pnpm test:rust:coverage",
+    "test:e2e": "playwright test",
+    "test:a11y": "playwright test --grep @a11y",
     "test:ui": "vitest run",
     "test:ui:coverage": "vitest run --coverage",
     "test:i18n": "vitest run tests/i18n.test.ts",
@@ -51,8 +53,10 @@
     "markdown-it": "^15.0.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
     "@iarna/toml": "^2.2.5",
+    "@playwright/test": "^1.63.0",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.65.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFile as execFileCallback } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -8,8 +8,12 @@ import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
 import { describe, expect, it } from "vitest";
 import {
+  assertStoreVersionAdvances,
   createReleasedChangelog,
+  deriveReleaseVersions,
   nextCalverVersion,
+  prepareReleaseBuildInputs,
+  releaseVersionFromProtocolVersion,
   validateCalverVersion,
 } from "../scripts/prepare-release.mjs";
 import {
@@ -55,6 +59,103 @@ describe("CalVer release versions", () => {
     expect(() =>
       nextCalverVersion("2026.10.0", new Date("2026-09-30T12:00:00Z")),
     ).toThrow();
+  });
+
+  it.each([
+    ["2026.01.0", "2026.1.0", "26.1.0", "2026.1.0.0"],
+    ["2026.09.4", "2026.9.4", "26.9.4", "2026.9.4.0"],
+    ["2026.10.0", "2026.10.0", "26.10.0", "2026.10.0.0"],
+    ["2027.01.0", "2027.1.0", "27.1.0", "2027.1.0.0"],
+  ])(
+    "derives bounded protocol/package versions from %s without changing its tag",
+    (releaseVersion, protocolVersion, msiVersion, msixVersion) => {
+      expect(deriveReleaseVersions(releaseVersion)).toEqual({
+        releaseVersion,
+        updateProtocolVersion: protocolVersion,
+        msiProductVersion: msiVersion,
+        msixIdentityVersion: msixVersion,
+      });
+      expect(releaseVersionFromProtocolVersion(protocolVersion)).toBe(releaseVersion);
+    },
+  );
+
+  it("rejects unrepresentable installer versions and Store downgrades", () => {
+    expect(() => deriveReleaseVersions("1999.12.0")).toThrow("MSI");
+    expect(() => deriveReleaseVersions("2256.01.0")).toThrow("MSI");
+    expect(() => deriveReleaseVersions("2026.01.65536")).toThrow("65535");
+    expect(() => releaseVersionFromProtocolVersion("2026.00.0")).toThrow();
+    expect(() => releaseVersionFromProtocolVersion("2026.09.0")).toThrow();
+    expect(() => releaseVersionFromProtocolVersion("0001.1.0")).toThrow();
+    expect(() => releaseVersionFromProtocolVersion("2026.1.65536")).toThrow();
+    expect(assertStoreVersionAdvances("2026.10.0", "2026.9.4.0")).toBe("2026.10.0.0");
+    expect(() => assertStoreVersionAdvances("2026.09.4", "2026.9.4.0")).toThrow(
+      "must be greater",
+    );
+    expect(() => assertStoreVersionAdvances("2026.10.0", "2026.9.65536.0")).toThrow(
+      "Invalid published Store version",
+    );
+  });
+
+  it("normalizes only disposable Cargo and Tauri inputs for padded-month builds", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-release-inputs-"));
+    const tauriDirectory = path.join(directory, "src-tauri");
+    const sourcePackage = JSON.parse(
+      await readFile(path.join(repoRoot, "package.json"), "utf8"),
+    );
+
+    try {
+      await expect(prepareReleaseBuildInputs(repoRoot)).rejects.toThrow(
+        "disposable workspace",
+      );
+      await cp(
+        path.join(repoRoot, "package.json"),
+        path.join(directory, "package.json"),
+      );
+      await cp(path.join(repoRoot, "src-tauri"), tauriDirectory, {
+        recursive: true,
+        filter: (source) =>
+          !["target", "resources", "binaries", "gen", "WixTools"].some((excluded) =>
+            source.split(path.sep).includes(excluded),
+          ),
+      });
+
+      const packagePath = path.join(directory, "package.json");
+      const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+      packageJson.version = "2026.09.4";
+      await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+
+      const cargoManifestPath = path.join(tauriDirectory, "Cargo.toml");
+      const cargoManifest = (await readFile(cargoManifestPath, "utf8")).replaceAll(
+        sourcePackage.version,
+        "2026.09.4",
+      );
+      await writeFile(cargoManifestPath, cargoManifest);
+      const tauriConfigPath = path.join(tauriDirectory, "tauri.conf.json");
+      const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
+      tauriConfig.version = "2026.09.4";
+      await writeFile(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`);
+
+      await expect(prepareReleaseBuildInputs(directory)).resolves.toMatchObject({
+        releaseVersion: "2026.09.4",
+        updateProtocolVersion: "2026.9.4",
+      });
+      expect(TOML.parse(await readFile(cargoManifestPath, "utf8"))).toMatchObject({
+        package: { version: "2026.9.4" },
+        workspace: { package: { version: "2026.9.4" } },
+      });
+      expect(JSON.parse(await readFile(tauriConfigPath, "utf8"))).toMatchObject({
+        version: "2026.9.4",
+        bundle: { windows: { wix: { version: "26.9.4" } } },
+      });
+      expect(
+        JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8")).version,
+      ).toBe(sourcePackage.version);
+      expect(
+        await readFile(path.join(repoRoot, "src-tauri/Cargo.toml"), "utf8"),
+      ).toContain(`version = "${sourcePackage.version}"`);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("moves unreleased and generated notes into a dated release section", () => {

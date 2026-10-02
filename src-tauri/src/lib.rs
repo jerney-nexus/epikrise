@@ -28,6 +28,11 @@ use sha2::{Digest, Sha256};
 
 mod policy;
 use policy::{LoadedPolicy, PolicyState, PolicyStatus, egress_key};
+mod updater;
+use updater::{
+    UpdateInstallGate, UpdateProgress, UpdaterState, check_for_update, get_update_settings,
+    install_update, set_update_enabled,
+};
 
 static PDFIUM: OnceLock<Result<Pdfium, ()>> = OnceLock::new();
 const MAX_PDF_VISION_PAGES: usize = 12;
@@ -482,7 +487,11 @@ fn create_case_session(
     id: String,
     template_id: String,
     sessions: State<'_, CaseSessionRegistry>,
+    update_gate: State<'_, UpdateInstallGate>,
 ) -> Result<CaseSession, LlmError> {
+    let _permit = update_gate
+        .try_enter()
+        .map_err(|_| LlmError::PolicyRestricted)?;
     let id = uuid::Uuid::parse_str(&id)
         .map_err(|_| LlmError::InvalidRequest)?
         .to_string();
@@ -877,6 +886,7 @@ async fn generate(
     app: AppHandle,
     registry: State<'_, GenerationRegistry>,
     sessions: State<'_, CaseSessionRegistry>,
+    update_gate: State<'_, UpdateInstallGate>,
     policy: State<'_, PolicyState>,
     confirmations: State<'_, EgressConfirmationRegistry>,
     request: GenerateRequest,
@@ -907,6 +917,9 @@ async fn generate(
     {
         return Err(LlmError::InvalidRequest);
     }
+    let update_permit = update_gate
+        .try_enter()
+        .map_err(|_| LlmError::PolicyRestricted)?;
     policy.0.apply_fixed_endpoint(&mut profile);
     if !policy.0.allows_provider(&profile) || !policy.0.allows_model(&profile) {
         return Err(LlmError::InvalidProfile);
@@ -973,6 +986,7 @@ async fn generate(
             }
         }
     };
+    drop(update_permit);
 
     let client = GenaiLlmClient::new(std::sync::Arc::new(KeyringCredentialStore));
     let app_for_deltas = app.clone();
@@ -1294,13 +1308,28 @@ pub fn run() -> Result<(), tauri::Error> {
             set_case_review,
             set_provider_credential,
             test_provider,
-            validate_template
+            validate_template,
+            check_for_update,
+            get_update_settings,
+            install_update,
+            set_update_enabled
         ])
         .events(collect_events![
             GenerationDelta,
             GenerationDone,
-            GenerationError
+            GenerationError,
+            UpdateProgress
         ]);
+
+    let app_builder = tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_shell::init());
+    #[cfg(feature = "direct-release-updater")]
+    let app_builder = app_builder.plugin(
+        tauri_plugin_updater::Builder::new()
+            .pubkey(option_env!("TAURI_UPDATER_PUBLIC_KEY").unwrap_or("unconfigured"))
+            .build(),
+    );
 
     #[cfg(debug_assertions)]
     builder
@@ -1312,15 +1341,15 @@ pub fn run() -> Result<(), tauri::Error> {
             tauri::Error::Setup(setup_error.into())
         })?;
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_shell::init())
+    app_builder
         .manage(CaseSessionRegistry::default())
         .manage(GenerationRegistry::default())
         .manage(EgressConfirmationRegistry::default())
+        .manage(UpdateInstallGate::default())
         .manage(PolicyState(policy))
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
+            app.manage(UpdaterState::load(app.handle()));
             builder.mount_events(app);
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {

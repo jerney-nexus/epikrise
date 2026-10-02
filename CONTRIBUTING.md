@@ -188,6 +188,21 @@ cargo install cargo-llvm-cov --locked
 `pnpm test:rust`, and `cargo-llvm-cov` plus `llvm-tools-preview` are required
 for Rust coverage.
 
+### Browser tests
+
+Run the Playwright suite and its focused accessibility selection with:
+
+```sh
+pnpm test:e2e
+pnpm test:a11y
+```
+
+The tests use synthetic IPC, event, and clipboard fixtures and reject
+unexpected external requests. Never add real or realistic clinical data to a
+browser fixture. If Chromium is not installed locally, run
+`pnpm exec playwright install chromium`. Browser mocks verify UI behavior, not
+native Rust policy enforcement, updater signatures, or platform installation.
+
 Lint levels live in `[workspace.lints]` in src-tauri/Cargo.toml. Tests are
 exempted from the panic and printing rules via `src-tauri/clippy.toml`.
 
@@ -201,6 +216,26 @@ To prepare a release, run the **Release preparation** workflow from the GitHub
 Actions tab. Enter a `YYYY.MM.PATCH` version or leave it blank to select the
 next CalVer version. The workflow updates npm, Cargo, and Tauri metadata,
 generates release notes, and opens a pull request for review.
+
+### Release and update readiness
+
+Keep the padded `YYYY.MM.PATCH` release identity unchanged. If Cargo, Tauri, an
+installer, or updater protocol requires another representation, derive it only
+for that build or package input; do not migrate committed versions or release
+tags. The six-target Desktop builds workflow remains an unsigned diagnostic
+contract and does not publish releases.
+
+Updater support is currently plumbing, not a production release channel. The
+default Tauri configuration leaves it disabled; the separate
+`src-tauri/tauri.release.conf.json` enables updater artifacts but still uses
+the `unconfigured` public-key placeholder. Do not distribute updater-enabled
+artifacts until the key is securely provisioned, the public key is configured,
+and the release workflow verifies target-specific payload signatures. Never
+generate or replace a production key in CI, commit private signing material,
+or treat a Tauri update signature as platform publisher signing. Store
+delivery is a separate Microsoft-certified channel. Native installation and
+update acceptance remains required for each supported target; see
+[`TODO.md`](TODO.md) for outstanding gates.
 
 ## Localization
 

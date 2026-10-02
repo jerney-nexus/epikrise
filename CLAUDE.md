@@ -4,4 +4,5 @@
 
 ## Claude Code Testing
 
-- Run Rust and UI/internationalization tests from the terminal using the test scripts listed in the shared instructions.
+- Run Rust, UI/internationalization, and Playwright browser tests from the
+  terminal using the scripts listed in the shared instructions.

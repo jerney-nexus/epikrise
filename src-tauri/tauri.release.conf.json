@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "features": ["direct-release-updater"]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "unconfigured",
+      "endpoints": [
+        "https://github.com/jerney-nexus/epikrise/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

@@ -1,0 +1,60 @@
+name: UI tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - development
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PLAYWRIGHT_CROSS_BROWSER: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install browser engines
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+
+      - name: Check UI
+        run: pnpm check:ui
+
+      - name: Run UI and internationalization tests
+        run: pnpm test:ui && pnpm test:i18n
+
+      - name: Run Chromium, accessibility, and browser smoke tests
+        run: pnpm test:e2e
+
+      - name: Upload synthetic-only failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 3

@@ -7,6 +7,14 @@ edition = "2024"
 license = "MIT"
 publish = false
 
+[features]
+default = []
+direct-release-updater = ["dep:tauri-plugin-updater", "dep:reqwest-updater"]
+updater-windows-x86_64-nsis = ["direct-release-updater"]
+updater-windows-aarch64-nsis = ["direct-release-updater"]
+updater-windows-x86_64-msi = ["direct-release-updater"]
+updater-windows-aarch64-msi = ["direct-release-updater"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
@@ -112,6 +120,10 @@ specta-typescript = "0.0.12"
 tauri = { version = "2", features = [] }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-updater = { version = "2.13.1", optional = true }
+reqwest-updater = { package = "reqwest", version = "0.13", optional = true, default-features = false, features = [
+    "rustls",
+] }
 thiserror = { workspace = true }
 tauri-specta = { version = "2.0.0-rc.25", features = ["typescript"] }
 toml = { workspace = true }

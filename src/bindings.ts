@@ -28,6 +28,14 @@ export const commands = {
 	setProviderCredential: (adapter: ProviderAdapter, label: string, secret: string) => typedError<CredentialSummary, LlmError>(__TAURI_INVOKE("set_provider_credential", { adapter, label, secret })),
 	testProvider: (profile: ProviderProfile) => typedError<string[], LlmError>(__TAURI_INVOKE("test_provider", { profile })),
 	validateTemplate: (bytes: number[]) => typedError<ClinicalTemplate, TemplateError>(__TAURI_INVOKE("validate_template", { bytes })),
+	checkForUpdate: () => typedError<{
+	version: string,
+	notes: string | null,
+	target: string,
+} | null, UpdaterError>(__TAURI_INVOKE("check_for_update")),
+	getUpdateSettings: () => typedError<UpdateSettings, UpdaterError>(__TAURI_INVOKE("get_update_settings")),
+	installUpdate: (confirmed: boolean) => typedError<null, UpdaterError>(__TAURI_INVOKE("install_update", { confirmed })),
+	setUpdateEnabled: (enabled: boolean) => typedError<UpdateSettings, UpdaterError>(__TAURI_INVOKE("set_update_enabled", { enabled })),
 };
 
 /** Events */
@@ -35,6 +43,7 @@ export const events = {
 	generationDelta: makeEvent<GenerationDelta>("generation://delta"),
 	generationDone: makeEvent<GenerationDone>("generation://done"),
 	generationError: makeEvent<GenerationError>("generation://error"),
+	updaterProgress: makeEvent<UpdateProgress>("updater://progress"),
 };
 
 /* Types */
@@ -220,6 +229,26 @@ export type TemplateVariable = {
 };
 
 export type TemplateVariableKind = "text" | "select" | "boolean" | "date";
+
+export type UpdateCandidate = {
+	version: string,
+	notes: string | null,
+	target: string,
+};
+
+export type UpdateProgress = {
+	downloadedBytes: number | null,
+	totalBytes: number | null,
+	finished: boolean,
+};
+
+export type UpdateSettings = {
+	available: boolean,
+	enabled: boolean,
+	policyAllowed: boolean,
+};
+
+export type UpdaterError = "unavailable" | "policy_denied" | "opt_in_required" | "settings_failed" | "busy" | "active_work" | "update_failed";
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

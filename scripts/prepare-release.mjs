@@ -1,8 +1,18 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { appendFile, readFile, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  cp,
+  mkdtemp,
+  realpath,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import TOML from "@iarna/toml";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -14,6 +24,148 @@ export function validateCalverVersion(version) {
     throw new Error(`Invalid CalVer version: ${version}. Expected YYYY.MM.PATCH.`);
   }
   return version;
+}
+
+/** @param {string} version */
+export function deriveReleaseVersions(version) {
+  validateCalverVersion(version);
+  const [yearText, monthText, patchText] = version.split(".");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const patch = BigInt(patchText);
+
+  if (year < 2000 || year > 2255) {
+    throw new Error("Release year must be between 2000 and 2255 for MSI.");
+  }
+  if (patch > 65535n) {
+    throw new Error("Release patch must be at most 65535 for MSI and MSIX.");
+  }
+
+  return {
+    releaseVersion: version,
+    updateProtocolVersion: `${year}.${month}.${patch}`,
+    msiProductVersion: `${year - 2000}.${month}.${patch}`,
+    msixIdentityVersion: `${year}.${month}.${patch}.0`,
+  };
+}
+
+/** @param {string} version */
+export function releaseVersionFromProtocolVersion(version) {
+  const match = /^(\d{4})\.([1-9]|1[0-2])\.(0|[1-9]\d*)$/.exec(version);
+  if (!match) throw new Error(`Invalid update protocol version: ${version}.`);
+  const releaseVersion = `${match[1]}.${match[2].padStart(2, "0")}.${match[3]}`;
+  deriveReleaseVersions(releaseVersion);
+  return releaseVersion;
+}
+
+/** @param {string} releaseVersion @param {string} publishedStoreVersion */
+export function assertStoreVersionAdvances(releaseVersion, publishedStoreVersion) {
+  const next = deriveReleaseVersions(releaseVersion).msixIdentityVersion;
+  const published = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(publishedStoreVersion);
+  if (!published || published.slice(1).some((part) => BigInt(part) > 65535n)) {
+    throw new Error(`Invalid published Store version: ${publishedStoreVersion}.`);
+  }
+  const nextParts = next.split(".").map(BigInt);
+  const publishedParts = published.slice(1).map(BigInt);
+  const comparison = nextParts.findIndex(
+    (part, index) => part !== publishedParts[index],
+  );
+  if (comparison < 0 || nextParts[comparison] < publishedParts[comparison]) {
+    throw new Error(
+      `Store version ${next} must be greater than ${publishedStoreVersion}.`,
+    );
+  }
+  return next;
+}
+
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** @param {string} workspaceRoot */
+export async function prepareReleaseBuildInputs(workspaceRoot) {
+  const buildRoot = await realpath(path.resolve(workspaceRoot));
+  const sourceRoot = await realpath(repoRoot);
+  if (buildRoot === sourceRoot) {
+    throw new Error("Release version normalization requires a disposable workspace.");
+  }
+
+  const packagePath = path.join(buildRoot, "package.json");
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  const versions = deriveReleaseVersions(packageJson.version);
+  const cargoManifestPath = path.join(buildRoot, "src-tauri/Cargo.toml");
+  let cargoManifest = await readFile(cargoManifestPath, "utf8");
+  const cargoData = TOML.parse(cargoManifest);
+  if (
+    !isRecord(cargoData) ||
+    !isRecord(cargoData.package) ||
+    !isRecord(cargoData.workspace) ||
+    !isRecord(cargoData.workspace.package) ||
+    cargoData.package?.version !== versions.releaseVersion ||
+    cargoData.workspace?.package?.version !== versions.releaseVersion
+  ) {
+    throw new Error(
+      "Disposable Cargo versions do not match the original release version.",
+    );
+  }
+  cargoManifest = replaceCargoSectionVersion(
+    cargoManifest,
+    "package",
+    versions.updateProtocolVersion,
+  );
+  cargoManifest = replaceCargoSectionVersion(
+    cargoManifest,
+    "workspace.package",
+    versions.updateProtocolVersion,
+  );
+
+  const tauriConfigPath = path.join(buildRoot, "src-tauri/tauri.conf.json");
+  const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
+  if (tauriConfig.version !== versions.releaseVersion) {
+    throw new Error("Disposable Tauri version does not match package.json.");
+  }
+  tauriConfig.version = versions.updateProtocolVersion;
+  tauriConfig.bundle ??= {};
+  tauriConfig.bundle.windows ??= {};
+  tauriConfig.bundle.windows.wix ??= {};
+  tauriConfig.bundle.windows.wix.version = versions.msiProductVersion;
+
+  await writeFile(cargoManifestPath, cargoManifest);
+  await writeFile(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`);
+
+  const cargoOptions = {
+    cwd: buildRoot,
+    maxBuffer: 10 * 1024 * 1024,
+  };
+  await execFile(
+    "cargo",
+    [
+      "metadata",
+      "--format-version",
+      "1",
+      "--no-deps",
+      "--offline",
+      "--manifest-path",
+      cargoManifestPath,
+    ],
+    cargoOptions,
+  );
+  await execFile(
+    "cargo",
+    [
+      "metadata",
+      "--format-version",
+      "1",
+      "--no-deps",
+      "--offline",
+      "--locked",
+      "--manifest-path",
+      cargoManifestPath,
+    ],
+    cargoOptions,
+  );
+  return versions;
 }
 
 /** @param {string} currentVersion @param {Date} [date] */
@@ -138,11 +290,21 @@ async function prepareRelease(requestedVersion) {
     version,
   );
   await writeFile(cargoManifestPath, cargoManifest);
-  await execFile(
-    "cargo",
-    ["metadata", "--format-version", "1", "--manifest-path", cargoManifestPath],
-    { cwd: repoRoot, maxBuffer: 10 * 1024 * 1024 },
-  );
+
+  const validationRoot = await mkdtemp(path.join(tmpdir(), "epikrise-release-inputs-"));
+  try {
+    await cp(packagePath, path.join(validationRoot, "package.json"));
+    await cp(path.join(repoRoot, "src-tauri"), path.join(validationRoot, "src-tauri"), {
+      recursive: true,
+      filter: (source) =>
+        !["target", "resources", "binaries", "gen", "WixTools"].some((directory) =>
+          source.split(path.sep).includes(directory),
+        ),
+    });
+    await prepareReleaseBuildInputs(validationRoot);
+  } finally {
+    await rm(validationRoot, { recursive: true, force: true });
+  }
 
   const changelogPath = path.join(repoRoot, "CHANGELOG.md");
   const changelog = await readFile(changelogPath, "utf8");
@@ -161,7 +323,12 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
 ) {
-  prepareRelease(process.argv[2] ?? "").catch((error) => {
+  const command = process.argv[2] ?? "";
+  const operation =
+    command === "--prepare-build-inputs"
+      ? prepareReleaseBuildInputs(process.argv[3] ?? "")
+      : prepareRelease(command);
+  operation.catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;
   });

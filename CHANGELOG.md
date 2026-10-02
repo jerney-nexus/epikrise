@@ -28,6 +28,12 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   `pnpm build:all` dispatch/download command with exact-commit and artifact
   manifest/hash verification. Windows CI SDK downloads require explicit
   administrator license approval; packages remain unsigned and unpublished.
+- Added default-off, policy-enforced direct-release updater plumbing with
+  explicit checks and install confirmation, target/version/URL validation,
+  progress reporting, and exclusion during active case work. The release
+  overlay still has an unconfigured public key and is not production-ready.
+- Added synthetic Playwright and axe browser tests, `pnpm test:e2e` and
+  `pnpm test:a11y` scripts, and a browser-test CI workflow.
 - Fluent-based German (Switzerland) and English interface localization, OS
   language detection, a persisted language selector, and a development-only
   pseudo-localization preview.

@@ -94,6 +94,24 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Test E2E",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:e2e"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test Accessibility",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:a11y"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Test UI Coverage",
       "type": "process",
       "command": "pnpm",

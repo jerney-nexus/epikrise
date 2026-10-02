@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { resolve } from "$app/paths";
   import { isTauri } from "@tauri-apps/api/core";
   import { renderOutputHtml } from "$lib/output-format";
@@ -32,6 +32,8 @@
     type ProviderProfile,
     type ReasoningEffort,
     type TemplateError,
+    type UpdateCandidate,
+    type UpdateSettings,
   } from "../bindings";
 
   type PolicyStatus = {
@@ -141,6 +143,14 @@
   let pendingEgressConfirmation = $state<PendingEgressConfirmation | null>(null);
   let egressConfirmationBusy = $state(false);
   let policyStatus = $state<PolicyStatus | null>(null);
+  let updateSettings = $state<UpdateSettings | null>(null);
+  let updateCandidate = $state<UpdateCandidate | null>(null);
+  let updateStatus = $state<"idle" | "checking" | "installing" | "error">("idle");
+  let updateMessage = $state("");
+  let updateDownloadedBytes = $state(0);
+  let updateTotalBytes = $state<number | null>(null);
+  let updateBusy = $state(false);
+  let updateConfirmationDialog: HTMLDialogElement | undefined;
 
   let adapter = $state<ProviderAdapter>("ollama");
   let model = $state("llama3.2");
@@ -184,9 +194,11 @@
   let desktopAvailable = $state(false);
   let uiLocale = $state(defaultLocale);
 
-  function t(source: string, args: Record<string, string | number> = {}): string {
-    return translate(uiLocale, source, args);
-  }
+  const t = $derived.by(() => {
+    const locale = uiLocale;
+    return (source: string, args: Record<string, string | number> = {}): string =>
+      translate(locale, source, args);
+  });
 
   function changeUiLocale(locale: string) {
     setLocale(locale);
@@ -432,6 +444,96 @@
 
   function formatTemplateError(error: TemplateError): string {
     return t(templateErrorMessages[error.key]);
+  }
+
+  async function refreshUpdateSettings() {
+    try {
+      const result = await commands.getUpdateSettings();
+      if (result.status === "ok") updateSettings = result.data;
+    } catch {
+      updateMessage = "Update settings could not be loaded.";
+    }
+  }
+
+  async function setUpdaterEnabled(enabled: boolean) {
+    if (!updateSettings || updateBusy) return;
+    updateBusy = true;
+    updateMessage = "";
+    try {
+      const result = await commands.setUpdateEnabled(enabled);
+      if (result.status === "error") {
+        updateMessage = "Update settings could not be saved.";
+      } else {
+        updateSettings = result.data;
+        if (!enabled) {
+          updateCandidate = null;
+          updateStatus = "idle";
+          updateMessage = "";
+        }
+      }
+    } catch {
+      updateMessage = "Update settings could not be saved.";
+    } finally {
+      updateBusy = false;
+    }
+  }
+
+  async function checkForUpdate() {
+    if (
+      !updateSettings?.available ||
+      !updateSettings.enabled ||
+      !updateSettings.policyAllowed ||
+      updateBusy
+    ) {
+      return;
+    }
+    updateBusy = true;
+    updateStatus = "checking";
+    updateMessage = "";
+    try {
+      const result = await commands.checkForUpdate();
+      if (result.status === "error") {
+        updateStatus = "error";
+        updateMessage = "The update check failed.";
+      } else {
+        updateCandidate = result.data;
+        updateStatus = "idle";
+        updateMessage = result.data
+          ? "An update is available."
+          : "Epikrise is up to date.";
+      }
+    } catch {
+      updateStatus = "error";
+      updateMessage = "The update check failed.";
+    } finally {
+      updateBusy = false;
+    }
+  }
+
+  async function installConfirmedUpdate() {
+    if (!updateCandidate || updateBusy) return;
+    updateConfirmationDialog?.close();
+    updateBusy = true;
+    updateStatus = "installing";
+    updateMessage = "Installing update...";
+    updateDownloadedBytes = 0;
+    updateTotalBytes = null;
+    try {
+      const result = await commands.installUpdate(true);
+      if (result.status === "error") {
+        updateStatus = "error";
+        updateMessage = "The update could not be installed.";
+      } else {
+        updateCandidate = null;
+        updateStatus = "idle";
+        updateMessage = "Update installed. Restart Epikrise to complete the update.";
+      }
+    } catch {
+      updateStatus = "error";
+      updateMessage = "The update could not be installed.";
+    } finally {
+      updateBusy = false;
+    }
   }
 
   function formatIngestError(error: IngestError): string {
@@ -887,7 +989,6 @@
   }
 
   function handleDialogKeydown(event: KeyboardEvent) {
-    if (event.key !== "Escape") return;
     const topDialog = [
       addCredentialDialog,
       templateEditorDialog,
@@ -897,6 +998,31 @@
       templateSettingsDialog,
     ].find((dialog) => dialog?.open);
     if (!topDialog) return;
+
+    if (event.key === "Tab") {
+      const focusable = Array.from(
+        topDialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.getClientRects().length > 0);
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+
+      if (
+        !topDialog.contains(document.activeElement) ||
+        (event.shiftKey && document.activeElement === first)
+      ) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+
+    if (event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
     topDialog.close();
@@ -1308,13 +1434,17 @@
       // Storage can be unavailable in restricted webviews.
     }
     const detectedLocale = navigator.languages[0] ?? navigator.language;
-    uiLocale = initializeLocale(storedLocale, detectedLocale);
-    document.documentElement.lang = uiLocale;
+    const locale = initializeLocale(storedLocale, detectedLocale);
+    void tick().then(() => {
+      uiLocale = locale;
+      document.documentElement.lang = locale;
+    });
     desktopAvailable = isTauri();
     if (!desktopAvailable) return;
     void commands.getPolicyStatus().then((status) => {
       if (status.status === "ok") applyPolicyStatus(status.data);
     });
+    void refreshUpdateSettings();
     void restoreTemplates()
       .catch(() => {
         templateMessage = "Saved templates could not be loaded.";
@@ -1346,6 +1476,13 @@
         activeRequestId = null;
         generationMessage = formatError(payload.error);
         generationIsError = true;
+      }),
+      events.updaterProgress.listen(({ payload }) => {
+        updateDownloadedBytes = payload.downloadedBytes ?? 0;
+        updateTotalBytes = payload.totalBytes;
+        if (payload.finished) {
+          updateMessage = "Update installed. Restart Epikrise to complete the update.";
+        }
       }),
     ])
       .then((listeners) => {
@@ -1971,6 +2108,118 @@
             <option value={pseudoLocale}>{t("language-pseudo")}</option>
           {/if}
         </select>
+        <fieldset class="update-settings">
+          <legend>{t("Software updates")}</legend>
+          <label class="update-opt-in">
+            <input
+              type="checkbox"
+              checked={updateSettings?.enabled ?? false}
+              disabled={!updateSettings?.available ||
+                !updateSettings.policyAllowed ||
+                updateBusy}
+              onchange={(event) => setUpdaterEnabled(event.currentTarget.checked)}
+            />
+            {t("Enable direct-release updates")}
+          </label>
+          {#if updateSettings === null}
+            <p role="status">{t("Update settings are loading...")}</p>
+          {:else if !updateSettings.available}
+            <p role="status">{t("Updates are unavailable for this build.")}</p>
+          {:else if !updateSettings.policyAllowed}
+            <p role="status">{t("Updates are disabled by administrator policy.")}</p>
+          {:else}
+            <p>{t("Update checks contact GitHub Releases only when requested.")}</p>
+            <button
+              class="connection-button"
+              type="button"
+              disabled={!updateSettings.enabled || updateBusy}
+              onclick={checkForUpdate}
+            >
+              {updateStatus === "checking" ? t("Checking...") : t("Check for updates")}
+            </button>
+          {/if}
+          {#if updateMessage}
+            <p class="model-list-message" role="status" aria-live="polite">
+              {t(updateMessage)}
+            </p>
+          {/if}
+          {#if updateStatus === "installing"}
+            <progress
+              max="100"
+              value={updateTotalBytes && updateTotalBytes > 0
+                ? Math.min(100, (updateDownloadedBytes / updateTotalBytes) * 100)
+                : undefined}
+              aria-label={t("Update download progress")}
+            ></progress>
+          {/if}
+          {#if updateCandidate}
+            <div class="update-candidate">
+              <p><strong>{t("Update version")}: {updateCandidate.version}</strong></p>
+              {#if updateCandidate.notes}
+                <p>{updateCandidate.notes}</p>
+              {/if}
+              <button
+                class="connection-button"
+                type="button"
+                disabled={updateBusy ||
+                  Boolean(caseSessionId) ||
+                  Boolean(activeRequestId)}
+                onclick={() => updateConfirmationDialog?.showModal()}
+              >
+                {t("Install update")}
+              </button>
+            </div>
+          {/if}
+        </fieldset>
+      </section>
+    </dialog>
+
+    <dialog
+      class="settings-dialog"
+      bind:this={updateConfirmationDialog}
+      aria-labelledby="update-confirmation-title"
+      onkeydown={handleDialogKeydown}
+      oncancel={(event) => {
+        event.preventDefault();
+        updateConfirmationDialog?.close();
+      }}
+    >
+      <section class="provider-settings" aria-labelledby="update-confirmation-title">
+        <p class="eyebrow">{t("Software updates")}</p>
+        <div class="dialog-heading">
+          <div>
+            <h2 id="update-confirmation-title">{t("Install this update?")}</h2>
+            {#if updateCandidate}
+              <p>{t("Update version")}: {updateCandidate.version}</p>
+            {/if}
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            aria-label={t("Close update confirmation")}
+            onclick={() => updateConfirmationDialog?.close()}
+          >
+            ×
+          </button>
+        </div>
+        <p>{t("Epikrise will close while the update is installed.")}</p>
+        <div class="settings-actions">
+          <button
+            class="connection-button"
+            type="button"
+            onclick={() => updateConfirmationDialog?.close()}
+          >
+            {t("Cancel")}
+          </button>
+          <button
+            class="connection-button"
+            type="button"
+            disabled={updateBusy || Boolean(caseSessionId) || Boolean(activeRequestId)}
+            onclick={installConfirmedUpdate}
+          >
+            {t("Confirm install")}
+          </button>
+        </div>
       </section>
     </dialog>
 
@@ -3574,7 +3823,7 @@
 
   .eyebrow {
     margin: 0;
-    color: #6b7b74;
+    color: #51645b;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
@@ -3601,6 +3850,45 @@
     margin-top: 22px;
     padding-top: 17px;
     border-top: 1px solid #dce4de;
+  }
+
+  .update-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    min-width: 0;
+    margin: 12px 0 0;
+    padding: 12px 0 0;
+    border: 0;
+    border-top: 1px solid #dce4de;
+  }
+
+  .update-settings legend {
+    padding: 0;
+    font-weight: 700;
+  }
+
+  .update-settings p {
+    margin: 0;
+  }
+
+  .update-opt-in {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+  }
+
+  .update-candidate {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 9px;
+    padding-top: 10px;
+    border-top: 1px solid #dce4de;
+  }
+
+  .update-settings progress {
+    width: 100%;
   }
 
   .template-heading h2 {

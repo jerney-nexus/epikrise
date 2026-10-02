@@ -153,9 +153,30 @@ does not set or infer approval. Missing or invalid approval stops the Windows
 setup before any SDK/CRT download. Local `pnpm windows:setup` continues to use
 interactive acceptance. The CI builds are unsigned and unnotarized: Windows
 SmartScreen and macOS Gatekeeper may warn or block installation. This workflow
-does not publish releases, sign packages, or provide an updater. A successful
-package build is not a substitute for native installation and synthetic OCR
-acceptance testing on each target; see [CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
+does not publish releases or use the separate direct-release updater
+configuration. A successful package build is not a substitute for native
+installation and synthetic OCR acceptance testing on each target; see
+[CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
+
+## Software updates
+
+The standard application build reports updates as unavailable. The separate
+`src-tauri/tauri.release.conf.json` overlay enables updater code for direct
+release builds; it does not make a production update channel ready. In an
+updater-enabled build, users must opt in under General settings and manually
+request each check; there are no background or startup checks. Administrator
+policy can prohibit opt-in, checks, and installs. Installing an update requires
+a separate confirmation and is blocked while a case or generation is active.
+Update requests use the fixed GitHub Releases endpoint and do not send case or
+template content.
+
+Tauri updater artifacts require their own signature. This signature verifies
+the update payload; it is not Authenticode, Apple Developer ID signing,
+notarization, or Linux package signing. The current release overlay still has
+an `unconfigured` public-key placeholder, and no production signing key or
+release-publication workflow is provisioned. It is not ready for production
+updates. See [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-readiness)
+for implementation and release constraints.
 
 Tauri must be able to find `cargo` on `PATH`. If the build fails while running
 `cargo metadata` with “No such file or directory”, see the [local Rust setup
@@ -170,6 +191,8 @@ test suites from the project root:
 ```sh
 pnpm test
 pnpm test:coverage
+pnpm test:e2e
+pnpm test:a11y
 ```
 
 The combined coverage command runs UI tests with V8 coverage and the Rust
@@ -274,8 +297,9 @@ uses adapter IDs (`open_ai`, `anthropic`, `gemini`, `ollama`,
 `open_ai_compatible`, `open_router`, `xai`, `groq`); omitted means all
 providers. `local_only = true` additionally restricts endpoints to `localhost`
 or a loopback IP, regardless of the allowlist. `allow_url_ingestion = false`
-disables URL extraction. `allow_updater` is reserved for updater support; the
-current app has no updater. Set `allow_template_import`, `allow_template_export`,
+disables URL extraction. In updater-enabled builds, `allow_updater = false`
+prevents opting in, checking, or installing updates; standard builds report the
+updater as unavailable. Set `allow_template_import`, `allow_template_export`,
 or `allow_template_edit` to `false` to block adding templates, exporting
 templates, or changing/removing saved templates respectively. These restrictions
 are enforced by the backend as well as the settings UI.
