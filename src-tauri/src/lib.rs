@@ -309,7 +309,33 @@ fn export_template(
     if !policy.0.policy.allow_template_export {
         return Err(TemplateError::PolicyRestricted);
     }
-    template.to_toml()
+    let content = template.to_toml()?;
+    let filename: String = template
+        .metadata
+        .id
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let filename = if filename.is_empty() {
+        "template"
+    } else {
+        &filename
+    };
+    let Some(path) = rfd::FileDialog::new()
+        .add_filter("Epikrise template", &["epitpl"])
+        .set_file_name(format!("{filename}.epitpl"))
+        .save_file()
+    else {
+        return Ok(String::new());
+    };
+    std::fs::write(path, &content).map_err(|_| TemplateError::StorageFailed)?;
+    Ok(content)
 }
 
 #[tauri::command]

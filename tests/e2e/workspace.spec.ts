@@ -355,6 +355,37 @@ test("keeps template settings open when the file picker is canceled", async ({
   await expect(dialog).toBeHidden();
 });
 
+test("exports the active template through the native save flow", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Template settings" }).click();
+  await page.getByRole("button", { name: "Export .epitpl" }).click();
+
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__EPIKRISE_TEST__?.commands.some(
+          ({ command }) => command === "export_template",
+        ),
+      ),
+    )
+    .toBe(true);
+  await expect(page.getByRole("status")).toContainText("Template exported");
+});
+
+test("does not report an export when the save dialog is canceled", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    if (window.__EPIKRISE_TEST__) {
+      window.__EPIKRISE_TEST__.templateExportCancelled = true;
+    }
+  });
+  await page.getByRole("button", { name: "Template settings" }).click();
+  await page.getByRole("button", { name: "Export .epitpl" }).click();
+
+  await expect(page.getByText("Template exported", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Template settings" })).toBeVisible();
+});
+
 test("falls back to plain text when reviewed HTML copying fails", async ({ page }) => {
   await completeSyntheticGeneration(page, "Synthetic plain-text output.");
   await page.evaluate(() => {

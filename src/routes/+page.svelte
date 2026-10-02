@@ -1418,14 +1418,7 @@
         templateIsError = true;
         return;
       }
-      const blob = new Blob([result.data], { type: "application/toml" });
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      const filename = activeTemplate.metadata.id.replace(/[^A-Za-z0-9._-]/g, "_");
-      link.href = objectUrl;
-      link.download = `${filename || "template"}.epitpl`;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      if (!result.data) return;
       templateMessage = "Template exported";
       templateIsError = false;
     } catch {

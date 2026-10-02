@@ -22,6 +22,7 @@ type BrowserFixture = {
   clipboardWrites: { command: string; args: InvokeArguments }[];
   failNextReviewAck: boolean;
   failHtmlClipboard: boolean;
+  templateExportCancelled: boolean;
   emit: (event: string, payload: unknown) => void;
 };
 
@@ -104,6 +105,7 @@ function installTauriFixture({
     clipboardWrites: [],
     failNextReviewAck: false,
     failHtmlClipboard: false,
+    templateExportCancelled: false,
     emit(event, payload) {
       const eventListeners = listeners.get(event);
       if (!eventListeners) return;
@@ -204,7 +206,7 @@ function installTauriFixture({
         case "validate_template":
           return template;
         case "export_template":
-          return "synthetic template";
+          return fixture.templateExportCancelled ? "" : "synthetic template";
         case "extract_raw_text":
         case "extract_text_file":
         case "extract_file":
