@@ -1023,6 +1023,14 @@
     }
 
     if (event.key !== "Escape") return;
+    const target = event.target;
+    if (
+      !(target instanceof HTMLElement) ||
+      !topDialog.contains(target) ||
+      target === templateFileInput
+    ) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     topDialog.close();
@@ -2522,7 +2530,6 @@
       onkeydown={handleDialogKeydown}
       oncancel={(event) => {
         event.preventDefault();
-        templateSettingsDialog?.close();
       }}
     >
       <section class="template-settings" aria-label={t("Template settings")}>

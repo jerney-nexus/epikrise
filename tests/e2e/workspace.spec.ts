@@ -338,6 +338,23 @@ test("invalidates reviewed output after a template change", async ({ page }) => 
   await expect(review).not.toBeChecked();
 });
 
+test("keeps template settings open when the file picker is canceled", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Template settings" }).click();
+  const dialog = page.getByRole("dialog", { name: "Template settings" });
+  await expect(dialog).toBeVisible();
+
+  await page.locator("#template-file").focus();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByRole("heading", { name: "Template settings" }).click();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+});
+
 test("falls back to plain text when reviewed HTML copying fails", async ({ page }) => {
   await completeSyntheticGeneration(page, "Synthetic plain-text output.");
   await page.evaluate(() => {
