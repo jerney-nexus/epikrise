@@ -2068,7 +2068,7 @@
     </dialog>
 
     <dialog
-      class="settings-dialog"
+      class="settings-dialog general-settings-dialog"
       bind:this={generalSettingsDialog}
       aria-labelledby="general-settings-title"
       onkeydown={handleDialogKeydown}
@@ -2119,7 +2119,7 @@
                 updateBusy}
               onchange={(event) => setUpdaterEnabled(event.currentTarget.checked)}
             />
-            {t("Enable direct-release updates")}
+            <span>{t("Enable direct-release updates")}</span>
           </label>
           {#if updateSettings === null}
             <p role="status">{t("Update settings are loading...")}</p>
@@ -3752,6 +3752,11 @@
     padding: 24px;
   }
 
+  .settings-dialog.general-settings-dialog {
+    height: 19rem;
+    max-height: calc(100vh - 2rem);
+  }
+
   .settings-dialog.template-settings-dialog {
     width: min(760px, calc(100vw - 28px));
   }
@@ -3876,6 +3881,20 @@
     display: flex;
     align-items: flex-start;
     gap: 9px;
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  .update-opt-in input {
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    margin: 2px 0 0;
+    padding: 0;
+  }
+
+  .update-opt-in span {
+    min-width: 0;
   }
 
   .update-candidate {
@@ -4393,7 +4412,7 @@
     font-weight: 650;
   }
 
-  input,
+  input:not([type="checkbox"]):not([type="radio"]),
   select,
   textarea {
     width: 100%;
@@ -4403,7 +4422,7 @@
     background: #fff;
   }
 
-  input,
+  input:not([type="checkbox"]):not([type="radio"]),
   select {
     height: 39px;
     padding: 0 10px;

@@ -33,6 +33,9 @@ cache_root="${EPIKRISE_NATIVE_OCR_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/epikris
 download_dir="$cache_root/downloads"
 source_dir="$cache_root/sources"
 build_dir="$cache_root/build/$target"
+if [[ "$platform" == "macos" ]]; then
+  build_dir="$cache_root/build/$target-static-libraries"
+fi
 prefix="$cache_root/install/$target"
 binary_dir="${EPIKRISE_OCR_BINARY_DIR:-$repo_root/src-tauri/binaries}"
 mkdir -p "$download_dir" "$source_dir" "$build_dir" "$prefix"
@@ -107,7 +110,7 @@ cmake_args=(
 if [[ "$platform" == "linux" ]]; then
   cmake_args+=("-DCMAKE_EXE_LINKER_FLAGS=-static")
 else
-  cmake_args+=("-DCMAKE_FIND_LIBRARY_SUFFIXES=.a")
+  cmake_args+=("-DCMAKE_FIND_LIBRARY_SUFFIXES=.a" "-DCMAKE_FIND_FRAMEWORK=NEVER")
 fi
 
 build_and_install() {

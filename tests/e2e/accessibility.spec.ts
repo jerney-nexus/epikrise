@@ -29,7 +29,40 @@ test("@a11y workspace and settings dialogs have no scoped axe violations", async
   await expectNoAxeViolations(page);
 
   await page.getByRole("button", { name: "General settings" }).click();
-  await expect(page.getByRole("dialog", { name: "General settings" })).toBeVisible();
+  const settingsDialog = page.getByRole("dialog", { name: "General settings" });
+  await expect(settingsDialog).toBeVisible();
+  await expect(
+    page.getByText("Update checks contact GitHub Releases only when requested."),
+  ).toBeVisible();
+  const bottomClearance = await settingsDialog.evaluate((element) => {
+    const updateSettings = element.querySelector(".update-settings");
+    return updateSettings
+      ? element.getBoundingClientRect().bottom -
+          updateSettings.getBoundingClientRect().bottom
+      : Number.POSITIVE_INFINITY;
+  });
+  expect(bottomClearance).toBeLessThan(40);
+  const heightBeforeClick = await settingsDialog.evaluate(
+    (element) => element.getBoundingClientRect().height,
+  );
+  const updateCheckbox = page.getByRole("checkbox", {
+    name: "Enable direct-release updates",
+  });
+  const sizeBeforeClick = await updateCheckbox.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+  expect(sizeBeforeClick).toEqual({ width: 18, height: 18 });
+  await page.getByRole("heading", { name: "General settings" }).click();
+  const heightAfterClick = await settingsDialog.evaluate(
+    (element) => element.getBoundingClientRect().height,
+  );
+  expect(heightAfterClick).toBe(heightBeforeClick);
+  const sizeAfterClick = await updateCheckbox.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+  expect(sizeAfterClick).toEqual(sizeBeforeClick);
   await expectNoAxeViolations(page);
 });
 
