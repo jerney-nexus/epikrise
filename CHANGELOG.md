@@ -24,6 +24,10 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   effort remains provider-defined.
 - ARM64 Linux cross-compilation for separate Windows x64 and ARM64 NSIS
   installers, with static bundled OCR and offline WebView2 installation.
+- Added a manual six-target GitHub Actions desktop build workflow and
+  `pnpm build:all` dispatch/download command with exact-commit and artifact
+  manifest/hash verification. Windows CI SDK downloads require explicit
+  administrator license approval; packages remain unsigned and unpublished.
 - Fluent-based German (Switzerland) and English interface localization, OS
   language detection, a persisted language selector, and a development-only
   pseudo-localization preview.

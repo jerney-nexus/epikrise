@@ -129,6 +129,34 @@ They include local OCR resources and the offline WebView2 installer. Initial
 tool and asset downloads require network access; native Windows testing is still
 required. See [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
 
+### Cross-platform Actions builds
+
+`pnpm build:all` dispatches the manual **Desktop builds** GitHub Actions
+workflow for the current pushed commit from either an ARM64 or x64 dev
+container. It builds Linux ARM64/x64 (`.deb`, `.rpm`, AppImage), macOS
+ARM64/x64 (`.dmg`), and Windows ARM64/x64 (NSIS `.exe` with offline WebView2)
+in six isolated jobs. The workflow must be enabled on GitHub, and the commit
+must contain the workflow. It never commits or pushes changes.
+
+The command requires a clean worktree, the current branch or tag pushed to
+`origin` at exactly `HEAD`, the GitHub CLI authenticated with Actions dispatch
+and artifact-read permissions, and network access to GitHub Actions. It waits
+for all six jobs, then verifies the request ID, commit, version, target, package
+completeness and SHA-256 values. Verified manifests and packages are written to
+`.artifacts/desktop-builds/<request-id>/`; partial, stale or modified artifacts
+are rejected. Each artifact expires after 14 days.
+
+Windows jobs require repository variable
+`EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED` to equal `true`. An administrator must
+review the pinned Microsoft SDK/CRT license before setting it; the workflow
+does not set or infer approval. Missing or invalid approval stops the Windows
+setup before any SDK/CRT download. Local `pnpm windows:setup` continues to use
+interactive acceptance. The CI builds are unsigned and unnotarized: Windows
+SmartScreen and macOS Gatekeeper may warn or block installation. This workflow
+does not publish releases, sign packages, or provide an updater. A successful
+package build is not a substitute for native installation and synthetic OCR
+acceptance testing on each target; see [CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
+
 Tauri must be able to find `cargo` on `PATH`. If the build fails while running
 `cargo metadata` with “No such file or directory”, see the [local Rust setup
 instructions](CONTRIBUTING.md#local-setup).

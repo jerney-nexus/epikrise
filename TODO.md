@@ -4,7 +4,8 @@
 
 ### Medium Urgency
 
-- Add support for native Windows build and a Linux x64 host build.
+- Add Playwright end-to-end and axe accessibility coverage for onboarding and
+  the reviewed-output happy path.
 - Refine `CHANGELOG.md` for the first release with only `Added` entries.
 - Search the institutional template for output rules and patterns.
 - Use MiniJinja placeholders in the institutional template.
@@ -14,3 +15,4 @@
 - Implement help page for the application.
 - Add feature to handle date formatting via template strings/localization.
 - Add support for the Gemini Interactions API as soon as `genai` v0.7.0 is released.
+- Add support for native Windows builds.

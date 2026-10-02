@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { execFile as execFileCallback } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,6 +12,14 @@ import {
   nextCalverVersion,
   validateCalverVersion,
 } from "../scripts/prepare-release.mjs";
+import {
+  assertDispatchPreconditions,
+  assertSuccessfulJobs,
+  desktopTargets,
+  selectMatchingRun,
+  stagePackages,
+  verifyArtifactSet,
+} from "../scripts/desktop-builds.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -105,6 +114,273 @@ describe("Windows cross-build versions", () => {
     expect(setupCrtVersion).toBe("14.44.17.14");
     expect(buildScript).toContain(`sdk_version="${setupSdkVersion}"`);
     expect(buildScript).toContain(`crt_version="${setupCrtVersion}"`);
+  });
+
+  it("requires explicit license approval before entering the CI setup path", async () => {
+    const setupScript = path.join(repoRoot, "scripts/windows-setup.sh");
+
+    for (const approval of [undefined, "false", "yes"]) {
+      await expect(
+        execFile("bash", [setupScript, "--ci"], {
+          env: {
+            ...process.env,
+            EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: approval,
+          },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED"),
+      });
+    }
+    await expect(
+      execFile("bash", [setupScript, "--ci", "unexpected"], {
+        env: {
+          ...process.env,
+          EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: "true",
+        },
+      }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("Usage:"),
+    });
+  });
+});
+
+describe("six-target desktop build tooling", () => {
+  const commit = "a".repeat(40);
+  const requestId = "12345678-1234-4234-8234-123456789abc";
+
+  it("requires a clean, pushed branch or tag containing the workflow", () => {
+    const valid = {
+      clean: true,
+      branch: "development",
+      tag: "",
+      commit,
+      workflowPresent: true,
+      pushedCommit: commit,
+    };
+    expect(() => assertDispatchPreconditions(valid)).not.toThrow();
+    expect(() => assertDispatchPreconditions({ ...valid, clean: false })).toThrow(
+      "worktree must be clean",
+    );
+    expect(() => assertDispatchPreconditions({ ...valid, branch: "" })).toThrow(
+      "pushed branch or tag",
+    );
+    expect(() =>
+      assertDispatchPreconditions({ ...valid, workflowPresent: false }),
+    ).toThrow("does not contain");
+    expect(() =>
+      assertDispatchPreconditions({ ...valid, pushedCommit: "b".repeat(40) }),
+    ).toThrow("must be pushed");
+    expect(() =>
+      assertDispatchPreconditions({ ...valid, branch: "", tag: "v2026.10.0" }),
+    ).not.toThrow();
+    expect(() =>
+      assertDispatchPreconditions({ ...valid, branch: "", tag: "" }),
+    ).toThrow("pushed branch or tag");
+  });
+
+  it("selects only the unique manually dispatched run for its request and commit", () => {
+    const title = `Desktop builds ${requestId} @ ${commit}`;
+    const run = {
+      databaseId: 42,
+      displayTitle: title,
+      headSha: commit,
+      event: "workflow_dispatch",
+    };
+    expect(
+      selectMatchingRun(
+        [{ ...run, databaseId: 41, displayTitle: "older build" }, run],
+        requestId,
+        commit,
+      ),
+    ).toEqual(run);
+    expect(selectMatchingRun([], requestId, commit)).toBeNull();
+    expect(() =>
+      selectMatchingRun([{ ...run, headSha: "b".repeat(40) }], requestId, commit),
+    ).toThrow("different commit");
+    expect(() => selectMatchingRun([run, run], requestId, commit)).toThrow(
+      "More than one Actions run",
+    );
+    expect(() =>
+      selectMatchingRun([{ ...run, event: "push" }], requestId, commit),
+    ).toThrow("not manually dispatched");
+  });
+
+  it("requires all six target jobs to succeed", () => {
+    const jobs = desktopTargets.map((target) => ({
+      name: `Build ${target}`,
+      conclusion: "success",
+    }));
+    expect(() => assertSuccessfulJobs(jobs)).not.toThrow();
+    expect(() => assertSuccessfulJobs(jobs.slice(1))).toThrow("did not succeed");
+    expect(() =>
+      assertSuccessfulJobs(jobs.map((job) => ({ ...job, conclusion: "failure" }))),
+    ).toThrow("did not succeed");
+  });
+
+  it("stages architecture-specific packages with a commit and checksum manifest", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-desktop-stage-"));
+    const bundleRoot = path.join(directory, "bundle");
+    const stageRoot = path.join(directory, "stage");
+    const target = desktopTargets[0];
+    const packageContents = ["deb", "rpm", "AppImage"];
+
+    try {
+      await mkdir(bundleRoot, { recursive: true });
+      for (const extension of packageContents) {
+        await writeFile(
+          path.join(bundleRoot, `epikrise.${extension}`),
+          `synthetic ${extension}`,
+        );
+      }
+      const manifest = await stagePackages({
+        target,
+        commit,
+        requestId,
+        bundleRoot,
+        stageRoot,
+      });
+
+      expect(manifest).toMatchObject({
+        schema_version: 1,
+        request_id: requestId,
+        commit,
+        target,
+        signed: false,
+      });
+      expect(manifest.files).toHaveLength(3);
+      expect(manifest.files.map((file) => file.sha256).sort()).toEqual(
+        packageContents
+          .map((extension) =>
+            createHash("sha256").update(`synthetic ${extension}`).digest("hex"),
+          )
+          .sort(),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects missing, stale, tampered, and unmanifested downloads", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-desktop-download-"));
+    const version = JSON.parse(
+      await readFile(path.join(repoRoot, "package.json"), "utf8"),
+    ).version;
+
+    try {
+      for (const target of desktopTargets) {
+        const targetDirectory = path.join(directory, target);
+        const filesDirectory = path.join(targetDirectory, "files");
+        await mkdir(filesDirectory, { recursive: true });
+        const extensions = target.includes("unknown-linux")
+          ? ["deb", "rpm", "AppImage"]
+          : target.includes("apple-darwin")
+            ? ["dmg"]
+            : ["exe"];
+        const files = [];
+        for (const extension of extensions) {
+          const name = `${target}.${extension}`;
+          const contents = `synthetic ${target} ${extension}`;
+          const filePath = path.join(filesDirectory, name);
+          await writeFile(filePath, contents);
+          files.push({
+            path: `files/${name}`,
+            size_bytes: Buffer.byteLength(contents),
+            sha256: createHash("sha256").update(contents).digest("hex"),
+          });
+        }
+        await writeFile(
+          path.join(targetDirectory, "manifest.json"),
+          JSON.stringify({
+            schema_version: 1,
+            request_id: requestId,
+            commit,
+            target,
+            version,
+            signed: false,
+            files,
+          }),
+        );
+      }
+
+      const expected = { requestId, commit, version };
+      expect(await verifyArtifactSet(directory, expected)).toHaveLength(6);
+      await expect(
+        verifyArtifactSet(path.join(directory, "missing"), expected),
+      ).rejects.toThrow();
+
+      const firstManifestPath = path.join(
+        directory,
+        desktopTargets[0],
+        "manifest.json",
+      );
+      const firstManifest: {
+        files: Array<{ path: string }>;
+        [key: string]: unknown;
+      } = JSON.parse(await readFile(firstManifestPath, "utf8"));
+      await writeFile(
+        firstManifestPath,
+        JSON.stringify({ ...firstManifest, commit: "b".repeat(40) }),
+      );
+      await expect(verifyArtifactSet(directory, expected)).rejects.toThrow(
+        "commit SHA does not match",
+      );
+      await writeFile(firstManifestPath, JSON.stringify(firstManifest));
+
+      const firstManifestFiles: Array<{ path: string }> = firstManifest.files;
+      const incompleteManifest = {
+        ...firstManifest,
+        files: firstManifestFiles.filter((file) => !file.path.endsWith(".rpm")),
+      };
+      await writeFile(firstManifestPath, JSON.stringify(incompleteManifest));
+      await expect(verifyArtifactSet(directory, expected)).rejects.toThrow(
+        "missing the required .rpm",
+      );
+      await writeFile(firstManifestPath, JSON.stringify(firstManifest));
+
+      const tamperedFile = path.join(
+        directory,
+        desktopTargets[0],
+        "files",
+        `${desktopTargets[0]}.deb`,
+      );
+      const originalContents = `synthetic ${desktopTargets[0]} deb`;
+      await writeFile(tamperedFile, originalContents.replace("synthetic", "tamperedd"));
+      await expect(verifyArtifactSet(directory, expected)).rejects.toThrow(
+        "SHA-256 verification failed",
+      );
+      await writeFile(tamperedFile, originalContents);
+      await writeFile(
+        path.join(directory, desktopTargets[0], "files", "extra.txt"),
+        "unlisted",
+      );
+      await expect(verifyArtifactSet(directory, expected)).rejects.toThrow(
+        "not declared in its manifest",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the workflow manual, read-only, and fixed to the six planned runners", async () => {
+    const workflow = await readFile(
+      path.join(repoRoot, ".github/workflows/desktop-builds.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).not.toMatch(/^\s+(push|pull_request):/m);
+    expect(workflow).toContain("contents: read");
+    expect(workflow).toContain("vars.EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED");
+    expect(workflow).toContain(
+      "src-tauri/target/host-$host_target/$TARGET/release/bundle",
+    );
+    expect(workflow).not.toContain("~/.cache/epikrise/windows\n");
+    expect(workflow).toContain("actions/upload-artifact@v4");
+    expect(workflow).toContain("${{ runner.arch }}");
+    expect(workflow).toContain("ubuntu-22.04-arm");
+    expect(workflow).toContain("ubuntu-22.04");
+    expect(workflow).toContain("macos-15-intel");
+    expect(workflow).toContain("macos-15");
+    for (const target of desktopTargets) expect(workflow).toContain(target);
   });
 });
 

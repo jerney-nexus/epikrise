@@ -37,8 +37,9 @@ brew install tesseract tesseract-lang
 
 `pnpm tauri` prepares the ignored, target-specific OCR files before
 invoking the Tauri CLI. It downloads the matching PDFium library from the
-upstream release and verifies its SHA-256 digest. Tesseract itself and its
-language data are taken from the host installation.
+upstream release and verifies its SHA-256 digest. It builds a portable native
+Tesseract sidecar from pinned, checksum-verified sources; German and English
+language data are copied from the host installation.
 
 Then:
 
@@ -107,6 +108,44 @@ A successful cross-build does not replace runtime acceptance testing. Test
 installation without WebView2, launch, OCR with German and English synthetic
 images, clipboard and credentials, and uninstall on native Windows x64 and
 ARM64 systems.
+
+## Cross-platform Actions builds
+
+The manual **Desktop builds** workflow produces six native/target-matched
+packages: Linux x64 and ARM64 (`.deb`, `.rpm`, AppImage), macOS x64 and ARM64
+(`.dmg`), and Windows x64 and ARM64 (NSIS `.exe` with offline WebView2). Linux
+and macOS use native GitHub-hosted runners; Windows uses the existing
+Linux-ARM64 `cargo-xwin` cross-build. OCR sidecars are built from pinned source
+archives, and downloaded source/PDFium files are checksum-verified. Native
+Linux OCR is statically linked; macOS OCR links its third-party dependencies
+statically and checks that remaining dynamic libraries are provided by macOS.
+
+Run `pnpm build:all` only after the workflow is present and enabled on GitHub.
+The worktree must be clean, and `HEAD` must be the exact commit pushed to the
+current `origin` branch or tag. The command does not commit or push. `gh`
+authentication must permit workflow dispatch and artifact download; the
+container and Actions runners need network access. Six isolated jobs can run in
+parallel. Completed outputs and their manifests are downloaded to
+`.artifacts/desktop-builds/<request-id>/`, which is Git-ignored; the command
+rejects missing jobs, wrong SHAs/versions/targets, incomplete packages, and
+manifest or SHA-256 mismatches. GitHub retains the uploaded artifacts for 14
+days.
+
+Before enabling Windows jobs, a repository administrator must review the
+license for the pinned Microsoft Windows SDK/CRT and set the repository
+**Actions variable** `EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED` to the exact string
+`true`. The workflow only passes that value to the guarded setup script; it
+does not accept the license or store the SDK/CRT in Actions caches. If the
+variable is absent or different, setup fails before those downloads. Local
+`pnpm windows:setup` remains interactive and still requires typing `ACCEPT`.
+
+Build artifacts are unsigned and macOS packages are not notarized. Expect
+SmartScreen/Gatekeeper warnings or installation restrictions; do not distribute
+them into a clinical environment as trusted installers. The workflow does not
+publish releases or configure updates. Inspect package contents and test
+installation, launch, PDFium, German/English synthetic OCR, credentials,
+clipboard and uninstall on native Linux, macOS and Windows systems for every
+architecture. Cross-build success alone does not prove runtime support.
 
 ## Project layout
 

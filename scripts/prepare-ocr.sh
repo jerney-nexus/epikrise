@@ -131,8 +131,8 @@ if [[ "$target" == *-pc-windows-msvc ]]; then
   builder="${EPIKRISE_WINDOWS_OCR_BUILDER:-$repo_root/scripts/build-windows-ocr.sh}"
   EPIKRISE_OCR_BINARY_DIR="$binary_dir" bash "$builder" "$target"
 else
-  sidecar_path="$binary_dir/tesseract-$target"
-  ln -sfn "$(cd "$(dirname "$tesseract_path")" && pwd)/$(basename "$tesseract_path")" "$sidecar_path"
+  builder="${EPIKRISE_NATIVE_OCR_BUILDER:-$repo_root/scripts/build-native-ocr.sh}"
+  EPIKRISE_OCR_BINARY_DIR="$binary_dir" bash "$builder" "$target"
 fi
 
 if [[ ! -f "$binary_dir/tesseract-$target" && ! -f "$binary_dir/tesseract-$target.exe" ]]; then

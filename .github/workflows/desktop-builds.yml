@@ -1,0 +1,216 @@
+name: Desktop builds
+run-name: Desktop builds ${{ inputs.request_id }} @ ${{ inputs.expected_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Unique request identifier from scripts/build:all
+        required: true
+        type: string
+      expected_sha:
+        description: Full commit SHA to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            platform: linux
+            bundles: deb rpm appimage
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+            platform: linux
+            bundles: deb rpm appimage
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            platform: macos
+            bundles: dmg
+          - target: aarch64-apple-darwin
+            runner: macos-15
+            platform: macos
+            bundles: dmg
+          - target: x86_64-pc-windows-msvc
+            runner: ubuntu-22.04-arm
+            platform: windows
+            windows_arch: x64
+          - target: aarch64-pc-windows-msvc
+            runner: ubuntu-22.04-arm
+            platform: windows
+            windows_arch: arm64
+
+    env:
+      TARGET: ${{ matrix.target }}
+      PLATFORM: ${{ matrix.platform }}
+      REQUEST_ID: ${{ inputs.request_id }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      ARTIFACT_STAGE: artifact-staging/${{ matrix.target }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_sha }}
+          persist-credentials: false
+
+      - name: Verify requested commit
+        shell: bash
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_SHA" ]]
+          [[ "$REQUEST_ID" =~ ^[0-9a-f-]{36}$ ]]
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache native OCR and Cargo inputs
+        if: matrix.platform != 'windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/epikrise/native-ocr
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh') }}
+
+      - name: Cache Windows OCR sources and toolchain
+        if: matrix.platform == 'windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/epikrise/windows-ocr
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-windows-ocr.sh') }}
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake curl file libfuse2 libssl-dev libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev ninja-build \
+            pkg-config patchelf ripgrep rpm tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+
+      - name: Install macOS OCR language data
+        if: matrix.platform == 'macos'
+        run: brew install ripgrep tesseract tesseract-lang
+
+      - name: Install Windows cross-build dependencies
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake curl file lld llvm makensis nsis ninja-build \
+            pkg-config ripgrep libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev patchelf tesseract-ocr \
+            tesseract-ocr-deu tesseract-ocr-eng
+          temp_file="$(mktemp)"
+          curl --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/NSIS-Dev/NSIS/v312/Include/Win/RestartManager.nsh \
+            -o "$temp_file"
+          printf '%s  %s\n' \
+            67149978412da9b283e2e1abe48a360093df9caf6363373e2cabe463978b7c0e \
+            "$temp_file" | sha256sum --check --status
+          sudo install -D -m 0644 "$temp_file" \
+            /usr/share/nsis/Include/Win/RestartManager.nsh
+          rm -f "$temp_file"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up the pinned Windows SDK and CRT
+        if: matrix.platform == 'windows'
+        env:
+          EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: ${{ vars.EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED }}
+        run: bash scripts/windows-setup.sh --ci
+
+      - name: Prepare target OCR resources
+        run: bash scripts/prepare-ocr.sh --target "$TARGET"
+
+      - name: Verify staged OCR architectures
+        shell: bash
+        run: |
+          case "$TARGET" in
+            x86_64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'Advanced Micro Devices X86-64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'Advanced Micro Devices X86-64'
+              ;;
+            aarch64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'AArch64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'AArch64'
+              ;;
+            x86_64-apple-darwin)
+              lipo -verify_arch x86_64 "src-tauri/binaries/tesseract-$TARGET"
+              lipo -verify_arch x86_64 src-tauri/resources/ocr/pdfium/libpdfium.dylib
+              ;;
+            aarch64-apple-darwin)
+              lipo -verify_arch arm64 "src-tauri/binaries/tesseract-$TARGET"
+              lipo -verify_arch arm64 src-tauri/resources/ocr/pdfium/libpdfium.dylib
+              ;;
+            x86_64-pc-windows-msvc)
+              llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_AMD64
+              llvm-readobj --file-headers src-tauri/resources/ocr/pdfium/pdfium.dll | grep -F IMAGE_FILE_MACHINE_AMD64
+              ;;
+            aarch64-pc-windows-msvc)
+              llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_ARM64
+              llvm-readobj --file-headers src-tauri/resources/ocr/pdfium/pdfium.dll | grep -F IMAGE_FILE_MACHINE_ARM64
+              ;;
+          esac
+
+      - name: Build Windows installer
+        if: matrix.platform == 'windows'
+        env:
+          WINDOWS_ARCH: ${{ matrix.windows_arch }}
+        run: pnpm "windows:build:$WINDOWS_ARCH"
+
+      - name: Build Linux or macOS bundles
+        if: matrix.platform != 'windows'
+        env:
+          BUNDLE_TARGETS: ${{ matrix.bundles }}
+        shell: bash
+        run: |
+          read -r -a bundles <<< "$BUNDLE_TARGETS"
+          bash scripts/with-cargo-host-target.sh \
+            pnpm exec tauri build --target "$TARGET" --bundles "${bundles[@]}" --no-sign
+
+      - name: Stage packages and manifest
+        shell: bash
+        run: |
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          node scripts/desktop-builds.mjs stage \
+            --target "$TARGET" \
+            --commit "$EXPECTED_SHA" \
+            --request-id "$REQUEST_ID" \
+            --bundle-root "src-tauri/target/host-$host_target/$TARGET/release/bundle" \
+            --stage-root "$ARTIFACT_STAGE"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: epikrise-${{ matrix.target }}
+          path: artifact-staging/${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

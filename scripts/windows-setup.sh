@@ -7,6 +7,20 @@ visual_studio_version="17"
 cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/epikrise/windows"
 license_marker="$cache_root/sdk-license-accepted-$visual_studio_version-$sdk_version-$crt_version"
 
+if [[ "${1:-}" == "--ci" ]]; then
+  if [[ $# -ne 1 ]]; then
+    printf 'Usage: %s [--ci]\n' "$0" >&2
+    exit 2
+  fi
+  if [[ "${EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED:-}" != "true" ]]; then
+    printf 'Set the EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED repository variable to true only after reviewing the Microsoft SDK/CRT license.\n' >&2
+    exit 1
+  fi
+elif [[ $# -ne 0 ]]; then
+  printf 'Usage: %s [--ci]\n' "$0" >&2
+  exit 2
+fi
+
 if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
   printf 'Windows cross-build setup is supported from the Linux ARM64 dev container.\n' >&2
   exit 1

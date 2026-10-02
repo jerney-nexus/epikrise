@@ -19,6 +19,7 @@
     "check:rust:deny": "cargo deny --manifest-path src-tauri/Cargo.toml --config src-tauri/deny.toml check",
     "audit:rust": "cargo audit --file src-tauri/Cargo.lock",
     "audit:pnpm": "pnpm audit --audit-level high",
+    "build:all": "node scripts/desktop-builds.mjs dispatch",
     "lint": "eslint . --max-warnings 0",
     "test": "pnpm test:ui && pnpm test:i18n && pnpm test:rust",
     "test:coverage": "pnpm test:ui:coverage && pnpm test:rust:coverage",
