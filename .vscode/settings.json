@@ -3,6 +3,7 @@
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
   },
+  "eslint.nodePath": "./node_modules",
   "eslint.validate": ["javascript", "typescript", "svelte"],
   "svelte.enable-ts-plugin": true,
   "vitest.vitestPackagePath": "node_modules/vitest/package.json",

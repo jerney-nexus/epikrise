@@ -1,6 +1,9 @@
-import { defineConfig, devices } from "@playwright/test";
+/// <reference types="node" />
 
-const projects = [
+import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/test";
+import process from "node:process";
+
+const projects: NonNullable<PlaywrightTestConfig["projects"]> = [
   {
     name: "chromium",
     use: {
