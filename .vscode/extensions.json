@@ -6,6 +6,8 @@
     "tauri-apps.tauri-vscode",
     "rust-lang.rust-analyzer",
     "ryanluker.vscode-coverage-gutters",
-    "ms-playwright.playwright"
+    "ms-playwright.playwright",
+    "tamasfe.even-better-toml",
+    "vitest.explorer"
   ]
 }

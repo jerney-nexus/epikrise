@@ -1,5 +1,15 @@
 {
   "features": {
+    "ghcr.io/devcontainers-extra/features/cmake:1": {
+      "version": "1.0.0",
+      "resolved": "ghcr.io/devcontainers-extra/features/cmake@sha256:86e25502f6b1213a68d88e4e55c969eba0b5016b9666d216ab65f5047808bc90",
+      "integrity": "sha256:86e25502f6b1213a68d88e4e55c969eba0b5016b9666d216ab65f5047808bc90"
+    },
+    "ghcr.io/devcontainers-extra/features/curl-apt-get:1": {
+      "version": "1.0.18",
+      "resolved": "ghcr.io/devcontainers-extra/features/curl-apt-get@sha256:7fb32e4ebdd440369a598e7a27b1ed56c9e73eb6b4f595d30969862d2fc68e40",
+      "integrity": "sha256:7fb32e4ebdd440369a598e7a27b1ed56c9e73eb6b4f595d30969862d2fc68e40"
+    },
     "ghcr.io/devcontainers-extra/features/pnpm:2": {
       "version": "2.0.5",
       "resolved": "ghcr.io/devcontainers-extra/features/pnpm@sha256:694c2b6182435c9e9c06f6071728b087c1181b38c18cecf0defe2ab8c11cddd6",
@@ -14,6 +24,11 @@
       "version": "1.0.15",
       "resolved": "ghcr.io/devcontainers-extra/features/ripgrep@sha256:0dfc0ac16f0d6aa754d006a138fd4cb4a62c245d308306edf8ad1b7a80b8fdf2",
       "integrity": "sha256:0dfc0ac16f0d6aa754d006a138fd4cb4a62c245d308306edf8ad1b7a80b8fdf2"
+    },
+    "ghcr.io/devcontainers-extra/features/wget-apt-get:1": {
+      "version": "1.0.17",
+      "resolved": "ghcr.io/devcontainers-extra/features/wget-apt-get@sha256:35dbf105e38d7772cfe363b2fc4aedb3348f274822bc6fbf9c18be6d6b0ea471",
+      "integrity": "sha256:35dbf105e38d7772cfe363b2fc4aedb3348f274822bc6fbf9c18be6d6b0ea471"
     },
     "ghcr.io/devcontainers/features/copilot-cli:1": {
       "version": "1.1.3",

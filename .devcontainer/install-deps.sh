@@ -9,14 +9,11 @@ sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   build-essential \
   clang \
-  cmake \
-  curl \
   file \
   lld \
   llvm \
   ninja-build \
   nsis \
-  wget \
   libssl-dev \
   libayatana-appindicator3-dev \
   librsvg2-dev \
