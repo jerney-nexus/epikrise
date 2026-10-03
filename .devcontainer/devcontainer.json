@@ -17,7 +17,7 @@
     }
   },
   "onCreateCommand": "bash .devcontainer/install-deps.sh",
-  "postCreateCommand": "pnpm install --frozen-lockfile && node --input-type=module -e 'await import(\"vite\"); console.log(\"Vite native binding ready\")'",
+  "postCreateCommand": "pnpm install --frozen-lockfile && pnpm exec playwright install-deps && node --input-type=module -e 'await import(\"vite\"); console.log(\"Vite native binding ready\")'",
   "forwardPorts": [1420, 6080],
   "portsAttributes": {
     "1420": {
@@ -26,6 +26,10 @@
     },
     "6080": {
       "label": "Desktop (noVNC)",
+      "onAutoForward": "notify"
+    },
+    "9323": {
+      "label": "Playwright Inspector",
       "onAutoForward": "notify"
     }
   },

@@ -83,3 +83,7 @@ $RECYCLE.BIN/
 # Vite writes these when the config is transpiled on the fly
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Playwright
+/playwright/.cache/
+/playwright/.auth/
