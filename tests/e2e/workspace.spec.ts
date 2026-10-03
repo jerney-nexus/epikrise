@@ -358,6 +358,38 @@ test("keeps template settings open when the file picker is canceled", async ({
   await expect(dialog).toBeHidden();
 });
 
+test("keeps template settings centered and stacked at medium widths", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Template settings" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Template settings" });
+  await expect(dialog).toBeVisible();
+  const initialLayout = await dialog.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const content = element.querySelector(".template-settings");
+    const style = content ? getComputedStyle(content) : null;
+    return {
+      left: rect.left,
+      width: rect.width,
+      display: style?.display,
+      flexDirection: style?.flexDirection,
+    };
+  });
+
+  expect(initialLayout.width).toBeLessThan(600);
+  expect(initialLayout.display).toBe("flex");
+  expect(initialLayout.flexDirection).toBe("column");
+
+  await page.mouse.click(1016, 384);
+  await expect(dialog).toBeVisible();
+  await expect
+    .poll(() => dialog.evaluate((element) => element.getBoundingClientRect().left))
+    .toBe(initialLayout.left);
+});
+
 test("orders template settings controls with import before export", async ({
   page,
 }) => {
