@@ -2563,7 +2563,7 @@
               !activeTemplate ||
               (policyStatus?.active && !policyStatus.allowTemplateExport)}
           >
-            {t("Export .epitpl")}
+            {t("Export template (.epitpl)")}
             {#if policyStatus?.active && !policyStatus.allowTemplateExport}
               <span class="policy-badge">{t("Administrator managed")}</span>
             {/if}
@@ -2685,23 +2685,24 @@
           </div>
         {/if}
 
-        <label
-          class="template-file-label"
-          class:disabled={templateBusy ||
-            (policyStatus?.active && !policyStatus.allowTemplateImport)}
-          for="template-file"
-          aria-disabled={templateBusy ||
+        <button
+          class="template-import-button"
+          type="button"
+          onclick={() => templateFileInput?.click()}
+          disabled={templateBusy ||
             (policyStatus?.active && !policyStatus.allowTemplateImport)}
         >
-          {templateBusy ? t("Working...") : t("Import .epitpl")}
+          {templateBusy ? t("Working...") : t("Import template (.epitpl)")}
           {#if policyStatus?.active && !policyStatus.allowTemplateImport}
             <span class="policy-badge">{t("Administrator managed")}</span>
           {/if}
-        </label>
+        </button>
         <input
           id="template-file"
           class="template-file-input"
           type="file"
+          aria-hidden="true"
+          tabindex="-1"
           accept=".epitpl,text/plain,application/toml,application/json"
           bind:this={templateFileInput}
           onchange={importTemplate}
@@ -4003,40 +4004,46 @@
     overflow-wrap: anywhere;
   }
 
-  .template-file-label {
-    display: inline-flex;
-    min-height: 36px;
+  .template-import-button {
+    display: flex;
+    width: 100%;
+    min-height: 44px;
     align-items: center;
     justify-content: center;
     margin-top: 4px;
+    padding: 8px 12px;
     border: 1px solid #bfd1c7;
     border-radius: 5px;
     color: #285e50;
     background: #f6faf6;
     cursor: pointer;
-    font-size: 12px;
+    font: inherit;
+    font-size: 13px;
     font-weight: 650;
   }
 
-  .template-file-label:hover {
+  .template-import-button:hover:not(:disabled) {
     background: #eaf3ec;
   }
 
-  .template-file-label.disabled {
+  .template-import-button:disabled {
     color: #78877f;
     background: #f0f3f1;
     cursor: not-allowed;
     opacity: 0.7;
   }
 
-  .template-file-label.disabled:hover {
-    background: #f0f3f1;
-  }
-
   .template-file-input {
-    height: auto;
-    padding: 7px;
-    font-size: 11px;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+    border: 0;
   }
 
   .template-message {

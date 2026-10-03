@@ -345,6 +345,9 @@ test("keeps template settings open when the file picker is canceled", async ({
   await page.getByRole("button", { name: "Template settings" }).click();
   const dialog = page.getByRole("dialog", { name: "Template settings" });
   await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Import template (.epitpl)" }),
+  ).toBeVisible();
 
   await page.locator("#template-file").focus();
   await page.keyboard.press("Escape");
@@ -358,7 +361,7 @@ test("keeps template settings open when the file picker is canceled", async ({
 test("exports the active template through the native save flow", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Template settings" }).click();
-  await page.getByRole("button", { name: "Export .epitpl" }).click();
+  await page.getByRole("button", { name: "Export template (.epitpl)" }).click();
 
   await expect
     .poll(() =>
@@ -380,7 +383,7 @@ test("does not report an export when the save dialog is canceled", async ({ page
     }
   });
   await page.getByRole("button", { name: "Template settings" }).click();
-  await page.getByRole("button", { name: "Export .epitpl" }).click();
+  await page.getByRole("button", { name: "Export template (.epitpl)" }).click();
 
   await expect(page.getByText("Template exported", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "Template settings" })).toBeVisible();
