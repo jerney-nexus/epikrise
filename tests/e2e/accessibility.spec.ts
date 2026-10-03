@@ -4,6 +4,8 @@ import { expect, test } from "./fixtures";
 
 const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
 
+test.use({ reducedMotion: "reduce" });
+
 async function expectNoAxeViolations(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(wcagTags).analyze();
   expect(results.violations).toEqual([]);

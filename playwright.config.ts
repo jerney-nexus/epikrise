@@ -41,9 +41,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: process.env.CI
-    ? "dot"
-    : [["list"], ["html", { open: "never", host: "127.0.0.1" }]],
+  reporter: [
+    [process.env.CI ? "dot" : "list"],
+    ["html", { open: "never", host: "127.0.0.1" }],
+  ],
   use: {
     baseURL: "http://127.0.0.1:1420",
     trace: "retain-on-failure",
@@ -54,6 +55,6 @@ export default defineConfig({
     command: "pnpm dev -- --host 127.0.0.1",
     url: "http://127.0.0.1:1420",
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 120 * 1000,
   },
 });
