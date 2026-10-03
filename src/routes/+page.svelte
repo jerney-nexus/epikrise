@@ -2537,22 +2537,20 @@
       }}
     >
       <section class="template-settings" aria-label={t("Template settings")}>
-        <div class="template-heading">
-          <p class="eyebrow">{t("Workspace")}</p>
-          <div class="dialog-heading">
-            <div>
-              <h2 id="template-settings-title">{t("Template settings")}</h2>
-              <p>{t("Select, import, and configure the active template.")}</p>
-            </div>
-            <button
-              class="dialog-close"
-              type="button"
-              aria-label={t("Close template settings")}
-              onclick={() => templateSettingsDialog?.close()}
-            >
-              ×
-            </button>
+        <p class="eyebrow">{t("Workspace")}</p>
+        <div class="dialog-heading">
+          <div>
+            <h2 id="template-settings-title">{t("Template settings")}</h2>
+            <p>{t("Select, import, and configure the active template.")}</p>
           </div>
+          <button
+            class="dialog-close"
+            type="button"
+            aria-label={t("Close template settings")}
+            onclick={() => templateSettingsDialog?.close()}
+          >
+            ×
+          </button>
         </div>
 
         {#if importedTemplates.length}
@@ -3776,15 +3774,10 @@
   .settings-dialog .template-settings {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     margin: 0;
     padding: 0;
     border: 0;
-  }
-
-  .settings-dialog .template-heading {
-    display: flex;
-    flex-direction: column;
-    gap: 9px;
   }
 
   .dialog-heading {
@@ -3922,13 +3915,6 @@
 
   .update-settings progress {
     width: 100%;
-  }
-
-  .template-heading h2 {
-    margin: 3px 0 4px;
-    font-family: Georgia, serif;
-    font-size: 20px;
-    font-weight: 400;
   }
 
   .setting-hint {
@@ -5254,7 +5240,6 @@
       gap: 9px 14px;
     }
 
-    .template-heading,
     .template-fields,
     .template-section-fields,
     .template-preview,
@@ -5318,7 +5303,6 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .template-heading,
     .template-fields,
     .template-section-fields,
     .template-preview,
@@ -5454,7 +5438,7 @@
 
     .brand,
     .provider-settings h1,
-    .template-heading h2,
+    .template-settings h2,
     .page-header h2,
     .panel-heading h3,
     .first-run-panel h2 {

@@ -361,33 +361,44 @@ test("keeps template settings open when the file picker is canceled", async ({
 test("keeps template settings centered and stacked at medium widths", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.setViewportSize({ width: 1280, height: 768 });
   await page.goto("/");
   await page.getByRole("button", { name: "Template settings" }).click();
 
   const dialog = page.getByRole("dialog", { name: "Template settings" });
   await expect(dialog).toBeVisible();
-  const initialLayout = await dialog.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const content = element.querySelector(".template-settings");
-    const style = content ? getComputedStyle(content) : null;
-    return {
-      left: rect.left,
-      width: rect.width,
-      display: style?.display,
-      flexDirection: style?.flexDirection,
-    };
-  });
+  for (const width of [1280, 1120, 1024, 720, 640, 520, 390]) {
+    await page.setViewportSize({ width, height: 768 });
+    const layout = await dialog.evaluate((element) => {
+      const dialogRect = element.getBoundingClientRect();
+      const closeButton = element.querySelector(".dialog-close");
+      const content = element.querySelector(".template-settings");
+      const buttonRect = closeButton?.getBoundingClientRect();
+      const style = content ? getComputedStyle(content) : null;
+      return {
+        left: dialogRect.left,
+        width: dialogRect.width,
+        rightInset: buttonRect ? dialogRect.right - buttonRect.right : Infinity,
+        display: style?.display,
+        flexDirection: style?.flexDirection,
+      };
+    });
 
-  expect(initialLayout.width).toBeLessThan(600);
-  expect(initialLayout.display).toBe("flex");
-  expect(initialLayout.flexDirection).toBe("column");
+    expect(layout.left, `dialog left at ${width}px`).toBeGreaterThanOrEqual(0);
+    expect(layout.width, `dialog width at ${width}px`).toBeLessThan(600);
+    expect(layout.rightInset, `close button alignment at ${width}px`).toBeLessThan(32);
+    expect(layout.display, `content display at ${width}px`).toBe("flex");
+    expect(layout.flexDirection, `content direction at ${width}px`).toBe("column");
+  }
 
-  await page.mouse.click(1016, 384);
+  const initialLeft = await dialog.evaluate(
+    (element) => element.getBoundingClientRect().left,
+  );
+  await page.mouse.click(382, 384);
   await expect(dialog).toBeVisible();
   await expect
     .poll(() => dialog.evaluate((element) => element.getBoundingClientRect().left))
-    .toBe(initialLayout.left);
+    .toBe(initialLeft);
 });
 
 test("orders template settings controls with import before export", async ({
