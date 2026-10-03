@@ -2,6 +2,13 @@
 
 ## Bug Fixes
 
+### Medium Urgency
+
+- Investigate VS Code Playwright Test Explorer runs leaving the configured dev
+  server running. The focused terminal E2E run passed and exited Vite, but this
+  environment has no reproducible Test Explorer run or leaked Vite process;
+  verify the Explorer lifecycle before adding cleanup logic.
+
 ## Release and updater follow-up
 
 ### High Urgency
