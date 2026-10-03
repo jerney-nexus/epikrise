@@ -3,12 +3,14 @@ import type { ClinicalTemplate, PolicyStatus } from "../../src/bindings";
 
 type FixtureOptions = {
   seedTemplates: boolean;
+  allSectionsDisabled: boolean;
   uiLocale: string;
   policy: PolicyStatus;
 };
 
 type FixtureSetup = {
   seedTemplates: boolean;
+  allSectionsDisabled: boolean;
   uiLocale: string;
   template: ClinicalTemplate;
   policy: PolicyStatus;
@@ -89,6 +91,7 @@ const syntheticPolicy: PolicyStatus = {
 
 function installTauriFixture({
   seedTemplates,
+  allSectionsDisabled,
   uiLocale,
   template,
   policy,
@@ -134,7 +137,19 @@ function installTauriFixture({
     },
     async invoke(command, args = {}) {
       fixture.commands.push({ command, args });
-      const templateData = seedTemplates ? [template] : [];
+      const templateData = seedTemplates
+        ? [
+            {
+              ...template,
+              sections: template.sections.map((section) => ({
+                ...section,
+                enabled_by_default: allSectionsDisabled
+                  ? false
+                  : section.enabled_by_default,
+              })),
+            },
+          ]
+        : [];
       switch (command) {
         case "get_update_settings":
           return {
@@ -255,13 +270,15 @@ function installTauriFixture({
 
 export const test = base.extend<FixtureOptions>({
   seedTemplates: [true, { option: true }],
+  allSectionsDisabled: [false, { option: true }],
   uiLocale: ["en", { option: true }],
   policy: [syntheticPolicy, { option: true }],
-  page: async ({ page, seedTemplates, uiLocale, policy }, use) => {
+  page: async ({ page, seedTemplates, allSectionsDisabled, uiLocale, policy }, use) => {
     const origin = new URL("http://127.0.0.1:1420").origin;
     const unexpectedRequests: string[] = [];
     await page.addInitScript(installTauriFixture, {
       seedTemplates,
+      allSectionsDisabled,
       uiLocale,
       template: syntheticTemplate,
       policy,

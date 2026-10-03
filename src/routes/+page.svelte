@@ -742,9 +742,14 @@
   function initialTemplateSectionStates(
     template: ClinicalTemplate,
   ): Record<string, boolean> {
-    return Object.fromEntries(
-      template.sections.map((section) => [section.id, section.enabled_by_default]),
+    const sections = orderedTemplateSections(template);
+    const states = Object.fromEntries(
+      sections.map((section) => [section.id, section.enabled_by_default]),
     );
+    if (sections.length > 0 && !sections.some((section) => states[section.id])) {
+      states[sections[0].id] = true;
+    }
+    return states;
   }
 
   function activateTemplate(templateId: string) {
@@ -1048,6 +1053,8 @@
       sections: orderedTemplateSections(snapshot).map((section, order) => ({
         ...section,
         order,
+        enabled_by_default:
+          templateSectionStates[section.id] ?? section.enabled_by_default,
       })),
     };
     templatePreview = "";
@@ -2437,7 +2444,7 @@
             {/each}
           </select>
           <button
-            class="model-refresh-button"
+            class="model-refresh-button settings-action-color"
             type="button"
             onclick={refreshModels}
             disabled={modelListLoading || isGenerating || isPreparingGeneration}
@@ -2561,7 +2568,7 @@
             {/each}
           </select>
           <button
-            class="template-export-button"
+            class="template-export-button template-settings-action"
             type="button"
             onclick={openTemplateEditor}
             disabled={!activeTemplate ||
@@ -2577,7 +2584,7 @@
         {:else}
           <p class="template-empty">{t("No templates imported")}</p>
           <button
-            class="template-export-button"
+            class="template-export-button template-settings-action"
             type="button"
             onclick={createGenericStarter}
             disabled={templateBusy ||
@@ -2591,7 +2598,7 @@
         {/if}
 
         <button
-          class="template-import-button"
+          class="template-import-button template-settings-action"
           type="button"
           onclick={() => templateFileInput?.click()}
           disabled={templateBusy ||
@@ -2616,7 +2623,7 @@
         />
         {#if activeTemplate}
           <button
-            class="template-export-button"
+            class="template-export-button template-settings-action"
             type="button"
             onclick={exportActiveTemplate}
             disabled={templateBusy ||
@@ -3766,10 +3773,6 @@
     max-height: calc(100vh - 2rem);
   }
 
-  .settings-dialog.template-settings-dialog {
-    width: min(760px, calc(100vw - 28px));
-  }
-
   .settings-dialog .template-settings {
     margin: 0;
     padding: 0;
@@ -4013,12 +4016,18 @@
   }
 
   .template-import-button {
+    flex: 0 0 auto;
+  }
+
+  .template-settings-action {
+    box-sizing: border-box;
     display: flex;
     width: 100%;
     min-height: 44px;
     align-items: center;
     justify-content: center;
-    margin-top: 4px;
+    gap: 8px;
+    margin: 0;
     padding: 8px 12px;
     border: 1px solid #bfd1c7;
     border-radius: 5px;
@@ -4028,17 +4037,23 @@
     font: inherit;
     font-size: 13px;
     font-weight: 650;
+    text-align: center;
   }
 
-  .template-import-button:hover:not(:disabled) {
+  .template-settings-action:hover:not(:disabled),
+  .settings-action-color:hover:not(:disabled) {
     background: #eaf3ec;
   }
 
-  .template-import-button:disabled {
-    color: #78877f;
+  .template-settings-action:focus-visible,
+  .settings-action-color:focus-visible {
+    outline: 3px solid #287562;
+    outline-offset: 2px;
+  }
+
+  .template-settings-action:disabled {
+    color: #65766e;
     background: #f0f3f1;
-    cursor: not-allowed;
-    opacity: 0.7;
   }
 
   .template-file-input {
@@ -4487,19 +4502,18 @@
   .model-refresh-button {
     min-height: 36px;
     padding: 0 9px;
-    border: 1px solid #cbd7d0;
-    border-radius: 5px;
-    color: #335248;
-    background: #f8faf8;
-    cursor: pointer;
-    font: inherit;
     font-size: 11px;
-    font-weight: 650;
     white-space: nowrap;
   }
 
-  .model-refresh-button:hover:not(:disabled) {
-    background: #edf3ef;
+  .settings-action-color {
+    border: 1px solid #bfd1c7;
+    border-radius: 5px;
+    color: #285e50;
+    background: #f6faf6;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 650;
   }
 
   .model-list-message {
@@ -5560,17 +5574,29 @@
     }
 
     .input-tool-button,
-    .model-refresh-button,
-    .template-export-button {
+    .template-export-button,
+    .template-settings-action,
+    .settings-action-color {
       border-color: #496354;
       color: #c5e0d1;
       background: #203329;
     }
 
     .input-tool-button:hover:not(:disabled),
-    .model-refresh-button:hover:not(:disabled),
-    .template-export-button:hover:not(:disabled) {
+    .template-export-button:hover:not(:disabled),
+    .template-settings-action:hover:not(:disabled),
+    .settings-action-color:hover:not(:disabled) {
       background: #294637;
+    }
+
+    .template-settings-action:focus-visible,
+    .settings-action-color:focus-visible {
+      outline-color: #a8e0c8;
+    }
+
+    .template-settings-action:disabled {
+      color: #a7b7ad;
+      background: #26362d;
     }
 
     .draft-tag {

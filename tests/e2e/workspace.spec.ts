@@ -397,6 +397,100 @@ test("keeps one enabled-by-default section in the template editor", async ({
   await expect(sectionToggles.nth(1)).toBeDisabled();
 });
 
+test("reflects active section selections in the template editor", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Template settings" }).click();
+  await page.locator("#template-section-summary").uncheck();
+  await page.getByRole("button", { name: "Edit template" }).click();
+
+  const sectionToggles = page
+    .locator(".template-editor-dialog")
+    .getByRole("checkbox", { name: "Enabled by default" });
+  await expect(sectionToggles.nth(0)).not.toBeChecked();
+  await expect(sectionToggles.nth(1)).toBeChecked();
+});
+
+test.describe("templates with no enabled defaults", () => {
+  test.use({ allSectionsDisabled: true });
+
+  test("starts with the first section enabled in settings and editor", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Template settings" }).click();
+    await expect(page.locator("#template-section-summary")).toBeChecked();
+    await expect(page.locator("#template-section-findings")).not.toBeChecked();
+
+    await page.getByRole("button", { name: "Edit template" }).click();
+    const sectionToggles = page
+      .locator(".template-editor-dialog")
+      .getByRole("checkbox", { name: "Enabled by default" });
+    await expect(sectionToggles.nth(0)).toBeChecked();
+    await expect(sectionToggles.nth(1)).not.toBeChecked();
+  });
+});
+
+test("styles settings actions consistently in light and dark themes", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.getByRole("button", { name: "Template settings" }).click();
+    const templateDialog = page.getByRole("dialog", { name: "Template settings" });
+    const templateActions = await templateDialog
+      .locator(".template-settings-action")
+      .evaluateAll((buttons) =>
+        buttons.map((button) => {
+          const style = getComputedStyle(button);
+          const bounds = button.getBoundingClientRect();
+          return {
+            width: bounds.width,
+            height: bounds.height,
+            color: style.color,
+            background: style.backgroundColor,
+            border: style.borderTopColor,
+          };
+        }),
+      );
+    expect(templateActions).toHaveLength(3);
+    expect(new Set(templateActions.map(({ width }) => width)).size).toBe(1);
+    expect(new Set(templateActions.map(({ height }) => height)).size).toBe(1);
+    expect(new Set(templateActions.map(({ color }) => color)).size).toBe(1);
+    expect(new Set(templateActions.map(({ background }) => background)).size).toBe(1);
+    expect(new Set(templateActions.map(({ border }) => border)).size).toBe(1);
+
+    const templateWidth = await templateDialog.evaluate(
+      (dialog) => dialog.getBoundingClientRect().width,
+    );
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Model settings" }).click();
+    const modelDialog = page.getByRole("dialog", { name: "Model settings" });
+    const refreshStyle = await modelDialog
+      .getByRole("button", { name: "Refresh models" })
+      .evaluate((button) => {
+        const style = getComputedStyle(button);
+        return {
+          color: style.color,
+          background: style.backgroundColor,
+          border: style.borderTopColor,
+        };
+      });
+    expect(refreshStyle).toEqual({
+      color: templateActions[0].color,
+      background: templateActions[0].background,
+      border: templateActions[0].border,
+    });
+    await expect
+      .poll(() =>
+        modelDialog.evaluate((dialog) => dialog.getBoundingClientRect().width),
+      )
+      .toBe(templateWidth);
+    await page.keyboard.press("Escape");
+  }
+});
+
 test("exports the active template through the native save flow", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Template settings" }).click();
