@@ -1,0 +1,301 @@
+name: Signed updater release
+run-name: Signed updater release ${{ github.ref_name }}
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: updater-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate padded version tag
+        run: node scripts/release-artifacts.mjs validate --tag "$GITHUB_REF_NAME"
+
+      - name: Reject an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            printf 'A release already exists for %s.\n' "$GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+  build:
+    needs: validate
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            platform: linux
+            bundles: deb rpm appimage
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+            platform: linux
+            bundles: deb rpm appimage
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            platform: macos
+            bundles: dmg
+          - target: aarch64-apple-darwin
+            runner: macos-15
+            platform: macos
+            bundles: dmg
+          - target: x86_64-pc-windows-msvc
+            runner: ubuntu-22.04-arm
+            platform: windows
+            windows_arch: x64
+          - target: aarch64-pc-windows-msvc
+            runner: ubuntu-22.04-arm
+            platform: windows
+            windows_arch: arm64
+
+    env:
+      TARGET: ${{ matrix.target }}
+      PLATFORM: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install source tooling
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare normalized release workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_root="$RUNNER_TEMP/epikrise-release"
+          mkdir -p "$build_root"
+          git archive "$GITHUB_SHA" | tar -x -C "$build_root"
+          node scripts/prepare-release.mjs --prepare-build-inputs "$build_root"
+          printf 'RELEASE_BUILD_ROOT=%s\n' "$build_root" >> "$GITHUB_ENV"
+
+      - name: Cache native OCR and Cargo inputs
+        if: matrix.platform != 'windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/epikrise/native-ocr
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh') }}
+
+      - name: Cache Windows OCR sources and toolchain
+        if: matrix.platform == 'windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/epikrise/windows-ocr
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-windows-ocr.sh') }}
+
+      - name: Install release workspace dependencies
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend without signing secrets
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: pnpm build
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake curl file libfuse2 libssl-dev libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev ninja-build \
+            pkg-config patchelf ripgrep rpm tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+
+      - name: Install macOS OCR language data
+        if: matrix.platform == 'macos'
+        run: brew install ripgrep tesseract tesseract-lang
+
+      - name: Install Windows cross-build dependencies
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake curl file lld llvm makensis nsis ninja-build \
+            pkg-config ripgrep libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev patchelf tesseract-ocr \
+            tesseract-ocr-deu tesseract-ocr-eng
+          temp_file="$(mktemp)"
+          curl --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/NSIS-Dev/NSIS/v312/Include/Win/RestartManager.nsh \
+            -o "$temp_file"
+          printf '%s  %s\n' \
+            67149978412da9b283e2e1abe48a360093df9caf6363373e2cabe463978b7c0e \
+            "$temp_file" | sha256sum --check --status
+          sudo install -D -m 0644 "$temp_file" \
+            /usr/share/nsis/Include/Win/RestartManager.nsh
+          rm -f "$temp_file"
+
+      - name: Set up the pinned Windows SDK and CRT
+        if: matrix.platform == 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: ${{ vars.EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED }}
+        run: bash scripts/windows-setup.sh --ci
+
+      - name: Prepare target OCR resources
+        if: matrix.platform != 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: bash scripts/prepare-ocr.sh --target "$TARGET"
+
+      - name: Build signed Windows updater bundles
+        if: matrix.platform == 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          WINDOWS_ARCH: ${{ matrix.windows_arch }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: bash scripts/build-windows.sh "$WINDOWS_ARCH" release
+
+      - name: Build signed Linux or macOS updater bundles
+        if: matrix.platform != 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          BUNDLE_TARGETS: ${{ matrix.bundles }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            printf 'TAURI_SIGNING_PRIVATE_KEY is required for signed releases.\n' >&2
+            exit 1
+          fi
+          signing_private_key="$TAURI_SIGNING_PRIVATE_KEY"
+          signing_private_key_password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          read -r -a bundles <<< "$BUNDLE_TARGETS"
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
+            TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+            bash scripts/with-cargo-host-target.sh \
+              pnpm exec tauri build \
+                --target "$TARGET" \
+                --config src-tauri/tauri.release.conf.json \
+                --config '{"build":{"beforeBuildCommand":null}}' \
+                --bundles "${bundles[@]}" \
+                --ci \
+                --no-sign
+          unset signing_private_key signing_private_key_password
+
+      - name: Stage and verify updater packages
+        working-directory: ${{ runner.temp }}/epikrise-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          node scripts/release-artifacts.mjs stage \
+            --target "$TARGET" \
+            --bundle-root "src-tauri/target/host-$host_target/$TARGET/release/bundle" \
+            --stage-root "release-staging/$TARGET"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ runner.temp }}/epikrise-release/release-staging/${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-artifacts
+          merge-multiple: false
+
+      - name: Generate static updater manifest
+        run: |
+          node scripts/release-artifacts.mjs latest \
+            --tag "$GITHUB_REF_NAME" \
+            --repository "$GITHUB_REPOSITORY" \
+            --artifacts-root release-artifacts \
+            --output latest.json
+
+      - name: Upload draft, then publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release-artifacts/*/* latest.json \
+            --draft \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --latest=false
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest --verify-tag

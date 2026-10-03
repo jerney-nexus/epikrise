@@ -13,10 +13,9 @@
 
 ### High Urgency
 
-- Build a separate release contract for target-specific updater packages,
-  signatures, `latest.json`, and version-tag publication. Keep it distinct from
-  the six-target unsigned diagnostic workflow and preserve padded
-  `YYYY.MM.PATCH` release identity.
+- Verify the first signed updater release from a padded `vYYYY.MM.PATCH` tag,
+  including all six target assets, signatures, static `latest.json`, and
+  published update URLs before relying on automatic updates.
 - Add updater fake-service tests for policy changes after discovery, candidate
   invalidation, install/case races, and signature or payload failures. Existing
   checks cover basic policy gates, version/target validation, URL allowlisting,

@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+build_mode="${2:-diagnostic}"
 
 sdk_version="10.0.26100"
 crt_version="14.44.17.14"
@@ -26,7 +27,35 @@ case "${1:-}" in
     targets=(x86_64-pc-windows-msvc aarch64-pc-windows-msvc)
     ;;
   *)
-    printf 'Usage: %s <x64|arm64|all>\n' "$0" >&2
+    printf 'Usage: %s <x64|arm64|all> [diagnostic|release]\n' "$0" >&2
+    exit 2
+    ;;
+esac
+
+if [[ "$build_mode" == "release" ]]; then
+  release_private_key="${TAURI_SIGNING_PRIVATE_KEY:-}"
+  release_private_key_password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+  if [[ -z "$release_private_key" ]]; then
+    printf 'TAURI_SIGNING_PRIVATE_KEY is required for signed releases.\n' >&2
+    exit 1
+  fi
+  unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+fi
+
+case "$build_mode" in
+  diagnostic)
+    tauri_args=()
+    ;;
+  release)
+    tauri_args=(
+      --config src-tauri/tauri.release.conf.json
+      --config '{"build":{"beforeBuildCommand":null}}'
+      --ci
+      --no-sign
+    )
+    ;;
+  *)
+    printf 'Usage: %s <x64|arm64|all> [diagnostic|release]\n' "$0" >&2
     exit 2
     ;;
 esac
@@ -49,10 +78,21 @@ for target in "${targets[@]}"; do
   printf 'Preparing OCR assets for %s...\n' "$target"
   bash scripts/prepare-ocr.sh --target "$target"
   printf 'Building the NSIS installer for %s...\n' "$target"
-  XWIN_VERSION="$visual_studio_version" \
-    XWIN_SDK_VERSION="$sdk_version" \
-    XWIN_CRT_VERSION="$crt_version" \
-    XWIN_CROSS_COMPILER=clang-cl \
-    bash scripts/with-cargo-host-target.sh \
-      pnpm exec tauri build --runner cargo-xwin --target "$target"
+  if [[ "$build_mode" == "release" ]]; then
+    XWIN_VERSION="$visual_studio_version" \
+      XWIN_SDK_VERSION="$sdk_version" \
+      XWIN_CRT_VERSION="$crt_version" \
+      XWIN_CROSS_COMPILER=clang-cl \
+      TAURI_SIGNING_PRIVATE_KEY="$release_private_key" \
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$release_private_key_password" \
+      bash scripts/with-cargo-host-target.sh \
+        pnpm exec tauri build --runner cargo-xwin --target "$target" "${tauri_args[@]}"
+  else
+    XWIN_VERSION="$visual_studio_version" \
+      XWIN_SDK_VERSION="$sdk_version" \
+      XWIN_CRT_VERSION="$crt_version" \
+      XWIN_CROSS_COMPILER=clang-cl \
+      bash scripts/with-cargo-host-target.sh \
+        pnpm exec tauri build --runner cargo-xwin --target "$target" "${tauri_args[@]}"
+  fi
 done

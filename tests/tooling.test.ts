@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
 import { execFile as execFileCallback } from "node:child_process";
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -24,6 +33,12 @@ import {
   stagePackages,
   verifyArtifactSet,
 } from "../scripts/desktop-builds.mjs";
+import {
+  createLatestManifest,
+  releaseTargets,
+  stageReleaseArtifacts,
+  validateReleaseTag,
+} from "../scripts/release-artifacts.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -482,6 +497,193 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("macos-15-intel");
     expect(workflow).toContain("macos-15");
     for (const target of desktopTargets) expect(workflow).toContain(target);
+  });
+});
+
+describe("signed release artifacts", () => {
+  const targetSuffixes: Record<string, string[]> = {
+    "x86_64-unknown-linux-gnu": [".deb", ".rpm", ".AppImage", ".AppImage.sig"],
+    "aarch64-unknown-linux-gnu": [".deb", ".rpm", ".AppImage", ".AppImage.sig"],
+    "x86_64-apple-darwin": [".dmg", ".app.tar.gz", ".app.tar.gz.sig"],
+    "aarch64-apple-darwin": [".dmg", ".app.tar.gz", ".app.tar.gz.sig"],
+    "x86_64-pc-windows-msvc": [".exe", ".exe.sig"],
+    "aarch64-pc-windows-msvc": [".exe", ".exe.sig"],
+  };
+
+  it("requires the padded tag to match the package and normalizes protocol SemVer", () => {
+    expect(validateReleaseTag("v2026.09.4", "2026.09.4")).toEqual({
+      tag: "v2026.09.4",
+      releaseVersion: "2026.09.4",
+      updateProtocolVersion: "2026.9.4",
+    });
+    expect(() => validateReleaseTag("v2026.9.4", "2026.09.4")).toThrow(
+      "vYYYY.MM.PATCH",
+    );
+    expect(() => validateReleaseTag("v2026.09.4", "2026.09.3")).toThrow(
+      "match package.json",
+    );
+  });
+
+  it("keeps signed release publication separate from diagnostic builds", async () => {
+    const releaseWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/signed-release.yml"),
+      "utf8",
+    );
+    const diagnosticWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/desktop-builds.yml"),
+      "utf8",
+    );
+
+    expect(releaseWorkflow).toContain('      - "v*"');
+    expect(releaseWorkflow).toContain("needs: validate");
+    expect(releaseWorkflow).toContain(
+      "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}",
+    );
+    expect(releaseWorkflow).toContain("--draft");
+    expect(releaseWorkflow).toContain("gh release edit");
+    expect(releaseWorkflow).toContain("contents: write");
+    expect(diagnosticWorkflow).toContain("contents: read");
+    expect(diagnosticWorkflow).not.toContain("TAURI_SIGNING_PRIVATE_KEY");
+    expect(diagnosticWorkflow).not.toContain("gh release create");
+  });
+
+  it("requires a signing key before starting a Windows release build", async () => {
+    const cacheRoot = await mkdtemp(path.join(tmpdir(), "epikrise-windows-release-"));
+    const windowsCache = path.join(cacheRoot, "epikrise", "windows");
+
+    try {
+      await mkdir(windowsCache, { recursive: true });
+      await writeFile(
+        path.join(windowsCache, "sdk-license-accepted-17-10.0.26100-14.44.17.14"),
+        "",
+      );
+      await expect(
+        execFile("bash", ["scripts/build-windows.sh", "x64", "release"], {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            XDG_CACHE_HOME: cacheRoot,
+            TAURI_SIGNING_PRIVATE_KEY: "",
+            TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: 1,
+        stderr: expect.stringContaining("TAURI_SIGNING_PRIVATE_KEY is required"),
+      });
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("stages all platform packages and builds a signed static updater manifest", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-signed-release-"));
+    const artifactsRoot = path.join(directory, "artifacts");
+    const pubDate = "2026-10-03T12:00:00.000Z";
+
+    try {
+      for (const target of releaseTargets) {
+        const bundleRoot = path.join(directory, "bundles", target);
+        await mkdir(bundleRoot, { recursive: true });
+        for (const suffix of targetSuffixes[target]) {
+          await writeFile(
+            path.join(bundleRoot, `epikrise${suffix}`),
+            suffix.endsWith(".sig") ? `signature-${target}` : `bundle-${target}`,
+          );
+        }
+        await stageReleaseArtifacts({
+          target,
+          bundleRoot,
+          stageRoot: path.join(artifactsRoot, `release-${target}`),
+        });
+      }
+
+      const manifest = await createLatestManifest({
+        tag: "v2026.09.4",
+        packageVersion: "2026.09.4",
+        repository: "owner/repo",
+        artifactsRoot,
+        pubDate,
+      });
+
+      expect(manifest.version).toBe("2026.9.4");
+      expect(manifest.pub_date).toBe(pubDate);
+      expect(manifest.platforms).toMatchObject({
+        "linux-x86_64": {
+          signature: "signature-x86_64-unknown-linux-gnu",
+          url: expect.stringContaining("v2026.09.4/"),
+        },
+        "linux-aarch64": {
+          signature: "signature-aarch64-unknown-linux-gnu",
+        },
+        "darwin-x86_64": {
+          signature: "signature-x86_64-apple-darwin",
+        },
+        "darwin-aarch64": {
+          signature: "signature-aarch64-apple-darwin",
+        },
+        "windows-x86_64": {
+          signature: "signature-x86_64-pc-windows-msvc",
+        },
+        "windows-aarch64": {
+          signature: "signature-aarch64-pc-windows-msvc",
+        },
+      });
+      expect(Object.keys(manifest.platforms)).toHaveLength(6);
+
+      const linuxArtifacts = path.join(artifactsRoot, `release-${releaseTargets[0]}`);
+      const unexpectedAsset = path.join(linuxArtifacts, "unexpected.txt");
+      await writeFile(unexpectedAsset, "unlisted");
+      await expect(
+        createLatestManifest({
+          tag: "v2026.09.4",
+          packageVersion: "2026.09.4",
+          repository: "owner/repo",
+          artifactsRoot,
+          pubDate,
+        }),
+      ).rejects.toThrow("Unexpected release assets");
+      await rm(unexpectedAsset);
+
+      const debPackage = (await readdir(linuxArtifacts)).find((name) =>
+        name.endsWith(".deb"),
+      );
+      expect(debPackage).toBeDefined();
+      await rm(path.join(linuxArtifacts, debPackage!));
+      await expect(
+        createLatestManifest({
+          tag: "v2026.09.4",
+          packageVersion: "2026.09.4",
+          repository: "owner/repo",
+          artifactsRoot,
+          pubDate,
+        }),
+      ).rejects.toThrow("Expected exactly one .deb asset");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a target missing its updater signature", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-missing-signature-"));
+    const bundleRoot = path.join(directory, "bundle");
+    try {
+      await mkdir(bundleRoot, { recursive: true });
+      for (const suffix of targetSuffixes[releaseTargets[0]].filter(
+        (value) => !value.endsWith(".sig"),
+      )) {
+        await writeFile(path.join(bundleRoot, `epikrise${suffix}`), "bundle");
+      }
+      await expect(
+        stageReleaseArtifacts({
+          target: releaseTargets[0],
+          bundleRoot,
+          stageRoot: path.join(directory, "staged"),
+        }),
+      ).rejects.toThrow(".AppImage.sig");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 
