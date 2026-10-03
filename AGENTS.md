@@ -31,6 +31,12 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - See `README.md` and `CONTRIBUTING.md` for setup and project conventions, and `TODO.md` for project ideas and unfinished work.
 - Update the `CHANGELOG.md` when changes are notable to users.
 
+## Dev Container
+
+- The development container runs Debian 12 at `/workspaces/epikrise` and provides Git, Rust, Node.js, pnpm, ESLint, `gh`, and `copilot` on `PATH`.
+- A lightweight Fluxbox desktop is available through VNC or the web. Open a URL in the host browser with `"$BROWSER" <url>`.
+- For `gh api`, use hierarchical `-f` keys for object fields. GitHub Actions workflows must use `actions/upload-artifact` and `actions/download-artifact` v4 or later.
+
 ## Code Style
 
 - TypeScript, JavaScript, and Svelte: follow Prettier (2-space indentation, double quotes, trailing commas, 88-character print width) and ESLint; follow nearby Svelte component patterns.
