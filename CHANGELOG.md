@@ -31,13 +31,17 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 - Added default-off, policy-enforced direct-release updater plumbing with
   explicit checks and install confirmation, target/version/URL validation,
   progress reporting, and exclusion during active case work. The release
-  overlay still has an unconfigured public key and is not production-ready.
+  configuration now supplies its updater public key; native installation and
+  update acceptance remain outstanding.
+- Added a padded-CalVer-tag release workflow for signed Linux, macOS, and
+  Windows x64/ARM64 updater packages, signatures, generated `latest.json`, and
+  GitHub release publication.
 - Added synthetic Playwright and axe browser tests, `pnpm test:e2e` and
   `pnpm test:a11y` scripts, and a browser-test CI workflow.
 - Fluent-based German (Switzerland) and English interface localization, OS
   language detection, a persisted language selector, and a development-only
   pseudo-localization preview.
-- Responsive fit-to-window layout, separate provider/model/template settings
+- Responsive fit-to-window layout with viewport-adaptive settings and template
   dialogs, keychain-backed credential selection, and connection checks that
   populate available models.
 - Three-pane clinical drafting workspace with responsive input and output panes,
