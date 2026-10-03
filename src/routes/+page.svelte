@@ -4046,7 +4046,7 @@
   }
 
   .template-file-input {
-    position: absolute;
+    position: fixed;
     width: 1px;
     height: 1px;
     padding: 0;

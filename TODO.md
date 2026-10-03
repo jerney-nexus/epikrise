@@ -2,10 +2,6 @@
 
 ## Bug Fixes
 
-### High Urgency
-
-- Changing viewport width to medium-sized windows breaks the layout, buttons are misaligned.
-
 ## Release and updater follow-up
 
 ### High Urgency

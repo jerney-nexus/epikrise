@@ -381,6 +381,8 @@ test("keeps template settings centered and stacked at medium widths", async ({
         rightInset: buttonRect ? dialogRect.right - buttonRect.right : Infinity,
         display: style?.display,
         flexDirection: style?.flexDirection,
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
       };
     });
 
@@ -389,6 +391,9 @@ test("keeps template settings centered and stacked at medium widths", async ({
     expect(layout.rightInset, `close button alignment at ${width}px`).toBeLessThan(32);
     expect(layout.display, `content display at ${width}px`).toBe("flex");
     expect(layout.flexDirection, `content direction at ${width}px`).toBe("column");
+    expect(layout.scrollWidth, `dialog horizontal overflow at ${width}px`).toBe(
+      layout.clientWidth,
+    );
   }
 
   const initialLeft = await dialog.evaluate(
