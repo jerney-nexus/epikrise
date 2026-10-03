@@ -3760,10 +3760,14 @@
     backdrop-filter: blur(3px);
   }
 
+  .settings-dialog,
+  .template-editor-dialog {
+    overflow: auto;
+    padding: clamp(18px, 5vw, 24px);
+  }
+
   .settings-dialog {
     width: min(510px, calc(100vw - 28px));
-    overflow: auto;
-    padding: 24px;
   }
 
   .settings-dialog.general-settings-dialog {
@@ -3772,9 +3776,6 @@
   }
 
   .settings-dialog .template-settings {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
     margin: 0;
     padding: 0;
     border: 0;
@@ -4170,19 +4171,17 @@
 
   .template-editor-dialog {
     width: min(1080px, calc(100vw - 32px));
-    overflow: auto;
   }
 
   .template-editor {
     display: flex;
     flex-direction: column;
     gap: 17px;
-    padding: 24px;
   }
 
   .template-editor-meta {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
     gap: 8px 14px;
   }
 
@@ -4205,7 +4204,7 @@
   .template-output-rule-terms {
     display: grid;
     grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
     gap: 8px 12px;
   }
 
@@ -4230,7 +4229,7 @@
   .template-output-rule-flags {
     display: grid;
     grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
     gap: 4px 12px;
   }
 
@@ -4271,7 +4270,7 @@
 
   .template-section-item-fields {
     display: grid;
-    grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
     gap: 8px 12px;
   }
 
@@ -4293,6 +4292,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 10px;
   }
 
@@ -4325,8 +4325,9 @@
   .template-editor-body {
     display: grid;
     min-height: 0;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: auto minmax(240px, min(36dvh, 340px));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    grid-template-rows: auto;
+    grid-auto-rows: minmax(240px, min(36dvh, 340px));
     gap: 7px 16px;
   }
 
@@ -4396,10 +4397,12 @@
   .template-editor-actions {
     display: flex;
     justify-content: flex-end;
+    flex-wrap: wrap;
     gap: 10px;
   }
 
   .template-editor-actions .connection-button {
+    flex: 1 1 170px;
     min-width: 160px;
     margin: 0;
     padding: 0 14px;
@@ -5233,22 +5236,6 @@
       margin-top: 16px;
     }
 
-    .template-settings {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      align-items: start;
-      gap: 9px 14px;
-    }
-
-    .template-fields,
-    .template-section-fields,
-    .template-preview,
-    .controls-actions,
-    .template-message,
-    .generation-status {
-      grid-column: 1 / -1;
-    }
-
     .first-run-panel {
       grid-column: 1 / -1;
       grid-row: 1 / 4;
@@ -5281,35 +5268,6 @@
       overflow: visible;
       padding: 17px 0;
       border-top: 1px solid #dce4de;
-    }
-
-    .template-settings {
-      grid-template-columns: minmax(0, 1fr);
-      margin-top: 18px;
-      padding-top: 15px;
-    }
-
-    .template-section-item-fields {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .template-section-item-controls {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .template-section-order {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .template-fields,
-    .template-section-fields,
-    .template-preview,
-    .controls-actions,
-    .template-message,
-    .generation-status {
-      grid-column: 1;
     }
 
     .rail-footer {
@@ -5353,43 +5311,6 @@
       width: 100%;
       margin: 18px 0;
       padding: 22px;
-    }
-
-    .template-editor {
-      padding: 17px;
-    }
-
-    .template-editor-meta {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .template-output-rule-terms,
-    .template-output-rule-flags {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .template-editor-body {
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: auto minmax(220px, min(32dvh, 320px)) minmax(
-          220px,
-          min(32dvh, 320px)
-        );
-    }
-
-    .template-editor-body > label {
-      grid-column: 1;
-    }
-
-    .settings-dialog {
-      padding: 18px;
-    }
-
-    .template-editor-actions {
-      flex-wrap: wrap;
-    }
-
-    .template-editor-actions .connection-button {
-      flex: 1 1 170px;
     }
   }
 

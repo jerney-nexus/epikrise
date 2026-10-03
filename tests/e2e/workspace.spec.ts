@@ -401,6 +401,96 @@ test("keeps template settings centered and stacked at medium widths", async ({
     .toBe(initialLeft);
 });
 
+test("keeps all settings dialogs inside narrow viewports", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Template settings" })).toBeVisible();
+  const dialogs = page.locator("dialog.settings-dialog");
+  const dialogCount = await dialogs.count();
+  expect(dialogCount).toBeGreaterThan(0);
+
+  for (const viewport of [
+    { width: 1280, height: 768 },
+    { width: 1024, height: 768 },
+    { width: 720, height: 640 },
+    { width: 520, height: 520 },
+    { width: 390, height: 420 },
+    { width: 320, height: 320 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (let index = 0; index < dialogCount; index += 1) {
+      const dialog = dialogs.nth(index);
+      await dialog.evaluate((element) => (element as HTMLDialogElement).showModal());
+      const layout = await dialog.evaluate((element) => {
+        const dialogRect = element.getBoundingClientRect();
+        const closeButton = element.querySelector(".dialog-close");
+        const closeRect = closeButton?.getBoundingClientRect();
+        return {
+          left: dialogRect.left,
+          top: dialogRect.top,
+          right: dialogRect.right,
+          bottom: dialogRect.bottom,
+          closeRightInset: closeRect ? dialogRect.right - closeRect.right : null,
+        };
+      });
+
+      expect(layout.left, `left at ${viewport.width}px`).toBeGreaterThanOrEqual(0);
+      expect(layout.top, `top at ${viewport.height}px`).toBeGreaterThanOrEqual(0);
+      expect(layout.right, `right at ${viewport.width}px`).toBeLessThanOrEqual(
+        viewport.width,
+      );
+      expect(layout.bottom, `bottom at ${viewport.height}px`).toBeLessThanOrEqual(
+        viewport.height,
+      );
+      if (layout.closeRightInset !== null) {
+        expect(
+          layout.closeRightInset,
+          `close button alignment at ${viewport.width}px`,
+        ).toBeLessThan(32);
+      }
+      await dialog.evaluate((element) => (element as HTMLDialogElement).close());
+    }
+  }
+});
+
+test("keeps the template editor usable across viewport widths", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Template settings" }).click();
+  await page.getByRole("button", { name: "Edit template" }).click();
+
+  const dialog = page.locator(".template-editor-dialog");
+  await expect(dialog).toBeVisible();
+  for (const width of [1280, 1024, 720, 640, 520, 390, 320]) {
+    await page.setViewportSize({ width, height: 640 });
+    const layout = await dialog.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const closeButton = element.querySelector(".dialog-close");
+      const closeRect = closeButton?.getBoundingClientRect();
+      const editor = element.querySelector(".template-editor");
+      const editorBody = element.querySelector(".template-editor-body");
+      return {
+        left: rect.left,
+        right: rect.right,
+        closeRightInset: closeRect ? rect.right - closeRect.right : Infinity,
+        editorScrollWidth: editor?.scrollWidth ?? Infinity,
+        editorClientWidth: editor?.clientWidth ?? 0,
+        bodyScrollWidth: editorBody?.scrollWidth ?? Infinity,
+        bodyClientWidth: editorBody?.clientWidth ?? 0,
+      };
+    });
+
+    expect(layout.left, `left at ${width}px`).toBeGreaterThanOrEqual(0);
+    expect(layout.right, `right at ${width}px`).toBeLessThanOrEqual(width);
+    expect(layout.closeRightInset, `close button at ${width}px`).toBeLessThan(32);
+    expect(
+      layout.editorScrollWidth,
+      `editor overflow at ${width}px`,
+    ).toBeLessThanOrEqual(layout.editorClientWidth);
+    expect(layout.bodyScrollWidth, `body overflow at ${width}px`).toBeLessThanOrEqual(
+      layout.bodyClientWidth,
+    );
+  }
+});
+
 test("orders template settings controls with import before export", async ({
   page,
 }) => {
