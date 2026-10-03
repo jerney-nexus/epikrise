@@ -1,5 +1,11 @@
 # TODO
 
+## Bug Fixes
+
+### High Urgency
+
+- Changing viewport width to medium-sized windows breaks the layout, buttons are misaligned.
+
 ## Release and updater follow-up
 
 ### High Urgency
@@ -37,6 +43,8 @@
 ### Low Urgency
 
 - Implement help page for the application.
+- Allow creating and deleting templates directly from template settings, each subject to
+  policy restrictions.
 - Add feature to handle date formatting via template strings/localization.
 - Add support for the Gemini Interactions API as soon as `genai` v0.7.0 is released.
 - Add native Windows build and acceptance support; Windows packaging currently
