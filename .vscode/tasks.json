@@ -3,6 +3,7 @@
   "tasks": [
     {
       "label": "Epikrise: Dev",
+      "detail": "Runs the development server.",
       "type": "process",
       "command": "pnpm",
       "args": ["dev"],
@@ -11,6 +12,7 @@
     },
     {
       "label": "Epikrise: Build",
+      "detail": "Builds the project.",
       "type": "process",
       "command": "pnpm",
       "args": ["build"],
@@ -20,6 +22,7 @@
     },
     {
       "label": "Epikrise: Check",
+      "detail": "Runs all checks.",
       "type": "process",
       "command": "pnpm",
       "args": ["check"],
@@ -28,6 +31,7 @@
     },
     {
       "label": "Epikrise: Check UI",
+      "detail": "Runs UI checks; included in Epikrise: Check.",
       "type": "process",
       "command": "pnpm",
       "args": ["check:ui"],
@@ -36,6 +40,7 @@
     },
     {
       "label": "Epikrise: Check Rust",
+      "detail": "Runs Rust checks; included in Epikrise: Check.",
       "type": "process",
       "command": "pnpm",
       "args": ["check:rust"],
@@ -43,7 +48,26 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Check Rust Format",
+      "detail": "Runs Rust format checks; included in Epikrise: Check Rust.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check:rust:format"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Check Rust Clippy",
+      "detail": "Runs Rust Clippy checks; included in Epikrise: Check Rust.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check:rust:clippy"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Cargo Deny",
+      "detail": "Runs cargo deny checks; included in Epikrise: Check Rust.",
       "type": "process",
       "command": "pnpm",
       "args": ["check:rust:deny"],
@@ -52,6 +76,7 @@
     },
     {
       "label": "Epikrise: Cargo Audit",
+      "detail": "Runs cargo audit checks.",
       "type": "process",
       "command": "pnpm",
       "args": ["audit:rust"],
@@ -60,6 +85,7 @@
     },
     {
       "label": "Epikrise: pnpm Audit",
+      "detail": "Runs pnpm audit checks.",
       "type": "process",
       "command": "pnpm",
       "args": ["audit:pnpm"],
@@ -68,6 +94,7 @@
     },
     {
       "label": "Epikrise: Test",
+      "detail": "Runs UI, i18n, Rust, and Playwright tests.",
       "type": "process",
       "command": "pnpm",
       "args": ["test"],
@@ -77,6 +104,7 @@
     },
     {
       "label": "Epikrise: Test Coverage",
+      "detail": "Runs test coverage.",
       "type": "process",
       "command": "pnpm",
       "args": ["test:coverage"],
@@ -86,6 +114,7 @@
     },
     {
       "label": "Epikrise: Test UI",
+      "detail": "Runs UI tests; included in Epikrise: Test.",
       "type": "process",
       "command": "pnpm",
       "args": ["test:ui"],
@@ -95,6 +124,7 @@
     },
     {
       "label": "Epikrise: Test E2E",
+      "detail": "Runs only Playwright browser tests; included in Epikrise: Test.",
       "type": "process",
       "command": "pnpm",
       "args": ["test:e2e"],
@@ -104,6 +134,7 @@
     },
     {
       "label": "Epikrise: Test E2E Report",
+      "detail": "Starts the Playwright E2E test report in the browser.",
       "type": "process",
       "command": "pnpm",
       "args": ["test:e2e:report"],
@@ -113,6 +144,7 @@
     },
     {
       "label": "Epikrise: Test Accessibility",
+      "detail": "Runs accessibility tests.",
       "type": "process",
       "command": "pnpm",
       "args": ["test:a11y"],
@@ -122,6 +154,7 @@
     },
     {
       "label": "Epikrise: Test UI Coverage",
+      "detail": "Runs UI test coverage.",
       "type": "process",
       "command": "pnpm",
       "args": ["test:ui:coverage"],
@@ -131,6 +164,7 @@
     },
     {
       "label": "Epikrise: Test i18n",
+      "detail": "Runs i18n tests; included in Epikrise: Test.",
       "type": "process",
       "command": "pnpm",
       "args": ["test:i18n"],
@@ -140,6 +174,7 @@
     },
     {
       "label": "Epikrise: Test Rust",
+      "detail": "Runs Rust tests; included in Epikrise: Test.",
       "type": "process",
       "command": "pnpm",
       "args": ["test:rust"],
@@ -149,6 +184,7 @@
     },
     {
       "label": "Epikrise: Test Rust Coverage",
+      "detail": "Runs Rust test coverage.",
       "type": "process",
       "command": "pnpm",
       "args": ["test:rust:coverage"],
@@ -158,6 +194,7 @@
     },
     {
       "label": "Epikrise: Lint",
+      "detail": "Runs linting.",
       "type": "process",
       "command": "pnpm",
       "args": ["lint"],
@@ -166,6 +203,7 @@
     },
     {
       "label": "Epikrise: Format Check",
+      "detail": "Checks code formatting.",
       "type": "process",
       "command": "pnpm",
       "args": ["format:check"],
@@ -174,6 +212,7 @@
     },
     {
       "label": "Epikrise: Format Rust",
+      "detail": "Formats Rust code.",
       "type": "process",
       "command": "pnpm",
       "args": ["format:rust:fmt"],
@@ -182,6 +221,7 @@
     },
     {
       "label": "Epikrise: Prepare Release",
+      "detail": "Prepares a new release.",
       "type": "process",
       "command": "pnpm",
       "args": ["release:prepare", "${input:releaseVersion}"],

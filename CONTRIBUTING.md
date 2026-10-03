@@ -188,9 +188,13 @@ cargo install cargo-llvm-cov --locked
 `pnpm test:rust`, and `cargo-llvm-cov` plus `llvm-tools-preview` are required
 for Rust coverage.
 
+`pnpm test` includes the full Playwright browser suite in addition to UI, i18n,
+and Rust tests.
+
 ### Browser tests
 
-Run the Playwright suite and its focused accessibility selection with:
+Run only the Playwright suite with `pnpm test:e2e`, or its focused
+accessibility selection with `pnpm test:a11y`:
 
 ```sh
 pnpm test:e2e

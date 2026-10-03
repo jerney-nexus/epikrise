@@ -186,10 +186,11 @@ instructions](CONTRIBUTING.md#local-setup).
 
 For Rust tool prerequisites, including `cargo-deny` required by `pnpm check`,
 see [Quality gates in CONTRIBUTING.md](CONTRIBUTING.md#quality-gates). Run the
-test suites from the project root:
+full test suite from the project root with `pnpm test` (UI, i18n, Rust, and
+Playwright browser tests). Use these commands for coverage or focused browser
+runs:
 
 ```sh
-pnpm test
 pnpm test:coverage
 pnpm test:e2e
 pnpm test:a11y
