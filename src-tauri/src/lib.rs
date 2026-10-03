@@ -1351,11 +1351,7 @@ pub fn run() -> Result<(), tauri::Error> {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init());
     #[cfg(feature = "direct-release-updater")]
-    let app_builder = app_builder.plugin(
-        tauri_plugin_updater::Builder::new()
-            .pubkey(option_env!("TAURI_UPDATER_PUBLIC_KEY").unwrap_or("unconfigured"))
-            .build(),
-    );
+    let app_builder = app_builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(debug_assertions)]
     builder

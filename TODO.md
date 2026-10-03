@@ -13,10 +13,9 @@
 
 ### High Urgency
 
-- Provision the Tauri updater signing key through an authorized secure process,
-  back it up, and replace the release overlay's `unconfigured` public-key
-  placeholder. Do not put the private key or password in the repository or
-  command logs.
+- Verify the provisioned Tauri updater key has an authorized backup outside
+  GitHub. The release overlay's public key is now used at runtime; never store
+  the private key or password in the repository or command logs.
 - Build a separate release contract for target-specific updater packages,
   signatures, `latest.json`, and version-tag publication. Keep it distinct from
   the six-target unsigned diagnostic workflow and preserve padded
