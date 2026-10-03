@@ -358,6 +358,45 @@ test("keeps template settings open when the file picker is canceled", async ({
   await expect(dialog).toBeHidden();
 });
 
+test("orders template settings controls with import before export", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Template settings" }).click();
+  const dialog = page.getByRole("dialog", { name: "Template settings" });
+
+  const controlOrder = await dialog
+    .locator("#active-template, .template-export-button, .template-import-button")
+    .evaluateAll((controls) =>
+      controls.map((control) => control.id || control.textContent?.trim()),
+    );
+  expect(controlOrder).toEqual([
+    "active-template",
+    "Edit template",
+    "Import template (.epitpl)",
+    "Export template (.epitpl)",
+  ]);
+});
+
+test("keeps one enabled-by-default section in the template editor", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Template settings" }).click();
+  await page.getByRole("button", { name: "Edit template" }).click();
+
+  const editor = page.locator(".template-editor-dialog");
+  const sectionToggles = editor.getByRole("checkbox", {
+    name: "Enabled by default",
+  });
+  await expect(sectionToggles).toHaveCount(2);
+  await sectionToggles.nth(0).uncheck();
+
+  await expect(sectionToggles.nth(0)).not.toBeChecked();
+  await expect(sectionToggles.nth(1)).toBeChecked();
+  await expect(sectionToggles.nth(1)).toBeDisabled();
+});
+
 test("exports the active template through the native save flow", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Template settings" }).click();

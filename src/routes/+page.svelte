@@ -249,6 +249,10 @@
   const enabledSectionCount = $derived(
     Object.values(templateSectionStates).filter(Boolean).length,
   );
+  const editorEnabledSectionCount = $derived(
+    templateEditDraft?.sections.filter((section) => section.enabled_by_default)
+      .length ?? 0,
+  );
   const activeTemplate = $derived(
     importedTemplates.find((template) => template.metadata.id === activeTemplateId) ??
       null,
@@ -2558,18 +2562,6 @@
           </select>
           <button
             class="template-export-button"
-            onclick={exportActiveTemplate}
-            disabled={templateBusy ||
-              !activeTemplate ||
-              (policyStatus?.active && !policyStatus.allowTemplateExport)}
-          >
-            {t("Export template (.epitpl)")}
-            {#if policyStatus?.active && !policyStatus.allowTemplateExport}
-              <span class="policy-badge">{t("Administrator managed")}</span>
-            {/if}
-          </button>
-          <button
-            class="template-export-button"
             type="button"
             onclick={openTemplateEditor}
             disabled={!activeTemplate ||
@@ -2593,6 +2585,45 @@
           >
             {t("Use generic starter")}
             {#if policyStatus?.active && !policyStatus.allowTemplateImport}
+              <span class="policy-badge">{t("Administrator managed")}</span>
+            {/if}
+          </button>
+        {/if}
+
+        <button
+          class="template-import-button"
+          type="button"
+          onclick={() => templateFileInput?.click()}
+          disabled={templateBusy ||
+            (policyStatus?.active && !policyStatus.allowTemplateImport)}
+        >
+          {templateBusy ? t("Working...") : t("Import template (.epitpl)")}
+          {#if policyStatus?.active && !policyStatus.allowTemplateImport}
+            <span class="policy-badge">{t("Administrator managed")}</span>
+          {/if}
+        </button>
+        <input
+          id="template-file"
+          class="template-file-input"
+          type="file"
+          aria-hidden="true"
+          tabindex="-1"
+          accept=".epitpl,text/plain,application/toml,application/json"
+          bind:this={templateFileInput}
+          onchange={importTemplate}
+          disabled={templateBusy ||
+            (policyStatus?.active && !policyStatus.allowTemplateImport)}
+        />
+        {#if activeTemplate}
+          <button
+            class="template-export-button"
+            type="button"
+            onclick={exportActiveTemplate}
+            disabled={templateBusy ||
+              (policyStatus?.active && !policyStatus.allowTemplateExport)}
+          >
+            {t("Export template (.epitpl)")}
+            {#if policyStatus?.active && !policyStatus.allowTemplateExport}
               <span class="policy-badge">{t("Administrator managed")}</span>
             {/if}
           </button>
@@ -2684,31 +2715,6 @@
             {/each}
           </div>
         {/if}
-
-        <button
-          class="template-import-button"
-          type="button"
-          onclick={() => templateFileInput?.click()}
-          disabled={templateBusy ||
-            (policyStatus?.active && !policyStatus.allowTemplateImport)}
-        >
-          {templateBusy ? t("Working...") : t("Import template (.epitpl)")}
-          {#if policyStatus?.active && !policyStatus.allowTemplateImport}
-            <span class="policy-badge">{t("Administrator managed")}</span>
-          {/if}
-        </button>
-        <input
-          id="template-file"
-          class="template-file-input"
-          type="file"
-          aria-hidden="true"
-          tabindex="-1"
-          accept=".epitpl,text/plain,application/toml,application/json"
-          bind:this={templateFileInput}
-          onchange={importTemplate}
-          disabled={templateBusy ||
-            (policyStatus?.active && !policyStatus.allowTemplateImport)}
-        />
 
         {#if templateMessage}
           <p class="template-message" class:error={templateIsError} role="status">
@@ -3011,7 +3017,9 @@
                       <input
                         type="checkbox"
                         checked={section.enabled_by_default}
-                        disabled={templateSaveBusy}
+                        disabled={templateSaveBusy ||
+                          (section.enabled_by_default &&
+                            editorEnabledSectionCount <= 1)}
                         onchange={(event) =>
                           updateTemplateEditorSection(index, {
                             enabled_by_default: event.currentTarget.checked,
