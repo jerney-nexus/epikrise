@@ -24,6 +24,7 @@
     "test": "pnpm test:ui && pnpm test:i18n && pnpm test:rust",
     "test:coverage": "pnpm test:ui:coverage && pnpm test:rust:coverage",
     "test:e2e": "playwright test",
+    "test:e2e:report": "playwright show-report --host 127.0.0.1",
     "test:a11y": "playwright test --grep @a11y",
     "test:ui": "vitest run",
     "test:ui:coverage": "vitest run --coverage",

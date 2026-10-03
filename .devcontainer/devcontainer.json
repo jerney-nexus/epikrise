@@ -20,7 +20,7 @@
     }
   },
   "onCreateCommand": "bash .devcontainer/install-deps.sh",
-  "postCreateCommand": "pnpm install --frozen-lockfile && pnpm exec playwright install-deps && node --input-type=module -e 'await import(\"vite\"); console.log(\"Vite native binding ready\")'",
+  "postCreateCommand": "pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium firefox webkit && node --input-type=module -e 'await import(\"vite\"); console.log(\"Vite native binding ready\")'",
   "forwardPorts": [1420, 6080, 9323],
   "portsAttributes": {
     "1420": {
@@ -38,6 +38,7 @@
   },
   "remoteEnv": {
     "DISPLAY": ":1",
+    "PLAYWRIGHT_CROSS_BROWSER": "1",
     // WebKitGTK's DMABUF renderer fails inside a container without GPU passthrough.
     "WEBKIT_DISABLE_DMABUF_RENDERER": "1"
   },

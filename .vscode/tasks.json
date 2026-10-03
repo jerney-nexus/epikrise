@@ -103,6 +103,15 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Test E2E Report",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:e2e:report"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Test Accessibility",
       "type": "process",
       "command": "pnpm",
