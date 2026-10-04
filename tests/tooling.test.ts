@@ -585,6 +585,12 @@ describe("signed release artifacts", () => {
       path.join(repoRoot, ".github/workflows/desktop-builds.yml"),
       "utf8",
     );
+    const cargoManifest = TOML.parse(
+      await readFile(path.join(repoRoot, "src-tauri/Cargo.toml"), "utf8"),
+    );
+    const tauriConfig = JSON.parse(
+      await readFile(path.join(repoRoot, "src-tauri/tauri.conf.json"), "utf8"),
+    );
 
     expect(releaseWorkflow).toContain('      - "v*"');
     expect(releaseWorkflow).toContain("needs: validate");
@@ -595,6 +601,11 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain("--bundles appimage");
     expect(releaseWorkflow).toContain("--bundles deb rpm");
     expect(releaseWorkflow).toContain('"features":[]');
+    expect(releaseWorkflow).toMatch(/features":\[\]\}\}' \\\s*--bundles deb rpm/);
+    expect(cargoManifest.features.default).toEqual([]);
+    expect(tauriConfig.build.features ?? []).not.toContain("direct-release-updater");
+    expect(diagnosticWorkflow).not.toContain("tauri.release.conf.json");
+    expect(diagnosticWorkflow).not.toContain("--features");
     expect(releaseWorkflow).toContain("EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis");
     expect(releaseWorkflow).toContain("--draft");
     expect(releaseWorkflow).toContain("gh release edit");
