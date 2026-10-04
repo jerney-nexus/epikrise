@@ -12,7 +12,20 @@ export function renderOutputHtml(value: string, lintedLines: number[] = []): str
   const tokens = markdown.parse(value, environment);
 
   for (const token of tokens) {
-    if (!token.block || token.nesting !== 1 || !token.map) continue;
+    if (!token.block || !token.map) continue;
+    // Top-level wrappers (paragraphs, headings, list items) open with nesting
+    // 1; standalone code blocks are single tokens with nesting 0.
+    if (token.nesting !== 1 && token.type !== "fence" && token.type !== "code_block") {
+      continue;
+    }
+
+    // The default fence rule swaps in a fresh attribute list when an info
+    // string is present, which would drop the source-range attributes. Fold
+    // the language into the class list so the renderer keeps token attrs.
+    if (token.type === "fence" && token.info) {
+      token.attrJoin("class", `language-${token.info.trim().split(/\s+/g)[0]}`);
+      token.info = "";
+    }
 
     const startLine = token.map[0] + 1;
     const endLine = token.map[1];

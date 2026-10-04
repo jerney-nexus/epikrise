@@ -20,4 +20,17 @@ describe("renderOutputHtml sanitization", () => {
     expect(html).toContain("Diagnosis text");
     expect(html).toContain("data-source-start-line");
   });
+
+  it("annotates fenced and indented code blocks with source ranges", () => {
+    const html = renderOutputHtml(
+      "Intro\n\n```js\nconst a = 1;\n```\n\n    indented code\n",
+      [4],
+    );
+    expect(html).toMatch(/<code[^>]*data-source-start-line="3"/);
+    expect(html).toMatch(/<code[^>]*data-source-end-line="5"/);
+    expect(html).toContain("language-js");
+    expect(html).toContain("linted-line");
+    expect(html).toMatch(/<pre[^>]*data-source-start-line="7"/);
+    expect(html).toMatch(/<pre[^>]*data-source-end-line="7"/);
+  });
 });
