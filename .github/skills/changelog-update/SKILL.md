@@ -1,6 +1,7 @@
 ---
 name: changelog-update
 description: "Review recent undocumented project work and update CHANGELOG.md. Use when recording recent changes, preparing an unreleased changelog entry, or checking whether completed work is documented."
+allowed-tools: Read, Grep, Glob, Edit, Bash(git status:*), Bash(git log:*), Bash(git diff:*), Bash(git show:*), Bash(git tag --list:*), Bash(gh release list:*), Bash(pnpm format:check:file:*)
 ---
 
 # Changelog Update

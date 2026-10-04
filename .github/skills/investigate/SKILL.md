@@ -2,6 +2,7 @@
 name: investigate
 description: "Use when the user describes or suggests one specific bug or issue and wants it investigated and fixed. Treat that report as the sole goal, implement the smallest root-cause fix, and verify it with focused checks. Do not use for running the full project suite."
 argument-hint: "Describe one issue to investigate and fix"
+allowed-tools: Read, Grep, Glob, Edit, Bash(git status:*), Bash(git diff:*), Bash(pnpm test:*), Bash(pnpm check:*), Bash(pnpm format:check:file:*), Bash(git add:*), Bash(git commit:*)
 ---
 
 # Investigate One Issue

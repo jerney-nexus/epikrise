@@ -1,6 +1,7 @@
 ---
 name: full-suite-fix
 description: "Use when asked to run the full Epikrise test suite, validate the whole project, or get all test and quality gates green. Fix actionable issues discovered by UI, i18n, Rust, Playwright, checks, lint, or dependency audits. Do not use for user-suggested issues or a single focused test or check; use the investigate skill for one user-suggested issue."
+allowed-tools: Read, Grep, Glob, Edit, Bash(git status:*), Bash(git diff:*), Bash(pnpm test), Bash(pnpm test:*), Bash(pnpm check), Bash(pnpm check:*), Bash(pnpm lint), Bash(pnpm audit:*), Bash(git add:*), Bash(git commit:*)
 ---
 
 # Full Suite and Fix
