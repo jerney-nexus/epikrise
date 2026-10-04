@@ -2,10 +2,9 @@ name: UI and i18n tests
 
 on:
   pull_request:
+    branches: [main, development]
   push:
-    branches:
-      - main
-      - development
+    branches: [main, development]
   workflow_call:
 
 permissions:

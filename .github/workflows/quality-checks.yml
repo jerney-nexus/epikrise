@@ -1,6 +1,10 @@
 name: Release quality checks
 
 on:
+  pull_request:
+    branches: [main, development]
+  push:
+    branches: [main, development]
   workflow_call:
 
 permissions:
