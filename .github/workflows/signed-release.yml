@@ -196,6 +196,7 @@ jobs:
         working-directory: ${{ runner.temp }}/epikrise-release
         env:
           WINDOWS_ARCH: ${{ matrix.windows_arch }}
+          EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bash scripts/build-windows.sh "$WINDOWS_ARCH" release

@@ -274,19 +274,32 @@ fn release_version_from_protocol(version: &str) -> Result<String, UpdaterError> 
 #[cfg(feature = "direct-release-updater")]
 fn release_target() -> Result<&'static str, UpdaterError> {
     if cfg!(target_os = "windows") {
-        if cfg!(feature = "updater-windows-x86_64-nsis") {
-            return Ok("windows-x86_64-nsis");
-        }
-        if cfg!(feature = "updater-windows-aarch64-nsis") {
-            return Ok("windows-aarch64-nsis");
-        }
-        if cfg!(feature = "updater-windows-x86_64-msi") {
-            return Ok("windows-x86_64-msi");
-        }
-        if cfg!(feature = "updater-windows-aarch64-msi") {
-            return Ok("windows-aarch64-msi");
-        }
-        return Err(UpdaterError::Unavailable);
+        let selected_features = [
+            (
+                cfg!(feature = "updater-windows-x86_64-nsis"),
+                "updater-windows-x86_64-nsis",
+            ),
+            (
+                cfg!(feature = "updater-windows-aarch64-nsis"),
+                "updater-windows-aarch64-nsis",
+            ),
+            (
+                cfg!(feature = "updater-windows-x86_64-msi"),
+                "updater-windows-x86_64-msi",
+            ),
+            (
+                cfg!(feature = "updater-windows-aarch64-msi"),
+                "updater-windows-aarch64-msi",
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(enabled, feature)| enabled.then_some(feature))
+        .collect::<Vec<_>>();
+        return crate::windows_updater_features::select_windows_updater_target(
+            std::env::consts::ARCH,
+            &selected_features,
+        )
+        .map_err(|_| UpdaterError::Unavailable);
     }
     if cfg!(target_os = "macos") {
         return match std::env::consts::ARCH {

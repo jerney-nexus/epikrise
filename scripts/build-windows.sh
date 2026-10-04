@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 build_mode="${2:-diagnostic}"
+installer_family="${EPIKRISE_WINDOWS_INSTALLER_FAMILY:-}"
 
 sdk_version="10.0.26100"
 crt_version="14.44.17.14"
@@ -39,6 +40,13 @@ if [[ "$build_mode" == "release" ]]; then
     printf 'TAURI_SIGNING_PRIVATE_KEY is required for signed releases.\n' >&2
     exit 1
   fi
+  case "$installer_family" in
+    nsis|msi) ;;
+    *)
+      printf 'EPIKRISE_WINDOWS_INSTALLER_FAMILY must be set to nsis or msi for signed releases.\n' >&2
+      exit 2
+      ;;
+  esac
   unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 fi
 
@@ -77,8 +85,13 @@ export PATH="$tool_wrapper_dir:$PATH"
 for target in "${targets[@]}"; do
   printf 'Preparing OCR assets for %s...\n' "$target"
   bash scripts/prepare-ocr.sh --target "$target"
-  printf 'Building the NSIS installer for %s...\n' "$target"
   if [[ "$build_mode" == "release" ]]; then
+    printf 'Building the %s installer for %s...\n' "$installer_family" "$target"
+    if [[ "$target" == x86_64-pc-windows-msvc ]]; then
+      updater_arch="x86_64"
+    else
+      updater_arch="aarch64"
+    fi
     XWIN_VERSION="$visual_studio_version" \
       XWIN_SDK_VERSION="$sdk_version" \
       XWIN_CRT_VERSION="$crt_version" \
@@ -86,8 +99,14 @@ for target in "${targets[@]}"; do
       TAURI_SIGNING_PRIVATE_KEY="$release_private_key" \
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$release_private_key_password" \
       bash scripts/with-cargo-host-target.sh \
-        pnpm exec tauri build --runner cargo-xwin --target "$target" "${tauri_args[@]}"
+        pnpm exec tauri build \
+          --runner cargo-xwin \
+          --target "$target" \
+          --features "updater-windows-${updater_arch}-${installer_family}" \
+          --config "{\"bundle\":{\"targets\":[\"$installer_family\"]}}" \
+          "${tauri_args[@]}"
   else
+    printf 'Building the NSIS installer for %s...\n' "$target"
     XWIN_VERSION="$visual_studio_version" \
       XWIN_SDK_VERSION="$sdk_version" \
       XWIN_CRT_VERSION="$crt_version" \

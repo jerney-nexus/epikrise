@@ -109,6 +109,57 @@ export async function prepareReleaseBuildInputs(workspaceRoot) {
       "Disposable Cargo versions do not match the original release version.",
     );
   }
+
+  const rootPackageName = cargoData.package.name;
+  if (typeof rootPackageName !== "string") {
+    throw new Error("Disposable Cargo package has no name.");
+  }
+  const workspaceNames = new Set([rootPackageName]);
+  const workspaceMembers = cargoData.workspace.members;
+  if (!Array.isArray(workspaceMembers)) {
+    throw new Error("Disposable Cargo workspace has no member list.");
+  }
+  for (const member of workspaceMembers) {
+    if (typeof member !== "string") {
+      throw new Error("Disposable Cargo workspace has an invalid member.");
+    }
+    const memberManifest = TOML.parse(
+      await readFile(path.join(buildRoot, "src-tauri", member, "Cargo.toml"), "utf8"),
+    );
+    if (!isRecord(memberManifest) || !isRecord(memberManifest.package)) {
+      throw new Error(`Invalid Cargo workspace member: ${member}.`);
+    }
+    const memberName = memberManifest.package.name;
+    if (typeof memberName !== "string") {
+      throw new Error(`Cargo workspace member has no package name: ${member}.`);
+    }
+    workspaceNames.add(memberName);
+  }
+
+  const cargoLockPath = path.join(buildRoot, "src-tauri/Cargo.lock");
+  const cargoLock = TOML.parse(await readFile(cargoLockPath, "utf8"));
+  if (!isRecord(cargoLock) || !Array.isArray(cargoLock.package)) {
+    throw new Error("Disposable Cargo.lock has no package list.");
+  }
+  const normalizedNames = new Set();
+  for (const lockedPackage of cargoLock.package) {
+    if (!isRecord(lockedPackage)) {
+      throw new Error("Disposable Cargo.lock contains an invalid package.");
+    }
+    const packageName = lockedPackage.name;
+    if (
+      typeof packageName === "string" &&
+      workspaceNames.has(packageName) &&
+      !("source" in lockedPackage)
+    ) {
+      lockedPackage.version = versions.updateProtocolVersion;
+      normalizedNames.add(packageName);
+    }
+  }
+  if (normalizedNames.size !== workspaceNames.size) {
+    throw new Error("Disposable Cargo.lock is missing workspace packages.");
+  }
+
   cargoManifest = replaceCargoSectionVersion(
     cargoManifest,
     "package",
@@ -132,6 +183,7 @@ export async function prepareReleaseBuildInputs(workspaceRoot) {
   tauriConfig.bundle.windows.wix.version = versions.msiProductVersion;
 
   await writeFile(cargoManifestPath, cargoManifest);
+  await writeFile(cargoLockPath, TOML.stringify(cargoLock));
   await writeFile(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`);
 
   const cargoOptions = {

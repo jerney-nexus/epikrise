@@ -111,67 +111,119 @@ describe("CalVer release versions", () => {
     );
   });
 
-  it("normalizes only disposable Cargo and Tauri inputs for padded-month builds", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-release-inputs-"));
-    const tauriDirectory = path.join(directory, "src-tauri");
-    const sourcePackage = JSON.parse(
-      await readFile(path.join(repoRoot, "package.json"), "utf8"),
-    );
-
-    try {
-      await expect(prepareReleaseBuildInputs(repoRoot)).rejects.toThrow(
-        "disposable workspace",
+  it.each([
+    ["2026.01.0", "2026.1.0", "26.1.0"],
+    ["2026.09.4", "2026.9.4", "26.9.4"],
+  ])(
+    "builds disposable Cargo and Tauri inputs with --locked for %s",
+    async (releaseVersion, protocolVersion, msiVersion) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-release-inputs-"));
+      const tauriDirectory = path.join(directory, "src-tauri");
+      const sourcePackage = JSON.parse(
+        await readFile(path.join(repoRoot, "package.json"), "utf8"),
       );
-      await cp(
-        path.join(repoRoot, "package.json"),
-        path.join(directory, "package.json"),
-      );
-      await cp(path.join(repoRoot, "src-tauri"), tauriDirectory, {
-        recursive: true,
-        filter: (source) =>
-          !["target", "resources", "binaries", "gen", "WixTools"].some((excluded) =>
-            source.split(path.sep).includes(excluded),
-          ),
-      });
 
-      const packagePath = path.join(directory, "package.json");
-      const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
-      packageJson.version = "2026.09.4";
-      await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+      try {
+        await expect(prepareReleaseBuildInputs(repoRoot)).rejects.toThrow(
+          "disposable workspace",
+        );
+        await cp(
+          path.join(repoRoot, "package.json"),
+          path.join(directory, "package.json"),
+        );
+        await cp(path.join(repoRoot, "src-tauri"), tauriDirectory, {
+          recursive: true,
+          filter: (source) =>
+            !["target", "gen", "WixTools"].some((excluded) =>
+              source.split(path.sep).includes(excluded),
+            ),
+        });
 
-      const cargoManifestPath = path.join(tauriDirectory, "Cargo.toml");
-      const cargoManifest = (await readFile(cargoManifestPath, "utf8")).replaceAll(
-        sourcePackage.version,
-        "2026.09.4",
-      );
-      await writeFile(cargoManifestPath, cargoManifest);
-      const tauriConfigPath = path.join(tauriDirectory, "tauri.conf.json");
-      const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
-      tauriConfig.version = "2026.09.4";
-      await writeFile(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`);
+        const packagePath = path.join(directory, "package.json");
+        const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+        packageJson.version = releaseVersion;
+        await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
 
-      await expect(prepareReleaseBuildInputs(directory)).resolves.toMatchObject({
-        releaseVersion: "2026.09.4",
-        updateProtocolVersion: "2026.9.4",
-      });
-      expect(TOML.parse(await readFile(cargoManifestPath, "utf8"))).toMatchObject({
-        package: { version: "2026.9.4" },
-        workspace: { package: { version: "2026.9.4" } },
-      });
-      expect(JSON.parse(await readFile(tauriConfigPath, "utf8"))).toMatchObject({
-        version: "2026.9.4",
-        bundle: { windows: { wix: { version: "26.9.4" } } },
-      });
-      expect(
-        JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8")).version,
-      ).toBe(sourcePackage.version);
-      expect(
-        await readFile(path.join(repoRoot, "src-tauri/Cargo.toml"), "utf8"),
-      ).toContain(`version = "${sourcePackage.version}"`);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
+        const cargoManifestPath = path.join(tauriDirectory, "Cargo.toml");
+        const cargoManifest = (await readFile(cargoManifestPath, "utf8")).replaceAll(
+          sourcePackage.version,
+          releaseVersion,
+        );
+        await writeFile(cargoManifestPath, cargoManifest);
+        const tauriConfigPath = path.join(tauriDirectory, "tauri.conf.json");
+        const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
+        tauriConfig.version = releaseVersion;
+        await writeFile(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`);
+
+        await expect(prepareReleaseBuildInputs(directory)).resolves.toMatchObject({
+          releaseVersion,
+          updateProtocolVersion: protocolVersion,
+        });
+        const normalizedCargo = TOML.parse(await readFile(cargoManifestPath, "utf8"));
+        expect(normalizedCargo).toMatchObject({
+          package: { version: protocolVersion },
+          workspace: { package: { version: protocolVersion } },
+        });
+        const normalizedLock = TOML.parse(
+          await readFile(path.join(tauriDirectory, "Cargo.lock"), "utf8"),
+        );
+        expect(normalizedLock.package).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: "epikrise", version: protocolVersion }),
+            expect.objectContaining({
+              name: "epikrise-core",
+              version: protocolVersion,
+            }),
+            expect.objectContaining({
+              name: "epikrise-ingest",
+              version: protocolVersion,
+            }),
+            expect.objectContaining({ name: "epikrise-llm", version: protocolVersion }),
+          ]),
+        );
+        expect(JSON.parse(await readFile(tauriConfigPath, "utf8"))).toMatchObject({
+          version: protocolVersion,
+          bundle: { windows: { wix: { version: msiVersion } } },
+        });
+
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        await execFile(
+          "cargo",
+          [
+            "check",
+            "--locked",
+            "--offline",
+            "--manifest-path",
+            cargoManifestPath,
+            "--package",
+            "epikrise",
+            "--lib",
+          ],
+          {
+            cwd: directory,
+            env: {
+              ...process.env,
+              CARGO_TARGET_DIR: path.join(repoRoot, "src-tauri/target", `host-${host}`),
+            },
+            maxBuffer: 10 * 1024 * 1024,
+          },
+        );
+
+        expect(
+          JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"))
+            .version,
+        ).toBe(sourcePackage.version);
+        expect(
+          await readFile(path.join(repoRoot, "src-tauri/Cargo.toml"), "utf8"),
+        ).toContain(`version = "${sourcePackage.version}"`);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+    120_000,
+  );
 
   it("moves unreleased and generated notes into a dated release section", () => {
     const changelog = [
@@ -539,6 +591,7 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain(
       "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}",
     );
+    expect(releaseWorkflow).toContain("EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis");
     expect(releaseWorkflow).toContain("--draft");
     expect(releaseWorkflow).toContain("gh release edit");
     expect(releaseWorkflow).toContain("contents: write");
@@ -563,6 +616,7 @@ describe("signed release artifacts", () => {
           env: {
             ...process.env,
             XDG_CACHE_HOME: cacheRoot,
+            EPIKRISE_WINDOWS_INSTALLER_FAMILY: "nsis",
             TAURI_SIGNING_PRIVATE_KEY: "",
             TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
           },
@@ -575,6 +629,47 @@ describe("signed release artifacts", () => {
       await rm(cacheRoot, { recursive: true, force: true });
     }
   });
+
+  it.each([undefined, "both"])(
+    "rejects missing or conflicting signed Windows installer-family selection: %s",
+    async (family) => {
+      const cacheRoot = await mkdtemp(path.join(tmpdir(), "epikrise-windows-family-"));
+      const windowsCache = path.join(cacheRoot, "epikrise", "windows");
+      const environment: NodeJS.ProcessEnv = {
+        ...process.env,
+        XDG_CACHE_HOME: cacheRoot,
+        TAURI_SIGNING_PRIVATE_KEY: "synthetic-test-key",
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
+      };
+
+      if (family === undefined) {
+        delete environment.EPIKRISE_WINDOWS_INSTALLER_FAMILY;
+      } else {
+        environment.EPIKRISE_WINDOWS_INSTALLER_FAMILY = family;
+      }
+
+      try {
+        await mkdir(windowsCache, { recursive: true });
+        await writeFile(
+          path.join(windowsCache, "sdk-license-accepted-17-10.0.26100-14.44.17.14"),
+          "",
+        );
+        await expect(
+          execFile("bash", ["scripts/build-windows.sh", "x64", "release"], {
+            cwd: repoRoot,
+            env: environment,
+          }),
+        ).rejects.toMatchObject({
+          code: 2,
+          stderr: expect.stringContaining(
+            "EPIKRISE_WINDOWS_INSTALLER_FAMILY must be set to nsis or msi",
+          ),
+        });
+      } finally {
+        await rm(cacheRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("stages all platform packages and builds a signed static updater manifest", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-signed-release-"));

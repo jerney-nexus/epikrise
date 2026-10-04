@@ -29,6 +29,7 @@ use sha2::{Digest, Sha256};
 mod policy;
 use policy::{LoadedPolicy, PolicyState, PolicyStatus, egress_key};
 mod updater;
+mod windows_updater_features;
 use updater::{
     UpdateInstallGate, UpdateProgress, UpdaterState, check_for_update, get_update_settings,
     install_update, set_update_enabled,
