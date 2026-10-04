@@ -472,4 +472,4 @@ jobs:
           gh api --method PATCH \
             "repos/$GITHUB_REPOSITORY/releases/$release_id" \
             -F draft=false \
-            -F "make_latest=$make_latest" > /dev/null
+            --raw-field "make_latest=$make_latest" > /dev/null

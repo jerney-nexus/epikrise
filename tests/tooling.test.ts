@@ -810,6 +810,9 @@ describe("signed release artifacts", () => {
       "Could not determine the latest published release.",
     );
     expect(releaseWorkflow).toContain("make_latest=");
+    expect(releaseWorkflow).toContain("-F draft=false");
+    expect(releaseWorkflow).toContain('--raw-field "make_latest=$make_latest"');
+    expect(releaseWorkflow).not.toContain('-F "make_latest=$make_latest"');
     expect(releaseWorkflow).toContain("gh release download");
     expect(releaseWorkflow).toContain("verify-uploaded");
     expect(releaseWorkflow).toMatch(
