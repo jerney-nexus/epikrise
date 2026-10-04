@@ -28,11 +28,12 @@
 - Verify the first signed updater release from a padded `vYYYY.MM.PATCH` tag,
   including all six target assets, signatures, static `latest.json`, and
   published update URLs before relying on automatic updates.
-- Blocked: native install and two-version update acceptance still needs all
-  supported Linux, macOS, and Windows hosts. GitHub currently has no releases
-  and the updater's `latest.json` endpoint returns 404; this runner is Linux
-  ARM64 only. Resume after a signed release is available and native hosts can
-  verify tamper rejection and Windows installer-family behavior.
+- Blocked: native staged installation and two-version updater acceptance
+  require all six target builds, signing-key readiness, and Linux, macOS, and
+  Windows native hosts. This workspace is Linux ARM64 only; portable packaging
+  and key-readiness prerequisites remain outstanding. Resume after steps 2-5
+  are complete and the matching native hosts are available. Public-release
+  verification is tracked separately above.
 - Decide and complete the separate Store MSIX identity, certification, and
   submission track; Microsoft Store signing and updates are not provided by
   the direct-release updater.
