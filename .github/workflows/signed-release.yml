@@ -303,6 +303,38 @@ jobs:
           fi
           unset signing_private_key signing_private_key_password
 
+      - name: Verify staged OCR architectures
+        working-directory: ${{ runner.temp }}/epikrise-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$TARGET" in
+            x86_64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'Advanced Micro Devices X86-64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'Advanced Micro Devices X86-64'
+              ;;
+            aarch64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'AArch64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'AArch64'
+              ;;
+            x86_64-apple-darwin)
+              lipo -verify_arch x86_64 "src-tauri/binaries/tesseract-$TARGET"
+              lipo -verify_arch x86_64 src-tauri/resources/ocr/pdfium/libpdfium.dylib
+              ;;
+            aarch64-apple-darwin)
+              lipo -verify_arch arm64 "src-tauri/binaries/tesseract-$TARGET"
+              lipo -verify_arch arm64 src-tauri/resources/ocr/pdfium/libpdfium.dylib
+              ;;
+            x86_64-pc-windows-msvc)
+              llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_AMD64
+              llvm-readobj --file-headers src-tauri/resources/ocr/pdfium/pdfium.dll | grep -F IMAGE_FILE_MACHINE_AMD64
+              ;;
+            aarch64-pc-windows-msvc)
+              llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_ARM64
+              llvm-readobj --file-headers src-tauri/resources/ocr/pdfium/pdfium.dll | grep -F IMAGE_FILE_MACHINE_ARM64
+              ;;
+          esac
+
       - name: Stage and verify updater packages
         working-directory: ${{ runner.temp }}/epikrise-release
         shell: bash
@@ -312,7 +344,10 @@ jobs:
           node scripts/release-artifacts.mjs stage \
             --target "$TARGET" \
             --bundle-root "src-tauri/target/host-$host_target/$TARGET/release/bundle" \
-            --stage-root "release-staging/$TARGET"
+            --stage-root "release-staging/$TARGET" \
+            --commit "$GITHUB_SHA" \
+            --resource-root src-tauri/resources/ocr \
+            --binary-root src-tauri/binaries
 
       - uses: actions/upload-artifact@v7
         with:
@@ -350,6 +385,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Minisign verifier
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends minisign
+
       - uses: actions/download-artifact@v8
         with:
           pattern: release-*
@@ -360,6 +400,7 @@ jobs:
         run: |
           node scripts/release-artifacts.mjs latest \
             --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
             --repository "$GITHUB_REPOSITORY" \
             --artifacts-root release-artifacts \
             --output latest.json

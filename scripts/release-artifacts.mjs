@@ -1,9 +1,24 @@
-import { cp, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { execFile as execFileCallback } from "node:child_process";
+import { createReadStream } from "node:fs";
+import {
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { deriveReleaseVersions } from "./prepare-release.mjs";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+const execFile = promisify(execFileCallback);
 
 export const releaseTargets = /** @type {const} */ ([
   "x86_64-unknown-linux-gnu",
@@ -68,6 +83,54 @@ async function collectFiles(directory) {
   return files.sort();
 }
 
+/** @param {string} filePath */
+async function sha256(filePath) {
+  const digest = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) digest.update(chunk);
+  return digest.digest("hex");
+}
+
+/** @param {string} filePath @param {string} relativePath */
+async function fileEvidence(filePath, relativePath) {
+  const metadata = await lstat(filePath);
+  assert(
+    metadata.isFile() && !metadata.isSymbolicLink(),
+    `Release evidence is not a regular file: ${relativePath}.`,
+  );
+  return {
+    path: relativePath,
+    size_bytes: metadata.size,
+    sha256: await sha256(filePath),
+  };
+}
+
+/** @param {string} bundlePath @param {string} signature @param {string} publicKey */
+async function verifyUpdaterSignature(bundlePath, signature, publicKey) {
+  const directory = await mkdtemp(path.join(tmpdir(), "epikrise-minisign-"));
+  try {
+    const signaturePath = path.join(directory, "bundle.sig");
+    const publicKeyPath = path.join(directory, "updater.pub");
+    const signatureContents = Buffer.from(signature, "base64");
+    assert(
+      signatureContents.toString("base64") === signature,
+      "Updater signature is not valid base64.",
+    );
+    await writeFile(signaturePath, signatureContents);
+    await writeFile(publicKeyPath, publicKey);
+    await execFile("minisign", [
+      "-V",
+      "-p",
+      publicKeyPath,
+      "-m",
+      bundlePath,
+      "-x",
+      signaturePath,
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 /** @param {string} tag @param {string} packageVersion */
 export function validateReleaseTag(tag, packageVersion) {
   assert(
@@ -101,12 +164,25 @@ export function assertRecoverableReleaseDraft(release, tag, commit) {
 }
 
 /**
- * @param {{ target: string, bundleRoot: string, stageRoot: string }} options
+ * @param {{ target: string, bundleRoot: string, stageRoot: string, commit: string, version: string, resourceRoot: string, binaryRoot: string }} options
  * @returns {Promise<string[]>}
  */
-export async function stageReleaseArtifacts({ target, bundleRoot, stageRoot }) {
+export async function stageReleaseArtifacts({
+  target,
+  bundleRoot,
+  stageRoot,
+  commit,
+  version,
+  resourceRoot,
+  binaryRoot,
+}) {
   const config = targetConfig[/** @type {keyof typeof targetConfig} */ (target)];
   assert(config, `Unsupported release target: ${target}.`);
+  assert(/^[0-9a-f]{40}$/.test(commit), "Release commit must be a full Git SHA.");
+  assert(
+    /^[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$/.test(version),
+    "Release version must use padded CalVer.",
+  );
 
   try {
     await lstat(stageRoot);
@@ -144,18 +220,62 @@ export async function stageReleaseArtifacts({ target, bundleRoot, stageRoot }) {
     }
     assetNames.push(assetName);
   }
+
+  const pdfiumName = target.includes("apple-darwin")
+    ? "libpdfium.dylib"
+    : target.includes("windows-msvc")
+      ? "pdfium.dll"
+      : "libpdfium.so";
+  const tesseractName = target.includes("windows-msvc")
+    ? `tesseract-${target}.exe`
+    : `tesseract-${target}`;
+  const resourceFiles = await Promise.all(
+    [
+      [path.join(resourceRoot, "pdfium", pdfiumName), `pdfium/${pdfiumName}`],
+      [
+        path.join(resourceRoot, "tessdata", "deu.traineddata"),
+        "tessdata/deu.traineddata",
+      ],
+      [
+        path.join(resourceRoot, "tessdata", "eng.traineddata"),
+        "tessdata/eng.traineddata",
+      ],
+      [path.join(binaryRoot, tesseractName), `binaries/${tesseractName}`],
+    ].map(([filePath, relativePath]) => fileEvidence(filePath, relativePath)),
+  );
+  const assetFiles = await Promise.all(
+    assetNames.map((name) => fileEvidence(path.join(stageRoot, name), name)),
+  );
+  const architecture = target.startsWith("aarch64-") ? "arm64" : "x86_64";
+  const integrityManifest = {
+    schema_version: 1,
+    target,
+    architecture,
+    architecture_verified: true,
+    commit,
+    version,
+    assets: assetFiles,
+    resources: resourceFiles,
+  };
+  await writeFile(
+    path.join(stageRoot, `${target}-manifest.json`),
+    `${JSON.stringify(integrityManifest, null, 2)}\n`,
+    { flag: "wx" },
+  );
   return assetNames;
 }
 
 /**
- * @param {{ tag: string, packageVersion: string, repository: string, artifactsRoot: string, pubDate?: string }} options
+ * @param {{ tag: string, packageVersion: string, repository: string, artifactsRoot: string, commit?: string, pubDate?: string, signatureVerifier?: typeof verifyUpdaterSignature }} options
  */
 export async function createLatestManifest({
   tag,
   packageVersion,
   repository,
   artifactsRoot,
+  commit,
   pubDate = new Date().toISOString(),
+  signatureVerifier = verifyUpdaterSignature,
 }) {
   const { updateProtocolVersion } = validateReleaseTag(tag, packageVersion);
   assert(
@@ -163,6 +283,14 @@ export async function createLatestManifest({
     "Repository must be OWNER/REPO.",
   );
   assert(!Number.isNaN(Date.parse(pubDate)), "Publication date must be RFC 3339.");
+
+  const releaseConfig = JSON.parse(
+    await readFile(path.join(repoRoot, "src-tauri/tauri.release.conf.json"), "utf8"),
+  );
+  const publicKey = Buffer.from(
+    releaseConfig.plugins.updater.pubkey,
+    "base64",
+  ).toString("utf8");
 
   /** @type {Record<string, { signature: string, url: string }>} */
   const platforms = {};
@@ -176,8 +304,64 @@ export async function createLatestManifest({
         `Expected exactly one ${suffix} asset for ${target}.`,
       );
     }
+    const integrityName = `${target}-manifest.json`;
     assert(
-      files.length === config.suffixes.length,
+      files.includes(integrityName),
+      `Integrity manifest is missing for ${target}.`,
+    );
+    const integrity = JSON.parse(
+      await readFile(path.join(targetDirectory, integrityName), "utf8"),
+    );
+    assert(
+      integrity.schema_version === 1,
+      "Unsupported release integrity manifest schema.",
+    );
+    assert(
+      integrity.target === target,
+      `Integrity manifest target does not match ${target}.`,
+    );
+    assert(
+      integrity.architecture_verified === true,
+      `Architecture was not verified for ${target}.`,
+    );
+    assert(
+      integrity.commit === (commit ?? integrity.commit),
+      `Integrity commit does not match ${target}.`,
+    );
+    assert(
+      integrity.version === packageVersion,
+      `Integrity version does not match ${target}.`,
+    );
+    assert(
+      Array.isArray(integrity.assets) && Array.isArray(integrity.resources),
+      "Integrity manifest entries are invalid.",
+    );
+    assert(
+      integrity.resources.length === 4,
+      `OCR resource evidence is incomplete for ${target}.`,
+    );
+    const assetNames = new Set(integrity.assets.map((asset) => asset.path));
+    assert(
+      files.length === integrity.assets.length + 1 &&
+        files.every((name) => name === integrityName || assetNames.has(name)),
+      `Integrity manifest asset set does not match ${target}.`,
+    );
+    for (const asset of integrity.assets) {
+      assert(
+        /^[0-9a-f]{64}$/.test(asset.sha256),
+        `Asset hash is invalid for ${target}.`,
+      );
+      const evidence = await fileEvidence(
+        path.join(targetDirectory, asset.path),
+        asset.path,
+      );
+      assert(
+        evidence.size_bytes === asset.size_bytes && evidence.sha256 === asset.sha256,
+        `Release asset integrity check failed: ${asset.path}.`,
+      );
+    }
+    assert(
+      files.length === config.suffixes.length + 1,
       `Unexpected release assets for ${target}.`,
     );
     const updateBundles = files.filter((name) => name.endsWith(config.updaterSuffix));
@@ -203,6 +387,11 @@ export async function createLatestManifest({
       await readFile(path.join(targetDirectory, signatureName), "utf8")
     ).trim();
     assert(signature.length > 0, `Updater signature is empty for ${target}.`);
+    await signatureVerifier(
+      path.join(targetDirectory, bundleName),
+      signature,
+      publicKey,
+    );
     platforms[config.platform] = {
       signature,
       url: `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(bundleName)}`,
@@ -247,10 +436,17 @@ async function main() {
     return;
   }
   if (command === "stage") {
+    const packageJson = JSON.parse(
+      await readFile(path.join(repoRoot, "package.json"), "utf8"),
+    );
     await stageReleaseArtifacts({
       target: options.target,
       bundleRoot: options["bundle-root"],
       stageRoot: options["stage-root"],
+      commit: options.commit,
+      version: packageJson.version,
+      resourceRoot: options["resource-root"],
+      binaryRoot: options["binary-root"],
     });
     return;
   }
@@ -263,6 +459,7 @@ async function main() {
     packageVersion: packageJson.version,
     repository: options.repository,
     artifactsRoot: options["artifacts-root"],
+    commit: options.commit,
   });
   await writeFile(options.output, `${JSON.stringify(manifest, null, 2)}\n`, {
     flag: "wx",

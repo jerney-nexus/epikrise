@@ -562,6 +562,35 @@ describe("signed release artifacts", () => {
     "x86_64-pc-windows-msvc": [".exe", ".exe.sig"],
     "aarch64-pc-windows-msvc": [".exe", ".exe.sig"],
   };
+  const releaseCommit = "0123456789abcdef0123456789abcdef01234567";
+
+  async function createOcrFixture(root: string, target: string) {
+    const resourceRoot = path.join(root, "resources", "ocr");
+    const binaryRoot = path.join(root, "binaries");
+    const pdfiumName = target.includes("apple-darwin")
+      ? "libpdfium.dylib"
+      : target.includes("windows-msvc")
+        ? "pdfium.dll"
+        : "libpdfium.so";
+    const tesseractName = target.includes("windows-msvc")
+      ? `tesseract-${target}.exe`
+      : `tesseract-${target}`;
+
+    await mkdir(path.join(resourceRoot, "pdfium"), { recursive: true });
+    await mkdir(path.join(resourceRoot, "tessdata"), { recursive: true });
+    await mkdir(binaryRoot, { recursive: true });
+    await writeFile(path.join(resourceRoot, "pdfium", pdfiumName), `pdfium-${target}`);
+    await writeFile(
+      path.join(resourceRoot, "tessdata", "deu.traineddata"),
+      `deu-${target}`,
+    );
+    await writeFile(
+      path.join(resourceRoot, "tessdata", "eng.traineddata"),
+      `eng-${target}`,
+    );
+    await writeFile(path.join(binaryRoot, tesseractName), `tesseract-${target}`);
+    return { resourceRoot, binaryRoot };
+  }
 
   it("requires the padded tag to match the package and normalizes protocol SemVer", () => {
     expect(validateReleaseTag("v2026.09.4", "2026.09.4")).toEqual({
@@ -671,6 +700,13 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain("validate-draft");
     expect(releaseWorkflow).toContain("--clobber");
     expect(releaseWorkflow).toContain("epikrise-signed-release-commit:");
+    expect(releaseWorkflow).toContain("Verify staged OCR architectures");
+    expect(releaseWorkflow).toMatch(
+      /Verify staged OCR architectures[\s\S]*Stage and verify updater packages/,
+    );
+    expect(releaseWorkflow).toContain("--resource-root src-tauri/resources/ocr");
+    expect(releaseWorkflow).toContain("--binary-root src-tauri/binaries");
+    expect(releaseWorkflow).toContain("Install Minisign verifier");
     expect(releaseWorkflow).toContain("gh release edit");
     expect(releaseWorkflow).toContain("contents: write");
     expect(diagnosticWorkflow).toContain("contents: read");
@@ -764,19 +800,30 @@ describe("signed release artifacts", () => {
             suffix.endsWith(".sig") ? `signature-${target}` : `bundle-${target}`,
           );
         }
+        const { resourceRoot, binaryRoot } = await createOcrFixture(directory, target);
         await stageReleaseArtifacts({
           target,
           bundleRoot,
           stageRoot: path.join(artifactsRoot, `release-${target}`),
+          commit: releaseCommit,
+          version: "2026.09.4",
+          resourceRoot,
+          binaryRoot,
         });
       }
 
+      const verifiedSignatures: string[] = [];
       const manifest = await createLatestManifest({
         tag: "v2026.09.4",
         packageVersion: "2026.09.4",
         repository: "owner/repo",
         artifactsRoot,
+        commit: releaseCommit,
         pubDate,
+        signatureVerifier: async (_bundlePath, signature, publicKey) => {
+          verifiedSignatures.push(signature);
+          expect(publicKey).toContain("minisign public key");
+        },
       });
 
       expect(manifest.version).toBe("2026.9.4");
@@ -803,8 +850,63 @@ describe("signed release artifacts", () => {
         },
       });
       expect(Object.keys(manifest.platforms)).toHaveLength(6);
+      expect(verifiedSignatures).toHaveLength(6);
+      const linuxIntegrity = JSON.parse(
+        await readFile(
+          path.join(
+            artifactsRoot,
+            `release-${releaseTargets[0]}`,
+            `${releaseTargets[0]}-manifest.json`,
+          ),
+          "utf8",
+        ),
+      );
+      expect(linuxIntegrity).toMatchObject({
+        target: releaseTargets[0],
+        architecture: "x86_64",
+        architecture_verified: true,
+        commit: releaseCommit,
+        version: "2026.09.4",
+      });
+      expect(linuxIntegrity.assets).toHaveLength(
+        targetSuffixes[releaseTargets[0]].length,
+      );
+      expect(linuxIntegrity.resources).toHaveLength(4);
 
       const linuxArtifacts = path.join(artifactsRoot, `release-${releaseTargets[0]}`);
+      const appImage = (await readdir(linuxArtifacts)).find((name) =>
+        name.endsWith(".AppImage"),
+      );
+      expect(appImage).toBeDefined();
+      const appImagePath = path.join(linuxArtifacts, appImage!);
+      await writeFile(appImagePath, "tampered updater payload");
+      await expect(
+        createLatestManifest({
+          tag: "v2026.09.4",
+          packageVersion: "2026.09.4",
+          repository: "owner/repo",
+          artifactsRoot,
+          commit: releaseCommit,
+          pubDate,
+          signatureVerifier: async () => {},
+        }),
+      ).rejects.toThrow("Release asset integrity check failed");
+      await writeFile(appImagePath, `bundle-${releaseTargets[0]}`);
+
+      await expect(
+        createLatestManifest({
+          tag: "v2026.09.4",
+          packageVersion: "2026.09.4",
+          repository: "owner/repo",
+          artifactsRoot,
+          commit: releaseCommit,
+          pubDate,
+          signatureVerifier: async () => {
+            throw new Error("Invalid updater signature");
+          },
+        }),
+      ).rejects.toThrow("Invalid updater signature");
+
       const unexpectedAsset = path.join(linuxArtifacts, "unexpected.txt");
       await writeFile(unexpectedAsset, "unlisted");
       await expect(
@@ -813,9 +915,11 @@ describe("signed release artifacts", () => {
           packageVersion: "2026.09.4",
           repository: "owner/repo",
           artifactsRoot,
+          commit: releaseCommit,
           pubDate,
+          signatureVerifier: async () => {},
         }),
-      ).rejects.toThrow("Unexpected release assets");
+      ).rejects.toThrow("Integrity manifest asset set does not match");
       await rm(unexpectedAsset);
 
       const debPackage = (await readdir(linuxArtifacts)).find((name) =>
@@ -829,7 +933,9 @@ describe("signed release artifacts", () => {
           packageVersion: "2026.09.4",
           repository: "owner/repo",
           artifactsRoot,
+          commit: releaseCommit,
           pubDate,
+          signatureVerifier: async () => {},
         }),
       ).rejects.toThrow("Expected exactly one .deb asset");
     } finally {
@@ -852,6 +958,10 @@ describe("signed release artifacts", () => {
           target: releaseTargets[0],
           bundleRoot,
           stageRoot: path.join(directory, "staged"),
+          commit: releaseCommit,
+          version: "2026.09.4",
+          resourceRoot: path.join(directory, "resources", "ocr"),
+          binaryRoot: path.join(directory, "binaries"),
         }),
       ).rejects.toThrow(".AppImage.sig");
     } finally {
