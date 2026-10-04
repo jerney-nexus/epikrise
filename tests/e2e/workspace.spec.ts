@@ -13,6 +13,8 @@ const restrictedPolicy: PolicyStatus = {
   allowTemplateImport: false,
   allowTemplateExport: false,
   allowTemplateEdit: false,
+  allowTemplateCreation: false,
+  allowTemplateDeletion: false,
   allowedModels: [{ adapter: "ollama", model: "approved-model" }],
   maxOutputTokens: 2048,
   maxReasoningEffort: "low",
@@ -21,6 +23,38 @@ const restrictedPolicy: PolicyStatus = {
   permissionsWarning: false,
 };
 const policyTest = test.extend({ policy: restrictedPolicy });
+const creationRestrictedTest = test.extend({
+  policy: {
+    ...restrictedPolicy,
+    allowTemplateCreation: false,
+    allowTemplateDeletion: true,
+  },
+});
+const deletionRestrictedTest = test.extend({
+  policy: {
+    ...restrictedPolicy,
+    allowTemplateCreation: true,
+    allowTemplateDeletion: false,
+  },
+});
+const creationRestrictedOnboardingTest = test.extend({
+  seedTemplates: false,
+  policy: {
+    ...restrictedPolicy,
+    allowTemplateImport: true,
+    allowTemplateCreation: false,
+    allowTemplateDeletion: true,
+  },
+});
+const creationAllowedOnboardingTest = test.extend({
+  seedTemplates: false,
+  policy: {
+    ...restrictedPolicy,
+    allowTemplateImport: false,
+    allowTemplateCreation: true,
+    allowTemplateDeletion: false,
+  },
+});
 
 test("requires updater opt-in and explicit install confirmation", async ({ page }) => {
   await page.goto("/");
@@ -511,6 +545,8 @@ test("orders template settings controls with import before export", async ({
   expect(controlOrder).toEqual([
     "active-template",
     "Edit template",
+    "Delete active template",
+    "Create template",
     "Import template (.epitpl)",
     "Export template (.epitpl)",
   ]);
@@ -592,7 +628,7 @@ test("styles settings actions consistently in light and dark themes", async ({
           };
         }),
       );
-    expect(templateActions).toHaveLength(3);
+    expect(templateActions).toHaveLength(5);
     expect(new Set(templateActions.map(({ width }) => width)).size).toBe(1);
     expect(new Set(templateActions.map(({ height }) => height)).size).toBe(1);
     expect(new Set(templateActions.map(({ color }) => color)).size).toBe(1);
@@ -705,5 +741,112 @@ policyTest("shows administrator-managed settings as restricted", async ({ page }
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Template settings" }).click();
   await expect(page.getByRole("button", { name: "Edit template" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Create template" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Delete active template" }),
+  ).toBeDisabled();
   await expect(page.locator("#template-section-summary")).toBeDisabled();
 });
+
+creationRestrictedTest(
+  "allows deletion when creation is policy-restricted",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Template settings" }).click();
+    await expect(page.getByRole("button", { name: "Create template" })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Delete active template" }),
+    ).toBeEnabled();
+
+    await page.getByRole("button", { name: "Delete active template" }).click();
+    const confirmation = page.getByRole("group", {
+      name: "Confirm template deletion",
+    });
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByRole("button", { name: "Confirm deletion" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.__EPIKRISE_TEST__?.commands.some(
+            ({ command }) => command === "delete_template",
+          ),
+        ),
+      )
+      .toBe(true);
+  },
+);
+
+deletionRestrictedTest(
+  "allows creation when deletion is policy-restricted",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Template settings" }).click();
+    await expect(page.getByRole("button", { name: "Create template" })).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "Delete active template" }),
+    ).toBeDisabled();
+
+    await page.getByRole("button", { name: "Create template" }).click();
+    const editor = page.locator(".template-editor-dialog");
+    await expect(editor).toBeVisible();
+    await editor.getByRole("button", { name: "Create template" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.__EPIKRISE_TEST__?.commands.some(
+            ({ command }) => command === "create_template",
+          ),
+        ),
+      )
+      .toBe(true);
+  },
+);
+
+creationRestrictedOnboardingTest(
+  "blocks generic-starter creation when creation is policy-restricted",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Template settings", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Use generic starter" }),
+    ).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Create template" })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Import template (.epitpl)" }),
+    ).toBeEnabled();
+  },
+);
+
+creationAllowedOnboardingTest(
+  "creates the generic starter when import is policy-restricted",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Template settings", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Use generic starter" }),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "Import template (.epitpl)" }),
+    ).toBeDisabled();
+
+    await page.getByRole("button", { name: "Use generic starter" }).click();
+    const preview = page.getByLabel("Template preview");
+    await expect(preview).toBeVisible();
+    await preview.getByRole("button", { name: "Create template" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.__EPIKRISE_TEST__?.commands.some(
+            ({ command }) => command === "create_template",
+          ),
+        ),
+      )
+      .toBe(true);
+    const saved = await page.evaluate(() =>
+      window.__EPIKRISE_TEST__?.commands.some(
+        ({ command }) => command === "save_templates",
+      ),
+    );
+    expect(saved).toBe(false);
+  },
+);

@@ -8,6 +8,8 @@ require_review_gate = true
 allow_template_import = true
 allow_template_export = true
 allow_template_edit = true
+allow_template_creation = true
+allow_template_deletion = true
 allow_credential_management = false
 
 # Optional endpoint enforced for all provider operations.

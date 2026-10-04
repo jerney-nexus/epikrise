@@ -403,6 +403,84 @@ fn save_templates(
     write_template_library(&template_path, &templates)
 }
 
+#[tauri::command]
+#[specta::specta]
+fn create_template(
+    app: AppHandle,
+    policy: State<'_, PolicyState>,
+    template: ClinicalTemplate,
+) -> Result<(), TemplateError> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| TemplateError::StorageFailed)?;
+    let template_path = app_data_dir.join("templates.toml");
+    let mut templates =
+        load_template_library_from_paths(&template_path, &app_data_dir.join("templates.json"))?;
+    validate_template_creation(
+        &templates,
+        &template,
+        policy.0.policy.allow_template_creation,
+    )?;
+    templates.push(template);
+    write_template_library(&template_path, &templates)
+}
+
+#[tauri::command]
+#[specta::specta]
+fn delete_template(
+    app: AppHandle,
+    policy: State<'_, PolicyState>,
+    template_id: String,
+) -> Result<(), TemplateError> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| TemplateError::StorageFailed)?;
+    let template_path = app_data_dir.join("templates.toml");
+    let mut templates =
+        load_template_library_from_paths(&template_path, &app_data_dir.join("templates.json"))?;
+    let index = validate_template_deletion(
+        &templates,
+        &template_id,
+        policy.0.policy.allow_template_deletion,
+    )?;
+    templates.remove(index);
+    write_template_library(&template_path, &templates)
+}
+
+fn validate_template_creation(
+    existing: &[ClinicalTemplate],
+    template: &ClinicalTemplate,
+    allow_creation: bool,
+) -> Result<(), TemplateError> {
+    if !allow_creation {
+        return Err(TemplateError::PolicyRestricted);
+    }
+    template.validate()?;
+    if existing
+        .iter()
+        .any(|saved| saved.metadata.id == template.metadata.id)
+    {
+        return Err(TemplateError::InvalidTemplate);
+    }
+    Ok(())
+}
+
+fn validate_template_deletion(
+    existing: &[ClinicalTemplate],
+    template_id: &str,
+    allow_deletion: bool,
+) -> Result<usize, TemplateError> {
+    if !allow_deletion {
+        return Err(TemplateError::PolicyRestricted);
+    }
+    existing
+        .iter()
+        .position(|saved| saved.metadata.id == template_id)
+        .ok_or(TemplateError::InvalidTemplate)
+}
+
 fn validate_template_changes(
     existing: &[ClinicalTemplate],
     proposed: &[ClinicalTemplate],
@@ -1317,6 +1395,8 @@ pub fn run() -> Result<(), tauri::Error> {
             clear_case_session,
             copy_case_output,
             create_case_session,
+            create_template,
+            delete_template,
             delete_provider_credential,
             extract_file,
             extract_image,
@@ -1391,7 +1471,7 @@ mod tests {
         MAX_PDF_VISION_PAGES, OcrTempSession, commit_case_generation,
         load_template_library_from_paths, ocr_pdf_pages_with, parse_template_library,
         prepare_case_generation, render_pdf_pages_for_vision, validate_template_changes,
-        wipe_directory_contents,
+        validate_template_creation, validate_template_deletion, wipe_directory_contents,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
@@ -1525,6 +1605,35 @@ mod tests {
                 false,
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn template_creation_and_deletion_have_independent_policy_checks() {
+        let template =
+            ClinicalTemplate::from_epitpl(include_bytes!("../../templates/generic-starter.epitpl"))
+                .expect("checked-in starter should be valid TOML");
+
+        assert!(matches!(
+            validate_template_creation(&[], &template, false),
+            Err(TemplateError::PolicyRestricted)
+        ));
+        assert!(validate_template_creation(&[], &template, true).is_ok());
+        assert!(matches!(
+            validate_template_deletion(
+                std::slice::from_ref(&template),
+                &template.metadata.id,
+                false,
+            ),
+            Err(TemplateError::PolicyRestricted)
+        ));
+        assert_eq!(
+            validate_template_deletion(
+                std::slice::from_ref(&template),
+                &template.metadata.id,
+                true,
+            ),
+            Ok(0)
         );
     }
 

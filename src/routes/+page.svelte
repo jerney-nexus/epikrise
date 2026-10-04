@@ -46,6 +46,8 @@
     allowTemplateImport: boolean;
     allowTemplateExport: boolean;
     allowTemplateEdit: boolean;
+    allowTemplateCreation: boolean;
+    allowTemplateDeletion: boolean;
     allowedModels: AllowedModel[] | null;
     maxOutputTokens: number | null;
     maxReasoningEffort: ReasoningEffort | null;
@@ -123,6 +125,7 @@
   let caseSessionTemplateId = $state("");
   let reviewedOutputCaseId = $state<string | null>(null);
   let pendingTemplate = $state<ClinicalTemplate | null>(null);
+  let pendingTemplateOperation = $state<"create" | "import" | null>(null);
   let templateMessage = $state("");
   let templateIsError = $state(false);
   let templateBusy = $state(false);
@@ -133,6 +136,8 @@
   let addCredentialDialog: HTMLDialogElement | undefined;
   let templateEditorDialog: HTMLDialogElement | undefined;
   let templateEditDraft = $state<ClinicalTemplate | null>(null);
+  let templateEditorMode = $state<"create" | "edit">("edit");
+  let templateDeletionPending = $state(false);
   let templatePreview = $state("");
   let templatePreviewMessage = $state("");
   let templatePreviewIsError = $state(false);
@@ -753,6 +758,7 @@
   }
 
   function activateTemplate(templateId: string) {
+    templateDeletionPending = false;
     const previousCaseId = caseSessionId;
     if (previousCaseId && desktopAvailable) {
       void commands
@@ -1048,6 +1054,20 @@
   function openTemplateEditor() {
     if (!activeTemplate) return;
     const snapshot = structuredClone($state.snapshot(activeTemplate));
+    showTemplateEditor(snapshot, "edit");
+  }
+
+  function openTemplateCreation() {
+    if (policyStatus?.active && !policyStatus.allowTemplateCreation) return;
+    const template = genericStarterTemplate(
+      `custom-${crypto.randomUUID()}`,
+      t("New clinical template"),
+    );
+    showTemplateEditor(template, "create");
+  }
+
+  function showTemplateEditor(snapshot: ClinicalTemplate, mode: "create" | "edit") {
+    templateEditorMode = mode;
     templateEditDraft = {
       ...snapshot,
       sections: orderedTemplateSections(snapshot).map((section, order) => ({
@@ -1242,10 +1262,15 @@
         templateIsError = true;
         return;
       }
-      const updatedTemplates = importedTemplates.map((saved) =>
-        saved.metadata.id === validated.data.metadata.id ? validated.data : saved,
-      );
-      const result = await commands.saveTemplates(updatedTemplates);
+      const isCreation = templateEditorMode === "create";
+      const updatedTemplates = isCreation
+        ? [...importedTemplates, validated.data]
+        : importedTemplates.map((saved) =>
+            saved.metadata.id === validated.data.metadata.id ? validated.data : saved,
+          );
+      const result = isCreation
+        ? await commands.createTemplate(validated.data)
+        : await commands.saveTemplates(updatedTemplates);
       if (result.status === "error") {
         templateMessage = formatTemplateError(result.error);
         templateIsError = true;
@@ -1253,7 +1278,7 @@
       }
       importedTemplates = updatedTemplates;
       activateTemplate(validated.data.metadata.id);
-      templateMessage = "Template saved";
+      templateMessage = isCreation ? "Template created" : "Template saved";
       templateEditorDialog?.close();
       templateEditDraft = null;
     } catch {
@@ -1261,6 +1286,33 @@
       templateIsError = true;
     } finally {
       templateSaveBusy = false;
+    }
+  }
+
+  async function deleteActiveTemplate() {
+    const template = activeTemplate;
+    if (!template || templateBusy) return;
+    if (policyStatus?.active && !policyStatus.allowTemplateDeletion) return;
+
+    templateBusy = true;
+    try {
+      const result = await commands.deleteTemplate(template.metadata.id);
+      if (result.status === "error") {
+        templateMessage = formatTemplateError(result.error);
+        templateIsError = true;
+        return;
+      }
+      importedTemplates = importedTemplates.filter(
+        (saved) => saved.metadata.id !== template.metadata.id,
+      );
+      activateTemplate(importedTemplates[0]?.metadata.id ?? "");
+      templateMessage = "Template deleted";
+      templateIsError = false;
+    } catch {
+      templateMessage = "The template could not be deleted.";
+      templateIsError = true;
+    } finally {
+      templateBusy = false;
     }
   }
 
@@ -1298,6 +1350,7 @@
     if (!file) return;
 
     pendingTemplate = null;
+    pendingTemplateOperation = null;
     templateMessage = "";
     templateIsError = false;
     if (!desktopAvailable) {
@@ -1325,6 +1378,7 @@
         templateIsError = true;
       } else {
         pendingTemplate = result.data;
+        pendingTemplateOperation = "import";
       }
     } catch {
       templateMessage = "The selected template could not be read.";
@@ -1334,16 +1388,15 @@
     }
   }
 
-  async function createGenericStarter() {
-    if (templateBusy) return;
-    templateBusy = true;
-    templateMessage = "";
-    templateIsError = false;
-    const starter: ClinicalTemplate = {
+  function genericStarterTemplate(
+    id = "generic-starter",
+    name = "Generic clinical summary",
+  ): ClinicalTemplate {
+    return {
       schema_version: 1,
       metadata: {
-        id: "generic-starter",
-        name: "Generic clinical summary",
+        id,
+        name,
         description: "A minimal starting point without institutional rules.",
         locale: "de-CH",
         specialty_tags: [],
@@ -1371,8 +1424,15 @@
         forbid_parenthesized_dates: false,
       },
     };
+  }
 
+  async function createGenericStarter() {
+    if (templateBusy) return;
+    templateBusy = true;
+    templateMessage = "";
+    templateIsError = false;
     try {
+      const starter = genericStarterTemplate();
       const bytes = new TextEncoder().encode(JSON.stringify(starter));
       const result = await commands.validateTemplate(Array.from(bytes));
       if (result.status === "error") {
@@ -1380,6 +1440,7 @@
         templateIsError = true;
       } else {
         pendingTemplate = result.data;
+        pendingTemplateOperation = "create";
       }
     } catch {
       templateMessage = "The starter template could not be prepared.";
@@ -1395,13 +1456,18 @@
 
     templateBusy = true;
     try {
-      const updatedTemplates = [
-        ...importedTemplates.filter(
-          (saved) => saved.metadata.id !== template.metadata.id,
-        ),
-        template,
-      ];
-      const result = await commands.saveTemplates(updatedTemplates);
+      const isCreation = pendingTemplateOperation === "create";
+      const updatedTemplates = isCreation
+        ? [...importedTemplates, template]
+        : [
+            ...importedTemplates.filter(
+              (saved) => saved.metadata.id !== template.metadata.id,
+            ),
+            template,
+          ];
+      const result = isCreation
+        ? await commands.createTemplate(template)
+        : await commands.saveTemplates(updatedTemplates);
       if (result.status === "error") {
         templateMessage = formatTemplateError(result.error);
         templateIsError = true;
@@ -1410,7 +1476,8 @@
       importedTemplates = updatedTemplates;
       activateTemplate(template.metadata.id);
       pendingTemplate = null;
-      templateMessage = "Template saved";
+      pendingTemplateOperation = null;
+      templateMessage = isCreation ? "Template created" : "Template saved";
       templateIsError = false;
     } catch {
       templateMessage = "The template could not be saved.";
@@ -2579,6 +2646,21 @@
               <span class="policy-badge">{t("Administrator managed")}</span>
             {/if}
           </button>
+          <button
+            class="template-export-button template-settings-action"
+            type="button"
+            onclick={() => (templateDeletionPending = true)}
+            disabled={!activeTemplate ||
+              templateBusy ||
+              isGenerating ||
+              isPreparingGeneration ||
+              (policyStatus?.active && !policyStatus.allowTemplateDeletion)}
+          >
+            {t("Delete active template")}
+            {#if policyStatus?.active && !policyStatus.allowTemplateDeletion}
+              <span class="policy-badge">{t("Administrator managed")}</span>
+            {/if}
+          </button>
         {:else}
           <p class="template-empty">{t("No templates imported")}</p>
           <button
@@ -2586,14 +2668,58 @@
             type="button"
             onclick={createGenericStarter}
             disabled={templateBusy ||
-              (policyStatus?.active && !policyStatus.allowTemplateImport)}
+              (policyStatus?.active && !policyStatus.allowTemplateCreation)}
           >
             {t("Use generic starter")}
-            {#if policyStatus?.active && !policyStatus.allowTemplateImport}
+            {#if policyStatus?.active && !policyStatus.allowTemplateCreation}
               <span class="policy-badge">{t("Administrator managed")}</span>
             {/if}
           </button>
         {/if}
+
+        {#if templateDeletionPending && activeTemplate}
+          <div
+            class="credential-confirmation"
+            role="group"
+            aria-label={t("Confirm template deletion")}
+          >
+            <p>{t("Permanently delete this template?")}</p>
+            <div>
+              <button
+                class="credential-remove-button"
+                type="button"
+                onclick={deleteActiveTemplate}
+                disabled={templateBusy ||
+                  (policyStatus?.active && !policyStatus.allowTemplateDeletion)}
+              >
+                {templateBusy ? t("Deleting...") : t("Confirm deletion")}
+              </button>
+              <button
+                class="credential-cancel-button"
+                type="button"
+                onclick={() => (templateDeletionPending = false)}
+                disabled={templateBusy}
+              >
+                {t("Cancel")}
+              </button>
+            </div>
+          </div>
+        {/if}
+
+        <button
+          class="template-export-button template-settings-action"
+          type="button"
+          onclick={openTemplateCreation}
+          disabled={!desktopAvailable ||
+            isGenerating ||
+            isPreparingGeneration ||
+            (policyStatus?.active && !policyStatus.allowTemplateCreation)}
+        >
+          {t("Create template")}
+          {#if policyStatus?.active && !policyStatus.allowTemplateCreation}
+            <span class="policy-badge">{t("Administrator managed")}</span>
+          {/if}
+        </button>
 
         <button
           class="template-import-button template-settings-action"
@@ -2764,13 +2890,21 @@
                 class="connection-button"
                 onclick={savePendingTemplate}
                 disabled={templateBusy ||
-                  (policyStatus?.active && !policyStatus.allowTemplateImport)}
+                  (policyStatus?.active &&
+                    (pendingTemplateOperation === "create"
+                      ? !policyStatus.allowTemplateCreation
+                      : !policyStatus.allowTemplateImport))}
               >
-                {t("Save template")}
+                {pendingTemplateOperation === "create"
+                  ? t("Create template")
+                  : t("Save template")}
               </button>
               <button
                 class="template-discard"
-                onclick={() => (pendingTemplate = null)}
+                onclick={() => {
+                  pendingTemplate = null;
+                  pendingTemplateOperation = null;
+                }}
                 disabled={templateBusy}
               >
                 {t("Cancel")}
@@ -3103,9 +3237,16 @@
             class="connection-button"
             type="submit"
             disabled={templateSaveBusy ||
-              (policyStatus?.active && !policyStatus.allowTemplateEdit)}
+              (policyStatus?.active &&
+                (templateEditorMode === "create"
+                  ? !policyStatus.allowTemplateCreation
+                  : !policyStatus.allowTemplateEdit))}
           >
-            {templateSaveBusy ? t("Validating...") : t("Validate and save")}
+            {templateSaveBusy
+              ? t("Validating...")
+              : templateEditorMode === "create"
+                ? t("Create template")
+                : t("Validate and save")}
           </button>
         </div>
       </form>

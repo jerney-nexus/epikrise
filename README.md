@@ -301,9 +301,10 @@ or a loopback IP, regardless of the allowlist. `allow_url_ingestion = false`
 disables URL extraction. In updater-enabled builds, `allow_updater = false`
 prevents opting in, checking, or installing updates; standard builds report the
 updater as unavailable. Set `allow_template_import`, `allow_template_export`,
-or `allow_template_edit` to `false` to block adding templates, exporting
-templates, or changing/removing saved templates respectively. These restrictions
-are enforced by the backend as well as the settings UI.
+`allow_template_edit`, `allow_template_creation`, or `allow_template_deletion`
+to `false` to independently block template imports, exports, edits, direct
+creation, or deletion from settings. These restrictions are enforced by the
+backend as well as the settings UI.
 
 `allowed_models` optionally lists exact, case-sensitive model identifiers scoped
 by provider, for example `[{ adapter = "ollama", model = "llama3.2" }]`;

@@ -81,6 +81,8 @@ const syntheticPolicy: PolicyStatus = {
   allowTemplateImport: true,
   allowTemplateExport: true,
   allowTemplateEdit: true,
+  allowTemplateCreation: true,
+  allowTemplateDeletion: true,
   allowedModels: null,
   maxOutputTokens: null,
   maxReasoningEffort: null,
@@ -215,11 +217,24 @@ function installTauriFixture({
         case "set_provider_credential":
         case "delete_provider_credential":
           return true;
+        case "create_template":
+        case "delete_template":
+          return null;
         case "test_provider":
         case "list_models":
           return [];
-        case "validate_template":
+        case "validate_template": {
+          const bytes = args.bytes;
+          if (Array.isArray(bytes)) {
+            const serialized = new TextDecoder().decode(
+              Uint8Array.from(bytes as number[]),
+            );
+            if (serialized.trimStart().startsWith("{")) {
+              return JSON.parse(serialized) as ClinicalTemplate;
+            }
+          }
           return template;
+        }
         case "export_template":
           return fixture.templateExportCancelled ? "" : "synthetic template";
         case "extract_raw_text":

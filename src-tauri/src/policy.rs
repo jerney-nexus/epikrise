@@ -27,6 +27,10 @@ pub struct EgressPolicy {
     pub allow_template_export: bool,
     #[serde(default = "allow_by_default")]
     pub allow_template_edit: bool,
+    #[serde(default = "allow_by_default")]
+    pub allow_template_creation: bool,
+    #[serde(default = "allow_by_default")]
+    pub allow_template_deletion: bool,
     #[serde(default)]
     pub allowed_models: Option<Vec<AllowedModel>>,
     #[serde(default)]
@@ -57,6 +61,8 @@ impl Default for EgressPolicy {
             allow_template_import: true,
             allow_template_export: true,
             allow_template_edit: true,
+            allow_template_creation: true,
+            allow_template_deletion: true,
             allowed_models: None,
             max_output_tokens: None,
             max_reasoning_effort: None,
@@ -78,6 +84,8 @@ pub struct PolicyStatus {
     pub allow_template_import: bool,
     pub allow_template_export: bool,
     pub allow_template_edit: bool,
+    pub allow_template_creation: bool,
+    pub allow_template_deletion: bool,
     pub allowed_models: Option<Vec<AllowedModel>>,
     pub max_output_tokens: Option<u32>,
     pub max_reasoning_effort: Option<ReasoningEffort>,
@@ -163,6 +171,8 @@ impl LoadedPolicy {
             allow_template_import: policy.allow_template_import,
             allow_template_export: policy.allow_template_export,
             allow_template_edit: policy.allow_template_edit,
+            allow_template_creation: policy.allow_template_creation,
+            allow_template_deletion: policy.allow_template_deletion,
             allowed_models: policy.allowed_models.clone(),
             max_output_tokens: policy.max_output_tokens,
             max_reasoning_effort: policy.max_reasoning_effort,
@@ -452,6 +462,24 @@ mod tests {
             ProviderAdapter::Ollama,
             Some("https://remote.example/v1"),
         )));
+    }
+
+    #[test]
+    fn template_creation_and_deletion_policies_default_and_parse_independently() {
+        let defaults_directory =
+            tempfile::tempdir().expect("temporary directory should be created");
+        let defaults = load_policy(defaults_directory.path(), "local_only = true\n");
+        assert!(defaults.status.allow_template_creation);
+        assert!(defaults.status.allow_template_deletion);
+
+        let restricted_directory =
+            tempfile::tempdir().expect("temporary directory should be created");
+        let restricted = load_policy(
+            restricted_directory.path(),
+            "allow_template_creation = false\nallow_template_deletion = true\n",
+        );
+        assert!(!restricted.status.allow_template_creation);
+        assert!(restricted.status.allow_template_deletion);
     }
 
     #[test]
