@@ -17,7 +17,8 @@
     "ghcr.io/devcontainers-extra/features/ripgrep:1": {},
     "ghcr.io/devcontainers-extra/features/prettier:1": {
       "version": "3.9.9"
-    }
+    },
+    "ghcr.io/devcontainers-extra/features/actionlint:1": {}
   },
   "onCreateCommand": "bash .devcontainer/install-deps.sh",
   "postCreateCommand": "pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium firefox webkit && node --input-type=module -e 'await import(\"vite\"); console.log(\"Vite native binding ready\")'",
