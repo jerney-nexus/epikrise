@@ -1043,10 +1043,10 @@ describe("signed release artifacts", () => {
         "darwin-aarch64": {
           signature: "signature-aarch64-apple-darwin",
         },
-        "windows-x86_64": {
+        "windows-x86_64-nsis": {
           signature: "signature-x86_64-pc-windows-msvc",
         },
-        "windows-aarch64": {
+        "windows-aarch64-nsis": {
           signature: "signature-aarch64-pc-windows-msvc",
         },
       });

@@ -54,12 +54,12 @@ const targetConfig = {
     updaterSuffix: ".app.tar.gz",
   },
   "x86_64-pc-windows-msvc": {
-    platform: "windows-x86_64",
+    platform: "windows-x86_64-nsis",
     suffixes: [".exe", ".exe.sig"],
     updaterSuffix: ".exe",
   },
   "aarch64-pc-windows-msvc": {
-    platform: "windows-aarch64",
+    platform: "windows-aarch64-nsis",
     suffixes: [".exe", ".exe.sig"],
     updaterSuffix: ".exe",
   },
