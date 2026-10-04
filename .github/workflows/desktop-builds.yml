@@ -71,7 +71,7 @@ jobs:
           [[ "$GITHUB_SHA" == "$EXPECTED_SHA" ]]
           [[ "$REQUEST_ID" =~ ^[0-9a-f-]{36}$ ]]
 
-      - uses: pnpm/setup@v1
+      - uses: pnpm/setup@v2
         with:
           version: 12.8.1
           install: false

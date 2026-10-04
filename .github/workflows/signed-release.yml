@@ -22,7 +22,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - uses: pnpm/setup@v1
+      - uses: pnpm/setup@v2
         with:
           version: 12.8.1
           install: false
@@ -125,7 +125,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - uses: pnpm/setup@v1
+      - uses: pnpm/setup@v2
         with:
           version: 12.8.1
           install: false
@@ -322,7 +322,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - uses: pnpm/setup@v1
+      - uses: pnpm/setup@v2
         with:
           version: 12.8.1
           install: false

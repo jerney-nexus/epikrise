@@ -33,7 +33,7 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - uses: pnpm/setup@v1
+      - uses: pnpm/setup@v2
         with:
           version: 12.8.1
           install: false
