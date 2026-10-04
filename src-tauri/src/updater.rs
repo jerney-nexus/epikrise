@@ -241,6 +241,11 @@ fn approved_https_url(url: &Url) -> bool {
 }
 
 #[cfg(feature = "direct-release-updater")]
+fn approved_redirect_chain(url: &Url, previous: &[Url]) -> bool {
+    approved_https_url(url) && previous.iter().all(approved_https_url)
+}
+
+#[cfg(feature = "direct-release-updater")]
 fn release_version_from_protocol(version: &str) -> Result<String, UpdaterError> {
     let mut parts = version.split('.');
     let year = parts.next().ok_or(UpdaterError::UpdateFailed)?;
@@ -482,9 +487,7 @@ impl UpdateService for TauriUpdateService {
             .timeout(std::time::Duration::from_secs(30))
             .configure_client(|client| {
                 client.redirect(reqwest_updater::redirect::Policy::custom(|attempt| {
-                    let approved_chain = approved_https_url(attempt.url())
-                        && attempt.previous().iter().all(approved_https_url);
-                    if approved_chain {
+                    if approved_redirect_chain(attempt.url(), attempt.previous()) {
                         attempt.follow()
                     } else {
                         attempt.stop()
@@ -599,8 +602,9 @@ pub async fn install_update(
 mod tests {
     #[cfg(feature = "direct-release-updater")]
     use super::{
-        UpdateCandidate, UpdateService, approved_https_url, check_with_service,
-        install_with_service, release_version_from_protocol, validate_candidate,
+        UpdateCandidate, UpdateService, approved_https_url, approved_redirect_chain,
+        check_with_service, install_with_service, release_version_from_protocol,
+        validate_candidate,
     };
     use super::{UpdateInstallGate, UpdaterError, authorize};
     #[cfg(feature = "direct-release-updater")]
@@ -785,6 +789,30 @@ mod tests {
         assert!(!approved_https_url(
             &Url::parse("https://attacker.invalid/asset").expect("URL")
         ));
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[test]
+    fn redirect_chain_requires_every_hop_to_use_approved_https_hosts() {
+        let approved_redirect = Url::parse("https://github.com/owner/repo/releases").expect("URL");
+        let approved_final =
+            Url::parse("https://release-assets.githubusercontent.com/asset").expect("URL");
+        let insecure_redirect = Url::parse("http://github.com/owner/repo/releases").expect("URL");
+        let unapproved_redirect = Url::parse("https://attacker.invalid/redirect").expect("URL");
+
+        assert!(approved_redirect_chain(
+            &approved_final,
+            &[approved_redirect]
+        ));
+        assert!(!approved_redirect_chain(
+            &approved_final,
+            &[insecure_redirect]
+        ));
+        assert!(!approved_redirect_chain(
+            &approved_final,
+            std::slice::from_ref(&unapproved_redirect)
+        ));
+        assert!(!approved_redirect_chain(&unapproved_redirect, &[]));
     }
 
     #[cfg(feature = "direct-release-updater")]
