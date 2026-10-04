@@ -220,6 +220,71 @@ export async function prepareReleaseBuildInputs(workspaceRoot) {
   return versions;
 }
 
+/** @param {string} sourceRoot @param {string} version */
+export async function updateSourceCargoLockVersions(sourceRoot, version) {
+  const tauriRoot = path.join(sourceRoot, "src-tauri");
+  const cargoData = TOML.parse(
+    await readFile(path.join(tauriRoot, "Cargo.toml"), "utf8"),
+  );
+  if (
+    !isRecord(cargoData) ||
+    !isRecord(cargoData.package) ||
+    !isRecord(cargoData.workspace)
+  ) {
+    throw new Error("Source Cargo workspace manifest is invalid.");
+  }
+  const rootPackageName = cargoData.package.name;
+  if (typeof rootPackageName !== "string") {
+    throw new Error("Source Cargo package has no name.");
+  }
+  const workspaceNames = new Set([rootPackageName]);
+  const workspaceMembers = cargoData.workspace.members;
+  if (!Array.isArray(workspaceMembers)) {
+    throw new Error("Source Cargo workspace has no member list.");
+  }
+  for (const member of workspaceMembers) {
+    if (typeof member !== "string") {
+      throw new Error("Source Cargo workspace has an invalid member.");
+    }
+    const memberManifest = TOML.parse(
+      await readFile(path.join(tauriRoot, member, "Cargo.toml"), "utf8"),
+    );
+    if (!isRecord(memberManifest) || !isRecord(memberManifest.package)) {
+      throw new Error(`Invalid Cargo workspace member: ${member}.`);
+    }
+    const memberName = memberManifest.package.name;
+    if (typeof memberName !== "string") {
+      throw new Error(`Cargo workspace member has no package name: ${member}.`);
+    }
+    workspaceNames.add(memberName);
+  }
+
+  const cargoLockPath = path.join(tauriRoot, "Cargo.lock");
+  const cargoLock = TOML.parse(await readFile(cargoLockPath, "utf8"));
+  if (!isRecord(cargoLock) || !Array.isArray(cargoLock.package)) {
+    throw new Error("Source Cargo.lock has no package list.");
+  }
+  const updatedNames = new Set();
+  for (const lockedPackage of cargoLock.package) {
+    if (!isRecord(lockedPackage)) {
+      throw new Error("Source Cargo.lock contains an invalid package.");
+    }
+    const packageName = lockedPackage.name;
+    if (
+      typeof packageName === "string" &&
+      workspaceNames.has(packageName) &&
+      !("source" in lockedPackage)
+    ) {
+      lockedPackage.version = version;
+      updatedNames.add(packageName);
+    }
+  }
+  if (updatedNames.size !== workspaceNames.size) {
+    throw new Error("Source Cargo.lock is missing workspace packages.");
+  }
+  await writeFile(cargoLockPath, TOML.stringify(cargoLock));
+}
+
 /** @param {string} currentVersion @param {Date} [date] */
 export function nextCalverVersion(currentVersion, date = new Date()) {
   validateCalverVersion(currentVersion);
@@ -343,6 +408,7 @@ async function prepareRelease(requestedVersion) {
     version,
   );
   await writeFile(cargoManifestPath, cargoManifest);
+  await updateSourceCargoLockVersions(repoRoot, version);
 
   const validationRoot = await mkdtemp(path.join(tmpdir(), "epikrise-release-inputs-"));
   try {

@@ -24,6 +24,7 @@ import {
   nextCalverVersion,
   prepareReleaseBuildInputs,
   releaseVersionFromProtocolVersion,
+  updateSourceCargoLockVersions,
   validateCalverVersion,
 } from "../scripts/prepare-release.mjs";
 import {
@@ -229,6 +230,80 @@ describe("CalVer release versions", () => {
     },
     300_000,
   );
+
+  it("updates source Cargo.lock workspace entries alongside the manifests", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-release-lock-"));
+    const tauriDirectory = path.join(directory, "src-tauri");
+    try {
+      await cp(path.join(repoRoot, "src-tauri"), tauriDirectory, {
+        recursive: true,
+        filter: (source) =>
+          !["target", "gen", "WixTools"].some((excluded) =>
+            source.split(path.sep).includes(excluded),
+          ),
+      });
+
+      const sourcePackage = JSON.parse(
+        await readFile(path.join(repoRoot, "package.json"), "utf8"),
+      );
+      const [year, month, patch] = sourcePackage.version.split(".");
+      const releaseVersion = `${year}.${month}.${Number(patch) + 1}`;
+      const cargoManifestPath = path.join(tauriDirectory, "Cargo.toml");
+      const cargoManifest = (await readFile(cargoManifestPath, "utf8")).replaceAll(
+        sourcePackage.version,
+        releaseVersion,
+      );
+      await writeFile(cargoManifestPath, cargoManifest);
+
+      const originalPackages = TOML.parse(
+        await readFile(path.join(tauriDirectory, "Cargo.lock"), "utf8"),
+      ).package as unknown as Array<{ name: string; version: string }>;
+      const serdeVersion = originalPackages.find(
+        (entry) => entry.name === "serde",
+      )?.version;
+      expect(serdeVersion).toBeDefined();
+
+      await updateSourceCargoLockVersions(directory, releaseVersion);
+
+      const updatedLock = TOML.parse(
+        await readFile(path.join(tauriDirectory, "Cargo.lock"), "utf8"),
+      );
+      expect(updatedLock.package).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "epikrise", version: releaseVersion }),
+          expect.objectContaining({ name: "epikrise-core", version: releaseVersion }),
+          expect.objectContaining({ name: "epikrise-ingest", version: releaseVersion }),
+          expect.objectContaining({ name: "epikrise-llm", version: releaseVersion }),
+          expect.objectContaining({ name: "serde", version: serdeVersion }),
+        ]),
+      );
+      await execFile(
+        "cargo",
+        [
+          "fetch",
+          "--locked",
+          "--offline",
+          "--manifest-path",
+          path.join(tauriDirectory, "Cargo.toml"),
+        ],
+        { cwd: directory, maxBuffer: 10 * 1024 * 1024 },
+      );
+
+      const sourceLock = TOML.parse(
+        await readFile(path.join(repoRoot, "src-tauri/Cargo.lock"), "utf8"),
+      );
+      expect(sourceLock.package).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: "epikrise",
+            version: sourcePackage.version,
+          }),
+        ]),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 
   it("moves unreleased and generated notes into a dated release section", () => {
     const changelog = [
