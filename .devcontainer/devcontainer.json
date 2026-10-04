@@ -70,7 +70,7 @@
   "remoteUser": "vscode",
   "mounts": [
     "source=epikrise-gh-auth-${devcontainerId},target=/home/vscode/.local/share/gh,type=volume,volume-nocopy",
-    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.copilot,target=/home/vscode/.copilot,type=bind,readonly",
-    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=/home/vscode/.claude,type=bind,readonly"
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.copilot,target=/home/vscode/.copilot,type=bind,readonly,bind-create-src",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=/home/vscode/.claude,type=bind,readonly,bind-create-src"
   ]
 }
