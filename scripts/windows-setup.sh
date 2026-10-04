@@ -43,15 +43,17 @@ if ! cargo xwin --version >/dev/null 2>&1; then
 fi
 
 printf 'Microsoft Windows SDK/CRT license: https://go.microsoft.com/fwlink/?LinkId=2086102\n'
-printf 'Review the license before continuing. Type ACCEPT to download the pinned SDK and CRT: '
-if [[ ! -t 0 ]]; then
-  printf '\nRun pnpm windows:setup in an interactive terminal.\n' >&2
-  exit 1
-fi
-read -r license_response
-if [[ "$license_response" != "ACCEPT" ]]; then
-  printf 'Windows SDK setup cancelled; no Microsoft SDK/CRT files were requested.\n' >&2
-  exit 1
+if [[ "${1:-}" != "--ci" ]]; then
+  printf 'Review the license before continuing. Type ACCEPT to download the pinned SDK and CRT: '
+  if [[ ! -t 0 ]]; then
+    printf '\nRun pnpm windows:setup in an interactive terminal.\n' >&2
+    exit 1
+  fi
+  read -r license_response
+  if [[ "$license_response" != "ACCEPT" ]]; then
+    printf 'Windows SDK setup cancelled; no Microsoft SDK/CRT files were requested.\n' >&2
+    exit 1
+  fi
 fi
 
 rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc

@@ -316,6 +316,80 @@ describe("Windows cross-build versions", () => {
   });
 });
 
+describe("Windows setup noninteractive behavior", () => {
+  it("downloads only in approved CI mode and keeps local acceptance interactive", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-setup-"));
+    const binDir = path.join(directory, "bin");
+    const setupScript = path.join(directory, "windows-setup.sh");
+    const headerPath = path.join(directory, "RestartManager.nsh");
+    const cargoLog = path.join(directory, "cargo.log");
+    const cacheRoot = path.join(directory, "cache");
+
+    try {
+      await mkdir(binDir);
+      await writeFile(headerPath, "synthetic header");
+      const source = await readFile(
+        path.join(repoRoot, "scripts/windows-setup.sh"),
+        "utf8",
+      );
+      await writeFile(
+        setupScript,
+        source.replace("/usr/share/nsis/Include/Win/RestartManager.nsh", headerPath),
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        '#!/usr/bin/env bash\nif [[ "$1" == "-s" ]]; then printf "Linux\\n"; else printf "aarch64\\n"; fi\n',
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
+      );
+      for (const tool of [
+        "rustup",
+        "clang",
+        "llvm-rc",
+        "llvm-ar",
+        "lld-link",
+        "cmake",
+        "ninja",
+        "makensis",
+      ]) {
+        await writeExecutable(path.join(binDir, tool), "#!/usr/bin/env bash\nexit 0\n");
+      }
+      const env = {
+        ...process.env,
+        PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+        XDG_CACHE_HOME: cacheRoot,
+        CARGO_LOG: cargoLog,
+        EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: "true",
+      };
+
+      await expect(execFile("bash", [setupScript], { env })).rejects.toMatchObject({
+        stderr: expect.stringContaining("interactive terminal"),
+      });
+      expect(await readFile(cargoLog, "utf8")).not.toContain("cache xwin");
+
+      const { stdout } = await execFile("bash", [setupScript, "--ci"], { env });
+      expect(stdout).toContain("Windows cross-build tools are ready.");
+      expect(stdout).not.toContain("Type ACCEPT");
+      expect(await readFile(cargoLog, "utf8")).toContain(
+        "cache xwin --xwin-version 17 --xwin-sdk-version 10.0.26100 --xwin-crt-version 14.44.17.14",
+      );
+      expect(
+        await readFile(
+          path.join(
+            cacheRoot,
+            "epikrise/windows/sdk-license-accepted-17-10.0.26100-14.44.17.14",
+          ),
+          "utf8",
+        ),
+      ).toBe("");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("six-target desktop build tooling", () => {
   const commit = "a".repeat(40);
   const requestId = "12345678-1234-4234-8234-123456789abc";

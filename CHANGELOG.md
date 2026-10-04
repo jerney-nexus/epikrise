@@ -27,7 +27,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 - Added a manual six-target GitHub Actions desktop build workflow and
   `pnpm build:all` dispatch/download command with exact-commit and artifact
   manifest/hash verification. Windows CI SDK downloads require explicit
-  administrator license approval; packages remain unsigned and unpublished.
+  administrator license approval and skip interactive acceptance only in
+  approved CI mode; packages remain unsigned and unpublished.
 - Added default-off, policy-enforced direct-release updater plumbing with
   explicit checks and install confirmation, target/version/URL validation,
   approved HTTPS host checks for every redirect, progress reporting, and
