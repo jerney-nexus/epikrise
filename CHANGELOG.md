@@ -85,15 +85,9 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   Rust tests.
 - Rust workspace LCOV coverage via `cargo-llvm-cov` and Coverage Gutters, and
   updated Tauri and keyring identifiers for `jerney-nexus`.
-
-### Changed
-
 - Kept URL entry usable beside its submit control, moved draft generation
   below the clinical-material field, and matched the Tauri app icon to the
   workspace E mark.
-
-### Fixed
-
 - Spaced the active-template picker away from configuration and allowed the
   template editor to clone reactive Svelte state safely.
 

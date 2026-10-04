@@ -28,9 +28,6 @@
 
 ### Medium Urgency
 
-- Finalize the initial-release changelog policy; use only `Added` entries if
-  required for the first release and review the current `Changed`/`Fixed`
-  sections before release.
 - Search the institutional template for output rules and patterns.
 - Use MiniJinja placeholders in the institutional template.
 
