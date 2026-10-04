@@ -17,6 +17,8 @@
 
 ### High Urgency
 
+- Inspect and correct the signed-release workflow's apt dependency list: it
+  also lists `makensis` as a package and may fail before Windows release builds.
 - Blocked: Complete portable package implementation and verification: the signed Windows
   release currently selects NSIS and the artifact contract exposes one Windows
   updater identity per architecture; add MSI and NSIS variants with eight total

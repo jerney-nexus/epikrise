@@ -220,6 +220,71 @@ export async function prepareReleaseBuildInputs(workspaceRoot) {
   return versions;
 }
 
+/** @param {string} sourceRoot @param {string} version */
+export async function updateSourceCargoLockVersions(sourceRoot, version) {
+  const tauriRoot = path.join(sourceRoot, "src-tauri");
+  const cargoData = TOML.parse(
+    await readFile(path.join(tauriRoot, "Cargo.toml"), "utf8"),
+  );
+  if (
+    !isRecord(cargoData) ||
+    !isRecord(cargoData.package) ||
+    !isRecord(cargoData.workspace)
+  ) {
+    throw new Error("Source Cargo workspace manifest is invalid.");
+  }
+  const rootPackageName = cargoData.package.name;
+  if (typeof rootPackageName !== "string") {
+    throw new Error("Source Cargo package has no name.");
+  }
+  const workspaceNames = new Set([rootPackageName]);
+  const workspaceMembers = cargoData.workspace.members;
+  if (!Array.isArray(workspaceMembers)) {
+    throw new Error("Source Cargo workspace has no member list.");
+  }
+  for (const member of workspaceMembers) {
+    if (typeof member !== "string") {
+      throw new Error("Source Cargo workspace has an invalid member.");
+    }
+    const memberManifest = TOML.parse(
+      await readFile(path.join(tauriRoot, member, "Cargo.toml"), "utf8"),
+    );
+    if (!isRecord(memberManifest) || !isRecord(memberManifest.package)) {
+      throw new Error(`Invalid Cargo workspace member: ${member}.`);
+    }
+    const memberName = memberManifest.package.name;
+    if (typeof memberName !== "string") {
+      throw new Error(`Cargo workspace member has no package name: ${member}.`);
+    }
+    workspaceNames.add(memberName);
+  }
+
+  const cargoLockPath = path.join(tauriRoot, "Cargo.lock");
+  const cargoLock = TOML.parse(await readFile(cargoLockPath, "utf8"));
+  if (!isRecord(cargoLock) || !Array.isArray(cargoLock.package)) {
+    throw new Error("Source Cargo.lock has no package list.");
+  }
+  const updatedNames = new Set();
+  for (const lockedPackage of cargoLock.package) {
+    if (!isRecord(lockedPackage)) {
+      throw new Error("Source Cargo.lock contains an invalid package.");
+    }
+    const packageName = lockedPackage.name;
+    if (
+      typeof packageName === "string" &&
+      workspaceNames.has(packageName) &&
+      !("source" in lockedPackage)
+    ) {
+      lockedPackage.version = version;
+      updatedNames.add(packageName);
+    }
+  }
+  if (updatedNames.size !== workspaceNames.size) {
+    throw new Error("Source Cargo.lock is missing workspace packages.");
+  }
+  await writeFile(cargoLockPath, TOML.stringify(cargoLock));
+}
+
 /** @param {string} currentVersion @param {Date} [date] */
 export function nextCalverVersion(currentVersion, date = new Date()) {
   validateCalverVersion(currentVersion);
@@ -257,9 +322,10 @@ function replaceCargoSectionVersion(source, sectionName, version) {
   const nextSectionStart = source.indexOf("\n[", sectionStart + 1);
   const sectionEnd = nextSectionStart < 0 ? source.length : nextSectionStart;
   const section = source.slice(sectionStart, sectionEnd);
-  const updated = section.replace(/^version = "[^"]+"$/m, `version = "${version}"`);
-  if (updated === section)
+  const versionPattern = /^version = "[^"]+"$/m;
+  if (!versionPattern.test(section))
     throw new Error(`Missing version in Cargo section: ${sectionName}`);
+  const updated = section.replace(versionPattern, `version = "${version}"`);
   return source.slice(0, sectionStart) + updated + source.slice(sectionEnd);
 }
 
@@ -320,7 +386,7 @@ async function prepareRelease(requestedVersion) {
 
   const { stdout: generatedNotes } = await execFile(
     "git-cliff",
-    ["--tag", `v${version}`],
+    ["--unreleased", "--tag", `v${version}`],
     { cwd: repoRoot, maxBuffer: 10 * 1024 * 1024 },
   );
   if (!generatedNotes.trim()) throw new Error("git-cliff generated no release notes.");
@@ -342,6 +408,7 @@ async function prepareRelease(requestedVersion) {
     version,
   );
   await writeFile(cargoManifestPath, cargoManifest);
+  await updateSourceCargoLockVersions(repoRoot, version);
 
   const validationRoot = await mkdtemp(path.join(tmpdir(), "epikrise-release-inputs-"));
   try {

@@ -52,7 +52,7 @@
       "detail": "Runs Rust format checks; included in Epikrise: Check Rust.",
       "type": "process",
       "command": "pnpm",
-      "args": ["check:rust:format"],
+      "args": ["check:rust:fmt"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     },

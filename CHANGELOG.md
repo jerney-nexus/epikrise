@@ -9,10 +9,11 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Added
 
-- Markdown-formatted output previews and sanitized rich clipboard output, with
-  plain-text preview and reviewed-output copy safeguards retained. Switched to
-  CalVer and added a GitHub Actions workflow that prepares version and
-  changelog updates for review.
+- Markdown-formatted output previews and sanitized rich clipboard output that
+  excludes remote images to prevent data leakage when pasted, with plain-text
+  preview and reviewed-output copy safeguards retained. Switched to CalVer and
+  added a GitHub Actions workflow that prepares version and changelog updates
+  for review.
 - Machine-wide administrator egress policy, Rust-enforced local-only/provider
   restrictions, URL-ingestion control, and first-send confirmation for remote
   generation. Added redacted debug output for clinical payload types, a strict
