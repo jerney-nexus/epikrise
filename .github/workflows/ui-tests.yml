@@ -19,7 +19,7 @@ jobs:
     name: UI and i18n
     runs-on: ubuntu-22.04
     container:
-      image: node:22-bookworm
+      image: rust:1-bookworm
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
