@@ -38,11 +38,25 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Install Linux build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake curl file libssl-dev libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev ninja-build \
+            pkg-config tesseract-ocr
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Fetch locked Rust dependencies
         run: cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Prepare Tesseract sidecar for checks
+        run: |
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          install -m 0755 "$(command -v tesseract)" \
+            "src-tauri/binaries/tesseract-$host_target"
 
       - name: Check UI
         run: pnpm check:ui

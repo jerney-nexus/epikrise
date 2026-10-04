@@ -56,7 +56,13 @@ jobs:
           apt-get install -y --no-install-recommends \
             build-essential cmake curl file libssl-dev libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev librsvg2-dev libxdo-dev ninja-build \
-            pkg-config
+            pkg-config tesseract-ocr
+
+      - name: Prepare Tesseract sidecar for checks
+        run: |
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          install -m 0755 "$(command -v tesseract)" \
+            "src-tauri/binaries/tesseract-$host_target"
 
       - uses: taiki-e/install-action@v2
         with:
