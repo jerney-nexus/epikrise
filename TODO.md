@@ -8,7 +8,7 @@
   workspace diagnostics API returns none and current language-server logs show
   no failures; earlier UI and Rust checks passed. Need the entries' source,
   messages, and paths to identify their emitter.
-- Investigate VS Code Playwright Test Explorer runs leaving the configured dev
+- Blocked: Investigate VS Code Playwright Test Explorer runs leaving the configured dev
   server running. The focused terminal E2E run passed and exited Vite, but this
   environment has no reproducible Test Explorer run or leaked Vite process;
   verify the Explorer lifecycle before adding cleanup logic.
@@ -17,7 +17,7 @@
 
 ### High Urgency
 
-- Complete portable package implementation and verification: the signed Windows
+- Blocked: Complete portable package implementation and verification: the signed Windows
   release currently selects NSIS and the artifact contract exposes one Windows
   updater identity per architecture; add MSI and NSIS variants with eight total
   updater entries, stable UpgradeCodes, derived MSI versions, and offline
