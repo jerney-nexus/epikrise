@@ -490,7 +490,7 @@ describe("six-target desktop build tooling", () => {
       "src-tauri/target/host-$host_target/$TARGET/release/bundle",
     );
     expect(workflow).not.toContain("~/.cache/epikrise/windows\n");
-    expect(workflow).toContain("actions/upload-artifact@v4");
+    expect(workflow).toContain("actions/upload-artifact@v7");
     expect(workflow).toContain("${{ runner.arch }}");
     expect(workflow).toContain("ubuntu-22.04-arm");
     expect(workflow).toContain("ubuntu-22.04");
