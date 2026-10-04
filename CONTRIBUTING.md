@@ -172,6 +172,8 @@ pnpm format:rust:fmt
 pnpm check
 pnpm test
 pnpm build
+pnpm audit:rust
+pnpm audit:pnpm
 ```
 
 The dev container installs the required Rust tools during setup. For a local
@@ -182,11 +184,12 @@ rustup component add clippy rustfmt llvm-tools-preview
 cargo install cargo-deny --locked
 cargo install cargo-nextest --locked
 cargo install cargo-llvm-cov --locked
+cargo install cargo-audit --locked
 ```
 
 `cargo-deny` is required by `pnpm check`; `cargo-nextest` is required by
-`pnpm test:rust`, and `cargo-llvm-cov` plus `llvm-tools-preview` are required
-for Rust coverage.
+`pnpm test:rust`; `cargo-audit` is required by `pnpm audit:rust`; and
+`cargo-llvm-cov` plus `llvm-tools-preview` are required for Rust coverage.
 
 `pnpm test` includes the full Playwright browser suite in addition to UI, i18n,
 and Rust tests.
@@ -229,17 +232,22 @@ for that build or package input; do not migrate committed versions or release
 tags. The six-target Desktop builds workflow remains an unsigned diagnostic
 contract and does not publish releases.
 
-Updater support is currently plumbing, not a production release channel. The
-default Tauri configuration leaves it disabled; the separate
-`src-tauri/tauri.release.conf.json` enables updater artifacts but still uses
-the `unconfigured` public-key placeholder. Do not distribute updater-enabled
-artifacts until the key is securely provisioned, the public key is configured,
-and the release workflow verifies target-specific payload signatures. Never
-generate or replace a production key in CI, commit private signing material,
-or treat a Tauri update signature as platform publisher signing. Store
-delivery is a separate Microsoft-certified channel. Native installation and
-update acceptance remains required for each supported target; see
-[`TODO.md`](TODO.md) for outstanding gates.
+The default Tauri configuration leaves updater support disabled. The separate
+**Signed updater release** workflow runs when a padded `vYYYY.MM.PATCH` tag is
+pushed: it builds target-specific signed bundles, stages the expected assets
+and signatures, generates `latest.json`, and publishes a GitHub release. It
+uses the public key configured in `src-tauri/tauri.release.conf.json` and
+requires the matching `TAURI_SIGNING_PRIVATE_KEY` GitHub Actions secret (and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key is encrypted).
+
+This workflow is implemented, but the updater is not yet accepted for
+production use. Before relying on updates, securely provision the matching
+private key, verify the first release's six target assets, signatures, manifest
+and URLs, and complete native installation and two-version update acceptance
+on each supported target. Never generate or replace a production key in CI,
+commit private signing material, or treat a Tauri update signature as platform
+publisher signing. Store delivery is a separate Microsoft-certified channel;
+see [`TODO.md`](TODO.md) for outstanding gates.
 
 ## Localization
 
