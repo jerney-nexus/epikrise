@@ -13,6 +13,13 @@
   environment has no reproducible Test Explorer run or leaked Vite process;
   verify the Explorer lifecycle before adding cleanup logic.
 
+## Maintenance
+
+### Medium Urgency
+
+- Run `pnpm lint:actions` in CI; the command exists, but the quality workflow
+  does not execute it, leaving workflow files unchecked.
+
 ## Security
 
 ### Medium Urgency
