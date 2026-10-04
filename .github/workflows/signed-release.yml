@@ -446,6 +446,17 @@ jobs:
             latest_tag="$(node --input-type=module -e \
               'import { readFileSync } from "node:fs"; process.stdout.write(JSON.parse(readFileSync(process.argv[1], "utf8")).tagName)' \
               "$latest_file")"
+          else
+            releases_file="$RUNNER_TEMP/releases.json"
+            gh release list --json tagName,isDraft --limit 1000 > "$releases_file"
+            node --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              const releases = JSON.parse(readFileSync(process.argv[1], "utf8"));
+              if (releases.some((release) => !release.isDraft)) {
+                console.error("Could not determine the latest published release.");
+                process.exit(1);
+              }
+            ' "$releases_file"
           fi
           promotion_args=(should-promote-latest --tag "$GITHUB_REF_NAME")
           if [[ -n "$latest_tag" ]]; then

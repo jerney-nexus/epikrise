@@ -796,6 +796,15 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain("--binary-root src-tauri/binaries");
     expect(releaseWorkflow).toContain("Install Minisign verifier");
     expect(releaseWorkflow).toContain("should-promote-latest");
+    expect(releaseWorkflow).toContain(
+      "gh release list --json tagName,isDraft --limit 1000",
+    );
+    expect(releaseWorkflow).toContain(
+      "if (releases.some((release) => !release.isDraft))",
+    );
+    expect(releaseWorkflow).toContain(
+      "Could not determine the latest published release.",
+    );
     expect(releaseWorkflow).toContain("make_latest=");
     expect(releaseWorkflow).toContain("gh release download");
     expect(releaseWorkflow).toContain("verify-uploaded");
