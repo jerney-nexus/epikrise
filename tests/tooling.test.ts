@@ -602,7 +602,7 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain("--bundles deb rpm");
     expect(releaseWorkflow).toContain('"features":[]');
     expect(releaseWorkflow).toMatch(/features":\[\]\}\}' \\\s*--bundles deb rpm/);
-    expect(cargoManifest.features.default).toEqual([]);
+    expect(cargoManifest).toMatchObject({ features: { default: [] } });
     expect(tauriConfig.build.features ?? []).not.toContain("direct-release-updater");
     expect(diagnosticWorkflow).not.toContain("tauri.release.conf.json");
     expect(diagnosticWorkflow).not.toContain("--features");
