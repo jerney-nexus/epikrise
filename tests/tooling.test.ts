@@ -590,7 +590,12 @@ describe("signed release artifacts", () => {
       "rust-tests.yml",
       "playwright.yml",
       "security-audit.yml",
+      "quality-checks.yml",
     ];
+    const qualityWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/quality-checks.yml"),
+      "utf8",
+    );
     const cargoManifest = TOML.parse(
       await readFile(path.join(repoRoot, "src-tauri/Cargo.toml"), "utf8"),
     );
@@ -603,7 +608,7 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toMatch(
       /build:\s+needs:\s+- validate\s+- verify-ui\s+- verify-rust\s+- verify-playwright\s+- verify-security\s+- verify-quality/,
     );
-    expect(releaseWorkflow).toContain(
+    expect(qualityWorkflow).toContain(
       "run: pnpm lint && pnpm format:check && pnpm build",
     );
     for (const workflow of qualityWorkflows) {
