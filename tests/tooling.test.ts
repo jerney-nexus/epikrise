@@ -588,7 +588,7 @@ describe("signed release artifacts", () => {
     const qualityWorkflows = [
       "ui-tests.yml",
       "rust-tests.yml",
-      "playwright.yml",
+      "playwright-tests.yml",
       "security-audit.yml",
       "quality-checks.yml",
     ];

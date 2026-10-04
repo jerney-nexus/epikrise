@@ -57,7 +57,7 @@ jobs:
       contents: read
 
   verify-playwright:
-    uses: ./.github/workflows/playwright.yml
+    uses: ./.github/workflows/playwright-tests.yml
     permissions:
       contents: read
 
