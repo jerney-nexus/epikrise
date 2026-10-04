@@ -118,6 +118,7 @@ describe("CalVer release versions", () => {
   it.each([
     ["2026.01.0", "2026.1.0", "26.1.0"],
     ["2026.09.4", "2026.9.4", "26.9.4"],
+    ["2026.10.0", "2026.10.0", "26.10.0"],
   ])(
     "builds disposable Cargo and Tauri inputs with --locked for %s",
     async (releaseVersion, protocolVersion, msiVersion) => {

@@ -257,9 +257,10 @@ function replaceCargoSectionVersion(source, sectionName, version) {
   const nextSectionStart = source.indexOf("\n[", sectionStart + 1);
   const sectionEnd = nextSectionStart < 0 ? source.length : nextSectionStart;
   const section = source.slice(sectionStart, sectionEnd);
-  const updated = section.replace(/^version = "[^"]+"$/m, `version = "${version}"`);
-  if (updated === section)
+  const versionPattern = /^version = "[^"]+"$/m;
+  if (!versionPattern.test(section))
     throw new Error(`Missing version in Cargo section: ${sectionName}`);
+  const updated = section.replace(versionPattern, `version = "${version}"`);
   return source.slice(0, sectionStart) + updated + source.slice(sectionEnd);
 }
 
