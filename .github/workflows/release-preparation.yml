@@ -23,9 +23,16 @@ jobs:
           GIT_CONFIG_VALUE_0: main
         with:
           fetch-depth: 0
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.8.1
+          install: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
