@@ -745,6 +745,9 @@ describe("signed release artifacts", () => {
     const tauriConfig = JSON.parse(
       await readFile(path.join(repoRoot, "src-tauri/tauri.conf.json"), "utf8"),
     );
+    const releaseTauriConfig = JSON.parse(
+      await readFile(path.join(repoRoot, "src-tauri/tauri.release.conf.json"), "utf8"),
+    );
 
     expect(releaseWorkflow).toContain('      - "v*"');
     expect(releaseWorkflow).toContain("ref: ${{ github.sha }}");
@@ -781,6 +784,7 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toMatch(/features":\[\]\}\}' \\\s*--bundles deb rpm/);
     expect(cargoManifest).toMatchObject({ features: { default: [] } });
     expect(tauriConfig.build.features ?? []).not.toContain("direct-release-updater");
+    expect(releaseTauriConfig.plugins.updater.requireSignedVersion).toBe(true);
     expect(diagnosticWorkflow).not.toContain("tauri.release.conf.json");
     expect(diagnosticWorkflow).not.toContain("--features");
     expect(releaseWorkflow).toContain("EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis");
