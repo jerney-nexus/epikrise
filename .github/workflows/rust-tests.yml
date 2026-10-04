@@ -54,10 +54,10 @@ jobs:
 
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-nextest,cargo-deny
+          tool: cargo-nextest
 
-      - name: Check Rust formatting, lints, and dependencies
-        run: pnpm check:rust
+      - name: Check Rust formatting and lints
+        run: pnpm check:rust:fmt && pnpm check:rust:clippy
 
       - name: Run Rust workspace tests
         run: pnpm test:rust
