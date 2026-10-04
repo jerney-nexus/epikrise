@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     env:
+      HOME: /root
       npm_config_store_dir: ${{ github.workspace }}/node_modules/.pnpm-store
     container:
       image: rust:1-bookworm
