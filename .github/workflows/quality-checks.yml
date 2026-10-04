@@ -38,5 +38,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: actionlint
+
+      - name: Lint GitHub Actions workflows
+        run: pnpm lint:actions
+
       - name: Run lint, format, and frontend build
         run: pnpm lint && pnpm format:check && pnpm build
