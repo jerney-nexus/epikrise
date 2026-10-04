@@ -18,13 +18,18 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/setup@v2
         with:
           version: 12.8.1
+          install: false
 
       - uses: actions/setup-node@v7
         with:
@@ -120,13 +125,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/setup@v2
         with:
           version: 12.8.1
+          install: false
 
       - uses: actions/setup-node@v7
         with:
@@ -316,13 +326,18 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/setup@v2
         with:
           version: 12.8.1
+          install: false
 
       - uses: actions/setup-node@v7
         with:

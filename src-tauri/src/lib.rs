@@ -1546,11 +1546,30 @@ mod tests {
         }
     }
 
+    fn synthetic_template() -> ClinicalTemplate {
+        ClinicalTemplate::from_epitpl(
+            br#"
+schema_version = 1
+system_prompt = "Synthetic test template."
+variables = []
+sections = []
+
+[metadata]
+id = "synthetic-test-template"
+name = "Synthetic test template"
+description = "A synthetic template for policy tests."
+locale = "en"
+specialty_tags = []
+version = "1.0.0"
+author = "Tests"
+"#,
+        )
+        .expect("synthetic template should be valid")
+    }
+
     #[test]
     fn legacy_json_template_store_migrates_to_versioned_toml() {
-        let template =
-            ClinicalTemplate::from_epitpl(include_bytes!("../../templates/generic-starter.epitpl"))
-                .expect("checked-in starter should be valid TOML");
+        let template = synthetic_template();
         let directory = tempfile::tempdir().expect("temporary directory should be created");
         let templates_path = directory.path().join("templates.toml");
         let legacy_path = directory.path().join("templates.json");
@@ -1572,9 +1591,7 @@ mod tests {
 
     #[test]
     fn template_policy_distinguishes_imports_from_edits() {
-        let template =
-            ClinicalTemplate::from_epitpl(include_bytes!("../../templates/generic-starter.epitpl"))
-                .expect("checked-in starter should be valid TOML");
+        let template = synthetic_template();
         let mut edited = template.clone();
         edited.metadata.description.push_str(" Updated.");
         let mut added = template.clone();
@@ -1611,9 +1628,7 @@ mod tests {
 
     #[test]
     fn template_creation_and_deletion_have_independent_policy_checks() {
-        let template =
-            ClinicalTemplate::from_epitpl(include_bytes!("../../templates/generic-starter.epitpl"))
-                .expect("checked-in starter should be valid TOML");
+        let template = synthetic_template();
 
         assert!(matches!(
             validate_template_creation(&[], &template, false),

@@ -17,10 +17,11 @@
     "ghcr.io/devcontainers-extra/features/ripgrep:1": {},
     "ghcr.io/devcontainers-extra/features/prettier:1": {
       "version": "3.9.9"
-    }
+    },
+    "ghcr.io/devcontainers-extra/features/actionlint:1": {}
   },
   "onCreateCommand": "bash .devcontainer/install-deps.sh",
-  "postCreateCommand": "pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium firefox webkit && node --input-type=module -e 'await import(\"vite\"); console.log(\"Vite native binding ready\")'",
+  "postCreateCommand": "bash .devcontainer/setup-agent-config.sh && sudo install -d -o vscode -g vscode -m 0700 /home/vscode/.local/share/gh /home/vscode/.local/share/ssh && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium firefox webkit && node --input-type=module -e 'await import(\"vite\"); console.log(\"Vite native binding ready\")'",
   "forwardPorts": [1420, 6080, 9323],
   "portsAttributes": {
     "1420": {
@@ -38,6 +39,7 @@
   },
   "remoteEnv": {
     "DISPLAY": ":1",
+    "GH_CONFIG_DIR": "/home/vscode/.local/share/gh",
     "PLAYWRIGHT_CROSS_BROWSER": "1",
     // WebKitGTK's DMABUF renderer fails inside a container without GPU passthrough.
     "WEBKIT_DISABLE_DMABUF_RENDERER": "1"
@@ -65,5 +67,16 @@
       }
     }
   },
-  "remoteUser": "vscode"
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=epikrise-gh-auth-${devcontainerId},target=/home/vscode/.local/share/gh,type=volume,volume-nocopy",
+    "source=epikrise-ssh-${devcontainerId},target=/home/vscode/.local/share/ssh,type=volume,volume-nocopy",
+    // Host agent configuration is staged read-only; setup-agent-config.sh
+    // symlinks selected entries into the writable CLI homes below.
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.copilot,target=/home/vscode/.copilot-host,type=bind,readonly,bind-create-src",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=/home/vscode/.claude-host,type=bind,readonly,bind-create-src",
+    // Writable homes: Copilot CLI and Claude Code keep runtime/session state here.
+    "source=epikrise-copilot-home-${devcontainerId},target=/home/vscode/.copilot,type=volume",
+    "source=epikrise-claude-home-${devcontainerId},target=/home/vscode/.claude,type=volume"
+  ]
 }

@@ -4,6 +4,10 @@
 
 ### Medium Urgency
 
+- Blocked: 15 VS Code Problems entries reappeared after reload, but the
+  workspace diagnostics API returns none and current language-server logs show
+  no failures; earlier UI and Rust checks passed. Need the entries' source,
+  messages, and paths to identify their emitter.
 - Investigate VS Code Playwright Test Explorer runs leaving the configured dev
   server running. The focused terminal E2E run passed and exited Vite, but this
   environment has no reproducible Test Explorer run or leaked Vite process;

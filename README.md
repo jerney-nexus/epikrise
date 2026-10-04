@@ -206,7 +206,7 @@ directory under `src-tauri/target`, so macOS builds and dev-container builds do
 not share incompatible host artifacts.
 
 Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`,
-and `pnpm format:check`.
+`pnpm lint:actions` (GitHub Actions workflows), and `pnpm format:check`.
 
 ## Templates
 

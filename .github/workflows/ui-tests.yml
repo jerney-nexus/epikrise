@@ -19,25 +19,54 @@ jobs:
     name: UI and i18n
     runs-on: ubuntu-22.04
     container:
-      image: node:22-bookworm
+      image: rust:1-bookworm
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: pnpm/setup@v2
         with:
           version: 12.8.1
+          install: false
 
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
 
+      - name: Install Linux build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake curl file libssl-dev libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev ninja-build \
+            pkg-config tesseract-ocr
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Prepare Tesseract sidecar for checks
+        run: |
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          mkdir -p src-tauri/binaries
+          install -m 0755 "$(command -v tesseract)" \
+            "src-tauri/binaries/tesseract-$host_target"
+          mkdir -p src-tauri/resources/ocr/pdfium src-tauri/resources/ocr/tessdata
+          touch src-tauri/resources/ocr/pdfium/libpdfium.so \
+            src-tauri/resources/ocr/tessdata/deu.traineddata \
+            src-tauri/resources/ocr/tessdata/eng.traineddata
 
       - name: Check UI
         run: pnpm check:ui
