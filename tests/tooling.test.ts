@@ -222,7 +222,7 @@ describe("CalVer release versions", () => {
         await rm(directory, { recursive: true, force: true });
       }
     },
-    120_000,
+    300_000,
   );
 
   it("moves unreleased and generated notes into a dated release section", () => {

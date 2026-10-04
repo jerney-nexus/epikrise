@@ -8,6 +8,10 @@
   server running. The focused terminal E2E run passed and exited Vite, but this
   environment has no reproducible Test Explorer run or leaked Vite process;
   verify the Explorer lifecycle before adding cleanup logic.
+- Refactor Rust unit tests to use synthetic template fixtures: three test cases
+  include `templates/generic-starter.epitpl`, which `.gitignore` intentionally
+  excludes, so clean CI cannot compile them. Do not commit local clinical
+  template content.
 
 ## Release and updater follow-up
 
