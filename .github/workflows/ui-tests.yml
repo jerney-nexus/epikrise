@@ -58,6 +58,10 @@ jobs:
           mkdir -p src-tauri/binaries
           install -m 0755 "$(command -v tesseract)" \
             "src-tauri/binaries/tesseract-$host_target"
+          mkdir -p src-tauri/resources/ocr/pdfium src-tauri/resources/ocr/tessdata
+          touch src-tauri/resources/ocr/pdfium/libpdfium.so \
+            src-tauri/resources/ocr/tessdata/deu.traineddata \
+            src-tauri/resources/ocr/tessdata/eng.traineddata
 
       - name: Check UI
         run: pnpm check:ui
