@@ -61,6 +61,7 @@ jobs:
       - name: Prepare Tesseract sidecar for checks
         run: |
           host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          mkdir -p src-tauri/binaries
           install -m 0755 "$(command -v tesseract)" \
             "src-tauri/binaries/tesseract-$host_target"
 
