@@ -4,39 +4,22 @@
 
 ### Medium Urgency
 
-- Blocked: 15 VS Code Problems entries reappeared after reload, but the
-  workspace diagnostics API returns none and current language-server logs show
-  no failures; earlier UI and Rust checks passed. Need the entries' source,
-  messages, and paths to identify their emitter.
-- Blocked: Investigate VS Code Playwright Test Explorer runs leaving the configured dev
-  server running. The focused terminal E2E run passed and exited Vite, but this
-  environment has no reproducible Test Explorer run or leaked Vite process;
-  verify the Explorer lifecycle before adding cleanup logic.
-
 ## Release and updater follow-up
 
 ### High Urgency
 
-- Blocked: Complete portable package implementation and verification: the signed Windows
-  release currently selects NSIS and the artifact contract exposes one Windows
-  updater identity per architecture; add MSI and NSIS variants with eight total
-  updater entries, stable UpgradeCodes, derived MSI versions, and offline
-  WebView2 variants. Then verify Windows-hosted x64/ARM64 MSI bundling from
-  immutable cross-compiled layouts and architecture/resource/runtime/cache
-  evidence across all six targets. Windows-hosted bundling and native install
-  evidence remain blocked in this Linux ARM64 environment.
 - Verify the first signed updater release from a padded `vYYYY.MM.PATCH` tag,
   including all six target assets, signatures, static `latest.json`, and
   published update URLs before relying on automatic updates.
-- Blocked: native staged installation and two-version updater acceptance
-  require all six target builds, signing-key readiness, and Linux, macOS, and
-  Windows native hosts. This workspace is Linux ARM64 only; portable packaging
-  and key-readiness prerequisites remain outstanding. Resume after steps 2-5
-  are complete and the matching native hosts are available. Public-release
-  verification is tracked separately above.
 - Decide and complete the separate Store MSIX identity, certification, and
   submission track; Microsoft Store signing and updates are not provided by
   the direct-release updater.
+
+## Maintenance
+
+### Medium Urgency
+
+- Update the pinned pnpm version from 12.8.1 to [12.9.1](https://github.com/pnpm/pnpm/releases/tag/v12.9.1) and verify repository tooling.
 
 ## Enhancements
 
