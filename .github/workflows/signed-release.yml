@@ -429,6 +429,17 @@ jobs:
               --latest=false
           fi
 
+          uploaded_release_file="$RUNNER_TEMP/uploaded-release.json"
+          uploaded_assets_dir="$RUNNER_TEMP/uploaded-release-assets"
+          mkdir -p "$uploaded_assets_dir"
+          gh release view "$GITHUB_REF_NAME" --json assets > "$uploaded_release_file"
+          gh release download "$GITHUB_REF_NAME" --dir "$uploaded_assets_dir"
+          node scripts/release-artifacts.mjs verify-uploaded \
+            --artifacts-root release-artifacts \
+            --latest-file latest.json \
+            --uploaded-root "$uploaded_assets_dir" \
+            --release-file "$uploaded_release_file"
+
           latest_file="$RUNNER_TEMP/latest-release.json"
           latest_tag=""
           if gh release view --json tagName > "$latest_file" 2>/dev/null; then

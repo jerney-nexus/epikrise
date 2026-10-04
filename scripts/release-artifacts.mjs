@@ -424,6 +424,98 @@ export async function createLatestManifest({
   };
 }
 
+/**
+ * @param {{ artifactsRoot: string, latestPath: string, uploadedRoot: string, releaseAssets: unknown }} options
+ */
+export async function verifyUploadedReleaseAssets({
+  artifactsRoot,
+  latestPath,
+  uploadedRoot,
+  releaseAssets,
+}) {
+  assert(Array.isArray(releaseAssets), "Release asset metadata is invalid.");
+
+  /** @type {Map<string, { size_bytes: number, sha256: string }>} */
+  const expected = new Map();
+  for (const target of releaseTargets) {
+    const directory = path.join(artifactsRoot, `release-${target}`);
+    for (const name of await readdir(directory)) {
+      assert(
+        path.basename(name) === name,
+        `Unsafe staged release asset name: ${name}.`,
+      );
+      assert(!expected.has(name), `Duplicate staged release asset name: ${name}.`);
+      const evidence = await fileEvidence(path.join(directory, name), name);
+      expected.set(name, {
+        size_bytes: evidence.size_bytes,
+        sha256: evidence.sha256,
+      });
+    }
+  }
+  const latestName = path.basename(latestPath);
+  assert(latestName === "latest.json", "Updater manifest must be named latest.json.");
+  assert(
+    !expected.has(latestName),
+    "latest.json collides with a staged release asset.",
+  );
+  const latestEvidence = await fileEvidence(latestPath, latestName);
+  expected.set(latestName, {
+    size_bytes: latestEvidence.size_bytes,
+    sha256: latestEvidence.sha256,
+  });
+
+  /** @type {Map<string, number>} */
+  const metadata = new Map();
+  for (const asset of releaseAssets) {
+    assert(
+      typeof asset === "object" && asset !== null && !Array.isArray(asset),
+      "Release asset metadata entry is invalid.",
+    );
+    const item = /** @type {Record<string, unknown>} */ (asset);
+    assert(typeof item.name === "string", "Release asset name is missing.");
+    assert(
+      path.basename(item.name) === item.name &&
+        Number.isSafeInteger(item.size) &&
+        Number(item.size) >= 0,
+      `Release asset metadata is invalid: ${item.name}.`,
+    );
+    assert(!metadata.has(item.name), `Duplicate uploaded release asset: ${item.name}.`);
+    metadata.set(item.name, Number(item.size));
+  }
+
+  const downloadedEntries = await readdir(uploadedRoot, { withFileTypes: true });
+  const downloaded = new Map();
+  for (const entry of downloadedEntries) {
+    assert(
+      entry.isFile(),
+      `Downloaded release asset is not a regular file: ${entry.name}.`,
+    );
+    downloaded.set(entry.name, path.join(uploadedRoot, entry.name));
+  }
+  const expectedNames = [...expected.keys()].sort();
+  const metadataNames = [...metadata.keys()].sort();
+  const downloadedNames = [...downloaded.keys()].sort();
+  assert(
+    JSON.stringify(metadataNames) === JSON.stringify(expectedNames),
+    "Uploaded release asset names do not match staged assets.",
+  );
+  assert(
+    JSON.stringify(downloadedNames) === JSON.stringify(expectedNames),
+    "Downloaded release asset names do not match staged assets.",
+  );
+
+  for (const name of expectedNames) {
+    const uploadedEvidence = await fileEvidence(downloaded.get(name), name);
+    const expectedEvidence = expected.get(name);
+    assert(
+      metadata.get(name) === expectedEvidence.size_bytes &&
+        uploadedEvidence.size_bytes === expectedEvidence.size_bytes &&
+        uploadedEvidence.sha256 === expectedEvidence.sha256,
+      `Uploaded release asset does not match staged bytes: ${name}.`,
+    );
+  }
+}
+
 /** @param {string[]} args @returns {Record<string, string>} */
 function parseOptions(args) {
   const options = /** @type {Record<string, string>} */ ({});
@@ -460,6 +552,16 @@ async function main() {
     );
     return;
   }
+  if (command === "verify-uploaded") {
+    const release = JSON.parse(await readFile(options["release-file"], "utf8"));
+    await verifyUploadedReleaseAssets({
+      artifactsRoot: options["artifacts-root"],
+      latestPath: options["latest-file"],
+      uploadedRoot: options["uploaded-root"],
+      releaseAssets: release.assets,
+    });
+    return;
+  }
   if (command === "stage") {
     const packageJson = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
@@ -477,7 +579,7 @@ async function main() {
   }
   assert(
     command === "latest",
-    "Usage: release-artifacts.mjs validate|validate-draft|should-promote-latest|stage|latest [options]",
+    "Usage: release-artifacts.mjs validate|validate-draft|should-promote-latest|stage|latest|verify-uploaded [options]",
   );
   const manifest = await createLatestManifest({
     tag: options.tag,

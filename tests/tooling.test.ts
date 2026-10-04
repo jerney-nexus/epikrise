@@ -3,6 +3,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import {
   chmod,
   cp,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
@@ -40,6 +41,7 @@ import {
   shouldPromoteLatest,
   stageReleaseArtifacts,
   validateReleaseTag,
+  verifyUploadedReleaseAssets,
 } from "../scripts/release-artifacts.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -721,6 +723,11 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain("Install Minisign verifier");
     expect(releaseWorkflow).toContain("should-promote-latest");
     expect(releaseWorkflow).toContain("make_latest=");
+    expect(releaseWorkflow).toContain("gh release download");
+    expect(releaseWorkflow).toContain("verify-uploaded");
+    expect(releaseWorkflow).toMatch(
+      /verify-uploaded[\s\S]*should-promote-latest[\s\S]*gh api --method PATCH/,
+    );
     expect(releaseWorkflow).toContain("group: updater-release");
     expect(releaseWorkflow).not.toContain("--draft=false --latest");
     expect(releaseWorkflow).toContain("gh api --method PATCH");
@@ -888,6 +895,64 @@ describe("signed release artifacts", () => {
         targetSuffixes[releaseTargets[0]].length,
       );
       expect(linuxIntegrity.resources).toHaveLength(4);
+
+      const latestPath = path.join(directory, "latest.json");
+      const uploadedRoot = path.join(directory, "uploaded");
+      await writeFile(latestPath, JSON.stringify(manifest));
+      await mkdir(uploadedRoot, { recursive: true });
+      for (const target of releaseTargets) {
+        const targetDirectory = path.join(artifactsRoot, `release-${target}`);
+        for (const name of await readdir(targetDirectory)) {
+          await cp(path.join(targetDirectory, name), path.join(uploadedRoot, name));
+        }
+      }
+      await cp(latestPath, path.join(uploadedRoot, "latest.json"));
+      const uploadedNames = await readdir(uploadedRoot);
+      const releaseAssets = await Promise.all(
+        uploadedNames
+          .filter((name) => name !== "latest.json")
+          .map(async (name) => ({
+            name,
+            size: (await lstat(path.join(uploadedRoot, name))).size,
+          })),
+      );
+      releaseAssets.push({
+        name: "latest.json",
+        size: (await lstat(path.join(uploadedRoot, "latest.json"))).size,
+      });
+      await expect(
+        verifyUploadedReleaseAssets({
+          artifactsRoot,
+          latestPath,
+          uploadedRoot,
+          releaseAssets,
+        }),
+      ).resolves.toBeUndefined();
+
+      const uploadedBundleName = uploadedNames.find((name) =>
+        name.endsWith(".AppImage"),
+      );
+      expect(uploadedBundleName).toBeDefined();
+      const uploadedBundle = path.join(uploadedRoot, uploadedBundleName!);
+      const uploadedContents = await readFile(uploadedBundle, "utf8");
+      await writeFile(uploadedBundle, "altered after upload");
+      await expect(
+        verifyUploadedReleaseAssets({
+          artifactsRoot,
+          latestPath,
+          uploadedRoot,
+          releaseAssets,
+        }),
+      ).rejects.toThrow("does not match staged bytes");
+      await writeFile(uploadedBundle, uploadedContents);
+      await expect(
+        verifyUploadedReleaseAssets({
+          artifactsRoot,
+          latestPath,
+          uploadedRoot,
+          releaseAssets: [...releaseAssets, { name: "unexpected.bin", size: 1 }],
+        }),
+      ).rejects.toThrow("names do not match staged assets");
 
       const linuxArtifacts = path.join(artifactsRoot, `release-${releaseTargets[0]}`);
       const appImage = (await readdir(linuxArtifacts)).find((name) =>
