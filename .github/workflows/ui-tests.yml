@@ -27,6 +27,8 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
+      - uses: dtolnay/rust-toolchain@stable
+
       - uses: pnpm/action-setup@v6
         with:
           version: 12.8.1
