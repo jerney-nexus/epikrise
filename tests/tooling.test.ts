@@ -343,6 +343,18 @@ describe("CalVer release versions", () => {
       "[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.1...HEAD",
     );
   });
+
+  it("limits generated release notes to unreleased commits", async () => {
+    const script = await readFile(
+      path.join(repoRoot, "scripts/prepare-release.mjs"),
+      "utf8",
+    );
+    const invocation = script.match(/"git-cliff",\s*\n\s*\[([^\]]+)\]/)?.[1];
+
+    expect(invocation).toBeDefined();
+    expect(invocation).toContain('"--unreleased"');
+    expect(invocation).toContain('"--tag"');
+  });
 });
 
 describe("Windows cross-build versions", () => {

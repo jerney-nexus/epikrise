@@ -386,7 +386,7 @@ async function prepareRelease(requestedVersion) {
 
   const { stdout: generatedNotes } = await execFile(
     "git-cliff",
-    ["--tag", `v${version}`],
+    ["--unreleased", "--tag", `v${version}`],
     { cwd: repoRoot, maxBuffer: 10 * 1024 * 1024 },
   );
   if (!generatedNotes.trim()) throw new Error("git-cliff generated no release notes.");
