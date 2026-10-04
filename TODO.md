@@ -13,20 +13,14 @@
 
 ### High Urgency
 
-- Complete portable package verification: Windows-hosted x64/ARM64 MSI bundling
-  from immutable cross-compiled layouts, stable UpgradeCodes, derived MSI
-  versions, offline WebView2 variants for both installer families, and
-  architecture/resource/runtime/cache evidence across all six targets. Blocked
-  on Windows-hosted bundling and install evidence; this Linux ARM64 environment
-  cannot prove those MSI acceptance requirements.
-- Updater secret provenance confirmed. A local synthetic signature verified
-  against the configured public key, a tampered message was rejected, and the
-  authorized holder attested ownership, custody, and recoverable encrypted
-  backup. The `release` environment now requires reviewer approval, blocks
-  self-review and administrator bypass, and restricts deployments to selected
-  version-tag patterns. The authorized holder confirms the environment secret
-  was provisioned from this matching key. Never expose or store private-key
-  material.
+- Complete portable package implementation and verification: the signed Windows
+  release currently selects NSIS and the artifact contract exposes one Windows
+  updater identity per architecture; add MSI and NSIS variants with eight total
+  updater entries, stable UpgradeCodes, derived MSI versions, and offline
+  WebView2 variants. Then verify Windows-hosted x64/ARM64 MSI bundling from
+  immutable cross-compiled layouts and architecture/resource/runtime/cache
+  evidence across all six targets. Windows-hosted bundling and native install
+  evidence remain blocked in this Linux ARM64 environment.
 - Verify the first signed updater release from a padded `vYYYY.MM.PATCH` tag,
   including all six target assets, signatures, static `latest.json`, and
   published update URLs before relying on automatic updates.
