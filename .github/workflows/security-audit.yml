@@ -14,6 +14,8 @@ permissions:
 jobs:
   dependencies:
     runs-on: ubuntu-22.04
+    container:
+      image: rust:1-bookworm
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -24,9 +26,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --audit-level high
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-audit cargo-deny --locked
-      - run: cargo audit --file src-tauri/Cargo.lock
-      - working-directory: src-tauri
-        run: cargo deny check
+      - run: pnpm audit:pnpm
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-deny
+      - run: pnpm audit:rust
+      - run: pnpm check:rust:deny
