@@ -42,13 +42,16 @@ jobs:
       - name: Validate padded version tag
         run: node scripts/release-artifacts.mjs validate --tag "$GITHUB_REF_NAME"
 
-      - name: Reject an existing release
+      - name: Reject unrelated releases and allow matching drafts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            printf 'A release already exists for %s.\n' "$GITHUB_REF_NAME" >&2
-            exit 1
+          release_file="$RUNNER_TEMP/existing-release.json"
+          if gh release view "$GITHUB_REF_NAME" --json isDraft,tagName,body > "$release_file" 2>/dev/null; then
+            node scripts/release-artifacts.mjs validate-draft \
+              --tag "$GITHUB_REF_NAME" \
+              --commit "$GITHUB_SHA" \
+              --release-file "$release_file"
           fi
 
   verify-ui:
@@ -300,6 +303,38 @@ jobs:
           fi
           unset signing_private_key signing_private_key_password
 
+      - name: Verify staged OCR architectures
+        working-directory: ${{ runner.temp }}/epikrise-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$TARGET" in
+            x86_64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'Advanced Micro Devices X86-64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'Advanced Micro Devices X86-64'
+              ;;
+            aarch64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'AArch64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'AArch64'
+              ;;
+            x86_64-apple-darwin)
+              lipo -verify_arch x86_64 "src-tauri/binaries/tesseract-$TARGET"
+              lipo -verify_arch x86_64 src-tauri/resources/ocr/pdfium/libpdfium.dylib
+              ;;
+            aarch64-apple-darwin)
+              lipo -verify_arch arm64 "src-tauri/binaries/tesseract-$TARGET"
+              lipo -verify_arch arm64 src-tauri/resources/ocr/pdfium/libpdfium.dylib
+              ;;
+            x86_64-pc-windows-msvc)
+              llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_AMD64
+              llvm-readobj --file-headers src-tauri/resources/ocr/pdfium/pdfium.dll | grep -F IMAGE_FILE_MACHINE_AMD64
+              ;;
+            aarch64-pc-windows-msvc)
+              llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_ARM64
+              llvm-readobj --file-headers src-tauri/resources/ocr/pdfium/pdfium.dll | grep -F IMAGE_FILE_MACHINE_ARM64
+              ;;
+          esac
+
       - name: Stage and verify updater packages
         working-directory: ${{ runner.temp }}/epikrise-release
         shell: bash
@@ -309,7 +344,10 @@ jobs:
           node scripts/release-artifacts.mjs stage \
             --target "$TARGET" \
             --bundle-root "src-tauri/target/host-$host_target/$TARGET/release/bundle" \
-            --stage-root "release-staging/$TARGET"
+            --stage-root "release-staging/$TARGET" \
+            --commit "$GITHUB_SHA" \
+            --resource-root src-tauri/resources/ocr \
+            --binary-root src-tauri/binaries
 
       - uses: actions/upload-artifact@v7
         with:
@@ -347,6 +385,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Minisign verifier
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends minisign
+
       - uses: actions/download-artifact@v8
         with:
           pattern: release-*
@@ -357,19 +400,76 @@ jobs:
         run: |
           node scripts/release-artifacts.mjs latest \
             --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
             --repository "$GITHUB_REPOSITORY" \
             --artifacts-root release-artifacts \
             --output latest.json
 
-      - name: Upload draft, then publish release
+      - name: Create or recover draft, then publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            release-artifacts/*/* latest.json \
-            --draft \
-            --verify-tag \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes \
-            --latest=false
-          gh release edit "$GITHUB_REF_NAME" --draft=false --latest --verify-tag
+          release_file="$RUNNER_TEMP/existing-release.json"
+          if gh release view "$GITHUB_REF_NAME" --json isDraft,tagName,body > "$release_file" 2>/dev/null; then
+            node scripts/release-artifacts.mjs validate-draft \
+              --tag "$GITHUB_REF_NAME" \
+              --commit "$GITHUB_SHA" \
+              --release-file "$release_file"
+            gh release upload "$GITHUB_REF_NAME" \
+              release-artifacts/*/* latest.json \
+              --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              release-artifacts/*/* latest.json \
+              --draft \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              --notes "<!-- epikrise-signed-release-commit:$GITHUB_SHA -->" \
+              --latest=false
+          fi
+
+          uploaded_release_file="$RUNNER_TEMP/uploaded-release.json"
+          uploaded_assets_dir="$RUNNER_TEMP/uploaded-release-assets"
+          mkdir -p "$uploaded_assets_dir"
+          gh release view "$GITHUB_REF_NAME" --json assets > "$uploaded_release_file"
+          gh release download "$GITHUB_REF_NAME" --dir "$uploaded_assets_dir"
+          node scripts/release-artifacts.mjs verify-uploaded \
+            --artifacts-root release-artifacts \
+            --latest-file latest.json \
+            --uploaded-root "$uploaded_assets_dir" \
+            --release-file "$uploaded_release_file"
+
+          latest_file="$RUNNER_TEMP/latest-release.json"
+          latest_tag=""
+          if gh release view --json tagName > "$latest_file" 2>/dev/null; then
+            latest_tag="$(node --input-type=module -e \
+              'import { readFileSync } from "node:fs"; process.stdout.write(JSON.parse(readFileSync(process.argv[1], "utf8")).tagName)' \
+              "$latest_file")"
+          else
+            releases_file="$RUNNER_TEMP/releases.json"
+            gh release list --json tagName,isDraft --limit 1000 > "$releases_file"
+            node --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              const releases = JSON.parse(readFileSync(process.argv[1], "utf8"));
+              if (releases.some((release) => !release.isDraft)) {
+                console.error("Could not determine the latest published release.");
+                process.exit(1);
+              }
+            ' "$releases_file"
+          fi
+          promotion_args=(should-promote-latest --tag "$GITHUB_REF_NAME")
+          if [[ -n "$latest_tag" ]]; then
+            promotion_args+=(--latest-tag "$latest_tag")
+          fi
+          promote_latest="$(node scripts/release-artifacts.mjs "${promotion_args[@]}")"
+          release_id="$(gh release view "$GITHUB_REF_NAME" --json databaseId --jq .databaseId)"
+          if [[ "$promote_latest" == 'true' ]]; then
+            make_latest=true
+          else
+            make_latest=false
+          fi
+          gh api --method PATCH \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -F draft=false \
+            --raw-field "make_latest=$make_latest" > /dev/null

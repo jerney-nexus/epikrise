@@ -8,7 +8,7 @@
   workspace diagnostics API returns none and current language-server logs show
   no failures; earlier UI and Rust checks passed. Need the entries' source,
   messages, and paths to identify their emitter.
-- Investigate VS Code Playwright Test Explorer runs leaving the configured dev
+- Blocked: Investigate VS Code Playwright Test Explorer runs leaving the configured dev
   server running. The focused terminal E2E run passed and exited Vite, but this
   environment has no reproducible Test Explorer run or leaked Vite process;
   verify the Explorer lifecycle before adding cleanup logic.
@@ -17,7 +17,7 @@
 
 ### High Urgency
 
-- Complete portable package implementation and verification: the signed Windows
+- Blocked: Complete portable package implementation and verification: the signed Windows
   release currently selects NSIS and the artifact contract exposes one Windows
   updater identity per architecture; add MSI and NSIS variants with eight total
   updater entries, stable UpgradeCodes, derived MSI versions, and offline
@@ -28,11 +28,12 @@
 - Verify the first signed updater release from a padded `vYYYY.MM.PATCH` tag,
   including all six target assets, signatures, static `latest.json`, and
   published update URLs before relying on automatic updates.
-- Blocked: native install and two-version update acceptance still needs all
-  supported Linux, macOS, and Windows hosts. GitHub currently has no releases
-  and the updater's `latest.json` endpoint returns 404; this runner is Linux
-  ARM64 only. Resume after a signed release is available and native hosts can
-  verify tamper rejection and Windows installer-family behavior.
+- Blocked: native staged installation and two-version updater acceptance
+  require all six target builds, signing-key readiness, and Linux, macOS, and
+  Windows native hosts. This workspace is Linux ARM64 only; portable packaging
+  and key-readiness prerequisites remain outstanding. Resume after steps 2-5
+  are complete and the matching native hosts are available. Public-release
+  verification is tracked separately above.
 - Decide and complete the separate Store MSIX identity, certification, and
   submission track; Microsoft Store signing and updates are not provided by
   the direct-release updater.

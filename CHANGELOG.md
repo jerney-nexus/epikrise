@@ -27,17 +27,21 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 - Added a manual six-target GitHub Actions desktop build workflow and
   `pnpm build:all` dispatch/download command with exact-commit and artifact
   manifest/hash verification. Windows CI SDK downloads require explicit
-  administrator license approval; packages remain unsigned and unpublished.
+  administrator license approval and skip interactive acceptance only in
+  approved CI mode; packages remain unsigned and unpublished.
 - Added default-off, policy-enforced direct-release updater plumbing with
   explicit checks and install confirmation, target/version/URL validation,
-  progress reporting, and exclusion during active case work. The release
-  configuration now supplies its updater public key; native installation and
-  update acceptance remain outstanding.
+  approved HTTPS host checks for every redirect, progress reporting, and
+  exclusion during active case work. The release configuration now supplies
+  its updater public key; native installation and update acceptance remain
+  outstanding.
 - Added a padded-CalVer-tag release workflow for signed Linux AppImage, macOS,
   and Windows x64/ARM64 NSIS updater bundles, signatures, generated
   `latest.json`, and GitHub release publication. Linux deb/rpm packages are
   built without updater support, and signing jobs use the protected `release`
-  environment.
+  environment. Publication verifies updater signatures and uploaded bytes,
+  recovers only matching drafts, and prevents retries from promoting an older
+  version as latest.
 - Added synthetic Playwright and axe browser tests, `pnpm test:e2e` and
   `pnpm test:a11y` scripts, and a browser-test CI workflow.
 - Fluent-based German (Switzerland) and English interface localization, OS

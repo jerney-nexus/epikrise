@@ -3,6 +3,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import {
   chmod,
   cp,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
@@ -34,10 +35,13 @@ import {
   verifyArtifactSet,
 } from "../scripts/desktop-builds.mjs";
 import {
+  assertRecoverableReleaseDraft,
   createLatestManifest,
   releaseTargets,
+  shouldPromoteLatest,
   stageReleaseArtifacts,
   validateReleaseTag,
+  verifyUploadedReleaseAssets,
 } from "../scripts/release-artifacts.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -312,6 +316,80 @@ describe("Windows cross-build versions", () => {
   });
 });
 
+describe("Windows setup noninteractive behavior", () => {
+  it("downloads only in approved CI mode and keeps local acceptance interactive", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-setup-"));
+    const binDir = path.join(directory, "bin");
+    const setupScript = path.join(directory, "windows-setup.sh");
+    const headerPath = path.join(directory, "RestartManager.nsh");
+    const cargoLog = path.join(directory, "cargo.log");
+    const cacheRoot = path.join(directory, "cache");
+
+    try {
+      await mkdir(binDir);
+      await writeFile(headerPath, "synthetic header");
+      const source = await readFile(
+        path.join(repoRoot, "scripts/windows-setup.sh"),
+        "utf8",
+      );
+      await writeFile(
+        setupScript,
+        source.replace("/usr/share/nsis/Include/Win/RestartManager.nsh", headerPath),
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        '#!/usr/bin/env bash\nif [[ "$1" == "-s" ]]; then printf "Linux\\n"; else printf "aarch64\\n"; fi\n',
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
+      );
+      for (const tool of [
+        "rustup",
+        "clang",
+        "llvm-rc",
+        "llvm-ar",
+        "lld-link",
+        "cmake",
+        "ninja",
+        "makensis",
+      ]) {
+        await writeExecutable(path.join(binDir, tool), "#!/usr/bin/env bash\nexit 0\n");
+      }
+      const env = {
+        ...process.env,
+        PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+        XDG_CACHE_HOME: cacheRoot,
+        CARGO_LOG: cargoLog,
+        EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: "true",
+      };
+
+      await expect(execFile("bash", [setupScript], { env })).rejects.toMatchObject({
+        stderr: expect.stringContaining("interactive terminal"),
+      });
+      expect(await readFile(cargoLog, "utf8")).not.toContain("cache xwin");
+
+      const { stdout } = await execFile("bash", [setupScript, "--ci"], { env });
+      expect(stdout).toContain("Windows cross-build tools are ready.");
+      expect(stdout).not.toContain("Type ACCEPT");
+      expect(await readFile(cargoLog, "utf8")).toContain(
+        "cache xwin --xwin-version 17 --xwin-sdk-version 10.0.26100 --xwin-crt-version 14.44.17.14",
+      );
+      expect(
+        await readFile(
+          path.join(
+            cacheRoot,
+            "epikrise/windows/sdk-license-accepted-17-10.0.26100-14.44.17.14",
+          ),
+          "utf8",
+        ),
+      ).toBe("");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("six-target desktop build tooling", () => {
   const commit = "a".repeat(40);
   const requestId = "12345678-1234-4234-8234-123456789abc";
@@ -561,6 +639,35 @@ describe("signed release artifacts", () => {
     "x86_64-pc-windows-msvc": [".exe", ".exe.sig"],
     "aarch64-pc-windows-msvc": [".exe", ".exe.sig"],
   };
+  const releaseCommit = "0123456789abcdef0123456789abcdef01234567";
+
+  async function createOcrFixture(root: string, target: string) {
+    const resourceRoot = path.join(root, "resources", "ocr");
+    const binaryRoot = path.join(root, "binaries");
+    const pdfiumName = target.includes("apple-darwin")
+      ? "libpdfium.dylib"
+      : target.includes("windows-msvc")
+        ? "pdfium.dll"
+        : "libpdfium.so";
+    const tesseractName = target.includes("windows-msvc")
+      ? `tesseract-${target}.exe`
+      : `tesseract-${target}`;
+
+    await mkdir(path.join(resourceRoot, "pdfium"), { recursive: true });
+    await mkdir(path.join(resourceRoot, "tessdata"), { recursive: true });
+    await mkdir(binaryRoot, { recursive: true });
+    await writeFile(path.join(resourceRoot, "pdfium", pdfiumName), `pdfium-${target}`);
+    await writeFile(
+      path.join(resourceRoot, "tessdata", "deu.traineddata"),
+      `deu-${target}`,
+    );
+    await writeFile(
+      path.join(resourceRoot, "tessdata", "eng.traineddata"),
+      `eng-${target}`,
+    );
+    await writeFile(path.join(binaryRoot, tesseractName), `tesseract-${target}`);
+    return { resourceRoot, binaryRoot };
+  }
 
   it("requires the padded tag to match the package and normalizes protocol SemVer", () => {
     expect(validateReleaseTag("v2026.09.4", "2026.09.4")).toEqual({
@@ -574,6 +681,42 @@ describe("signed release artifacts", () => {
     expect(() => validateReleaseTag("v2026.09.4", "2026.09.3")).toThrow(
       "match package.json",
     );
+  });
+
+  it("promotes only releases that are not older than the current latest", () => {
+    expect(shouldPromoteLatest("v2026.10.0", undefined)).toBe(true);
+    expect(shouldPromoteLatest("v2026.10.0", "v2026.09.99")).toBe(true);
+    expect(shouldPromoteLatest("v2027.01.0", "v2026.12.99")).toBe(true);
+    expect(shouldPromoteLatest("v2026.09.4", "v2026.09.4")).toBe(true);
+    expect(shouldPromoteLatest("v2026.09.3", "v2026.09.4")).toBe(false);
+    expect(() => shouldPromoteLatest("v2026.09.4", "v2026.9.4")).toThrow(
+      "not padded CalVer",
+    );
+  });
+
+  it("recovers only drafts created for the same tag and commit", () => {
+    const tag = "v2026.10.0";
+    const commit = "0123456789abcdef0123456789abcdef01234567";
+    const release = {
+      isDraft: true,
+      tagName: tag,
+      body: `<!-- epikrise-signed-release-commit:${commit} -->\nRelease notes`,
+    };
+
+    expect(() => assertRecoverableReleaseDraft(release, tag, commit)).not.toThrow();
+    expect(() =>
+      assertRecoverableReleaseDraft({ ...release, isDraft: false }, tag, commit),
+    ).toThrow("Only an existing draft release can be recovered.");
+    expect(() =>
+      assertRecoverableReleaseDraft({ ...release, tagName: "v2026.09.4" }, tag, commit),
+    ).toThrow("Existing draft tag does not match.");
+    expect(() =>
+      assertRecoverableReleaseDraft(
+        { ...release, body: "<!-- epikrise-signed-release-commit:other -->" },
+        tag,
+        commit,
+      ),
+    ).toThrow("Existing draft was not created for this commit.");
   });
 
   it("keeps signed release publication separate from diagnostic builds", async () => {
@@ -601,6 +744,9 @@ describe("signed release artifacts", () => {
     );
     const tauriConfig = JSON.parse(
       await readFile(path.join(repoRoot, "src-tauri/tauri.conf.json"), "utf8"),
+    );
+    const releaseTauriConfig = JSON.parse(
+      await readFile(path.join(repoRoot, "src-tauri/tauri.release.conf.json"), "utf8"),
     );
 
     expect(releaseWorkflow).toContain('      - "v*"');
@@ -638,11 +784,43 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toMatch(/features":\[\]\}\}' \\\s*--bundles deb rpm/);
     expect(cargoManifest).toMatchObject({ features: { default: [] } });
     expect(tauriConfig.build.features ?? []).not.toContain("direct-release-updater");
+    expect(releaseTauriConfig.plugins.updater.requireSignedVersion).toBe(true);
     expect(diagnosticWorkflow).not.toContain("tauri.release.conf.json");
     expect(diagnosticWorkflow).not.toContain("--features");
     expect(releaseWorkflow).toContain("EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis");
     expect(releaseWorkflow).toContain("--draft");
-    expect(releaseWorkflow).toContain("gh release edit");
+    expect(releaseWorkflow).toContain("validate-draft");
+    expect(releaseWorkflow).toContain("--clobber");
+    expect(releaseWorkflow).toContain("epikrise-signed-release-commit:");
+    expect(releaseWorkflow).toContain("Verify staged OCR architectures");
+    expect(releaseWorkflow).toMatch(
+      /Verify staged OCR architectures[\s\S]*Stage and verify updater packages/,
+    );
+    expect(releaseWorkflow).toContain("--resource-root src-tauri/resources/ocr");
+    expect(releaseWorkflow).toContain("--binary-root src-tauri/binaries");
+    expect(releaseWorkflow).toContain("Install Minisign verifier");
+    expect(releaseWorkflow).toContain("should-promote-latest");
+    expect(releaseWorkflow).toContain(
+      "gh release list --json tagName,isDraft --limit 1000",
+    );
+    expect(releaseWorkflow).toContain(
+      "if (releases.some((release) => !release.isDraft))",
+    );
+    expect(releaseWorkflow).toContain(
+      "Could not determine the latest published release.",
+    );
+    expect(releaseWorkflow).toContain("make_latest=");
+    expect(releaseWorkflow).toContain("-F draft=false");
+    expect(releaseWorkflow).toContain('--raw-field "make_latest=$make_latest"');
+    expect(releaseWorkflow).not.toContain('-F "make_latest=$make_latest"');
+    expect(releaseWorkflow).toContain("gh release download");
+    expect(releaseWorkflow).toContain("verify-uploaded");
+    expect(releaseWorkflow).toMatch(
+      /verify-uploaded[\s\S]*should-promote-latest[\s\S]*gh api --method PATCH/,
+    );
+    expect(releaseWorkflow).toContain("group: updater-release");
+    expect(releaseWorkflow).not.toContain("--draft=false --latest");
+    expect(releaseWorkflow).toContain("gh api --method PATCH");
     expect(releaseWorkflow).toContain("contents: write");
     expect(diagnosticWorkflow).toContain("contents: read");
     expect(diagnosticWorkflow).not.toContain("TAURI_SIGNING_PRIVATE_KEY");
@@ -735,19 +913,30 @@ describe("signed release artifacts", () => {
             suffix.endsWith(".sig") ? `signature-${target}` : `bundle-${target}`,
           );
         }
+        const { resourceRoot, binaryRoot } = await createOcrFixture(directory, target);
         await stageReleaseArtifacts({
           target,
           bundleRoot,
           stageRoot: path.join(artifactsRoot, `release-${target}`),
+          commit: releaseCommit,
+          version: "2026.09.4",
+          resourceRoot,
+          binaryRoot,
         });
       }
 
+      const verifiedSignatures: string[] = [];
       const manifest = await createLatestManifest({
         tag: "v2026.09.4",
         packageVersion: "2026.09.4",
         repository: "owner/repo",
         artifactsRoot,
+        commit: releaseCommit,
         pubDate,
+        signatureVerifier: async (_bundlePath, signature, publicKey) => {
+          verifiedSignatures.push(signature);
+          expect(publicKey).toContain("minisign public key");
+        },
       });
 
       expect(manifest.version).toBe("2026.9.4");
@@ -774,8 +963,121 @@ describe("signed release artifacts", () => {
         },
       });
       expect(Object.keys(manifest.platforms)).toHaveLength(6);
+      expect(verifiedSignatures).toHaveLength(6);
+      const linuxIntegrity = JSON.parse(
+        await readFile(
+          path.join(
+            artifactsRoot,
+            `release-${releaseTargets[0]}`,
+            `${releaseTargets[0]}-manifest.json`,
+          ),
+          "utf8",
+        ),
+      );
+      expect(linuxIntegrity).toMatchObject({
+        target: releaseTargets[0],
+        architecture: "x86_64",
+        architecture_verified: true,
+        commit: releaseCommit,
+        version: "2026.09.4",
+      });
+      expect(linuxIntegrity.assets).toHaveLength(
+        targetSuffixes[releaseTargets[0]].length,
+      );
+      expect(linuxIntegrity.resources).toHaveLength(4);
+
+      const latestPath = path.join(directory, "latest.json");
+      const uploadedRoot = path.join(directory, "uploaded");
+      await writeFile(latestPath, JSON.stringify(manifest));
+      await mkdir(uploadedRoot, { recursive: true });
+      for (const target of releaseTargets) {
+        const targetDirectory = path.join(artifactsRoot, `release-${target}`);
+        for (const name of await readdir(targetDirectory)) {
+          await cp(path.join(targetDirectory, name), path.join(uploadedRoot, name));
+        }
+      }
+      await cp(latestPath, path.join(uploadedRoot, "latest.json"));
+      const uploadedNames = await readdir(uploadedRoot);
+      const releaseAssets = await Promise.all(
+        uploadedNames
+          .filter((name) => name !== "latest.json")
+          .map(async (name) => ({
+            name,
+            size: (await lstat(path.join(uploadedRoot, name))).size,
+          })),
+      );
+      releaseAssets.push({
+        name: "latest.json",
+        size: (await lstat(path.join(uploadedRoot, "latest.json"))).size,
+      });
+      await expect(
+        verifyUploadedReleaseAssets({
+          artifactsRoot,
+          latestPath,
+          uploadedRoot,
+          releaseAssets,
+        }),
+      ).resolves.toBeUndefined();
+
+      const uploadedBundleName = uploadedNames.find((name) =>
+        name.endsWith(".AppImage"),
+      );
+      expect(uploadedBundleName).toBeDefined();
+      const uploadedBundle = path.join(uploadedRoot, uploadedBundleName!);
+      const uploadedContents = await readFile(uploadedBundle, "utf8");
+      await writeFile(uploadedBundle, "altered after upload");
+      await expect(
+        verifyUploadedReleaseAssets({
+          artifactsRoot,
+          latestPath,
+          uploadedRoot,
+          releaseAssets,
+        }),
+      ).rejects.toThrow("does not match staged bytes");
+      await writeFile(uploadedBundle, uploadedContents);
+      await expect(
+        verifyUploadedReleaseAssets({
+          artifactsRoot,
+          latestPath,
+          uploadedRoot,
+          releaseAssets: [...releaseAssets, { name: "unexpected.bin", size: 1 }],
+        }),
+      ).rejects.toThrow("names do not match staged assets");
 
       const linuxArtifacts = path.join(artifactsRoot, `release-${releaseTargets[0]}`);
+      const appImage = (await readdir(linuxArtifacts)).find((name) =>
+        name.endsWith(".AppImage"),
+      );
+      expect(appImage).toBeDefined();
+      const appImagePath = path.join(linuxArtifacts, appImage!);
+      await writeFile(appImagePath, "tampered updater payload");
+      await expect(
+        createLatestManifest({
+          tag: "v2026.09.4",
+          packageVersion: "2026.09.4",
+          repository: "owner/repo",
+          artifactsRoot,
+          commit: releaseCommit,
+          pubDate,
+          signatureVerifier: async () => {},
+        }),
+      ).rejects.toThrow("Release asset integrity check failed");
+      await writeFile(appImagePath, `bundle-${releaseTargets[0]}`);
+
+      await expect(
+        createLatestManifest({
+          tag: "v2026.09.4",
+          packageVersion: "2026.09.4",
+          repository: "owner/repo",
+          artifactsRoot,
+          commit: releaseCommit,
+          pubDate,
+          signatureVerifier: async () => {
+            throw new Error("Invalid updater signature");
+          },
+        }),
+      ).rejects.toThrow("Invalid updater signature");
+
       const unexpectedAsset = path.join(linuxArtifacts, "unexpected.txt");
       await writeFile(unexpectedAsset, "unlisted");
       await expect(
@@ -784,9 +1086,11 @@ describe("signed release artifacts", () => {
           packageVersion: "2026.09.4",
           repository: "owner/repo",
           artifactsRoot,
+          commit: releaseCommit,
           pubDate,
+          signatureVerifier: async () => {},
         }),
-      ).rejects.toThrow("Unexpected release assets");
+      ).rejects.toThrow("Integrity manifest asset set does not match");
       await rm(unexpectedAsset);
 
       const debPackage = (await readdir(linuxArtifacts)).find((name) =>
@@ -800,7 +1104,9 @@ describe("signed release artifacts", () => {
           packageVersion: "2026.09.4",
           repository: "owner/repo",
           artifactsRoot,
+          commit: releaseCommit,
           pubDate,
+          signatureVerifier: async () => {},
         }),
       ).rejects.toThrow("Expected exactly one .deb asset");
     } finally {
@@ -823,6 +1129,10 @@ describe("signed release artifacts", () => {
           target: releaseTargets[0],
           bundleRoot,
           stageRoot: path.join(directory, "staged"),
+          commit: releaseCommit,
+          version: "2026.09.4",
+          resourceRoot: path.join(directory, "resources", "ocr"),
+          binaryRoot: path.join(directory, "binaries"),
         }),
       ).rejects.toThrow(".AppImage.sig");
     } finally {
