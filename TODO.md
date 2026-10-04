@@ -13,13 +13,6 @@
   environment has no reproducible Test Explorer run or leaked Vite process;
   verify the Explorer lifecycle before adding cleanup logic.
 
-## Maintenance
-
-### Medium Urgency
-
-- Confirm hosted UI CI no longer reports the Rustup home mismatch after
-  switching to `rust:1-bookworm`; local checks cannot execute that job image.
-
 ## Release and updater follow-up
 
 ### High Urgency
