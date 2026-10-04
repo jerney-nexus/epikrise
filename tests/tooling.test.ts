@@ -37,6 +37,7 @@ import {
   assertRecoverableReleaseDraft,
   createLatestManifest,
   releaseTargets,
+  shouldPromoteLatest,
   stageReleaseArtifacts,
   validateReleaseTag,
 } from "../scripts/release-artifacts.mjs";
@@ -606,6 +607,17 @@ describe("signed release artifacts", () => {
     );
   });
 
+  it("promotes only releases that are not older than the current latest", () => {
+    expect(shouldPromoteLatest("v2026.10.0", undefined)).toBe(true);
+    expect(shouldPromoteLatest("v2026.10.0", "v2026.09.99")).toBe(true);
+    expect(shouldPromoteLatest("v2027.01.0", "v2026.12.99")).toBe(true);
+    expect(shouldPromoteLatest("v2026.09.4", "v2026.09.4")).toBe(true);
+    expect(shouldPromoteLatest("v2026.09.3", "v2026.09.4")).toBe(false);
+    expect(() => shouldPromoteLatest("v2026.09.4", "v2026.9.4")).toThrow(
+      "not padded CalVer",
+    );
+  });
+
   it("recovers only drafts created for the same tag and commit", () => {
     const tag = "v2026.10.0";
     const commit = "0123456789abcdef0123456789abcdef01234567";
@@ -707,7 +719,11 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain("--resource-root src-tauri/resources/ocr");
     expect(releaseWorkflow).toContain("--binary-root src-tauri/binaries");
     expect(releaseWorkflow).toContain("Install Minisign verifier");
-    expect(releaseWorkflow).toContain("gh release edit");
+    expect(releaseWorkflow).toContain("should-promote-latest");
+    expect(releaseWorkflow).toContain("make_latest=");
+    expect(releaseWorkflow).toContain("group: updater-release");
+    expect(releaseWorkflow).not.toContain("--draft=false --latest");
+    expect(releaseWorkflow).toContain("gh api --method PATCH");
     expect(releaseWorkflow).toContain("contents: write");
     expect(diagnosticWorkflow).toContain("contents: read");
     expect(diagnosticWorkflow).not.toContain("TAURI_SIGNING_PRIVATE_KEY");

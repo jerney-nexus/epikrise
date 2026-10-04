@@ -428,4 +428,26 @@ jobs:
               --notes "<!-- epikrise-signed-release-commit:$GITHUB_SHA -->" \
               --latest=false
           fi
-          gh release edit "$GITHUB_REF_NAME" --draft=false --latest --verify-tag
+
+          latest_file="$RUNNER_TEMP/latest-release.json"
+          latest_tag=""
+          if gh release view --json tagName > "$latest_file" 2>/dev/null; then
+            latest_tag="$(node --input-type=module -e \
+              'import { readFileSync } from "node:fs"; process.stdout.write(JSON.parse(readFileSync(process.argv[1], "utf8")).tagName)' \
+              "$latest_file")"
+          fi
+          promotion_args=(should-promote-latest --tag "$GITHUB_REF_NAME")
+          if [[ -n "$latest_tag" ]]; then
+            promotion_args+=(--latest-tag "$latest_tag")
+          fi
+          promote_latest="$(node scripts/release-artifacts.mjs "${promotion_args[@]}")"
+          release_id="$(gh release view "$GITHUB_REF_NAME" --json databaseId --jq .databaseId)"
+          if [[ "$promote_latest" == 'true' ]]; then
+            make_latest=true
+          else
+            make_latest=false
+          fi
+          gh api --method PATCH \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -F draft=false \
+            -F "make_latest=$make_latest" > /dev/null

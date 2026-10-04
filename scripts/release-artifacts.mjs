@@ -146,6 +146,25 @@ export function validateReleaseTag(tag, packageVersion) {
   return { tag, releaseVersion, updateProtocolVersion };
 }
 
+/** @param {string} tag */
+function releaseTagParts(tag) {
+  const match = /^v(\d{4})\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$/.exec(tag);
+  assert(match, `Release tag is not padded CalVer: ${tag}.`);
+  return [Number(match[1]), Number(match[2]), BigInt(match[3])];
+}
+
+/** @param {string} candidateTag @param {string | undefined} latestTag */
+export function shouldPromoteLatest(candidateTag, latestTag) {
+  const candidate = releaseTagParts(candidateTag);
+  if (!latestTag) return true;
+  const latest = releaseTagParts(latestTag);
+  for (let index = 0; index < candidate.length; index += 1) {
+    if (candidate[index] > latest[index]) return true;
+    if (candidate[index] < latest[index]) return false;
+  }
+  return true;
+}
+
 /** @param {unknown} release @param {string} tag @param {string} commit */
 export function assertRecoverableReleaseDraft(release, tag, commit) {
   assert(
@@ -435,6 +454,12 @@ async function main() {
     assertRecoverableReleaseDraft(release, options.tag, options.commit);
     return;
   }
+  if (command === "should-promote-latest") {
+    process.stdout.write(
+      `${shouldPromoteLatest(options.tag, options["latest-tag"] || undefined)}\n`,
+    );
+    return;
+  }
   if (command === "stage") {
     const packageJson = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
@@ -452,7 +477,7 @@ async function main() {
   }
   assert(
     command === "latest",
-    "Usage: release-artifacts.mjs validate|validate-draft|stage|latest [options]",
+    "Usage: release-artifacts.mjs validate|validate-draft|should-promote-latest|stage|latest [options]",
   );
   const manifest = await createLatestManifest({
     tag: options.tag,
