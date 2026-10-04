@@ -25,5 +25,7 @@ export function renderOutputHtml(value: string, lintedLines: number[] = []): str
   }
 
   const html = markdown.renderer.render(tokens, markdown.options, environment);
-  return DOMPurify.sanitize(html);
+  // Images are forbidden: clipboard HTML leaves the webview CSP, and a remote
+  // image URL could leak case text to an attacker-controlled host on paste.
+  return DOMPurify.sanitize(html, { FORBID_TAGS: ["img"] });
 }
