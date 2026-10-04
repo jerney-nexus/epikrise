@@ -33,9 +33,11 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   progress reporting, and exclusion during active case work. The release
   configuration now supplies its updater public key; native installation and
   update acceptance remain outstanding.
-- Added a padded-CalVer-tag release workflow for signed Linux, macOS, and
-  Windows x64/ARM64 updater packages, signatures, generated `latest.json`, and
-  GitHub release publication.
+- Added a padded-CalVer-tag release workflow for signed Linux AppImage, macOS,
+  and Windows x64/ARM64 NSIS updater bundles, signatures, generated
+  `latest.json`, and GitHub release publication. Linux deb/rpm packages are
+  built without updater support, and signing jobs use the protected `release`
+  environment.
 - Added synthetic Playwright and axe browser tests, `pnpm test:e2e` and
   `pnpm test:a11y` scripts, and a browser-test CI workflow.
 - Fluent-based German (Switzerland) and English interface localization, OS

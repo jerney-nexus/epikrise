@@ -49,6 +49,7 @@ jobs:
     needs: validate
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
+    environment: release
     timeout-minutes: 120
     permissions:
       contents: read
@@ -218,18 +219,43 @@ jobs:
           signing_private_key="$TAURI_SIGNING_PRIVATE_KEY"
           signing_private_key_password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
           unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-          read -r -a bundles <<< "$BUNDLE_TARGETS"
           host_target="$(rustc -vV | sed -n 's/^host: //p')"
-          TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
-            TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+          if [[ "$PLATFORM" == 'linux' ]]; then
+            bundle_root="src-tauri/target/host-$host_target/$TARGET/release/bundle"
+            saved_appimage="$RUNNER_TEMP/$TARGET-appimage"
+            TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
+              TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+              bash scripts/with-cargo-host-target.sh \
+                pnpm exec tauri build \
+                  --target "$TARGET" \
+                  --config src-tauri/tauri.release.conf.json \
+                  --config '{"build":{"beforeBuildCommand":null}}' \
+                  --bundles appimage \
+                  --ci \
+                  --no-sign
+            cp -a "$bundle_root/appimage" "$saved_appimage"
             bash scripts/with-cargo-host-target.sh \
               pnpm exec tauri build \
                 --target "$TARGET" \
-                --config src-tauri/tauri.release.conf.json \
-                --config '{"build":{"beforeBuildCommand":null}}' \
-                --bundles "${bundles[@]}" \
+                --config '{"build":{"beforeBuildCommand":null,"features":[]}}' \
+                --bundles deb rpm \
                 --ci \
                 --no-sign
+            rm -rf "$bundle_root/appimage"
+            mv "$saved_appimage" "$bundle_root/appimage"
+          else
+            read -r -a bundles <<< "$BUNDLE_TARGETS"
+            TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
+              TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+              bash scripts/with-cargo-host-target.sh \
+                pnpm exec tauri build \
+                  --target "$TARGET" \
+                  --config src-tauri/tauri.release.conf.json \
+                  --config '{"build":{"beforeBuildCommand":null}}' \
+                  --bundles "${bundles[@]}" \
+                  --ci \
+                  --no-sign
+          fi
           unset signing_private_key signing_private_key_password
 
       - name: Stage and verify updater packages

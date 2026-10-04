@@ -872,6 +872,30 @@ mod tests {
 
     #[cfg(feature = "direct-release-updater")]
     #[tokio::test]
+    async fn install_requires_explicit_confirmation_before_calling_the_service() {
+        let candidate_slot = Mutex::new(Some(valid_fake_candidate()));
+        let service = FakeUpdateService::new(Vec::new(), Ok(()));
+        let mut progress = |_, _| {};
+
+        assert_eq!(
+            install_with_service(
+                &candidate_slot,
+                &service,
+                &UpdateInstallGate::default(),
+                false,
+                || Ok(()),
+                || Ok(false),
+                &mut progress,
+            )
+            .await,
+            Err(UpdaterError::OptInRequired)
+        );
+        assert_eq!(service.install_calls.load(Ordering::Relaxed), 0);
+        assert!(candidate_slot.lock().expect("candidate lock").is_some());
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
     async fn install_gate_excludes_new_work_until_fake_install_finishes() {
         let candidate_slot = Arc::new(Mutex::new(Some(valid_fake_candidate())));
         let install_started = Arc::new(tokio::sync::Notify::new());

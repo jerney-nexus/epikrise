@@ -591,6 +591,10 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain(
       "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}",
     );
+    expect(releaseWorkflow).toContain("environment: release");
+    expect(releaseWorkflow).toContain("--bundles appimage");
+    expect(releaseWorkflow).toContain("--bundles deb rpm");
+    expect(releaseWorkflow).toContain('"features":[]');
     expect(releaseWorkflow).toContain("EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis");
     expect(releaseWorkflow).toContain("--draft");
     expect(releaseWorkflow).toContain("gh release edit");

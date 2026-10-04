@@ -172,10 +172,10 @@ template content.
 
 Tauri updater artifacts require their own signature. This signature verifies
 the update payload; it is not Authenticode, Apple Developer ID signing,
-notarization, or Linux package signing. The current release overlay still has
-an `unconfigured` public-key placeholder, and no production signing key or
-release-publication workflow is provisioned. It is not ready for production
-updates. See [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-readiness)
+notarization, or Linux package signing. The release overlay contains a public
+key and a signed-release workflow, but matching private-key ownership, backup,
+and a synthetic signature proof have not been confirmed. It is not ready for
+production updates. See [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-readiness)
 for implementation and release constraints.
 
 Tauri must be able to find `cargo` on `PATH`. If the build fails while running

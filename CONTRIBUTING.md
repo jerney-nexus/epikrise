@@ -241,13 +241,15 @@ requires the matching `TAURI_SIGNING_PRIVATE_KEY` GitHub Actions secret (and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key is encrypted).
 
 This workflow is implemented, but the updater is not yet accepted for
-production use. Before relying on updates, securely provision the matching
-private key, verify the first release's six target assets, signatures, manifest
-and URLs, and complete native installation and two-version update acceptance
-on each supported target. Never generate or replace a production key in CI,
-commit private signing material, or treat a Tauri update signature as platform
-publisher signing. Store delivery is a separate Microsoft-certified channel;
-see [`TODO.md`](TODO.md) for outstanding gates.
+production use. The checked-in public key does not prove matching private-key
+ownership or backup; an authorized key holder must verify a synthetic signature
+locally before signing is accepted. Then verify the first release's six target
+assets, signatures, manifest and URLs, and complete native installation and
+two-version update acceptance on each supported target. Never generate or
+replace a production key in CI, commit private signing material, or treat a
+Tauri update signature as platform publisher signing. Store delivery is a
+separate Microsoft-certified channel; see [`TODO.md`](TODO.md) for outstanding
+gates.
 
 ## Localization
 
