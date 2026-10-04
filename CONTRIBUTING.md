@@ -172,6 +172,7 @@ pnpm format:rust:fmt
 pnpm check
 pnpm test
 pnpm build
+pnpm lint:actions
 pnpm audit:rust
 pnpm audit:pnpm
 ```
@@ -190,6 +191,9 @@ cargo install cargo-audit --locked
 `cargo-deny` is required by `pnpm check`; `cargo-nextest` is required by
 `pnpm test:rust`; `cargo-audit` is required by `pnpm audit:rust`; and
 `cargo-llvm-cov` plus `llvm-tools-preview` are required for Rust coverage.
+`pnpm lint:actions` requires `actionlint`, which is installed in the dev
+container. For local setup, follow the [actionlint installation
+instructions](https://github.com/rhysd/actionlint#installation).
 
 `pnpm test` includes the full Playwright browser suite in addition to UI, i18n,
 and Rust tests.

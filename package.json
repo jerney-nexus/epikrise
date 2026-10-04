@@ -21,6 +21,7 @@
     "audit:pnpm": "pnpm audit --audit-level high",
     "build:all": "node scripts/desktop-builds.mjs dispatch",
     "lint": "eslint . --max-warnings 0",
+    "lint:actions": "actionlint",
     "test": "pnpm test:ui && pnpm test:i18n && pnpm test:rust && pnpm test:e2e",
     "test:coverage": "pnpm test:ui:coverage && pnpm test:rust:coverage",
     "test:e2e": "playwright test",

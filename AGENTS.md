@@ -49,7 +49,7 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - Run the app with `pnpm dev`; build or preview it with `pnpm build` and `pnpm preview`. Use `pnpm tauri dev` or `pnpm tauri build` for desktop runs and bundles.
 - Run checks with `pnpm check` (UI and Rust), `pnpm check:ui`, or `pnpm check:rust`. Rust checks can also be run individually with `pnpm check:rust:fmt`, `pnpm check:rust:clippy` (warnings denied), and `pnpm check:rust:deny`.
 - Run the full test suite with `pnpm test` (UI, i18n, Rust, and Playwright browser tests). For focused runs, use `pnpm test:ui`, `pnpm test:i18n`, `pnpm test:rust`, `pnpm test:rust:package <package> [<args>]`, `pnpm test:e2e` (browser tests only), or `pnpm test:a11y` (accessibility selection). `pnpm test:coverage` runs UI and Rust tests with coverage, writing reports to `coverage/` and `lcov.info`; use `pnpm test:ui:coverage` or `pnpm test:rust:coverage` for a targeted coverage run.
-- Check or apply formatting with `pnpm format:check`, `pnpm format`, `pnpm format:check:file <file>`, `pnpm format:file <file>`, and `pnpm format:rust:fmt`. Run ESLint with `pnpm lint`.
+- Check or apply formatting with `pnpm format:check`, `pnpm format`, `pnpm format:check:file <file>`, `pnpm format:file <file>`, and `pnpm format:rust:fmt`. Run ESLint with `pnpm lint` and lint GitHub Actions workflows with `pnpm lint:actions` (requires `actionlint`).
 - Audit dependencies with `pnpm audit:rust` and `pnpm audit:pnpm`.
 - Prepare a CalVer release with `pnpm release:prepare [YYYY.MM.PATCH]`; convert a prompt with `pnpm template:convert`.
 - Set up and build Windows installers with `pnpm windows:setup`, `pnpm windows:build:x64`, `pnpm windows:build:arm64`, or `pnpm windows:build`.
