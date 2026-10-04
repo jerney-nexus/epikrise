@@ -20,6 +20,9 @@ import { deriveReleaseVersions } from "./prepare-release.mjs";
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const execFile = promisify(execFileCallback);
 
+/** @typedef {{ path: string, size_bytes: number, sha256: string }} FileEvidence */
+/** @typedef {{ schema_version: number, target: string, architecture: string, architecture_verified: boolean, commit: string, version: string, assets: FileEvidence[], resources: FileEvidence[] }} ReleaseIntegrityManifest */
+
 export const releaseTargets = /** @type {const} */ ([
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
@@ -62,7 +65,7 @@ const targetConfig = {
   },
 };
 
-/** @param {unknown} condition @param {string} message */
+/** @param {unknown} condition @param {string} message @returns {asserts condition} */
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -328,6 +331,7 @@ export async function createLatestManifest({
       files.includes(integrityName),
       `Integrity manifest is missing for ${target}.`,
     );
+    /** @type {ReleaseIntegrityManifest} */
     const integrity = JSON.parse(
       await readFile(path.join(targetDirectory, integrityName), "utf8"),
     );
@@ -507,6 +511,7 @@ export async function verifyUploadedReleaseAssets({
   for (const name of expectedNames) {
     const uploadedEvidence = await fileEvidence(downloaded.get(name), name);
     const expectedEvidence = expected.get(name);
+    assert(expectedEvidence, `Staged release asset is missing: ${name}.`);
     assert(
       metadata.get(name) === expectedEvidence.size_bytes &&
         uploadedEvidence.size_bytes === expectedEvidence.size_bytes &&
