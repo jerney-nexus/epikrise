@@ -83,6 +83,23 @@ export function validateReleaseTag(tag, packageVersion) {
   return { tag, releaseVersion, updateProtocolVersion };
 }
 
+/** @param {unknown} release @param {string} tag @param {string} commit */
+export function assertRecoverableReleaseDraft(release, tag, commit) {
+  assert(
+    typeof release === "object" && release !== null && !Array.isArray(release),
+    "Existing release metadata is invalid.",
+  );
+  const metadata = /** @type {Record<string, unknown>} */ (release);
+  assert(metadata.isDraft === true, "Only an existing draft release can be recovered.");
+  assert(metadata.tagName === tag, "Existing draft tag does not match.");
+  assert(/^[0-9a-f]{40}$/.test(commit), "Release commit must be a full SHA.");
+  const marker = `<!-- epikrise-signed-release-commit:${commit} -->`;
+  assert(
+    typeof metadata.body === "string" && metadata.body.includes(marker),
+    "Existing draft was not created for this commit.",
+  );
+}
+
 /**
  * @param {{ target: string, bundleRoot: string, stageRoot: string }} options
  * @returns {Promise<string[]>}
@@ -224,6 +241,11 @@ async function main() {
     validateReleaseTag(options.tag, packageJson.version);
     return;
   }
+  if (command === "validate-draft") {
+    const release = JSON.parse(await readFile(options["release-file"], "utf8"));
+    assertRecoverableReleaseDraft(release, options.tag, options.commit);
+    return;
+  }
   if (command === "stage") {
     await stageReleaseArtifacts({
       target: options.target,
@@ -234,7 +256,7 @@ async function main() {
   }
   assert(
     command === "latest",
-    "Usage: release-artifacts.mjs validate|stage|latest [options]",
+    "Usage: release-artifacts.mjs validate|validate-draft|stage|latest [options]",
   );
   const manifest = await createLatestManifest({
     tag: options.tag,

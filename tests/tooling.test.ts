@@ -34,6 +34,7 @@ import {
   verifyArtifactSet,
 } from "../scripts/desktop-builds.mjs";
 import {
+  assertRecoverableReleaseDraft,
   createLatestManifest,
   releaseTargets,
   stageReleaseArtifacts,
@@ -576,6 +577,31 @@ describe("signed release artifacts", () => {
     );
   });
 
+  it("recovers only drafts created for the same tag and commit", () => {
+    const tag = "v2026.10.0";
+    const commit = "0123456789abcdef0123456789abcdef01234567";
+    const release = {
+      isDraft: true,
+      tagName: tag,
+      body: `<!-- epikrise-signed-release-commit:${commit} -->\nRelease notes`,
+    };
+
+    expect(() => assertRecoverableReleaseDraft(release, tag, commit)).not.toThrow();
+    expect(() =>
+      assertRecoverableReleaseDraft({ ...release, isDraft: false }, tag, commit),
+    ).toThrow("Only an existing draft release can be recovered.");
+    expect(() =>
+      assertRecoverableReleaseDraft({ ...release, tagName: "v2026.09.4" }, tag, commit),
+    ).toThrow("Existing draft tag does not match.");
+    expect(() =>
+      assertRecoverableReleaseDraft(
+        { ...release, body: "<!-- epikrise-signed-release-commit:other -->" },
+        tag,
+        commit,
+      ),
+    ).toThrow("Existing draft was not created for this commit.");
+  });
+
   it("keeps signed release publication separate from diagnostic builds", async () => {
     const releaseWorkflow = await readFile(
       path.join(repoRoot, ".github/workflows/signed-release.yml"),
@@ -642,6 +668,9 @@ describe("signed release artifacts", () => {
     expect(diagnosticWorkflow).not.toContain("--features");
     expect(releaseWorkflow).toContain("EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis");
     expect(releaseWorkflow).toContain("--draft");
+    expect(releaseWorkflow).toContain("validate-draft");
+    expect(releaseWorkflow).toContain("--clobber");
+    expect(releaseWorkflow).toContain("epikrise-signed-release-commit:");
     expect(releaseWorkflow).toContain("gh release edit");
     expect(releaseWorkflow).toContain("contents: write");
     expect(diagnosticWorkflow).toContain("contents: read");
