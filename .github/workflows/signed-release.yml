@@ -19,6 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - uses: pnpm/action-setup@v6
@@ -45,8 +46,61 @@ jobs:
             exit 1
           fi
 
+  verify-ui:
+    uses: ./.github/workflows/ui-tests.yml
+    permissions:
+      contents: read
+
+  verify-rust:
+    uses: ./.github/workflows/rust-tests.yml
+    permissions:
+      contents: read
+
+  verify-playwright:
+    uses: ./.github/workflows/playwright.yml
+    permissions:
+      contents: read
+
+  verify-security:
+    uses: ./.github/workflows/security-audit.yml
+    permissions:
+      contents: read
+
+  verify-quality:
+    runs-on: ubuntu-22.04
+    container:
+      image: node:22-bookworm
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run lint, format, and frontend build
+        run: pnpm lint && pnpm format:check && pnpm build
+
   build:
-    needs: validate
+    needs:
+      - validate
+      - verify-ui
+      - verify-rust
+      - verify-playwright
+      - verify-security
+      - verify-quality
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     environment: release

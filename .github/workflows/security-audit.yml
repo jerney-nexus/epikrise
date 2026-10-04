@@ -1,6 +1,7 @@
 name: Security audit
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches: [main, development]
@@ -18,6 +19,9 @@ jobs:
       image: rust:1-bookworm
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
           version: 12.8.1

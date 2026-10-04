@@ -1,6 +1,7 @@
 name: Rust tests
 
 on:
+  workflow_call:
   push:
     branches: [main, development]
   pull_request:
@@ -23,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - uses: pnpm/action-setup@v6

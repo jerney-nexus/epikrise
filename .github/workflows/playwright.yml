@@ -1,5 +1,6 @@
 name: Playwright Tests
 on:
+  workflow_call:
   push:
     branches: [main, development]
   pull_request:
@@ -19,6 +20,9 @@ jobs:
       options: --user 1001
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
           version: 12.8.1

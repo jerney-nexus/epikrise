@@ -585,6 +585,12 @@ describe("signed release artifacts", () => {
       path.join(repoRoot, ".github/workflows/desktop-builds.yml"),
       "utf8",
     );
+    const qualityWorkflows = [
+      "ui-tests.yml",
+      "rust-tests.yml",
+      "playwright.yml",
+      "security-audit.yml",
+    ];
     const cargoManifest = TOML.parse(
       await readFile(path.join(repoRoot, "src-tauri/Cargo.toml"), "utf8"),
     );
@@ -593,7 +599,22 @@ describe("signed release artifacts", () => {
     );
 
     expect(releaseWorkflow).toContain('      - "v*"');
-    expect(releaseWorkflow).toContain("needs: validate");
+    expect(releaseWorkflow).toContain("ref: ${{ github.sha }}");
+    expect(releaseWorkflow).toMatch(
+      /build:\s+needs:\s+- validate\s+- verify-ui\s+- verify-rust\s+- verify-playwright\s+- verify-security\s+- verify-quality/,
+    );
+    expect(releaseWorkflow).toContain(
+      "run: pnpm lint && pnpm format:check && pnpm build",
+    );
+    for (const workflow of qualityWorkflows) {
+      const workflowSource = await readFile(
+        path.join(repoRoot, ".github/workflows", workflow),
+        "utf8",
+      );
+      expect(releaseWorkflow).toContain(`uses: ./.github/workflows/${workflow}`);
+      expect(workflowSource).toContain("workflow_call:");
+      expect(workflowSource).toContain("ref: ${{ github.sha }}");
+    }
     expect(releaseWorkflow).toContain(
       "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}",
     );
