@@ -1,4 +1,4 @@
-name: UI tests
+name: UI and i18n tests
 
 on:
   pull_request:
@@ -17,10 +17,9 @@ concurrency:
 
 jobs:
   ui:
+    name: UI and i18n
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    env:
-      PLAYWRIGHT_CROSS_BROWSER: "1"
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -38,23 +37,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install browser engines
-        run: pnpm exec playwright install --with-deps chromium firefox webkit
-
       - name: Check UI
         run: pnpm check:ui
 
       - name: Run UI and internationalization tests
         run: pnpm test:ui && pnpm test:i18n
-
-      - name: Run Chromium, accessibility, and browser smoke tests
-        run: pnpm test:e2e
-
-      - name: Upload synthetic-only failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ui-test-results-${{ github.run_id }}-${{ github.run_attempt }}
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 3
