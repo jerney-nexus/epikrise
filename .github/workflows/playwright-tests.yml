@@ -23,9 +23,10 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/setup@v1
         with:
           version: 12.8.1
+          install: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
