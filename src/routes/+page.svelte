@@ -3202,8 +3202,10 @@
           {/if}
         </section>
 
+        <label class="template-editor-prompt-label" for="template-system-prompt">
+          {t("System prompt · MiniJinja")}
+        </label>
         <div class="template-editor-body">
-          <label for="template-system-prompt">{t("System prompt · MiniJinja")}</label>
           <textarea
             id="template-system-prompt"
             spellcheck="false"
@@ -4472,8 +4474,7 @@
     gap: 7px 16px;
   }
 
-  .template-editor-body > label {
-    grid-column: 1 / -1;
+  .template-editor-prompt-label {
     margin: 0;
   }
 

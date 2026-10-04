@@ -506,6 +506,8 @@ test("keeps the template editor usable across viewport widths", async ({ page })
       const closeRect = closeButton?.getBoundingClientRect();
       const editor = element.querySelector(".template-editor");
       const editorBody = element.querySelector(".template-editor-body");
+      const prompt = editorBody?.querySelector("textarea");
+      const preview = editorBody?.querySelector(".template-live-preview");
       return {
         left: rect.left,
         right: rect.right,
@@ -514,6 +516,8 @@ test("keeps the template editor usable across viewport widths", async ({ page })
         editorClientWidth: editor?.clientWidth ?? 0,
         bodyScrollWidth: editorBody?.scrollWidth ?? Infinity,
         bodyClientWidth: editorBody?.clientWidth ?? 0,
+        promptWidth: prompt?.getBoundingClientRect().width ?? 0,
+        previewWidth: preview?.getBoundingClientRect().width ?? 0,
       };
     });
 
@@ -527,6 +531,14 @@ test("keeps the template editor usable across viewport widths", async ({ page })
     expect(layout.bodyScrollWidth, `body overflow at ${width}px`).toBeLessThanOrEqual(
       layout.bodyClientWidth,
     );
+    if (layout.bodyClientWidth >= 800) {
+      expect(layout.promptWidth, `prompt width at ${width}px`).toBeGreaterThan(
+        layout.bodyClientWidth * 0.4,
+      );
+      expect(layout.previewWidth, `preview width at ${width}px`).toBeGreaterThan(
+        layout.bodyClientWidth * 0.4,
+      );
+    }
   }
 });
 
