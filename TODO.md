@@ -13,13 +13,6 @@
   environment has no reproducible Test Explorer run or leaked Vite process;
   verify the Explorer lifecycle before adding cleanup logic.
 
-## Security
-
-### Medium Urgency
-
-- Mount a protected volume at `/home/vscode/.local/share/ssh` for SSH keys and
-  create the directory through `postCreateCommand`.
-
 ## Release and updater follow-up
 
 ### High Urgency
