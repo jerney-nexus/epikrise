@@ -9,6 +9,13 @@
   environment has no reproducible Test Explorer run or leaked Vite process;
   verify the Explorer lifecycle before adding cleanup logic.
 
+## Maintenance
+
+### Medium Urgency
+
+- Verify that Rust toolchain setup no longer emits the Docker config permission
+  warning after removing its explicit `HOME` override in hosted CI.
+
 ## Release and updater follow-up
 
 ### High Urgency

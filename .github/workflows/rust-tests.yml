@@ -34,8 +34,6 @@ jobs:
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
-        env:
-          HOME: /root
         with:
           components: clippy, rustfmt
 
