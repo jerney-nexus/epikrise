@@ -136,9 +136,9 @@ url = { workspace = true }
 uuid = { workspace = true }
 zeroize = { workspace = true }
 infer = "0.19"
+async-trait = { workspace = true }
 
 [dev-dependencies]
-async-trait = { workspace = true }
 tokio = { workspace = true }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

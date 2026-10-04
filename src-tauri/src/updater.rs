@@ -49,8 +49,10 @@ pub enum UpdaterError {
     SettingsFailed,
     #[error("an update operation is already in progress")]
     Busy,
+    #[cfg_attr(not(feature = "direct-release-updater"), allow(dead_code))]
     #[error("an update cannot be installed while a case or generation is active")]
     ActiveWork,
+    #[cfg_attr(not(feature = "direct-release-updater"), allow(dead_code))]
     #[error("the update could not be verified or installed")]
     UpdateFailed,
 }
@@ -116,6 +118,20 @@ pub struct UpdateCandidate {
     pub version: String,
     pub notes: Option<String>,
     pub target: String,
+}
+
+#[cfg(feature = "direct-release-updater")]
+#[async_trait::async_trait]
+trait UpdateService {
+    type Candidate: Clone + Send + Sync;
+
+    async fn check(&self) -> Result<Option<Self::Candidate>, UpdaterError>;
+    fn describe(&self, candidate: &Self::Candidate) -> Result<UpdateCandidate, UpdaterError>;
+    async fn install(
+        &self,
+        candidate: &Self::Candidate,
+        on_progress: &mut (dyn FnMut(u64, Option<u64>) + Send),
+    ) -> Result<(), UpdaterError>;
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -322,6 +338,91 @@ fn authorize_current(updater: &UpdaterState, policy: &PolicyState) -> Result<(),
     )
 }
 
+#[cfg(feature = "direct-release-updater")]
+async fn check_with_service<S, A>(
+    candidate_slot: &Mutex<Option<S::Candidate>>,
+    service: &S,
+    authorize: A,
+) -> Result<Option<UpdateCandidate>, UpdaterError>
+where
+    S: UpdateService,
+    A: Fn() -> Result<(), UpdaterError>,
+{
+    *candidate_slot
+        .lock()
+        .map_err(|_| UpdaterError::UpdateFailed)? = None;
+    authorize()?;
+
+    let Some(candidate) = service.check().await? else {
+        return Ok(None);
+    };
+    authorize()?;
+    let result = service.describe(&candidate)?;
+    *candidate_slot
+        .lock()
+        .map_err(|_| UpdaterError::UpdateFailed)? = Some(candidate);
+    Ok(Some(result))
+}
+
+#[cfg(feature = "direct-release-updater")]
+async fn install_with_service<S, A, W>(
+    candidate_slot: &Mutex<Option<S::Candidate>>,
+    service: &S,
+    install_gate: &UpdateInstallGate,
+    confirmed: bool,
+    authorize: A,
+    has_active_work: W,
+    on_progress: &mut (dyn FnMut(u64, Option<u64>) + Send),
+) -> Result<(), UpdaterError>
+where
+    S: UpdateService,
+    A: Fn() -> Result<(), UpdaterError>,
+    W: Fn() -> Result<bool, UpdaterError>,
+{
+    if let Err(error) = authorize() {
+        *candidate_slot
+            .lock()
+            .map_err(|_| UpdaterError::UpdateFailed)? = None;
+        return Err(error);
+    }
+    if !confirmed {
+        return Err(UpdaterError::OptInRequired);
+    }
+
+    let _permit = install_gate.try_enter()?;
+    if has_active_work()? {
+        return Err(UpdaterError::ActiveWork);
+    }
+
+    let candidate = candidate_slot
+        .lock()
+        .map_err(|_| UpdaterError::UpdateFailed)?
+        .clone()
+        .ok_or(UpdaterError::UpdateFailed)?;
+    if let Err(error) = service.describe(&candidate) {
+        *candidate_slot
+            .lock()
+            .map_err(|_| UpdaterError::UpdateFailed)? = None;
+        return Err(error);
+    }
+    if let Err(error) = authorize() {
+        *candidate_slot
+            .lock()
+            .map_err(|_| UpdaterError::UpdateFailed)? = None;
+        return Err(error);
+    }
+    if let Err(error) = service.install(&candidate, on_progress).await {
+        *candidate_slot
+            .lock()
+            .map_err(|_| UpdaterError::UpdateFailed)? = None;
+        return Err(error);
+    }
+    *candidate_slot
+        .lock()
+        .map_err(|_| UpdaterError::UpdateFailed)? = None;
+    Ok(())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn check_for_update(
@@ -329,14 +430,38 @@ pub async fn check_for_update(
     policy: State<'_, PolicyState>,
     updater_state: State<'_, UpdaterState>,
 ) -> Result<Option<UpdateCandidate>, UpdaterError> {
-    authorize_current(&updater_state, &policy)?;
     #[cfg(feature = "direct-release-updater")]
     {
+        let service = TauriUpdateService { app };
+        check_with_service(&updater_state.candidate, &service, || {
+            authorize_current(&updater_state, &policy)
+        })
+        .await
+    }
+    #[cfg(not(feature = "direct-release-updater"))]
+    {
+        let _ = app;
+        authorize_current(&updater_state, &policy)?;
+        Err(UpdaterError::Unavailable)
+    }
+}
+
+#[cfg(feature = "direct-release-updater")]
+struct TauriUpdateService {
+    app: AppHandle,
+}
+
+#[cfg(feature = "direct-release-updater")]
+#[async_trait::async_trait]
+impl UpdateService for TauriUpdateService {
+    type Candidate = tauri_plugin_updater::Update;
+
+    async fn check(&self) -> Result<Option<Self::Candidate>, UpdaterError> {
         use tauri_plugin_updater::UpdaterExt;
 
         let target = release_target()?;
         let endpoint = Url::parse(UPDATE_ENDPOINT).map_err(|_| UpdaterError::UpdateFailed)?;
-        let updater = app
+        self.app
             .updater_builder()
             .target(target)
             .endpoints(vec![endpoint])
@@ -354,18 +479,14 @@ pub async fn check_for_update(
                 }))
             })
             .build()
-            .map_err(|_| UpdaterError::UpdateFailed)?;
-        let Some(candidate) = updater
+            .map_err(|_| UpdaterError::UpdateFailed)?
             .check()
             .await
-            .map_err(|_| UpdaterError::UpdateFailed)?
-        else {
-            *updater_state
-                .candidate
-                .lock()
-                .map_err(|_| UpdaterError::UpdateFailed)? = None;
-            return Ok(None);
-        };
+            .map_err(|_| UpdaterError::UpdateFailed)
+    }
+
+    fn describe(&self, candidate: &Self::Candidate) -> Result<UpdateCandidate, UpdaterError> {
+        let target = release_target()?;
         let version = validate_candidate(
             &candidate.version,
             &candidate.target,
@@ -375,21 +496,25 @@ pub async fn check_for_update(
         if candidate.signature.trim().is_empty() {
             return Err(UpdaterError::UpdateFailed);
         }
-        let result = UpdateCandidate {
+        Ok(UpdateCandidate {
             version,
             notes: candidate.body.clone(),
             target: candidate.target.clone(),
-        };
-        *updater_state
-            .candidate
-            .lock()
-            .map_err(|_| UpdaterError::UpdateFailed)? = Some(candidate);
-        Ok(Some(result))
+        })
     }
-    #[cfg(not(feature = "direct-release-updater"))]
-    {
-        let _ = app;
-        Err(UpdaterError::Unavailable)
+
+    async fn install(
+        &self,
+        candidate: &Self::Candidate,
+        on_progress: &mut (dyn FnMut(u64, Option<u64>) + Send),
+    ) -> Result<(), UpdaterError> {
+        candidate
+            .download_and_install(
+                |chunk_length, content_length| on_progress(chunk_length as u64, content_length),
+                || {},
+            )
+            .await
+            .map_err(|_| UpdaterError::UpdateFailed)
     }
 }
 
@@ -404,63 +529,43 @@ pub async fn install_update(
     sessions: State<'_, CaseSessionRegistry>,
     generations: State<'_, GenerationRegistry>,
 ) -> Result<(), UpdaterError> {
-    authorize_current(&updater_state, &policy)?;
-    if !confirmed {
-        return Err(UpdaterError::OptInRequired);
-    }
-    let _permit = install_gate.try_enter()?;
-    if sessions
-        .0
-        .lock()
-        .map_err(|_| UpdaterError::UpdateFailed)?
-        .is_some()
-        || !generations
-            .0
-            .lock()
-            .map_err(|_| UpdaterError::UpdateFailed)?
-            .is_empty()
-    {
-        return Err(UpdaterError::ActiveWork);
-    }
-
     #[cfg(feature = "direct-release-updater")]
     {
-        let candidate = updater_state
-            .candidate
-            .lock()
-            .map_err(|_| UpdaterError::UpdateFailed)?
-            .clone()
-            .ok_or(UpdaterError::UpdateFailed)?;
-        validate_candidate(
-            &candidate.version,
-            &candidate.target,
-            &candidate.download_url,
-            release_target()?,
-        )?;
-        authorize_current(&updater_state, &policy)?;
-        let app_for_progress = app.clone();
+        let service = TauriUpdateService { app: app.clone() };
         let downloaded = std::sync::atomic::AtomicU64::new(0);
-        candidate
-            .download_and_install(
-                |chunk_length, content_length| {
-                    let downloaded_bytes = downloaded
-                        .fetch_add(chunk_length as u64, Ordering::Relaxed)
-                        .saturating_add(chunk_length as u64);
-                    let _ = UpdateProgress {
-                        downloaded_bytes: downloaded_bytes as f64,
-                        total_bytes: content_length.map(|length| length as f64),
-                        finished: false,
-                    }
-                    .emit(&app_for_progress);
-                },
-                || {},
-            )
-            .await
-            .map_err(|_| UpdaterError::UpdateFailed)?;
-        *updater_state
-            .candidate
-            .lock()
-            .map_err(|_| UpdaterError::UpdateFailed)? = None;
+        let app_for_progress = app.clone();
+        let mut on_progress = |chunk_length: u64, content_length: Option<u64>| {
+            let downloaded_bytes = downloaded
+                .fetch_add(chunk_length, Ordering::Relaxed)
+                .saturating_add(chunk_length);
+            let _ = UpdateProgress {
+                downloaded_bytes: downloaded_bytes as f64,
+                total_bytes: content_length.map(|length| length as f64),
+                finished: false,
+            }
+            .emit(&app_for_progress);
+        };
+        install_with_service(
+            &updater_state.candidate,
+            &service,
+            &install_gate,
+            confirmed,
+            || authorize_current(&updater_state, &policy),
+            || {
+                Ok(sessions
+                    .0
+                    .lock()
+                    .map_err(|_| UpdaterError::UpdateFailed)?
+                    .is_some()
+                    || !generations
+                        .0
+                        .lock()
+                        .map_err(|_| UpdaterError::UpdateFailed)?
+                        .is_empty())
+            },
+            &mut on_progress,
+        )
+        .await?;
         let _ = UpdateProgress {
             downloaded_bytes: downloaded.load(Ordering::Relaxed) as f64,
             total_bytes: None,
@@ -471,18 +576,140 @@ pub async fn install_update(
     }
     #[cfg(not(feature = "direct-release-updater"))]
     {
-        let _ = app;
+        let _ = (app, confirmed, install_gate, sessions, generations);
+        authorize_current(&updater_state, &policy)?;
         Err(UpdaterError::Unavailable)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "direct-release-updater")]
+    use super::{
+        UpdateCandidate, UpdateService, approved_https_url, check_with_service,
+        install_with_service, release_version_from_protocol, validate_candidate,
+    };
     use super::{UpdateInstallGate, UpdaterError, authorize};
     #[cfg(feature = "direct-release-updater")]
-    use super::{approved_https_url, release_version_from_protocol, validate_candidate};
+    use std::{
+        collections::VecDeque,
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+        },
+    };
     #[cfg(feature = "direct-release-updater")]
     use url::Url;
+
+    #[cfg(feature = "direct-release-updater")]
+    #[derive(Clone)]
+    struct FakeCandidate {
+        version: String,
+        target: String,
+        url: Url,
+        signature: String,
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    fn valid_fake_candidate() -> FakeCandidate {
+        FakeCandidate {
+            version: "2026.11.0".to_owned(),
+            target: "linux-x86_64".to_owned(),
+            url: Url::parse(
+                "https://github.com/jerney-nexus/epikrise/releases/download/v2026.11.0/app.AppImage",
+            )
+            .expect("test URL should parse"),
+            signature: "synthetic-signature".to_owned(),
+        }
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    struct FakeUpdateService {
+        checks: Mutex<VecDeque<Result<Option<FakeCandidate>, UpdaterError>>>,
+        install_result: Mutex<Result<(), UpdaterError>>,
+        install_calls: AtomicUsize,
+        policy_after_check: Option<Arc<AtomicBool>>,
+        install_started: Option<Arc<tokio::sync::Notify>>,
+        pause_install: bool,
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    impl FakeUpdateService {
+        fn new(
+            checks: Vec<Result<Option<FakeCandidate>, UpdaterError>>,
+            install_result: Result<(), UpdaterError>,
+        ) -> Self {
+            Self {
+                checks: Mutex::new(checks.into()),
+                install_result: Mutex::new(install_result),
+                install_calls: AtomicUsize::new(0),
+                policy_after_check: None,
+                install_started: None,
+                pause_install: false,
+            }
+        }
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[async_trait::async_trait]
+    impl UpdateService for FakeUpdateService {
+        type Candidate = FakeCandidate;
+
+        async fn check(&self) -> Result<Option<Self::Candidate>, UpdaterError> {
+            if let Some(policy_allowed) = &self.policy_after_check {
+                policy_allowed.store(false, Ordering::Release);
+            }
+            self.checks
+                .lock()
+                .map_err(|_| UpdaterError::UpdateFailed)?
+                .pop_front()
+                .unwrap_or(Err(UpdaterError::UpdateFailed))
+        }
+
+        fn describe(&self, candidate: &Self::Candidate) -> Result<UpdateCandidate, UpdaterError> {
+            let version = validate_candidate(
+                &candidate.version,
+                &candidate.target,
+                &candidate.url,
+                "linux-x86_64",
+            )?;
+            if candidate.signature.trim().is_empty() {
+                return Err(UpdaterError::UpdateFailed);
+            }
+            Ok(UpdateCandidate {
+                version,
+                notes: None,
+                target: candidate.target.clone(),
+            })
+        }
+
+        async fn install(
+            &self,
+            _candidate: &Self::Candidate,
+            _on_progress: &mut (dyn FnMut(u64, Option<u64>) + Send),
+        ) -> Result<(), UpdaterError> {
+            self.install_calls.fetch_add(1, Ordering::Relaxed);
+            if let Some(install_started) = &self.install_started {
+                install_started.notify_one();
+            }
+            if self.pause_install {
+                std::future::pending::<()>().await;
+            }
+            self.install_result
+                .lock()
+                .map_err(|_| UpdaterError::UpdateFailed)?
+                .clone()
+        }
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    fn authorize_test_policy(policy_allowed: &AtomicBool) -> Result<(), UpdaterError> {
+        if policy_allowed.load(Ordering::Acquire) {
+            Ok(())
+        } else {
+            Err(UpdaterError::PolicyDenied)
+        }
+    }
 
     #[test]
     fn denied_update_actions_do_not_call_the_service() {
@@ -545,5 +772,163 @@ mod tests {
         assert!(!approved_https_url(
             &Url::parse("https://attacker.invalid/asset").expect("URL")
         ));
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
+    async fn policy_revoked_after_discovery_invalidates_candidate_before_install() {
+        let policy_allowed = Arc::new(AtomicBool::new(true));
+        let candidate_slot = Mutex::new(None);
+        let mut service = FakeUpdateService::new(vec![Ok(Some(valid_fake_candidate()))], Ok(()));
+        service.policy_after_check = Some(Arc::clone(&policy_allowed));
+
+        assert!(matches!(
+            check_with_service(&candidate_slot, &service, || {
+                authorize_test_policy(&policy_allowed)
+            })
+            .await,
+            Err(UpdaterError::PolicyDenied)
+        ));
+        assert!(candidate_slot.lock().expect("candidate lock").is_none());
+
+        policy_allowed.store(true, Ordering::Release);
+        let service = FakeUpdateService::new(vec![Ok(Some(valid_fake_candidate()))], Ok(()));
+        check_with_service(&candidate_slot, &service, || {
+            authorize_test_policy(&policy_allowed)
+        })
+        .await
+        .expect("candidate should be discovered");
+        policy_allowed.store(false, Ordering::Release);
+        let mut progress = |_, _| {};
+
+        assert_eq!(
+            install_with_service(
+                &candidate_slot,
+                &service,
+                &UpdateInstallGate::default(),
+                true,
+                || authorize_test_policy(&policy_allowed),
+                || Ok(false),
+                &mut progress,
+            )
+            .await,
+            Err(UpdaterError::PolicyDenied)
+        );
+        assert!(candidate_slot.lock().expect("candidate lock").is_none());
+        assert_eq!(service.install_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
+    async fn absent_or_failed_discovery_invalidates_a_cached_candidate() {
+        for check_result in [Ok(None), Err(UpdaterError::UpdateFailed)] {
+            let candidate_slot = Mutex::new(Some(valid_fake_candidate()));
+            let service = FakeUpdateService::new(vec![check_result], Ok(()));
+
+            let result = check_with_service(&candidate_slot, &service, || Ok(())).await;
+            match result {
+                Ok(candidate) => assert!(candidate.is_none()),
+                Err(error) => assert_eq!(error, UpdaterError::UpdateFailed),
+            }
+            assert!(candidate_slot.lock().expect("candidate lock").is_none());
+        }
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
+    async fn active_work_blocks_install_without_calling_the_service() {
+        let candidate_slot = Mutex::new(Some(valid_fake_candidate()));
+        let service = FakeUpdateService::new(Vec::new(), Ok(()));
+        let mut progress = |_, _| {};
+
+        assert_eq!(
+            install_with_service(
+                &candidate_slot,
+                &service,
+                &UpdateInstallGate::default(),
+                true,
+                || Ok(()),
+                || Ok(true),
+                &mut progress,
+            )
+            .await,
+            Err(UpdaterError::ActiveWork)
+        );
+        assert_eq!(service.install_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
+    async fn install_gate_excludes_new_work_until_fake_install_finishes() {
+        let candidate_slot = Arc::new(Mutex::new(Some(valid_fake_candidate())));
+        let install_started = Arc::new(tokio::sync::Notify::new());
+        let service = Arc::new(FakeUpdateService {
+            checks: Mutex::new(VecDeque::new()),
+            install_result: Mutex::new(Ok(())),
+            install_calls: AtomicUsize::new(0),
+            policy_after_check: None,
+            install_started: Some(Arc::clone(&install_started)),
+            pause_install: true,
+        });
+        let install_gate = Arc::new(UpdateInstallGate::default());
+        let task = {
+            let candidate_slot = Arc::clone(&candidate_slot);
+            let service = Arc::clone(&service);
+            let install_gate = Arc::clone(&install_gate);
+            tokio::spawn(async move {
+                let mut progress = |_, _| {};
+                install_with_service(
+                    &candidate_slot,
+                    service.as_ref(),
+                    install_gate.as_ref(),
+                    true,
+                    || Ok(()),
+                    || Ok(false),
+                    &mut progress,
+                )
+                .await
+            })
+        };
+
+        install_started.notified().await;
+        assert_eq!(install_gate.try_enter().err(), Some(UpdaterError::Busy));
+        task.abort();
+        let _ = task.await;
+        assert!(install_gate.try_enter().is_ok());
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
+    async fn signature_and_payload_failures_reject_and_invalidate_candidates() {
+        let candidate_slot = Mutex::new(None);
+        let mut candidate = valid_fake_candidate();
+        candidate.signature.clear();
+        let signature_service = FakeUpdateService::new(vec![Ok(Some(candidate))], Ok(()));
+
+        assert!(matches!(
+            check_with_service(&candidate_slot, &signature_service, || Ok(())).await,
+            Err(UpdaterError::UpdateFailed)
+        ));
+        assert!(candidate_slot.lock().expect("candidate lock").is_none());
+
+        *candidate_slot.lock().expect("candidate lock") = Some(valid_fake_candidate());
+        let payload_service = FakeUpdateService::new(Vec::new(), Err(UpdaterError::UpdateFailed));
+        let mut progress = |_, _| {};
+
+        assert_eq!(
+            install_with_service(
+                &candidate_slot,
+                &payload_service,
+                &UpdateInstallGate::default(),
+                true,
+                || Ok(()),
+                || Ok(false),
+                &mut progress,
+            )
+            .await,
+            Err(UpdaterError::UpdateFailed)
+        );
+        assert!(candidate_slot.lock().expect("candidate lock").is_none());
+        assert_eq!(payload_service.install_calls.load(Ordering::Relaxed), 1);
     }
 }

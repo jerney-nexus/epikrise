@@ -16,10 +16,6 @@
 - Verify the first signed updater release from a padded `vYYYY.MM.PATCH` tag,
   including all six target assets, signatures, static `latest.json`, and
   published update URLs before relying on automatic updates.
-- Add updater fake-service tests for policy changes after discovery, candidate
-  invalidation, install/case races, and signature or payload failures. Existing
-  checks cover basic policy gates, version/target validation, URL allowlisting,
-  and install-gate exclusion.
 - Complete native install and two-version update acceptance on supported
   Linux, macOS, and Windows architectures, including tamper rejection and
   Windows installer-family behavior. Browser mocks do not replace native
