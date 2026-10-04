@@ -54,8 +54,9 @@
         "ms-playwright.playwright",
         "tamasfe.even-better-toml",
         "vitest.explorer",
-        "GitHub.copilot-chat",
-        "GitHub.vscode-pull-request-github"
+        "github.copilot-chat",
+        "github.vscode-github-actions",
+        "github.vscode-pull-request-github"
       ],
       "settings": {
         "rust-analyzer.linkedProjects": ["src-tauri/Cargo.toml"],

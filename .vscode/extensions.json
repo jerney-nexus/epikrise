@@ -8,6 +8,7 @@
     "ryanluker.vscode-coverage-gutters",
     "ms-playwright.playwright",
     "tamasfe.even-better-toml",
-    "vitest.explorer"
+    "vitest.explorer",
+    "github.vscode-github-actions"
   ]
 }
