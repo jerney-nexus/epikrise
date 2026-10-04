@@ -16,7 +16,7 @@
     "check:rust": "pnpm check:rust:fmt && pnpm check:rust:clippy && pnpm check:rust:deny",
     "check:rust:fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all --check",
     "check:rust:clippy": "bash scripts/with-cargo-host-target.sh cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets -- -D warnings",
-    "check:rust:deny": "cargo deny --manifest-path src-tauri/Cargo.toml --config src-tauri/deny.toml check",
+    "check:rust:deny": "cargo deny --log-level error --manifest-path src-tauri/Cargo.toml --config src-tauri/deny.toml check --show-stats",
     "audit:rust": "cargo audit --file src-tauri/Cargo.lock",
     "audit:pnpm": "pnpm audit --audit-level high",
     "build:all": "node scripts/desktop-builds.mjs dispatch",
