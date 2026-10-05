@@ -11,12 +11,6 @@
   submission track; Microsoft Store signing and updates are not provided by
   the direct-release updater.
 
-## Maintenance
-
-### Medium Urgency
-
-- Update the pinned pnpm version from 12.8.1 to [12.9.1](https://github.com/pnpm/pnpm/releases/tag/v12.9.1) and verify repository tooling.
-
 ## Enhancements
 
 ### Medium Urgency
