@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import TOML from "@iarna/toml";
@@ -83,9 +84,9 @@ async function main() {
     .decode(sourceBytes)
     .replace(/^\uFEFF/, "");
   if (!systemPrompt.trim()) throw new Error("The prompt file is empty");
-  if (/\{\{|\{%/.test(systemPrompt)) {
+  if (/\{\{|\{%|\{#/.test(systemPrompt)) {
     throw new Error(
-      "Template expressions require declared variables; convert this prompt manually",
+      "Template expressions, statements, and comments are not supported; convert this prompt manually",
     );
   }
 
@@ -101,11 +102,12 @@ async function main() {
     throw new Error("Section IDs must be unique");
   }
 
-  const templateId =
+  const templateSlug =
     options.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "") || "imported-prompt";
+  const templateId = `${templateSlug}-${randomUUID()}`;
   const template = {
     schema_version: 1,
     metadata: {

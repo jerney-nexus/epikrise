@@ -1,5 +1,10 @@
 import { expect, test as base } from "@playwright/test";
-import type { ClinicalTemplate, PolicyStatus } from "../../src/bindings";
+import type {
+  ClinicalTemplate,
+  CredentialSummary,
+  PolicyStatus,
+  ProviderAdapter,
+} from "../../src/bindings";
 
 type FixtureOptions = {
   seedTemplates: boolean;
@@ -101,6 +106,7 @@ function installTauriFixture({
   const callbacks = new Map<number, (payload: unknown) => void>();
   const listeners = new Map<string, Map<number, number>>();
   const authorizedCases = new Set<string>();
+  const credentials = new Map<string, CredentialSummary>();
   let nextCallbackId = 1;
   let nextListenerId = 1;
   let updaterEnabled = false;
@@ -179,7 +185,7 @@ function installTauriFixture({
         case "load_templates":
           return templateData;
         case "list_provider_credentials":
-          return [];
+          return [...credentials.values()];
         case "create_case_session":
           return {
             id: args.id,
@@ -214,9 +220,21 @@ function installTauriFixture({
         case "clear_case_session":
         case "cancel_generation":
         case "save_templates":
-        case "set_provider_credential":
-        case "delete_provider_credential":
           return true;
+        case "set_provider_credential": {
+          const adapter = args.adapter as ProviderAdapter;
+          const label = String(args.label ?? "");
+          const summary: CredentialSummary = {
+            id: `${adapter}:${label}`,
+            adapter,
+            label,
+          };
+          credentials.set(summary.id, summary);
+          return summary;
+        }
+        case "delete_provider_credential":
+          credentials.delete(String(args.credentialId ?? ""));
+          return null;
         case "create_template":
         case "delete_template":
           return null;

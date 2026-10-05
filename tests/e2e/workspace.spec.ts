@@ -730,6 +730,30 @@ test("falls back to plain text when reviewed HTML copying fails", async ({ page 
   ]);
 });
 
+test("creates, selects, and removes a provider credential", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Provider settings" }).click();
+  await page.getByRole("button", { name: "Add provider credential" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add provider credential" });
+  await dialog.getByLabel("Credential label").fill("Work key");
+  await dialog.getByLabel("API key").fill("synthetic-secret");
+  await dialog.getByRole("button", { name: "Add credential", exact: true }).click();
+
+  await expect(dialog).toBeHidden();
+  const credentialSelect = page.locator("#provider-credential");
+  await expect(credentialSelect).toHaveValue("ollama:Work key");
+  await expect(credentialSelect.getByRole("option", { name: "Work key" })).toHaveCount(
+    1,
+  );
+
+  await page.getByRole("button", { name: "Remove provider credential" }).click();
+  await page.getByRole("button", { name: "Confirm removal" }).click();
+  await expect(credentialSelect).toHaveValue("");
+  await expect(credentialSelect.getByRole("option", { name: "Work key" })).toHaveCount(
+    0,
+  );
+});
+
 policyTest("shows administrator-managed settings as restricted", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Provider settings" }).click();

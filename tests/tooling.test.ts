@@ -1407,6 +1407,70 @@ describe("frontend test harness", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("assigns unique template IDs across conversions", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-template-"));
+    const inputPath = path.join(directory, "prompt.txt");
+    const scriptPath = fileURLToPath(
+      new URL("../scripts/convert-prompt.mjs", import.meta.url),
+    );
+    const convert = async (outputName: string, extraArgs: string[] = []) => {
+      const outputPath = path.join(directory, outputName);
+      await execFile(process.execPath, [
+        scriptPath,
+        inputPath,
+        outputPath,
+        ...extraArgs,
+      ]);
+      return TOML.parse(await readFile(outputPath, "utf8")) as unknown as {
+        metadata: { name: string; id: string };
+      };
+    };
+
+    try {
+      await writeFile(inputPath, "Synthetic test prompt", "utf8");
+
+      const firstDefault = await convert("first-default.epitpl");
+      const secondDefault = await convert("second-default.epitpl");
+      expect(firstDefault.metadata.name).toBe("Imported clinical prompt");
+      expect(secondDefault.metadata.name).toBe("Imported clinical prompt");
+      expect(firstDefault.metadata.id).not.toBe(secondDefault.metadata.id);
+
+      const firstNamed = await convert("first-named.epitpl", ["--name", "Shared Name"]);
+      const secondNamed = await convert("second-named.epitpl", [
+        "--name",
+        "Shared Name",
+      ]);
+      expect(firstNamed.metadata.name).toBe("Shared Name");
+      expect(secondNamed.metadata.name).toBe("Shared Name");
+      expect(firstNamed.metadata.id).not.toBe(secondNamed.metadata.id);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects prompts containing MiniJinja comments", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-template-"));
+    const inputPath = path.join(directory, "prompt.txt");
+    const outputPath = path.join(directory, "converted.epitpl");
+    const scriptPath = fileURLToPath(
+      new URL("../scripts/convert-prompt.mjs", import.meta.url),
+    );
+
+    try {
+      await writeFile(inputPath, "Note {# trimmed at render #} text", "utf8");
+      await expect(
+        execFile(process.execPath, [scriptPath, inputPath, outputPath]),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          "Template expressions, statements, and comments are not supported",
+        ),
+      });
+      await expect(lstat(outputPath)).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 if (process.platform !== "win32") {
