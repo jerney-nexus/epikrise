@@ -148,14 +148,50 @@ describe("dev-container approvals", () => {
       "**/*.{instructions,prompt,agent}.md": false,
       "**/policy*.toml": false,
       "**/package.json": false,
+      "**/pnpm-lock.yaml": false,
+      "**/pnpm-workspace.yaml": false,
       "**/Cargo.toml": false,
       "**/Cargo.lock": false,
       "**/scripts/**": false,
     });
     const urls = settings["chat.tools.urls.autoApprove"];
     expect(Object.keys(urls)).toContain("https://code.visualstudio.com/docs/*");
+    const effectiveUrls = {
+      "https://code.visualstudio.com": true,
+      "https://github.com/microsoft/vscode/wiki/*": true,
+      ...urls,
+    };
+    const firstUrlApproval = (url: string, checkRequest: boolean) => {
+      for (const [pattern, approval] of Object.entries(effectiveUrls)) {
+        const matches =
+          pattern === url ||
+          (pattern.endsWith("/*") && url.startsWith(pattern.slice(0, -1))) ||
+          (!pattern.includes("*") && url.startsWith(`${pattern}/`));
+        if (matches) {
+          return {
+            pattern,
+            approved:
+              typeof approval === "boolean"
+                ? approval
+                : checkRequest
+                  ? approval.approveRequest
+                  : approval.approveResponse,
+          };
+        }
+      }
+      return undefined;
+    };
+    expect(
+      firstUrlApproval("https://code.visualstudio.com/docs/editor", false),
+    ).toEqual({ pattern: "https://code.visualstudio.com", approved: false });
+    expect(
+      firstUrlApproval("https://github.com/microsoft/vscode/wiki/Code-Editing", false),
+    ).toEqual({
+      pattern: "https://github.com/microsoft/vscode/wiki/*",
+      approved: false,
+    });
     for (const [pattern, approval] of Object.entries(urls)) {
-      expect(pattern, pattern).toMatch(/^https:\/\/[^*]+\/[^*]*\*$/);
+      expect(pattern, pattern).toMatch(/^https:\/\/[^*]+(?:\/[^*]*\*)?$/);
       expect(approval, pattern).toEqual({
         approveRequest: true,
         approveResponse: false,
@@ -222,6 +258,9 @@ describe("dev-container approvals", () => {
       "release:prepare",
       "template:convert",
       "tauri",
+      "format",
+      "format:file",
+      "format:rust:fmt",
       "windows:setup",
       "windows:build:x64",
       "windows:build:arm64",
@@ -242,7 +281,7 @@ describe("dev-container approvals", () => {
       "pnpm test:rust:package epikrise-core",
       "pnpm test:rust:updater",
       "pnpm test:e2e:report",
-      "pnpm format:file tests/tooling.test.ts",
+      "pnpm format:check",
       "pnpm format:check:file .devcontainer/devcontainer.json",
       "pnpm audit:rust",
       "git status --short",
@@ -272,6 +311,14 @@ describe("dev-container approvals", () => {
       "pnpm run tauri",
       "pnpm run release:prepare",
       "pnpm template:convert",
+      "pnpm format",
+      "pnpm format:file .devcontainer/devcontainer.json",
+      "pnpm format:file package.json",
+      "pnpm format:rust:fmt",
+      "pnpm audit:pnpm --fix",
+      "pnpm audit:pnpm --fix=update",
+      "pnpm run audit:pnpm --fix",
+      "pnpm run audit:pnpm --fix=update",
       "pnpm windows:setup",
       "pnpm windows:build:x64",
       "pnpm install --frozen-lockfile",
