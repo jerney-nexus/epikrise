@@ -59,7 +59,8 @@
         "vitest.explorer",
         "github.copilot-chat",
         "github.vscode-github-actions",
-        "github.vscode-pull-request-github"
+        "github.vscode-pull-request-github",
+        "graphite.gti-vscode"
       ],
       "settings": {
         "rust-analyzer.linkedProjects": ["src-tauri/Cargo.toml"],
