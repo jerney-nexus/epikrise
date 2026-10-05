@@ -179,6 +179,7 @@
           "/^git(?:\\s+(?:-C\\s+\\S+|--no-pager))*\\s+branch --show-current\\s*$/": true,
           "/^git(?:\\s+(?:-C\\s+\\S+|--no-pager))*\\s+branch(?! --show-current\\s*$)(?:\\s|$)/": false,
           "/^gh (?:--version|status|auth status|repo view|pr (?:list|view|diff|checks|status)|issue (?:list|view|status)|run (?:list|view|watch)|workflow (?:list|view)|release (?:list|view)|search (?:code|commits|issues|prs|repos)|label list|project (?:list|view))(?:\\s|$)/": true,
+          "/^gh auth status(?:\\s+.*)?--show-token(?:\\s|$)/": false,
           "/^gh (?:api|auth (?:login|logout|refresh|setup-git|switch|token)|pr (?:checkout|create|edit|merge|close|reopen|review|comment)|issue (?:create|edit|close|reopen|delete|comment)|run (?:cancel|delete|rerun)|workflow (?:run|enable|disable)|release (?:create|edit|delete|upload)|repo (?:clone|create|delete|edit|fork))(?:\\s|$)/": false,
           "/^pnpm (?:run )?audit:pnpm(?:\\s+.*)?--fix(?:=\\S+)?(?:\\s|$)/": false,
           "/^pnpm (?:run )?(?:build:all|release:prepare|template:convert|windows:(?:setup|build(?::(?:x64|arm64))?)|install|add|remove|update|exec|dlx|publish)(?:\\s|$)/": false,

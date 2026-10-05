@@ -347,6 +347,8 @@ describe("dev-container approvals", () => {
       "gh run rerun 123",
       "gh release upload v1 artifact.zip",
       "gh repo delete owner/repo",
+      "gh auth status --show-token",
+      "gh auth status --hostname github.com --show-token",
       "bash scripts/prepare-ocr.sh",
       "node --eval 'process.exit()'",
       "sudo apt-get install package",
