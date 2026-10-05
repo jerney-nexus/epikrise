@@ -1668,10 +1668,10 @@ if (process.platform !== "win32") {
         const fixture = await createWindowsOcrFixture(
           directory,
           windowsOcrTargets[0].checksum,
-          true,
-          true,
-          false,
-          true,
+          {
+            reportTessdataParent: true,
+            partialReportedParent: true,
+          },
         );
         await execFile(
           "bash",
