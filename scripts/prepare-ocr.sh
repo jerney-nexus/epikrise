@@ -90,7 +90,16 @@ if [[ -z "$tesseract_path" ]]; then
   exit 1
 fi
 
-tessdata_dir="$(tesseract --list-langs 2>&1 | sed -n 's/.* in "\(.*\)".*/\1/p' | head -n 1)"
+tessdata_dir="$(tesseract --list-langs 2>&1 | sed -n 's/.* in \"\([^\"]*\)\".*/\1/p' | head -n 1)"
+if [[ ! -f "$tessdata_dir/deu.traineddata" && -d "$tessdata_dir/tessdata" ]]; then
+  tessdata_dir="$tessdata_dir/tessdata"
+fi
+if [[ ! -f "$tessdata_dir/deu.traineddata" ]] && command -v dpkg-query >/dev/null 2>&1; then
+  package_tessdata_dir="$(dpkg-query --listfiles tesseract-ocr-deu 2>/dev/null | sed -n 's#\(.*\)/deu\.traineddata$#\1#p' | head -n 1 || true)"
+  if [[ -f "$package_tessdata_dir/deu.traineddata" && -f "$package_tessdata_dir/eng.traineddata" ]]; then
+    tessdata_dir="$package_tessdata_dir"
+  fi
+fi
 if [[ -z "$tessdata_dir" || ! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata" ]]; then
   printf 'Tesseract must have both deu and eng language data installed.\n' >&2
   if [[ "$host_target" == *-apple-darwin ]]; then

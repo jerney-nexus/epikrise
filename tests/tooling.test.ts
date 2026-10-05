@@ -1293,9 +1293,19 @@ async function createWindowsOcrFixture(
   directory: string,
   expectedChecksum: string,
   mockChecksumCommand = true,
+  reportTessdataParent = false,
+  reportInvalidTessdataPath = false,
 ) {
   const binDir = path.join(directory, "bin");
-  const tessdataDir = path.join(directory, "tessdata");
+  const tessdataRoot = path.join(directory, "tessdata");
+  const tessdataDir = reportTessdataParent
+    ? path.join(tessdataRoot, "tessdata")
+    : tessdataRoot;
+  const reportedTessdataDir = reportInvalidTessdataPath
+    ? path.join(directory, "missing-tessdata")
+    : reportTessdataParent
+      ? tessdataRoot
+      : tessdataDir;
   const resourceDir = path.join(directory, "resources");
   const binaryDir = path.join(directory, "binaries");
   const cacheRoot = path.join(directory, "cache");
@@ -1311,6 +1321,10 @@ async function createWindowsOcrFixture(
   await writeExecutable(
     path.join(binDir, "tesseract"),
     '#!/usr/bin/env bash\nprintf \'List of available languages in "%s":\\n\' "$TESSDATA_DIR"\n',
+  );
+  await writeExecutable(
+    path.join(binDir, "dpkg-query"),
+    '#!/usr/bin/env bash\nprintf "%s\\n" "$TESSDATA_PACKAGE_DIR/deu.traineddata"\n',
   );
   await writeExecutable(
     path.join(binDir, "curl"),
@@ -1373,7 +1387,8 @@ async function createWindowsOcrFixture(
     environment: {
       ...process.env,
       PATH: `${binDir}:${process.env.PATH ?? ""}`,
-      TESSDATA_DIR: tessdataDir,
+      TESSDATA_DIR: reportedTessdataDir,
+      TESSDATA_PACKAGE_DIR: tessdataDir,
       EXPECTED_CHECKSUM: expectedChecksum,
       CURL_LOG: curlLog,
       TAR_LOG: tarLog,
@@ -1529,6 +1544,73 @@ if (process.platform !== "win32") {
         }
       });
     }
+
+    it("resolves language data in a reported prefix's tessdata subdirectory", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-prefix-"));
+      try {
+        const fixture = await createWindowsOcrFixture(
+          directory,
+          windowsOcrTargets[0].checksum,
+          true,
+          true,
+        );
+        await execFile(
+          "bash",
+          [
+            path.join(repoRoot, "scripts/prepare-ocr.sh"),
+            "--target",
+            windowsOcrTargets[0].target,
+          ],
+          { cwd: repoRoot, env: fixture.environment },
+        );
+
+        expect(
+          await readFile(
+            path.join(fixture.resourceDir, "tessdata/deu.traineddata"),
+            "utf8",
+          ),
+        ).toBe("deu");
+        expect(
+          await readFile(
+            path.join(fixture.resourceDir, "tessdata/eng.traineddata"),
+            "utf8",
+          ),
+        ).toBe("eng");
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("uses Debian package metadata when Tesseract reports no language data", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-dpkg-"));
+      try {
+        const fixture = await createWindowsOcrFixture(
+          directory,
+          windowsOcrTargets[0].checksum,
+          true,
+          false,
+          true,
+        );
+        await execFile(
+          "bash",
+          [
+            path.join(repoRoot, "scripts/prepare-ocr.sh"),
+            "--target",
+            windowsOcrTargets[0].target,
+          ],
+          { cwd: repoRoot, env: fixture.environment },
+        );
+
+        expect(
+          await readFile(
+            path.join(fixture.resourceDir, "tessdata/deu.traineddata"),
+            "utf8",
+          ),
+        ).toBe("deu");
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
 
     it("invalidates a corrupt cached archive and rejects a bad download", async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-cache-"));
