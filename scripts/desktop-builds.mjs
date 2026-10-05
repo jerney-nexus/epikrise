@@ -414,11 +414,13 @@ async function dispatchAndDownload() {
   });
 
   await run("gh", ["auth", "status"]);
-  const workflow = JSON.parse(
-    await run("gh", ["workflow", "view", "desktop-builds.yml", "--json", "path,state"]),
+  /** @type {Array<{ path: string, state: string }>} */
+  const workflows = JSON.parse(
+    await run("gh", ["workflow", "list", "--json", "name,path,state"]),
   );
+  const workflow = workflows.find((entry) => entry.path === workflowPath);
   assert(
-    workflow.path === workflowPath && workflow.state === "active",
+    workflow?.state === "active",
     "Desktop build workflow is not active on GitHub.",
   );
 
