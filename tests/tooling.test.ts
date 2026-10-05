@@ -147,6 +147,8 @@ describe("dev-container approvals", () => {
       "**/*.{instructions,prompt,agent}.md": false,
       "**/policy*.toml": false,
       "**/package.json": false,
+      "**/Cargo.toml": false,
+      "**/Cargo.lock": false,
       "**/scripts/**": false,
     });
     const urls = settings["chat.tools.urls.autoApprove"];
@@ -179,6 +181,7 @@ describe("dev-container approvals", () => {
     expect(parsed.error).toBeUndefined();
     const settings = parsed.config.customizations.vscode.settings;
     expect(settings["chat.tools.terminal.enableAutoApprove"]).toBe(true);
+    expect(settings["chat.tools.terminal.autoApproveWorkspaceNpmScripts"]).toBe(false);
     expect(settings["chat.tools.terminal.ignoreDefaultAutoApproveRules"]).toBe(false);
     expect(settings["chat.tools.terminal.blockDetectedFileWrites"]).toBe(
       "outsideWorkspace",
@@ -191,16 +194,24 @@ describe("dev-container approvals", () => {
         return { pattern: new RegExp(pattern.slice(1, -1)), approved };
       },
     );
-    const autoApproves = (command: string) => {
-      const matches = rules.filter((rule) => rule.pattern.test(command));
-      return (
-        matches.some((rule) => rule.approved === true) &&
-        !matches.some((rule) => rule.approved === false)
-      );
-    };
+    if (!settings["chat.tools.terminal.ignoreDefaultAutoApproveRules"]) {
+      rules.push({ pattern: /^git branch(?:\s|$)/, approved: true });
+    }
     const packageJson = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
     );
+    const autoApproves = (command: string) => {
+      const matches = rules.filter((rule) => rule.pattern.test(command));
+      const script = command.match(/^pnpm (?:run )?([^\s]+)/)?.[1];
+      const workspaceScriptApproved =
+        settings["chat.tools.terminal.autoApproveWorkspaceNpmScripts"] &&
+        script !== undefined &&
+        Object.hasOwn(packageJson.scripts, script);
+      return (
+        (matches.some((rule) => rule.approved === true) || workspaceScriptApproved) &&
+        !matches.some((rule) => rule.approved === false)
+      );
+    };
     const manualScripts = new Set([
       "prepare",
       "build:all",
@@ -234,6 +245,7 @@ describe("dev-container approvals", () => {
       "git diff --stat",
       "git remote -v",
       "git branch --show-current",
+      "git branch --show-current ",
       "gh pr checks 39",
       "gh auth status",
       "gh run view 123 --log-failed",
@@ -247,6 +259,10 @@ describe("dev-container approvals", () => {
       "pnpm build:all",
       "pnpm build:unknown",
       "pnpm test:unknown",
+      "pnpm prepare",
+      "pnpm run prepare",
+      "pnpm tauri",
+      "pnpm run tauri",
       "pnpm run release:prepare",
       "pnpm template:convert",
       "pnpm windows:setup",
@@ -255,6 +271,10 @@ describe("dev-container approvals", () => {
       "pnpm exec node -e 'process.exit()'",
       "pnpm dlx arbitrary-package",
       "git remote set-url origin https://example.com/repo",
+      "git branch feature",
+      "git branch feature main",
+      "git branch",
+      "git branch --show-current feature",
       "git branch -D main",
       "git reset --hard",
       "git push",

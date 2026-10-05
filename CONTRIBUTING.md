@@ -42,6 +42,10 @@ terminal safety rules. Routine `pnpm` checks, tests, formatting, web builds,
 development servers, audits, and read-only Git/GitHub inspection are explicitly
 auto-approved. Rules evaluate individual subcommands; a command chain still
 requires approval if any part is not allowed or matches a manual-approval rule.
+The separate workspace package-script approver is disabled, so scripts such as
+`prepare` and `tauri` are not approved merely because they exist in `package.json`.
+Git branch commands require approval except for `git branch --show-current`,
+overriding the broader built-in branch rule.
 
 Dependency installation, arbitrary shell/package execution, Git mutations,
 GitHub API requests and writes, workflow dispatch, release preparation,
@@ -52,7 +56,8 @@ trusted repository scripts and is a convenience, not a security boundary.
 
 Normal source edits are allowed, but environment files, signing-key files,
 policy files, agent instructions, container/editor configuration, GitHub
-configuration, package scripts, and tooling scripts require edit approval.
+configuration, package scripts, Cargo manifests and lockfiles, and tooling
+scripts require edit approval.
 Selected official documentation URLs allow requests automatically, while their
 responses still require review. This does not authorize sending secrets,
 clinical material, prompts, or generated clinical output to any URL.
