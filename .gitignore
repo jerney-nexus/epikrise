@@ -1,7 +1,7 @@
 # --- Clinical content (never commit) ---
 # Institutional templates and any real or sample clinical text. The app imports
 # these at first run; see the plan's "Template shipping" decision.
-*.kisimtpl
+*.epitpl
 /templates/
 /fixtures/clinical/
 
@@ -33,18 +33,20 @@ build/
 .vite/
 .turbo/
 *.tsbuildinfo
-.npm/
 .eslintcache
 
 # --- Tauri ---
 src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/
+src-tauri/resources/ocr/
+src-tauri/src-tauri/resources/ocr/
 src-tauri/WixTools/
 
 # --- Test & coverage output ---
 coverage/
 *.lcov
+/lcov.info
 /playwright-report/
 /test-results/
 /blob-report/
@@ -52,9 +54,9 @@ coverage/
 
 # --- Logs & temp ---
 *.log
-npm-debug.log*
 tmp/
 .tmp/
+/.artifacts/
 
 # --- Editor / OS ---
 .vscode/*
@@ -72,3 +74,16 @@ tmp/
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# --- Miscellaneous ---
+# Root-level plan prompts
+/plan-*.prompt.md
+# SvelteKit library packaging output
+/package
+# Vite writes these when the config is transpiled on the fly
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Playwright
+/playwright/.cache/
+/playwright/.auth/

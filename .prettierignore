@@ -1,0 +1,9 @@
+# Keep pnpm's generated lockfile in its canonical format.
+pnpm-lock.yaml
+
+# Keep generated application and Rust build output out of whole-repo formatting.
+build/
+src-tauri/target/
+
+# Keep Tauri Specta bindings in their generated format.
+src/bindings.ts

@@ -1,0 +1,150 @@
+[package]
+name = "epikrise"
+version = "2026.10.0"
+description = "Local-only assistant that turns anonymized clinical material into a structured diagnosis and findings list"
+authors = ["Pascal Jerney"]
+edition = "2024"
+license = "MIT"
+publish = false
+
+[features]
+default = []
+direct-release-updater = ["dep:tauri-plugin-updater", "dep:reqwest-updater"]
+updater-windows-x86_64-nsis = ["direct-release-updater"]
+updater-windows-aarch64-nsis = ["direct-release-updater"]
+updater-windows-x86_64-msi = ["direct-release-updater"]
+updater-windows-aarch64-msi = ["direct-release-updater"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "epikrise_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[workspace]
+members = [
+    "crates/epikrise-core",
+    "crates/epikrise-ingest",
+    "crates/epikrise-llm",
+]
+
+[workspace.package]
+version = "2026.10.0"
+edition = "2024"
+license = "MIT"
+authors = ["Pascal Jerney"]
+
+[workspace.dependencies]
+calamine = "0.36"
+base64 = "0.22"
+async-trait = "0.1"
+dom_smoothie = "0.18.2"
+fs4 = "1.1"
+epikrise-core = { path = "crates/epikrise-core" }
+epikrise-ingest = { path = "crates/epikrise-ingest" }
+epikrise-llm = { path = "crates/epikrise-llm" }
+futures-util = "0.3"
+genai = "0.6.1"
+infer = "0.19"
+html2text = "0.17"
+image = { version = "0.25", default-features = false, features = [
+    "jpeg",
+    "png",
+] }
+keyring = { version = "3.6.3", default-features = false, features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+    "crypto-rust",
+] }
+keyring-search = "1"
+minijinja = { version = "2", features = ["fuel"] }
+quick-xml = "0.42"
+rtf-parser-tt = "0.5"
+pdf-extract = "0.12"
+pdfium-render = { version = "0.9", default-features = false, features = [
+    "pdfium_latest",
+    "image_latest",
+    "thread_safe",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+specta = { version = "2.0.0-rc.25", features = ["derive"] }
+tempfile = "3"
+thiserror = "2"
+toml = "0.9"
+tokio = { version = "1", features = ["macros", "net", "rt"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "stream",
+] }
+uuid = { version = "1", features = ["v4"] }
+url = "2"
+zeroize = "1.8"
+zip = { version = "6", default-features = false, features = ["deflate"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+# Panicking paths are unacceptable in a clinical tool; tests are exempted via clippy.toml.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "warn"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+epikrise-core = { workspace = true }
+epikrise-ingest = { workspace = true }
+epikrise-llm = { workspace = true }
+fs4 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+specta = { workspace = true }
+specta-typescript = "0.0.12"
+tauri = { version = "2", features = [] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-updater = { version = "2.13.1", optional = true }
+reqwest-updater = { package = "reqwest", version = "0.13", optional = true, default-features = false, features = [
+    "rustls",
+] }
+thiserror = { workspace = true }
+tauri-specta = { version = "2.0.0-rc.25", features = ["typescript"] }
+toml = { workspace = true }
+pdfium-render = { workspace = true }
+tempfile = { workspace = true }
+image = { workspace = true }
+rfd = { version = "0.16", default-features = false, features = ["gtk3"] }
+tokio-util = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+zeroize = { workspace = true }
+infer = "0.19"
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

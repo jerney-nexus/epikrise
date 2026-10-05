@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "com.jerney-nexus.epikrise",
+  "build": {
+    "features": ["direct-release-updater"]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc2N0NEQjZGRTcyMzUwOTEKUldTUlVDUG5iOXQ4ZG1NYUlsRnZyVGZkVVo3ZzhvamRJSTVFVGpHb2M1VnpPQUFHUHZBT2tCL0YK",
+      "requireSignedVersion": true,
+      "endpoints": [
+        "https://github.com/jerney-nexus/epikrise/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

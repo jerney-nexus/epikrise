@@ -1,0 +1,249 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Epikrise: Dev",
+      "detail": "Runs the development server.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["dev"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Build",
+      "detail": "Builds the project.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["build"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Check",
+      "detail": "Runs all checks.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Check UI",
+      "detail": "Runs UI checks; included in Epikrise: Check.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check:ui"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Check Rust",
+      "detail": "Runs Rust checks; included in Epikrise: Check.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check:rust"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Check Rust Format",
+      "detail": "Runs Rust format checks; included in Epikrise: Check Rust.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check:rust:fmt"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Check Rust Clippy",
+      "detail": "Runs Rust Clippy checks; included in Epikrise: Check Rust.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check:rust:clippy"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Cargo Deny",
+      "detail": "Runs cargo deny checks; included in Epikrise: Check Rust.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["check:rust:deny"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Cargo Audit",
+      "detail": "Runs cargo audit checks.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["audit:rust"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: pnpm Audit",
+      "detail": "Runs pnpm audit checks.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["audit:pnpm"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test",
+      "detail": "Runs UI, i18n, Rust, and Playwright tests.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test Coverage",
+      "detail": "Runs test coverage.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:coverage"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test UI",
+      "detail": "Runs UI tests; included in Epikrise: Test.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:ui"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test E2E",
+      "detail": "Runs only Playwright browser tests; included in Epikrise: Test.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:e2e"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test E2E Report",
+      "detail": "Starts the Playwright E2E test report in the browser.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:e2e:report"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test Accessibility",
+      "detail": "Runs accessibility tests.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:a11y"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test UI Coverage",
+      "detail": "Runs UI test coverage.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:ui:coverage"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test i18n",
+      "detail": "Runs i18n tests; included in Epikrise: Test.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:i18n"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test Rust",
+      "detail": "Runs Rust tests; included in Epikrise: Test.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:rust"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Test Rust Coverage",
+      "detail": "Runs Rust test coverage.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["test:rust:coverage"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Lint",
+      "detail": "Runs linting.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["lint"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Lint GitHub Actions",
+      "detail": "Lints GitHub Actions workflows with actionlint.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["lint:actions"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Format Check",
+      "detail": "Checks code formatting.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["format:check"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Format Rust",
+      "detail": "Formats Rust code.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["format:rust:fmt"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Prepare Release",
+      "detail": "Prepares a new release.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["release:prepare", "${input:releaseVersion}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "releaseVersion",
+      "type": "promptString",
+      "description": "CalVer YYYY.MM.PATCH; leave blank to select the next version",
+      "default": ""
+    }
+  ]
+}

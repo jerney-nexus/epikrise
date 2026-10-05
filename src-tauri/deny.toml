@@ -1,0 +1,39 @@
+[advisories]
+version = 2
+ignore = [
+  { id = "RUSTSEC-2024-0436", reason = "Transitive dependency of genai and specta; no safe drop-in upgrade is currently available." },
+  { id = "RUSTSEC-2024-0370", reason = "Transitive proc-macro dependency of the current Tauri/Specta graph; no safe upgrade path without replacing upstream crates." },
+  { id = "RUSTSEC-2026-0192", reason = "pdf-extract 0.12.1 depends on lopdf 0.42, whose ttf-parser use is limited to lopdf::FontData::new for PDF font embedding; Epikrise only uses pdf-extract's read APIs and does not call that helper. lopdf 0.45 removes ttf-parser but is outside pdf-extract's compatible range." },
+]
+
+[licenses]
+version = 2
+allow = [
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.8
+exceptions = [
+  { allow = [
+    "Apache-2.0 WITH LLVM-exception",
+  ], name = "target-lexicon" },
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

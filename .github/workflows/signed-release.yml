@@ -1,0 +1,475 @@
+name: Signed updater release
+run-name: Signed updater release ${{ github.ref_name }}
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: updater-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.8.1
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate padded version tag
+        run: node scripts/release-artifacts.mjs validate --tag "$GITHUB_REF_NAME"
+
+      - name: Reject unrelated releases and allow matching drafts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_file="$RUNNER_TEMP/existing-release.json"
+          if gh release view "$GITHUB_REF_NAME" --json isDraft,tagName,body > "$release_file" 2>/dev/null; then
+            node scripts/release-artifacts.mjs validate-draft \
+              --tag "$GITHUB_REF_NAME" \
+              --commit "$GITHUB_SHA" \
+              --release-file "$release_file"
+          fi
+
+  verify-ui:
+    uses: ./.github/workflows/ui-tests.yml
+    permissions:
+      contents: read
+
+  verify-rust:
+    uses: ./.github/workflows/rust-tests.yml
+    permissions:
+      contents: read
+
+  verify-playwright:
+    uses: ./.github/workflows/playwright-tests.yml
+    permissions:
+      contents: read
+
+  verify-security:
+    uses: ./.github/workflows/security-audit.yml
+    permissions:
+      contents: read
+
+  verify-quality:
+    uses: ./.github/workflows/quality-checks.yml
+    permissions:
+      contents: read
+
+  build:
+    needs:
+      - validate
+      - verify-ui
+      - verify-rust
+      - verify-playwright
+      - verify-security
+      - verify-quality
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    environment: release
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            platform: linux
+            bundles: deb rpm appimage
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+            platform: linux
+            bundles: deb rpm appimage
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            platform: macos
+            bundles: dmg
+          - target: aarch64-apple-darwin
+            runner: macos-15
+            platform: macos
+            bundles: dmg
+          - target: x86_64-pc-windows-msvc
+            runner: ubuntu-22.04-arm
+            platform: windows
+            windows_arch: x64
+          - target: aarch64-pc-windows-msvc
+            runner: ubuntu-22.04-arm
+            platform: windows
+            windows_arch: arm64
+
+    env:
+      TARGET: ${{ matrix.target }}
+      PLATFORM: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.8.1
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install source tooling
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare normalized release workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_root="$RUNNER_TEMP/epikrise-release"
+          mkdir -p "$build_root"
+          git archive "$GITHUB_SHA" | tar -x -C "$build_root"
+          node scripts/prepare-release.mjs --prepare-build-inputs "$build_root"
+          printf 'RELEASE_BUILD_ROOT=%s\n' "$build_root" >> "$GITHUB_ENV"
+
+      - name: Cache native OCR and Cargo inputs
+        if: matrix.platform != 'windows'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/epikrise/native-ocr
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh') }}
+
+      - name: Cache Windows OCR sources and toolchain
+        if: matrix.platform == 'windows'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/epikrise/windows-ocr
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-windows-ocr.sh') }}
+
+      - name: Install release workspace dependencies
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend without signing secrets
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: pnpm build
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake curl file libfuse2 libssl-dev libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev ninja-build \
+            pkg-config patchelf ripgrep rpm tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+
+      - name: Install macOS OCR language data
+        if: matrix.platform == 'macos'
+        run: brew install ripgrep tesseract tesseract-lang
+
+      - name: Install Windows cross-build dependencies
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake curl file lld llvm nsis ninja-build \
+            pkg-config ripgrep libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            libwebkit2gtk-4.1-dev libxdo-dev patchelf tesseract-ocr \
+            tesseract-ocr-deu tesseract-ocr-eng
+          temp_file="$(mktemp)"
+          curl --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/NSIS-Dev/NSIS/v312/Include/Win/RestartManager.nsh \
+            -o "$temp_file"
+          printf '%s  %s\n' \
+            67149978412da9b283e2e1abe48a360093df9caf6363373e2cabe463978b7c0e \
+            "$temp_file" | sha256sum --check --status
+          sudo install -D -m 0644 "$temp_file" \
+            /usr/share/nsis/Include/Win/RestartManager.nsh
+          rm -f "$temp_file"
+
+      - name: Set up the pinned Windows SDK and CRT
+        if: matrix.platform == 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: ${{ vars.EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED }}
+        run: bash scripts/windows-setup.sh --ci
+
+      - name: Prepare target OCR resources
+        if: matrix.platform != 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: bash scripts/prepare-ocr.sh --target "$TARGET"
+
+      - name: Build signed Windows updater bundles
+        if: matrix.platform == 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          WINDOWS_ARCH: ${{ matrix.windows_arch }}
+          EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: bash scripts/build-windows.sh "$WINDOWS_ARCH" release
+
+      - name: Build signed Linux or macOS updater bundles
+        if: matrix.platform != 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          BUNDLE_TARGETS: ${{ matrix.bundles }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            printf 'TAURI_SIGNING_PRIVATE_KEY is required for signed releases.\n' >&2
+            exit 1
+          fi
+          signing_private_key="$TAURI_SIGNING_PRIVATE_KEY"
+          signing_private_key_password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          if [[ "$PLATFORM" == 'linux' ]]; then
+            bundle_root="src-tauri/target/host-$host_target/$TARGET/release/bundle"
+            saved_appimage="$RUNNER_TEMP/$TARGET-appimage"
+            TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
+              TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+              bash scripts/with-cargo-host-target.sh \
+                pnpm exec tauri build \
+                  --target "$TARGET" \
+                  --config src-tauri/tauri.release.conf.json \
+                  --config '{"build":{"beforeBuildCommand":null}}' \
+                  --bundles appimage \
+                  --ci \
+                  --no-sign
+            cp -a "$bundle_root/appimage" "$saved_appimage"
+            bash scripts/with-cargo-host-target.sh \
+              pnpm exec tauri build \
+                --target "$TARGET" \
+                --config '{"build":{"beforeBuildCommand":null,"features":[]}}' \
+                --bundles deb rpm \
+                --ci \
+                --no-sign
+            rm -rf "$bundle_root/appimage"
+            mv "$saved_appimage" "$bundle_root/appimage"
+          else
+            read -r -a bundles <<< "$BUNDLE_TARGETS"
+            TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
+              TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+              bash scripts/with-cargo-host-target.sh \
+                pnpm exec tauri build \
+                  --target "$TARGET" \
+                  --config src-tauri/tauri.release.conf.json \
+                  --config '{"build":{"beforeBuildCommand":null}}' \
+                  --bundles "${bundles[@]}" \
+                  --ci \
+                  --no-sign
+          fi
+          unset signing_private_key signing_private_key_password
+
+      - name: Verify staged OCR architectures
+        working-directory: ${{ runner.temp }}/epikrise-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$TARGET" in
+            x86_64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'Advanced Micro Devices X86-64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'Advanced Micro Devices X86-64'
+              ;;
+            aarch64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'AArch64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'AArch64'
+              ;;
+            x86_64-apple-darwin)
+              lipo -verify_arch x86_64 "src-tauri/binaries/tesseract-$TARGET"
+              lipo -verify_arch x86_64 src-tauri/resources/ocr/pdfium/libpdfium.dylib
+              ;;
+            aarch64-apple-darwin)
+              lipo -verify_arch arm64 "src-tauri/binaries/tesseract-$TARGET"
+              lipo -verify_arch arm64 src-tauri/resources/ocr/pdfium/libpdfium.dylib
+              ;;
+            x86_64-pc-windows-msvc)
+              llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_AMD64
+              llvm-readobj --file-headers src-tauri/resources/ocr/pdfium/pdfium.dll | grep -F IMAGE_FILE_MACHINE_AMD64
+              ;;
+            aarch64-pc-windows-msvc)
+              llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_ARM64
+              llvm-readobj --file-headers src-tauri/resources/ocr/pdfium/pdfium.dll | grep -F IMAGE_FILE_MACHINE_ARM64
+              ;;
+          esac
+
+      - name: Stage and verify updater packages
+        working-directory: ${{ runner.temp }}/epikrise-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          node scripts/release-artifacts.mjs stage \
+            --target "$TARGET" \
+            --bundle-root "src-tauri/target/host-$host_target/$TARGET/release/bundle" \
+            --stage-root "release-staging/$TARGET" \
+            --commit "$GITHUB_SHA" \
+            --resource-root src-tauri/resources/ocr \
+            --binary-root src-tauri/binaries
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ runner.temp }}/epikrise-release/release-staging/${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.8.1
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Minisign verifier
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends minisign
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: release-artifacts
+          merge-multiple: false
+
+      - name: Generate static updater manifest
+        run: |
+          node scripts/release-artifacts.mjs latest \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --repository "$GITHUB_REPOSITORY" \
+            --artifacts-root release-artifacts \
+            --output latest.json
+
+      - name: Create or recover draft, then publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_file="$RUNNER_TEMP/existing-release.json"
+          if gh release view "$GITHUB_REF_NAME" --json isDraft,tagName,body > "$release_file" 2>/dev/null; then
+            node scripts/release-artifacts.mjs validate-draft \
+              --tag "$GITHUB_REF_NAME" \
+              --commit "$GITHUB_SHA" \
+              --release-file "$release_file"
+            gh release upload "$GITHUB_REF_NAME" \
+              release-artifacts/*/* latest.json \
+              --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              release-artifacts/*/* latest.json \
+              --draft \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              --notes "<!-- epikrise-signed-release-commit:$GITHUB_SHA -->" \
+              --latest=false
+          fi
+
+          uploaded_release_file="$RUNNER_TEMP/uploaded-release.json"
+          uploaded_assets_dir="$RUNNER_TEMP/uploaded-release-assets"
+          mkdir -p "$uploaded_assets_dir"
+          gh release view "$GITHUB_REF_NAME" --json assets > "$uploaded_release_file"
+          gh release download "$GITHUB_REF_NAME" --dir "$uploaded_assets_dir"
+          node scripts/release-artifacts.mjs verify-uploaded \
+            --artifacts-root release-artifacts \
+            --latest-file latest.json \
+            --uploaded-root "$uploaded_assets_dir" \
+            --release-file "$uploaded_release_file"
+
+          latest_file="$RUNNER_TEMP/latest-release.json"
+          latest_tag=""
+          if gh release view --json tagName > "$latest_file" 2>/dev/null; then
+            latest_tag="$(node --input-type=module -e \
+              'import { readFileSync } from "node:fs"; process.stdout.write(JSON.parse(readFileSync(process.argv[1], "utf8")).tagName)' \
+              "$latest_file")"
+          else
+            releases_file="$RUNNER_TEMP/releases.json"
+            gh release list --json tagName,isDraft --limit 1000 > "$releases_file"
+            node --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              const releases = JSON.parse(readFileSync(process.argv[1], "utf8"));
+              if (releases.some((release) => !release.isDraft)) {
+                console.error("Could not determine the latest published release.");
+                process.exit(1);
+              }
+            ' "$releases_file"
+          fi
+          promotion_args=(should-promote-latest --tag "$GITHUB_REF_NAME")
+          if [[ -n "$latest_tag" ]]; then
+            promotion_args+=(--latest-tag "$latest_tag")
+          fi
+          promote_latest="$(node scripts/release-artifacts.mjs "${promotion_args[@]}")"
+          release_id="$(gh release view "$GITHUB_REF_NAME" --json databaseId --jq .databaseId)"
+          if [[ "$promote_latest" == 'true' ]]; then
+            make_latest=true
+          else
+            make_latest=false
+          fi
+          gh api --method PATCH \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -F draft=false \
+            --raw-field "make_latest=$make_latest" > /dev/null
