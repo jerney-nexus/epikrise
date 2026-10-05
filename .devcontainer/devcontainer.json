@@ -22,7 +22,7 @@
     "ghcr.io/devcontainers-extra/features/graphite-cli:1": {}
   },
   "onCreateCommand": "bash .devcontainer/install-deps.sh",
-  "postCreateCommand": "bash .devcontainer/setup-agent-config.sh && sudo install -d -o vscode -g vscode -m 0700 /home/vscode/.local/share/gh /home/vscode/.local/share/ssh && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium firefox webkit && node --input-type=module -e 'await import(\"vite\"); console.log(\"Vite native binding ready\")'",
+  "postCreateCommand": "bash .devcontainer/setup-agent-config.sh && sudo install -d -o vscode -g vscode -m 0700 /home/vscode/.local/share/gh /home/vscode/.local/share/graphite /home/vscode/.local/share/ssh && pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium firefox webkit && node --input-type=module -e 'await import(\"vite\"); console.log(\"Vite native binding ready\")'",
   "forwardPorts": [1420, 6080, 9323],
   "portsAttributes": {
     "1420": {
