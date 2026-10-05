@@ -252,8 +252,7 @@ assets, signatures, manifest and URLs, and complete native installation and
 two-version update acceptance on each supported target. Never generate or
 replace a production key in CI, commit private signing material, or treat a
 Tauri update signature as platform publisher signing. Store delivery is a
-separate Microsoft-certified channel; see [`TODO.md`](TODO.md) for outstanding
-gates.
+separate Microsoft-certified channel.
 
 ## Localization
 
