@@ -1292,25 +1292,36 @@ async function writeExecutable(filePath: string, contents: string) {
 async function createWindowsOcrFixture(
   directory: string,
   expectedChecksum: string,
-  mockChecksumCommand = true,
-  reportTessdataParent = false,
-  reportInvalidTessdataPath = false,
-  partialReportedParent = false,
+  options: {
+    mockChecksumCommand?: boolean;
+    reportTessdataParent?: boolean;
+    reportInvalidTessdataPath?: boolean;
+    partialReportedParent?: boolean;
+    packageName?: string;
+  } = {},
 ) {
+  const {
+    mockChecksumCommand = true,
+    reportTessdataParent = false,
+    reportInvalidTessdataPath = false,
+    partialReportedParent = false,
+    packageName = "tesseract-ocr-deu",
+  } = options;
   const binDir = path.join(directory, "bin");
   const tessdataRoot = path.join(directory, "tessdata");
   const tessdataDir = reportTessdataParent
     ? path.join(tessdataRoot, "tessdata")
     : tessdataRoot;
-  const reportedTessdataDir = reportInvalidTessdataPath
-    ? path.join(directory, "missing-tessdata")
-    : reportTessdataParent
-      ? tessdataRoot
-      : tessdataDir;
+  let reportedTessdataDir = tessdataDir;
+  if (reportTessdataParent) reportedTessdataDir = tessdataRoot;
+  if (reportInvalidTessdataPath) {
+    reportedTessdataDir = path.join(directory, "missing-tessdata");
+  }
   const resourceDir = path.join(directory, "resources");
   const binaryDir = path.join(directory, "binaries");
   const cacheRoot = path.join(directory, "cache");
   const curlLog = path.join(directory, "curl.log");
+  const dpkgLog = path.join(directory, "dpkg.log");
   const tarLog = path.join(directory, "tar.log");
   const builderPath = path.join(directory, "build-ocr.sh");
   await Promise.all([
@@ -1329,7 +1340,16 @@ async function createWindowsOcrFixture(
   if (reportInvalidTessdataPath) {
     await writeExecutable(
       path.join(binDir, "dpkg-query"),
-      '#!/usr/bin/env bash\nprintf "%s\\n" "$TESSDATA_PACKAGE_DIR/deu.traineddata"\n',
+      [
+        "#!/usr/bin/env bash",
+        'printf "%s\\n" "$2" >> "$DPKG_LOG"',
+        'if [[ "$2" == "$TESSDATA_PACKAGE_NAME" ]]; then',
+        '  printf "%s\\n" "$TESSDATA_PACKAGE_DIR/$TESSDATA_PACKAGE_LANGUAGE.traineddata"',
+        "else",
+        "  exit 1",
+        "fi",
+        "",
+      ].join("\n"),
     );
   }
   await writeExecutable(
@@ -1386,6 +1406,7 @@ async function createWindowsOcrFixture(
     builderPath,
     cacheRoot,
     curlLog,
+    dpkgLog,
     resourceDir,
     binaryDir,
     tarLog,
@@ -1395,8 +1416,11 @@ async function createWindowsOcrFixture(
       PATH: `${binDir}:${process.env.PATH ?? ""}`,
       TESSDATA_DIR: reportedTessdataDir,
       TESSDATA_PACKAGE_DIR: tessdataDir,
+      TESSDATA_PACKAGE_NAME: packageName,
+      TESSDATA_PACKAGE_LANGUAGE: packageName.endsWith("-eng") ? "eng" : "deu",
       EXPECTED_CHECKSUM: expectedChecksum,
       CURL_LOG: curlLog,
+      DPKG_LOG: dpkgLog,
       TAR_LOG: tarLog,
       EPIKRISE_OCR_RESOURCE_DIR: resourceDir,
       EPIKRISE_OCR_BINARY_DIR: binaryDir,
@@ -1557,8 +1581,9 @@ if (process.platform !== "win32") {
         const fixture = await createWindowsOcrFixture(
           directory,
           windowsOcrTargets[0].checksum,
-          true,
-          true,
+          {
+            reportTessdataParent: true,
+          },
         );
         await execFile(
           "bash",
@@ -1595,10 +1620,10 @@ if (process.platform !== "win32") {
         const fixture = await createWindowsOcrFixture(
           directory,
           windowsOcrTargets[0].checksum,
-          true,
-          true,
-          false,
-          true,
+          {
+            reportTessdataParent: true,
+            partialReportedParent: true,
+          },
         );
         await execFile(
           "bash",
@@ -1633,9 +1658,10 @@ if (process.platform !== "win32") {
         const fixture = await createWindowsOcrFixture(
           directory,
           windowsOcrTargets[0].checksum,
-          true,
-          false,
-          true,
+          {
+            reportInvalidTessdataPath: true,
+            packageName: "tesseract-ocr-eng",
+          },
         );
         await execFile(
           "bash",
@@ -1653,6 +1679,9 @@ if (process.platform !== "win32") {
             "utf8",
           ),
         ).toBe("deu");
+        expect(await readFile(fixture.dpkgLog, "utf8")).toBe(
+          "tesseract-ocr-deu\ntesseract-ocr-eng\n",
+        );
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
@@ -1662,7 +1691,9 @@ if (process.platform !== "win32") {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-cache-"));
       const { target, archive, checksum } = windowsOcrTargets[0];
       try {
-        const fixture = await createWindowsOcrFixture(directory, checksum, false);
+        const fixture = await createWindowsOcrFixture(directory, checksum, {
+          mockChecksumCommand: false,
+        });
         const cachePath = path.join(fixture.cacheRoot, "pdfium", target, archive);
         await mkdir(path.dirname(cachePath), { recursive: true });
         await writeFile(cachePath, "corrupt cached archive", "utf8");
