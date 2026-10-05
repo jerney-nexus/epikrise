@@ -1,9 +1,5 @@
 # TODO
 
-## Bug Fixes
-
-### Medium Urgency
-
 ## Release and updater follow-up
 
 ### High Urgency
