@@ -127,6 +127,7 @@ describe("dev-container approvals", () => {
       merge_pull_request: false,
       push_files: false,
       installExtension: false,
+      installExtensions: false,
       runCommand: false,
       createAndRunTask: false,
       runTask: false,

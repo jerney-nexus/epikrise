@@ -94,6 +94,7 @@
           "update_pull_request": false,
           "update_pull_request_branch": false,
           "installExtension": false,
+          "installExtensions": false,
           "runCommand": false,
           "createAndRunTask": false,
           "runTask": false
