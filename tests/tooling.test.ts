@@ -16,6 +16,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
+import { parseConfigFileTextToJson } from "typescript";
 import { describe, expect, it } from "vitest";
 import {
   assertStoreVersionAdvances,
@@ -60,6 +61,218 @@ const windowsOcrTargets = [
     checksum: "5d04b6d0281e78613ef836dea2e0fefe6831f3ae92b3573e8fdf55330de67d3d",
   },
 ];
+
+describe("dev-container approvals", () => {
+  it("separates shared project settings from container and personal preferences", async () => {
+    const containerPath = path.join(repoRoot, ".devcontainer/devcontainer.json");
+    const workspacePath = path.join(repoRoot, ".vscode/settings.json");
+    const container = parseConfigFileTextToJson(
+      containerPath,
+      await readFile(containerPath, "utf8"),
+    );
+    const workspace = parseConfigFileTextToJson(
+      workspacePath,
+      await readFile(workspacePath, "utf8"),
+    );
+    expect(container.error).toBeUndefined();
+    expect(workspace.error).toBeUndefined();
+    const containerSettings = container.config.customizations.vscode.settings;
+    expect(workspace.config["rust-analyzer.linkedProjects"]).toEqual([
+      "src-tauri/Cargo.toml",
+    ]);
+    expect(workspace.config["rust-analyzer.check.command"]).toBe("clippy");
+    expect(workspace.config["vitest.vitestPackagePath"]).toBe(
+      "node_modules/vitest/package.json",
+    );
+    await expect(
+      readFile(
+        path.join(repoRoot, workspace.config["vitest.vitestPackagePath"]),
+        "utf8",
+      ),
+    ).resolves.toContain('"name": "vitest"');
+    for (const settings of [containerSettings, workspace.config]) {
+      expect(Object.hasOwn(settings, "chat.sessionSync.enabled")).toBe(false);
+      expect(Object.hasOwn(settings, "github.copilot.enable")).toBe(false);
+    }
+    expect(Object.hasOwn(containerSettings, "rust-analyzer.linkedProjects")).toBe(
+      false,
+    );
+    expect(Object.hasOwn(containerSettings, "rust-analyzer.check.command")).toBe(false);
+    expect(Object.hasOwn(workspace.config, "chat.permissions.default")).toBe(false);
+    expect(Object.hasOwn(workspace.config, "chat.agent.sandbox.fileSystem.linux")).toBe(
+      false,
+    );
+  });
+
+  it("keeps manual permission defaults and separates URL requests from responses", async () => {
+    const configPath = path.join(repoRoot, ".devcontainer/devcontainer.json");
+    const parsed = parseConfigFileTextToJson(
+      configPath,
+      await readFile(configPath, "utf8"),
+    );
+    expect(parsed.error).toBeUndefined();
+    const settings = parsed.config.customizations.vscode.settings;
+    expect(settings["chat.permissions.default"]).toBe("default");
+    expect(settings["chat.defaultConfiguration"]).toEqual({
+      mode: "interactive",
+      approvals: "manual",
+    });
+    expect(settings["chat.tools.global.autoApprove"]).toBe(false);
+    expect(settings["chat.assistedPermissions.enabled"]).toBe(false);
+    expect(settings["chat.autopilot.advanced.enabled"]).toBe(false);
+    expect(settings["chat.tools.eligibleForAutoApproval"]).toMatchObject({
+      create_pull_request: false,
+      resolveReviewThread: false,
+      issue_write: false,
+      merge_pull_request: false,
+      push_files: false,
+      installExtension: false,
+      runCommand: false,
+      createAndRunTask: false,
+      runTask: false,
+    });
+    expect(Object.values(settings["chat.tools.eligibleForAutoApproval"])).not.toContain(
+      true,
+    );
+    expect(settings["chat.tools.edits.autoApprove"]).toMatchObject({
+      "**/*": true,
+      "**/.env*": false,
+      "**/*.{key,pem,p12,pfx}": false,
+      "**/.vscode/**": false,
+      "**/.devcontainer/**": false,
+      "**/.github/**": false,
+      "**/AGENTS.md": false,
+      "**/CLAUDE.md": false,
+      "**/SKILL.md": false,
+      "**/*.{instructions,prompt,agent}.md": false,
+      "**/policy*.toml": false,
+      "**/package.json": false,
+      "**/scripts/**": false,
+    });
+    const urls = settings["chat.tools.urls.autoApprove"];
+    expect(Object.keys(urls)).toContain("https://code.visualstudio.com/docs/*");
+    for (const [pattern, approval] of Object.entries(urls)) {
+      expect(pattern, pattern).toMatch(/^https:\/\/[^*]+\/[^*]*\*$/);
+      expect(approval, pattern).toEqual({
+        approveRequest: true,
+        approveResponse: false,
+      });
+    }
+    expect(settings["chat.agent.sandbox.enabled"]).toBe("off");
+    expect(settings["chat.agent.sandbox.allowAutoApprove"]).toBe(false);
+    expect(settings["chat.agent.sandbox.allowUnsandboxedCommands"]).toBe(false);
+    expect(settings["chat.agent.sandbox.allowNetwork"]).toBe(false);
+    expect(settings["chat.agent.sandbox.fileSystem.linux"].denyRead).toContain(
+      "/home/vscode/.local/share/ssh",
+    );
+    expect(settings["chat.agent.allowedNetworkDomains"]).toContain("api.github.com");
+    expect(settings["chat.agent.allowedNetworkDomains"]).not.toContain("*");
+    expect(settings["chat.agent.deniedNetworkDomains"]).toEqual([]);
+  });
+
+  it("allows routine repository commands without approving mutations or arbitrary execution", async () => {
+    const configPath = path.join(repoRoot, ".devcontainer/devcontainer.json");
+    const parsed = parseConfigFileTextToJson(
+      configPath,
+      await readFile(configPath, "utf8"),
+    );
+    expect(parsed.error).toBeUndefined();
+    const settings = parsed.config.customizations.vscode.settings;
+    expect(settings["chat.tools.terminal.enableAutoApprove"]).toBe(true);
+    expect(settings["chat.tools.terminal.ignoreDefaultAutoApproveRules"]).toBe(false);
+    expect(settings["chat.tools.terminal.blockDetectedFileWrites"]).toBe(
+      "outsideWorkspace",
+    );
+    const rules = Object.entries(settings["chat.tools.terminal.autoApprove"]).map(
+      ([pattern, approved]) => {
+        expect(pattern.startsWith("/^"), pattern).toBe(true);
+        expect(pattern.endsWith("/"), pattern).toBe(true);
+        expect(typeof approved, pattern).toBe("boolean");
+        return { pattern: new RegExp(pattern.slice(1, -1)), approved };
+      },
+    );
+    const autoApproves = (command: string) => {
+      const matches = rules.filter((rule) => rule.pattern.test(command));
+      return (
+        matches.some((rule) => rule.approved === true) &&
+        !matches.some((rule) => rule.approved === false)
+      );
+    };
+    const packageJson = JSON.parse(
+      await readFile(path.join(repoRoot, "package.json"), "utf8"),
+    );
+    const manualScripts = new Set([
+      "prepare",
+      "build:all",
+      "release:prepare",
+      "template:convert",
+      "tauri",
+      "windows:setup",
+      "windows:build:x64",
+      "windows:build:arm64",
+      "windows:build",
+    ]);
+    for (const script of Object.keys(packageJson.scripts)) {
+      expect(autoApproves(`pnpm ${script}`), script).toBe(!manualScripts.has(script));
+      expect(autoApproves(`pnpm run ${script}`), script).toBe(
+        !manualScripts.has(script),
+      );
+    }
+
+    for (const command of [
+      "pnpm dev",
+      "pnpm build",
+      "pnpm run check:rust:clippy",
+      "pnpm test:ui tests/tooling.test.ts -t approvals",
+      "pnpm test:rust:package epikrise-core",
+      "pnpm test:rust:updater",
+      "pnpm test:e2e:report",
+      "pnpm format:file tests/tooling.test.ts",
+      "pnpm format:check:file .devcontainer/devcontainer.json",
+      "pnpm audit:rust",
+      "git status --short",
+      "git diff --stat",
+      "git remote -v",
+      "git branch --show-current",
+      "gh pr checks 39",
+      "gh auth status",
+      "gh run view 123 --log-failed",
+      "gh label list --repo jerney-nexus/epikrise",
+      "gh project list --owner jerney-nexus",
+    ]) {
+      expect(autoApproves(command), command).toBe(true);
+    }
+
+    for (const command of [
+      "pnpm build:all",
+      "pnpm build:unknown",
+      "pnpm test:unknown",
+      "pnpm run release:prepare",
+      "pnpm template:convert",
+      "pnpm windows:setup",
+      "pnpm windows:build:x64",
+      "pnpm install --frozen-lockfile",
+      "pnpm exec node -e 'process.exit()'",
+      "pnpm dlx arbitrary-package",
+      "git remote set-url origin https://example.com/repo",
+      "git branch -D main",
+      "git reset --hard",
+      "git push",
+      "gh api repos/jerney-nexus/epikrise",
+      "gh auth token",
+      "gh pr merge 39",
+      "gh workflow run desktop-builds.yml",
+      "gh run rerun 123",
+      "gh release upload v1 artifact.zip",
+      "gh repo delete owner/repo",
+      "bash scripts/prepare-ocr.sh",
+      "node --eval 'process.exit()'",
+      "sudo apt-get install package",
+    ]) {
+      expect(autoApproves(command), command).toBe(false);
+    }
+  });
+});
 
 describe("CalVer release versions", () => {
   it("increments the patch within the current month", () => {

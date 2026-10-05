@@ -9,6 +9,9 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Added
 
+- Dev-container agent permission defaults with explicit routine-command
+  auto-approval, sensitive-file edit review, documentation URL response review,
+  and documented opt-in terminal sandbox controls.
 - Markdown-formatted output previews and sanitized rich clipboard output that
   excludes remote images to prevent data leakage when pasted, with plain-text
   preview and reviewed-output copy safeguards retained. Switched to CalVer and

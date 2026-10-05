@@ -25,6 +25,77 @@ ships Rust, Node, the Tauri Linux dependencies and a lightweight desktop
 accessible through noVNC on port `6080`, so the app window can be viewed from
 a browser.
 
+#### Agent approvals and permissions
+
+Repository-wide editor, formatter, ESLint, Svelte, Vitest, and Rust project/test
+settings live in `.vscode/settings.json`, including the Cargo manifest and
+Clippy command used outside the container. The container's
+`customizations.vscode.settings` holds only its agent approval defaults and
+Linux-specific sandbox policy. Personal Copilot enablement and chat-session
+cloud sync belong in User settings and are not forced by either shared file.
+Workspace settings override container Remote defaults; object-valued settings
+can merge with user settings, so these defaults are not enforced policies.
+
+The container's VS Code settings use manual permissions for new sessions,
+disable global allow-all and assisted permissions, and keep the built-in
+terminal safety rules. Routine `pnpm` checks, tests, formatting, web builds,
+development servers, audits, and read-only Git/GitHub inspection are explicitly
+auto-approved. Rules evaluate individual subcommands; a command chain still
+requires approval if any part is not allowed or matches a manual-approval rule.
+
+Dependency installation, arbitrary shell/package execution, Git mutations,
+GitHub API requests and writes, workflow dispatch, release preparation,
+template conversion, and desktop/Windows provisioning or builds remain manual.
+These operations can change external state, handle clinical templates, download
+and execute dependencies, or require license acceptance. Auto-approval assumes
+trusted repository scripts and is a convenience, not a security boundary.
+
+Normal source edits are allowed, but environment files, signing-key files,
+policy files, agent instructions, container/editor configuration, GitHub
+configuration, package scripts, and tooling scripts require edit approval.
+Selected official documentation URLs allow requests automatically, while their
+responses still require review. This does not authorize sending secrets,
+clinical material, prompts, or generated clinical output to any URL.
+
+To apply and review these defaults:
+
+1. Rebuild the container after changing `.devcontainer/devcontainer.json`, then
+   start a new chat session with **Manual permissions**. Existing sessions and
+   user overrides can retain different permissions; **Allow all** and Autopilot
+   bypass approval prompts.
+2. Run **Chat: Manage Tool Approval** to inspect saved pre- and post-approvals
+   for extension and MCP tools. Do not blanket-trust a GitHub server or its write
+   tools. The container makes the available GitHub write tools, extension
+   installation, and generic VS Code command/task execution ineligible for
+   auto-approval. Tool reference names depend on the installed extension/server;
+   review this list when tools change. Use **Chat: Reset Tool Confirmations**
+   only when you intend to clear all saved tool approvals.
+3. Review URL response approvals separately from request approvals, and check
+   **Trusted Domains**, which can independently approve URL requests.
+
+Nested terminal sandboxing is off by default: a `bubblewrap` probe in the
+current container fails with `Operation not permitted`, despite `bubblewrap`
+and `socat` being installed. Do not assume that container isolation also hides
+the mounted GitHub credentials or host agent configuration from commands.
+
+On a host that supports nested sandboxing, install `bubblewrap` and `socat`,
+verify that a sandboxed command works, and set `chat.agent.sandbox.enabled` to
+`on` in Remote settings. The prepared policy disables sandbox-wide automatic
+approval and unsandboxed fallback, denies reads of SSH and mounted host agent
+configuration, and disables unrestricted network access. The domain allowlist
+is limited to GitHub and package registries; add only services a task needs.
+Local sessions and the Agent Host custom terminal tool can use this allowlist.
+The Agent Host built-in shell cannot filter domains and instead blocks outbound
+network access when `allowNetwork` is false. These restrictions are inactive
+while sandboxing is off and do not apply to non-terminal tools.
+
+Start a new session and use `/sandbox-policy` in an Agent Host session to inspect
+the effective policy. Restart VS Code after changing network-domain settings.
+Refer to [VS Code approvals and permissions](https://code.visualstudio.com/docs/agents/run/approvals)
+and [terminal sandboxing](https://code.visualstudio.com/docs/agents/run/agent-sandboxing)
+for harness differences and organization-managed restrictions. These editor
+controls do not replace Epikrise's runtime clinical-data and egress policies.
+
 ### Local setup
 
 Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)

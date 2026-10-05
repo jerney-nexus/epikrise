@@ -13,7 +13,8 @@
   "json.schemaDownload.trustedDomains": {
     "https://schema.tauri.app/": true
   },
-  "chat.sessionSync.enabled": true,
+  "rust-analyzer.linkedProjects": ["src-tauri/Cargo.toml"],
+  "rust-analyzer.check.command": "clippy",
   "rust-analyzer.runnables.test.overrideCommand": [
     "bash",
     "../scripts/with-cargo-host-target.sh",
