@@ -1660,6 +1660,46 @@ if (process.platform !== "win32") {
       }
     });
 
+    it("uses a complete child when the reported parent has only German data", async () => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-ocr-partial-parent-"),
+      );
+      try {
+        const fixture = await createWindowsOcrFixture(
+          directory,
+          windowsOcrTargets[0].checksum,
+          true,
+          true,
+          false,
+          true,
+        );
+        await execFile(
+          "bash",
+          [
+            path.join(repoRoot, "scripts/prepare-ocr.sh"),
+            "--target",
+            windowsOcrTargets[0].target,
+          ],
+          { cwd: repoRoot, env: fixture.environment },
+        );
+
+        expect(
+          await readFile(
+            path.join(fixture.resourceDir, "tessdata/deu.traineddata"),
+            "utf8",
+          ),
+        ).toBe("deu");
+        expect(
+          await readFile(
+            path.join(fixture.resourceDir, "tessdata/eng.traineddata"),
+            "utf8",
+          ),
+        ).toBe("eng");
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
     it("uses Debian package metadata when Tesseract reports no language data", async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-dpkg-"));
       try {
