@@ -156,10 +156,12 @@ describe("dev-container approvals", () => {
     });
     const urls = settings["chat.tools.urls.autoApprove"];
     expect(Object.keys(urls)).toContain("https://code.visualstudio.com/docs/*");
-    const effectiveUrls = {
+    type UrlApproval =
+      boolean | { approveRequest?: boolean; approveResponse?: boolean };
+    const effectiveUrls: Record<string, UrlApproval> = {
       "https://code.visualstudio.com": true,
       "https://github.com/microsoft/vscode/wiki/*": true,
-      ...urls,
+      ...(urls as Record<string, UrlApproval>),
     };
     const firstUrlApproval = (url: string, checkRequest: boolean) => {
       for (const [pattern, approval] of Object.entries(effectiveUrls)) {
