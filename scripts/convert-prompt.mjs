@@ -86,7 +86,7 @@ async function main() {
   if (!systemPrompt.trim()) throw new Error("The prompt file is empty");
   if (/\{\{|\{%|\{#/.test(systemPrompt)) {
     throw new Error(
-      "Template expressions require declared variables; convert this prompt manually",
+      "Template expressions, statements, and comments are not supported; convert this prompt manually",
     );
   }
 

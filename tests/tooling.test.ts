@@ -1422,7 +1422,9 @@ describe("frontend test harness", () => {
         outputPath,
         ...extraArgs,
       ]);
-      return TOML.parse(await readFile(outputPath, "utf8"));
+      return TOML.parse(await readFile(outputPath, "utf8")) as unknown as {
+        metadata: { name: string; id: string };
+      };
     };
 
     try {
@@ -1461,7 +1463,7 @@ describe("frontend test harness", () => {
         execFile(process.execPath, [scriptPath, inputPath, outputPath]),
       ).rejects.toMatchObject({
         stderr: expect.stringContaining(
-          "Template expressions require declared variables",
+          "Template expressions, statements, and comments are not supported",
         ),
       });
       await expect(lstat(outputPath)).rejects.toThrow();
