@@ -102,7 +102,7 @@ if [[ (! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.trainedda
   read -r -a tessdata_package_names <<< "$tessdata_packages"
   for tessdata_package in "${tessdata_package_names[@]}"; do
     package_tessdata_dir="$(dpkg-query --listfiles "$tessdata_package" 2>/dev/null | sed -n 's#\(.*\)/\(deu\|eng\)\.traineddata$#\1#p' | head -n 1 || true)"
-    if [[ -f "$package_tessdata_dir/deu.traineddata" && -f "$package_tessdata_dir/eng.traineddata" ]]; then
+    if [[ -n "$package_tessdata_dir" && -f "$package_tessdata_dir/deu.traineddata" && -f "$package_tessdata_dir/eng.traineddata" ]]; then
       tessdata_dir="$package_tessdata_dir"
       break
     fi

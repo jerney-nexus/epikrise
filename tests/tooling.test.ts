@@ -1298,6 +1298,7 @@ async function createWindowsOcrFixture(
     reportInvalidTessdataPath?: boolean;
     partialReportedParent?: boolean;
     packageName?: string;
+    packageMetadataAvailable?: boolean;
   } = {},
 ) {
   const {
@@ -1306,6 +1307,7 @@ async function createWindowsOcrFixture(
     reportInvalidTessdataPath = false,
     partialReportedParent = false,
     packageName = "tesseract-ocr-deu",
+    packageMetadataAvailable = true,
   } = options;
   const binDir = path.join(directory, "bin");
   const tessdataRoot = path.join(directory, "tessdata");
@@ -1335,7 +1337,7 @@ async function createWindowsOcrFixture(
   }
   await writeExecutable(
     path.join(binDir, "tesseract"),
-    '#!/usr/bin/env bash\nprintf \'List of available languages in "%s":\\n\' "$TESSDATA_DIR"\n',
+    '#!/usr/bin/env bash\nprintf \'Tesseract wrapper: List of available languages in "%s":\\n\' "$TESSDATA_DIR"\n',
   );
   if (reportInvalidTessdataPath) {
     await writeExecutable(
@@ -1343,6 +1345,7 @@ async function createWindowsOcrFixture(
       [
         "#!/usr/bin/env bash",
         'printf "%s\\n" "$2" >> "$DPKG_LOG"',
+        'if [[ "$TESSDATA_PACKAGE_METADATA_AVAILABLE" != "true" ]]; then exit 1; fi',
         'if [[ "$2" == "$TESSDATA_PACKAGE_NAME" ]]; then',
         '  printf "%s\\n" "$TESSDATA_PACKAGE_DIR/$TESSDATA_PACKAGE_LANGUAGE.traineddata"',
         "else",
@@ -1418,6 +1421,7 @@ async function createWindowsOcrFixture(
       TESSDATA_PACKAGE_DIR: tessdataDir,
       TESSDATA_PACKAGE_NAME: packageName,
       TESSDATA_PACKAGE_LANGUAGE: packageName.endsWith("-eng") ? "eng" : "deu",
+      TESSDATA_PACKAGE_METADATA_AVAILABLE: String(packageMetadataAvailable),
       EXPECTED_CHECKSUM: expectedChecksum,
       CURL_LOG: curlLog,
       DPKG_LOG: dpkgLog,
@@ -1575,7 +1579,7 @@ if (process.platform !== "win32") {
       });
     }
 
-    it("resolves language data in a reported prefix's tessdata subdirectory", async () => {
+    it("resolves prefixed language-list output in a reported tessdata subdirectory", async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-prefix-"));
       try {
         const fixture = await createWindowsOcrFixture(
@@ -1679,6 +1683,40 @@ if (process.platform !== "win32") {
             "utf8",
           ),
         ).toBe("deu");
+        expect(await readFile(fixture.dpkgLog, "utf8")).toBe(
+          "tesseract-ocr-deu\ntesseract-ocr-eng\n",
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("rejects empty Debian package metadata", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-empty-dpkg-"));
+      try {
+        const fixture = await createWindowsOcrFixture(
+          directory,
+          windowsOcrTargets[0].checksum,
+          {
+            reportInvalidTessdataPath: true,
+            packageMetadataAvailable: false,
+          },
+        );
+        await expect(
+          execFile(
+            "bash",
+            [
+              path.join(repoRoot, "scripts/prepare-ocr.sh"),
+              "--target",
+              windowsOcrTargets[0].target,
+            ],
+            { cwd: repoRoot, env: fixture.environment },
+          ),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining(
+            "Tesseract must have both deu and eng language data installed.",
+          ),
+        });
         expect(await readFile(fixture.dpkgLog, "utf8")).toBe(
           "tesseract-ocr-deu\ntesseract-ocr-eng\n",
         );
