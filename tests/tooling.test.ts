@@ -195,7 +195,10 @@ describe("dev-container approvals", () => {
       },
     );
     if (!settings["chat.tools.terminal.ignoreDefaultAutoApproveRules"]) {
-      rules.push({ pattern: /^git branch(?:\s|$)/, approved: true });
+      rules.push({
+        pattern: /^git(?:\s+(-C\s+\S+|--no-pager))*\s+branch\b/,
+        approved: true,
+      });
     }
     const packageJson = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
@@ -246,6 +249,9 @@ describe("dev-container approvals", () => {
       "git remote -v",
       "git branch --show-current",
       "git branch --show-current ",
+      "git -C . branch --show-current",
+      "git --no-pager branch --show-current",
+      "git -C . --no-pager branch --show-current",
       "gh pr checks 39",
       "gh auth status",
       "gh run view 123 --log-failed",
@@ -275,6 +281,12 @@ describe("dev-container approvals", () => {
       "git branch feature main",
       "git branch",
       "git branch --show-current feature",
+      "git -C . branch feature",
+      "git --no-pager branch feature",
+      "git -C . --no-pager branch feature",
+      "git -C . branch",
+      "git --no-pager branch",
+      "git -C . branch --show-current feature",
       "git branch -D main",
       "git reset --hard",
       "git push",
