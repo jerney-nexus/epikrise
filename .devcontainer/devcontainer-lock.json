@@ -15,6 +15,11 @@
       "resolved": "ghcr.io/devcontainers-extra/features/curl-apt-get@sha256:7fb32e4ebdd440369a598e7a27b1ed56c9e73eb6b4f595d30969862d2fc68e40",
       "integrity": "sha256:7fb32e4ebdd440369a598e7a27b1ed56c9e73eb6b4f595d30969862d2fc68e40"
     },
+    "ghcr.io/devcontainers-extra/features/graphite-cli:1": {
+      "version": "1.0.0",
+      "resolved": "ghcr.io/devcontainers-extra/features/graphite-cli@sha256:4ea645c4c4a345c6b799d44c8a56e28d6c2f034d8ecc5eb4d4e2468194f8f56a",
+      "integrity": "sha256:4ea645c4c4a345c6b799d44c8a56e28d6c2f034d8ecc5eb4d4e2468194f8f56a"
+    },
     "ghcr.io/devcontainers-extra/features/pnpm:2": {
       "version": "2.0.5",
       "resolved": "ghcr.io/devcontainers-extra/features/pnpm@sha256:694c2b6182435c9e9c06f6071728b087c1181b38c18cecf0defe2ab8c11cddd6",

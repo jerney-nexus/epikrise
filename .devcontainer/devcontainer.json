@@ -72,6 +72,7 @@
   "remoteUser": "vscode",
   "mounts": [
     "source=epikrise-gh-auth-${devcontainerId},target=/home/vscode/.local/share/gh,type=volume,volume-nocopy",
+    "source=epikrise-graphite-auth-${devcontainerId},target=/home/vscode/.local/share/graphite,type=volume,volume-nocopy",
     "source=epikrise-ssh-${devcontainerId},target=/home/vscode/.local/share/ssh,type=volume,volume-nocopy",
     // Host agent configuration is staged read-only; setup-agent-config.sh
     // symlinks selected entries into the writable CLI homes below.
