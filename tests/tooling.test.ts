@@ -1295,6 +1295,7 @@ async function createWindowsOcrFixture(
   mockChecksumCommand = true,
   reportTessdataParent = false,
   reportInvalidTessdataPath = false,
+  partialReportedParent = false,
 ) {
   const binDir = path.join(directory, "bin");
   const tessdataRoot = path.join(directory, "tessdata");
@@ -1318,14 +1319,19 @@ async function createWindowsOcrFixture(
   ]);
   await writeFile(path.join(tessdataDir, "deu.traineddata"), "deu", "utf8");
   await writeFile(path.join(tessdataDir, "eng.traineddata"), "eng", "utf8");
+  if (partialReportedParent) {
+    await writeFile(path.join(tessdataRoot, "deu.traineddata"), "parent-deu", "utf8");
+  }
   await writeExecutable(
     path.join(binDir, "tesseract"),
     '#!/usr/bin/env bash\nprintf \'List of available languages in "%s":\\n\' "$TESSDATA_DIR"\n',
   );
-  await writeExecutable(
-    path.join(binDir, "dpkg-query"),
-    '#!/usr/bin/env bash\nprintf "%s\\n" "$TESSDATA_PACKAGE_DIR/deu.traineddata"\n',
-  );
+  if (reportInvalidTessdataPath) {
+    await writeExecutable(
+      path.join(binDir, "dpkg-query"),
+      '#!/usr/bin/env bash\nprintf "%s\\n" "$TESSDATA_PACKAGE_DIR/deu.traineddata"\n',
+    );
+  }
   await writeExecutable(
     path.join(binDir, "curl"),
     [
@@ -1552,6 +1558,46 @@ if (process.platform !== "win32") {
           directory,
           windowsOcrTargets[0].checksum,
           true,
+          true,
+        );
+        await execFile(
+          "bash",
+          [
+            path.join(repoRoot, "scripts/prepare-ocr.sh"),
+            "--target",
+            windowsOcrTargets[0].target,
+          ],
+          { cwd: repoRoot, env: fixture.environment },
+        );
+
+        expect(
+          await readFile(
+            path.join(fixture.resourceDir, "tessdata/deu.traineddata"),
+            "utf8",
+          ),
+        ).toBe("deu");
+        expect(
+          await readFile(
+            path.join(fixture.resourceDir, "tessdata/eng.traineddata"),
+            "utf8",
+          ),
+        ).toBe("eng");
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("uses a complete child when the reported parent has only German data", async () => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-ocr-partial-parent-"),
+      );
+      try {
+        const fixture = await createWindowsOcrFixture(
+          directory,
+          windowsOcrTargets[0].checksum,
+          true,
+          true,
+          false,
           true,
         );
         await execFile(
