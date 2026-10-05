@@ -1356,6 +1356,10 @@ async function createWindowsOcrFixture(
     );
   }
   await writeExecutable(
+    path.join(binDir, "dpkg-query"),
+    '#!/usr/bin/env bash\nprintf "%s\\n" "$TESSDATA_PACKAGE_DIR/deu.traineddata"\n',
+  );
+  await writeExecutable(
     path.join(binDir, "curl"),
     [
       "#!/usr/bin/env bash",
