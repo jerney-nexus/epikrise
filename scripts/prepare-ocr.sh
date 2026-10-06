@@ -90,7 +90,24 @@ if [[ -z "$tesseract_path" ]]; then
   exit 1
 fi
 
-tessdata_dir="$(tesseract --list-langs 2>&1 | sed -n 's/.* in "\(.*\)".*/\1/p' | head -n 1)"
+tessdata_dir="$(tesseract --list-langs 2>&1 | sed -n 's/.* in \"\([^\"]*\)\".*/\1/p' | head -n 1)"
+if [[ ! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata" ]]; then
+  child_tessdata_dir="$tessdata_dir/tessdata"
+  if [[ -f "$child_tessdata_dir/deu.traineddata" && -f "$child_tessdata_dir/eng.traineddata" ]]; then
+    tessdata_dir="$child_tessdata_dir"
+  fi
+fi
+if [[ (! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata") ]] && command -v dpkg-query >/dev/null 2>&1; then
+  tessdata_packages="${EPIKRISE_TESSDATA_PACKAGES:-tesseract-ocr-deu tesseract-ocr-eng}"
+  read -r -a tessdata_package_names <<< "$tessdata_packages"
+  for tessdata_package in "${tessdata_package_names[@]}"; do
+    package_tessdata_dir="$(dpkg-query --listfiles "$tessdata_package" 2>/dev/null | sed -n 's#\(.*\)/\(deu\|eng\)\.traineddata$#\1#p' | head -n 1 || true)"
+    if [[ -n "$package_tessdata_dir" && -f "$package_tessdata_dir/deu.traineddata" && -f "$package_tessdata_dir/eng.traineddata" ]]; then
+      tessdata_dir="$package_tessdata_dir"
+      break
+    fi
+  done
+fi
 if [[ -z "$tessdata_dir" || ! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata" ]]; then
   printf 'Tesseract must have both deu and eng language data installed.\n' >&2
   if [[ "$host_target" == *-apple-darwin ]]; then
