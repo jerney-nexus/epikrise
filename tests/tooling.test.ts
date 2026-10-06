@@ -121,6 +121,7 @@ describe("dev-container approvals", () => {
     expect(settings["chat.autopilot.advanced.enabled"]).toBe(false);
     expect(settings["chat.tools.eligibleForAutoApproval"]).toMatchObject({
       create_pull_request: false,
+      delete_repository: false,
       resolveReviewThread: false,
       issue_write: false,
       merge_pull_request: false,
@@ -200,16 +201,18 @@ describe("dev-container approvals", () => {
     }
     expect(settings["chat.agent.sandbox.enabled"]).toBe("off");
     expect(settings["chat.agent.sandbox.allowUnsandboxedCommands"]).toBe(false);
-    expect(settings["chat.agent.sandbox.allowNetwork"]).toBe(false);
+    expect(settings["chat.agent.sandbox.network.allowNetwork"]).toBe(false);
     expect(settings["chat.agent.sandbox.fileSystem.linux"].denyRead).toContain(
       "/home/vscode/.local/share/ssh",
     );
     expect(
       settings["chat.agent.sandbox.fileSystem.userConfiguredPaths"].deniedPaths,
     ).toEqual(settings["chat.agent.sandbox.fileSystem.linux"].denyRead);
-    expect(settings["chat.agent.allowedNetworkDomains"]).toContain("api.github.com");
-    expect(settings["chat.agent.allowedNetworkDomains"]).not.toContain("*");
-    expect(settings["chat.agent.deniedNetworkDomains"]).toEqual([]);
+    expect(settings["chat.agent.sandbox.network.allowedDomains"]).toContain(
+      "api.github.com",
+    );
+    expect(settings["chat.agent.sandbox.network.allowedDomains"]).not.toContain("*");
+    expect(settings["chat.agent.sandbox.network.deniedDomains"]).toEqual([]);
   });
 
   it("allows routine repository commands without approving mutations or arbitrary execution", async () => {
@@ -316,6 +319,11 @@ describe("dev-container approvals", () => {
       "pnpm format:file .devcontainer/devcontainer.json",
       "pnpm format:file package.json",
       "pnpm format:rust:fmt",
+      "pnpm lint -- --fix",
+      "pnpm run lint -- --fix",
+      "pnpm test:ui -- -u",
+      "pnpm run test:ui -- --update",
+      "pnpm test:e2e -- --update-snapshots",
       "pnpm audit:pnpm --fix",
       "pnpm audit:pnpm --fix=update",
       "pnpm run audit:pnpm --fix",
