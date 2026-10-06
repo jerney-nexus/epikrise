@@ -280,7 +280,10 @@ describe("CalVer release versions", () => {
       await execFile(
         "cargo",
         [
-          "fetch",
+          "metadata",
+          "--format-version",
+          "1",
+          "--no-deps",
           "--locked",
           "--offline",
           "--manifest-path",
