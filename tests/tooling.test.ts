@@ -225,7 +225,7 @@ describe("dev-container approvals", () => {
     const settings = parsed.config.customizations.vscode.settings;
     expect(settings["chat.tools.terminal.enableAutoApprove"]).toBe(true);
     expect(settings["chat.tools.terminal.autoApproveWorkspaceNpmScripts"]).toBe(false);
-    expect(settings["chat.tools.terminal.ignoreDefaultAutoApproveRules"]).toBe(false);
+    expect(settings["chat.tools.terminal.ignoreDefaultAutoApproveRules"]).toBe(true);
     expect(settings["chat.tools.terminal.blockDetectedFileWrites"]).toBe("all");
     const rules = Object.entries(settings["chat.tools.terminal.autoApprove"]).map(
       ([pattern, approved]) => {
@@ -235,12 +235,6 @@ describe("dev-container approvals", () => {
         return { pattern: new RegExp(pattern.slice(1, -1)), approved };
       },
     );
-    if (!settings["chat.tools.terminal.ignoreDefaultAutoApproveRules"]) {
-      rules.push({
-        pattern: /^git(?:\s+(-C\s+\S+|--no-pager))*\s+branch\b/,
-        approved: true,
-      });
-    }
     const packageJson = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
     );
@@ -319,6 +313,8 @@ describe("dev-container approvals", () => {
       "pnpm format:file .devcontainer/devcontainer.json",
       "pnpm format:file package.json",
       "pnpm format:rust:fmt",
+      "pnpm run build -- --outDir .devcontainer --emptyOutDir",
+      "pnpm build --outDir .devcontainer --emptyOutDir",
       "pnpm lint -- --fix",
       "pnpm run lint -- --fix",
       "pnpm test:ui -- -u",
@@ -333,6 +329,11 @@ describe("dev-container approvals", () => {
       "pnpm install --frozen-lockfile",
       "pnpm exec node -e 'process.exit()'",
       "pnpm dlx arbitrary-package",
+      "npm ci",
+      "cat /home/vscode/.local/share/gh/hosts.yml",
+      "head -n 20 /home/vscode/.local/share/gh/hosts.yml",
+      "tail -n 20 /home/vscode/.local/share/gh/hosts.yml",
+      "grep github.com /home/vscode/.local/share/gh/hosts.yml",
       "git remote set-url origin https://example.com/repo",
       "git branch feature",
       "git branch feature main",

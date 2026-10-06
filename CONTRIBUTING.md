@@ -37,11 +37,13 @@ Workspace settings override container Remote defaults; object-valued settings
 can merge with user settings, so these defaults are not enforced policies.
 
 The container's VS Code settings use manual permissions for new sessions,
-disable global allow-all, and keep the built-in terminal safety rules. Assisted
-permissions remain available as a user-selectable mode; no supported workspace
-setting disables them. Routine `pnpm` checks, tests, read-only formatting checks,
-web builds, development servers, audits, and read-only Git/GitHub inspection are
-explicitly auto-approved. Detected terminal file writes require approval,
+disable global allow-all, and ignore VS Code's default terminal auto-approval
+rules. Assisted permissions remain available as a user-selectable mode; no
+supported workspace setting disables them. Routine `pnpm` checks, tests,
+read-only formatting checks, web builds without extra arguments, development
+servers, audits, and read-only Git/GitHub inspection are explicitly auto-approved.
+Commands not on the project allowlist, including `cat`, `grep`, and `npm ci`,
+require approval. Detected terminal file writes require approval,
 including writes inside the repository. File-writing formatters, ESLint fix
 mode, and test-runner snapshot updates also require approval. Rules evaluate
 individual subcommands; a command chain still requires

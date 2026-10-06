@@ -177,11 +177,12 @@
         "chat.agent.sandbox.network.deniedDomains": [],
         "chat.tools.terminal.enableAutoApprove": true,
         "chat.tools.terminal.autoApproveWorkspaceNpmScripts": false,
-        "chat.tools.terminal.ignoreDefaultAutoApproveRules": false,
+        "chat.tools.terminal.ignoreDefaultAutoApproveRules": true,
         "chat.tools.terminal.blockDetectedFileWrites": "all",
         "chat.tools.terminal.autoApprove": {
           "/^pnpm (?:run )?lint(?:\\s+.*)?(?:^|\\s)--fix(?:=\\S+)?(?:\\s|$)/": false,
           "/^pnpm (?:run )?test(?::(?:coverage|e2e|a11y|i18n|ui(?::coverage)?))?(?:\\s+.*)?(?:^|\\s)(?:-u|--update(?:-snapshots)?)(?:\\s|$)/": false,
+          "/^pnpm (?:run )?build\\s+.+$/": false,
           "/^pnpm (?:run )?(?:dev|build|preview|check(?::(?:ui|watch|rust(?::(?:fmt|clippy|deny))?))?|lint(?::actions)?|test(?::(?:coverage|e2e(?::report)?|a11y|i18n|ui(?::coverage)?|rust(?::(?:coverage|package|updater))?))?|format:check(?::file)?|audit:(?:rust|pnpm))(?:\\s|$)/": true,
           "/^git (?:status|diff|show|log|blame|ls-files|ls-tree|rev-parse)(?:\\s|$)/": true,
           "/^git remote(?: -v)?\\s*$/": true,
