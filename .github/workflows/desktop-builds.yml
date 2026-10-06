@@ -168,12 +168,12 @@ jobs:
               readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'AArch64'
               ;;
             x86_64-apple-darwin)
-              lipo -verify_arch x86_64 "src-tauri/binaries/tesseract-$TARGET"
-              lipo -verify_arch x86_64 src-tauri/resources/ocr/pdfium/libpdfium.dylib
+              lipo "src-tauri/binaries/tesseract-$TARGET" -archs | grep -qw x86_64
+              lipo src-tauri/resources/ocr/pdfium/libpdfium.dylib -archs | grep -qw x86_64
               ;;
             aarch64-apple-darwin)
-              lipo -verify_arch arm64 "src-tauri/binaries/tesseract-$TARGET"
-              lipo -verify_arch arm64 src-tauri/resources/ocr/pdfium/libpdfium.dylib
+              lipo "src-tauri/binaries/tesseract-$TARGET" -archs | grep -qw arm64
+              lipo src-tauri/resources/ocr/pdfium/libpdfium.dylib -archs | grep -qw arm64
               ;;
             x86_64-pc-windows-msvc)
               llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_AMD64
