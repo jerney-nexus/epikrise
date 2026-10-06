@@ -149,11 +149,18 @@
           }
         },
         "chat.agent.sandbox.enabled": "off",
-        "chat.agent.sandbox.allowAutoApprove": false,
         "chat.agent.sandbox.allowUnsandboxedCommands": false,
         "chat.agent.sandbox.allowNetwork": false,
         "chat.agent.sandbox.fileSystem.linux": {
           "denyRead": [
+            "/home/vscode/.ssh",
+            "/home/vscode/.local/share/ssh",
+            "/home/vscode/.copilot-host",
+            "/home/vscode/.claude-host"
+          ]
+        },
+        "chat.agent.sandbox.fileSystem.userConfiguredPaths": {
+          "deniedPaths": [
             "/home/vscode/.ssh",
             "/home/vscode/.local/share/ssh",
             "/home/vscode/.copilot-host",

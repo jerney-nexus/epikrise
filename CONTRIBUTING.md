@@ -86,10 +86,12 @@ the mounted GitHub credentials or host agent configuration from commands.
 
 On a host that supports nested sandboxing, install `bubblewrap` and `socat`,
 verify that a sandboxed command works, and set `chat.agent.sandbox.enabled` to
-`on` in Remote settings. The prepared policy disables sandbox-wide automatic
-approval and unsandboxed fallback, denies reads of SSH and mounted host agent
-configuration, and disables unrestricted network access. The domain allowlist
-is limited to GitHub and package registries; add only services a task needs.
+`on` in Remote settings. Current VS Code may auto-approve commands that run
+inside the sandbox, and Agent Host has no setting to require confirmation for
+every sandboxed command. The prepared policy disables unsandboxed fallback,
+denies reads of SSH and mounted host agent configuration, and disables
+unrestricted network access. The domain allowlist is limited to GitHub and
+package registries; add only services a task needs.
 Local sessions and the Agent Host custom terminal tool can use this allowlist.
 The Agent Host built-in shell cannot filter domains and instead blocks outbound
 network access when `allowNetwork` is false. These restrictions are inactive

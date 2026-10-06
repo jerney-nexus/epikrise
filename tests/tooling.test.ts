@@ -200,12 +200,14 @@ describe("dev-container approvals", () => {
       });
     }
     expect(settings["chat.agent.sandbox.enabled"]).toBe("off");
-    expect(settings["chat.agent.sandbox.allowAutoApprove"]).toBe(false);
     expect(settings["chat.agent.sandbox.allowUnsandboxedCommands"]).toBe(false);
     expect(settings["chat.agent.sandbox.allowNetwork"]).toBe(false);
     expect(settings["chat.agent.sandbox.fileSystem.linux"].denyRead).toContain(
       "/home/vscode/.local/share/ssh",
     );
+    expect(
+      settings["chat.agent.sandbox.fileSystem.userConfiguredPaths"].deniedPaths,
+    ).toEqual(settings["chat.agent.sandbox.fileSystem.linux"].denyRead);
     expect(settings["chat.agent.allowedNetworkDomains"]).toContain("api.github.com");
     expect(settings["chat.agent.allowedNetworkDomains"]).not.toContain("*");
     expect(settings["chat.agent.deniedNetworkDomains"]).toEqual([]);
