@@ -37,11 +37,14 @@ Workspace settings override container Remote defaults; object-valued settings
 can merge with user settings, so these defaults are not enforced policies.
 
 The container's VS Code settings use manual permissions for new sessions,
-disable global allow-all and assisted permissions, and keep the built-in
-terminal safety rules. Routine `pnpm` checks, tests, read-only formatting checks,
+disable global allow-all, and keep the built-in terminal safety rules. Assisted
+permissions remain available as a user-selectable mode; no supported workspace
+setting disables them. Routine `pnpm` checks, tests, read-only formatting checks,
 web builds, development servers, audits, and read-only Git/GitHub inspection are
-explicitly auto-approved. File-writing formatters require approval. Rules evaluate individual subcommands; a command chain still
-requires approval if any part is not allowed or matches a manual-approval rule.
+explicitly auto-approved. Detected terminal file writes require approval,
+including writes inside the repository. File-writing formatters also require
+approval. Rules evaluate individual subcommands; a command chain still requires
+approval if any part is not allowed or matches a manual-approval rule.
 The separate workspace package-script approver is disabled, so scripts such as
 `prepare` and `tauri` are not approved merely because they exist in `package.json`.
 Git branch commands require approval except for `git branch --show-current`,

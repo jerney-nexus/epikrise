@@ -118,7 +118,6 @@ describe("dev-container approvals", () => {
       approvals: "manual",
     });
     expect(settings["chat.tools.global.autoApprove"]).toBe(false);
-    expect(settings["chat.assistedPermissions.enabled"]).toBe(false);
     expect(settings["chat.autopilot.advanced.enabled"]).toBe(false);
     expect(settings["chat.tools.eligibleForAutoApproval"]).toMatchObject({
       create_pull_request: false,
@@ -224,9 +223,7 @@ describe("dev-container approvals", () => {
     expect(settings["chat.tools.terminal.enableAutoApprove"]).toBe(true);
     expect(settings["chat.tools.terminal.autoApproveWorkspaceNpmScripts"]).toBe(false);
     expect(settings["chat.tools.terminal.ignoreDefaultAutoApproveRules"]).toBe(false);
-    expect(settings["chat.tools.terminal.blockDetectedFileWrites"]).toBe(
-      "outsideWorkspace",
-    );
+    expect(settings["chat.tools.terminal.blockDetectedFileWrites"]).toBe("all");
     const rules = Object.entries(settings["chat.tools.terminal.autoApprove"]).map(
       ([pattern, approved]) => {
         expect(pattern.startsWith("/^"), pattern).toBe(true);
