@@ -17,7 +17,11 @@ test("opens help with workflow and privacy details", async ({ page }) => {
   const helpDialog = page.getByRole("dialog", { name: "Using Epikrise" });
   await expect(helpDialog).toBeVisible();
   await expect(helpDialog).toContainText("not saved as history");
+  await expect(helpDialog).toContainText("OS/runtime may retain copies");
   await expect(helpDialog).toContainText("current case material and template");
+  await expect(helpDialog).toContainText(
+    "first send to each remote endpoint in each case",
+  );
 });
 
 test("help text inherits the dark-mode dialog foreground", async ({ page }) => {
