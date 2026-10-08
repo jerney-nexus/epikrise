@@ -815,6 +815,22 @@ describe("signed release artifacts", () => {
     ).toThrow("Existing draft was not created for this commit.");
   });
 
+  it("runs feature-gated updater tests in Rust CI", async () => {
+    const packageJson = JSON.parse(
+      await readFile(path.join(repoRoot, "package.json"), "utf8"),
+    );
+    const rustWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/rust-tests.yml"),
+      "utf8",
+    );
+
+    expect(rustWorkflow).toContain("run: pnpm test:rust");
+    expect(packageJson.scripts["test:rust"]).toContain("pnpm test:rust:updater");
+    expect(packageJson.scripts["test:rust:updater"]).toContain(
+      "--features direct-release-updater updater::tests",
+    );
+  });
+
   it("keeps signed release publication separate from diagnostic builds", async () => {
     const releaseWorkflow = await readFile(
       path.join(repoRoot, ".github/workflows/signed-release.yml"),
