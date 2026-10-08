@@ -124,7 +124,8 @@ pnpm windows:build:arm64
 pnpm windows:build
 ```
 
-The installers are written under `src-tauri/target/<target>/release/bundle/nsis/`.
+The installers are written under
+`src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`.
 They include local OCR resources and the offline WebView2 installer. Initial
 tool and asset downloads require network access; native Windows testing is still
 required. See [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
