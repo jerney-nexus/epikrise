@@ -9,6 +9,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Added
 
+- Localized in-app help for the workflow, settings, case-data handling, and
+  privacy boundaries.
 - Templates can format ISO `YYYY-MM-DD` values with the MiniJinja expression
   `{{ case.visit_date | format_date }}`; German locales use `DD.MM.YYYY`,
   English locales use `Month D, YYYY`, other locales retain ISO output, and
