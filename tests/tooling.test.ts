@@ -824,7 +824,7 @@ describe("signed release artifacts", () => {
       "utf8",
     );
 
-    expect(rustWorkflow).toContain("run: pnpm test:rust");
+    expect(rustWorkflow).toMatch(/^[ \t]+run: pnpm test:rust[ \t]*$/m);
     expect(packageJson.scripts["test:rust"]).toContain("pnpm test:rust:updater");
     expect(packageJson.scripts["test:rust:updater"]).toContain(
       "--features direct-release-updater updater::tests",
