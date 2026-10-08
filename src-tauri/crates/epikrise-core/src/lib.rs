@@ -377,9 +377,10 @@ impl ClinicalTemplate {
                         "date must use YYYY-MM-DD format",
                     )
                 })?;
-                let formatted = if locale.starts_with("de") {
+                let language = locale.split('-').next().unwrap_or_default();
+                let formatted = if language.eq_ignore_ascii_case("de") {
                     date.format("%d.%m.%Y").to_string()
-                } else if locale.starts_with("en") {
+                } else if language.eq_ignore_ascii_case("en") {
                     date.format("%B %-d, %Y").to_string()
                 } else {
                     date.format("%Y-%m-%d").to_string()
@@ -917,11 +918,29 @@ mod tests {
             .expect("Swiss date should render");
         assert_eq!(swiss_date, "02.01.2025");
 
+        template.metadata.locale = "DE-CH".to_owned();
+        let case_insensitive_swiss_date = template
+            .render_system_prompt(&values)
+            .expect("case-insensitive Swiss locale should render");
+        assert_eq!(case_insensitive_swiss_date, "02.01.2025");
+
         template.metadata.locale = "en".to_owned();
         let english_date = template
             .render_system_prompt(&values)
             .expect("English date should render");
         assert_eq!(english_date, "January 2, 2025");
+
+        template.metadata.locale = "EN-us".to_owned();
+        let case_insensitive_english_date = template
+            .render_system_prompt(&values)
+            .expect("case-insensitive English locale should render");
+        assert_eq!(case_insensitive_english_date, "January 2, 2025");
+
+        template.metadata.locale = "den-CH".to_owned();
+        let unrelated_language_date = template
+            .render_system_prompt(&values)
+            .expect("unrecognized locale should render as ISO");
+        assert_eq!(unrelated_language_date, "2025-01-02");
 
         template.system_prompt = "{{ case.visit_date }}".to_owned();
         let unformatted_date = template
