@@ -224,6 +224,11 @@ describe("CalVer release versions", () => {
         expect(
           await readFile(path.join(repoRoot, "src-tauri/Cargo.toml"), "utf8"),
         ).toContain(`version = "${sourcePackage.version}"`);
+        expect(
+          JSON.parse(
+            await readFile(path.join(repoRoot, "src-tauri/tauri.conf.json"), "utf8"),
+          ).version,
+        ).toBe(sourcePackage.version);
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
