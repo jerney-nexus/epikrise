@@ -866,9 +866,7 @@ describe("signed release artifacts", () => {
           /push:\s+branches:\s+\[main, development, documentation\]/,
         );
       } else {
-        expect(workflowSource).toMatch(
-          /push:\s+branches:\s+\[main, development\]/,
-        );
+        expect(workflowSource).toMatch(/push:\s+branches:\s+\[main, development\]/);
       }
     }
     expect(releaseWorkflow).toContain(
