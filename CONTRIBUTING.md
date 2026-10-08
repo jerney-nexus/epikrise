@@ -97,7 +97,7 @@ pnpm windows:build
 ```
 
 Installers are written to
-`src-tauri/target/<target>/release/bundle/nsis/`. Each includes the offline
+`src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`. Each includes the offline
 WebView2 installer, adding about 127 MB. The first build downloads and verifies
 LLVM-MinGW, Tesseract, its dependencies, and PDFium; subsequent builds use
 target-specific caches. Tesseract's CMake TIFF capability probe is given an
