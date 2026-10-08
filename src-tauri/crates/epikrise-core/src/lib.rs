@@ -377,6 +377,12 @@ impl ClinicalTemplate {
                         "date must use YYYY-MM-DD format",
                     )
                 })?;
+                if date.format("%Y-%m-%d").to_string() != value {
+                    return Err(minijinja::Error::new(
+                        minijinja::ErrorKind::InvalidOperation,
+                        "date must use YYYY-MM-DD format",
+                    ));
+                }
                 let language = locale.split('-').next().unwrap_or_default();
                 let formatted = if language.eq_ignore_ascii_case("de") {
                     date.format("%d.%m.%Y").to_string()
@@ -949,6 +955,15 @@ mod tests {
         assert_eq!(unformatted_date, "2025-01-02");
 
         template.system_prompt = "{{ case.visit_date | format_date }}".to_owned();
+        let noncanonical_values = BTreeMap::from([
+            ("patient_name".to_owned(), serde_json::json!("Ada")),
+            ("visit_date".to_owned(), serde_json::json!("2025-1-2")),
+        ]);
+        assert_eq!(
+            template.render_system_prompt(&noncanonical_values),
+            Err(TemplateError::RenderingFailed)
+        );
+
         let invalid_values = BTreeMap::from([
             ("patient_name".to_owned(), serde_json::json!("Ada")),
             ("visit_date".to_owned(), serde_json::json!("2025-02-30")),
