@@ -1330,6 +1330,7 @@ dependencies = [
 name = "epikrise-core"
 version = "2026.10.0"
 dependencies = [
+ "chrono",
  "minijinja",
  "serde",
  "serde_json",

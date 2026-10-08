@@ -41,6 +41,7 @@ authors = ["Pascal Jerney"]
 calamine = "0.36"
 base64 = "0.22"
 async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 dom_smoothie = "0.18.2"
 fs4 = "1.1"
 epikrise-core = { path = "crates/epikrise-core" }

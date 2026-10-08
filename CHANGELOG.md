@@ -9,6 +9,10 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Added
 
+- Templates can format ISO `YYYY-MM-DD` values with the MiniJinja expression
+  `{{ case.visit_date | format_date }}`; German locales use `DD.MM.YYYY`,
+  English locales use `Month D, YYYY`, other locales retain ISO output, and
+  unformatted dates retain their original value.
 - Template prompts can reference declared values as `case.<variable_name>` while
   retaining flat placeholders and strict missing-value errors.
 - Prompt conversion rejects template names that are blank after trimming.
