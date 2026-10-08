@@ -158,6 +158,18 @@ configuration. A successful package build is not a substitute for native
 installation and synthetic OCR acceptance testing on each target; see
 [CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
 
+On macOS, copy `Epikrise.app` from the mounted image to `/Applications` first.
+If Gatekeeper then reports that the app is damaged and refuses to open, and you
+trust the artifact's source (verify its published SHA-256 checksum when
+available), remove the quarantine attribute from this app bundle:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Epikrise.app
+```
+
+This removes download quarantine only from Epikrise; it does not disable
+Gatekeeper globally. Only use this workaround for an artifact you trust.
+
 ## Software updates
 
 The standard application build reports updates as unavailable. The separate
