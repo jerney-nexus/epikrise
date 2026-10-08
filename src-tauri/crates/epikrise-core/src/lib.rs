@@ -371,17 +371,28 @@ impl ClinicalTemplate {
         environment.add_filter(
             "format_date",
             move |value: String| -> Result<String, minijinja::Error> {
-                let date = NaiveDate::parse_from_str(&value, "%Y-%m-%d").map_err(|_| {
+                let invalid_date = || {
                     minijinja::Error::new(
                         minijinja::ErrorKind::InvalidOperation,
                         "date must use YYYY-MM-DD format",
                     )
-                })?;
+                };
+                let bytes = value.as_bytes();
+                let has_iso_shape = bytes.len() == 10
+                    && bytes.iter().enumerate().all(|(index, byte)| {
+                        if matches!(index, 4 | 7) {
+                            *byte == b'-'
+                        } else {
+                            byte.is_ascii_digit()
+                        }
+                    });
+                if !has_iso_shape {
+                    return Err(invalid_date());
+                }
+                let date =
+                    NaiveDate::parse_from_str(&value, "%Y-%m-%d").map_err(|_| invalid_date())?;
                 if date.format("%Y-%m-%d").to_string() != value {
-                    return Err(minijinja::Error::new(
-                        minijinja::ErrorKind::InvalidOperation,
-                        "date must use YYYY-MM-DD format",
-                    ));
+                    return Err(invalid_date());
                 }
                 let language = locale.split('-').next().unwrap_or_default();
                 let formatted = if language.eq_ignore_ascii_case("de") {
@@ -961,6 +972,15 @@ mod tests {
         ]);
         assert_eq!(
             template.render_system_prompt(&noncanonical_values),
+            Err(TemplateError::RenderingFailed)
+        );
+
+        let expanded_year_values = BTreeMap::from([
+            ("patient_name".to_owned(), serde_json::json!("Ada")),
+            ("visit_date".to_owned(), serde_json::json!("+10000-01-02")),
+        ]);
+        assert_eq!(
+            template.render_system_prompt(&expanded_year_values),
             Err(TemplateError::RenderingFailed)
         );
 
