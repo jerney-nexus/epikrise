@@ -19,3 +19,24 @@ test("opens help with workflow and privacy details", async ({ page }) => {
   await expect(helpDialog).toContainText("not saved as history");
   await expect(helpDialog).toContainText("current case material and template");
 });
+
+test("help text inherits the dark-mode dialog foreground", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Help" }).click();
+
+  const helpDialog = page.getByRole("dialog", { name: "Using Epikrise" });
+  const dialogColor = await helpDialog.evaluate(
+    (dialog) => getComputedStyle(dialog).color,
+  );
+  const headingColor = await helpDialog
+    .getByRole("heading", { name: "Workflow" })
+    .evaluate((heading) => getComputedStyle(heading).color);
+  const bodyColor = await helpDialog
+    .locator(".help-copy p")
+    .first()
+    .evaluate((paragraph) => getComputedStyle(paragraph).color);
+
+  expect(headingColor).toBe(dialogColor);
+  expect(bodyColor).toBe(dialogColor);
+});

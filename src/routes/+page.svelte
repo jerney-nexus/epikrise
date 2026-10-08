@@ -3992,14 +3992,12 @@
 
   .help-copy h3 {
     margin: 0 0 8px;
-    color: #243c32;
     font-size: 15px;
   }
 
   .help-copy p,
   .help-copy ol {
     margin: 0;
-    color: #4b6157;
     font-size: 13px;
     line-height: 1.55;
   }
