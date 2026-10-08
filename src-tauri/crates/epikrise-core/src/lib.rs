@@ -354,7 +354,7 @@ impl ClinicalTemplate {
             }
         }
 
-        if !resolved_values.contains_key("case") {
+        if !declared_variables.contains("case") {
             let case_values = resolved_values.clone();
             resolved_values.insert(
                 "case".to_owned(),
@@ -831,16 +831,47 @@ mod tests {
         let mut template = sample_template();
         template.system_prompt =
             "Patient: {{ case.patient_name }}\nHistory: {{ case.include_history }}".to_owned();
-        let values = BTreeMap::from([
-            ("patient_name".to_owned(), serde_json::json!("Ada")),
-            ("include_history".to_owned(), serde_json::json!(false)),
-        ]);
+        let values = BTreeMap::from([("patient_name".to_owned(), serde_json::json!("Ada"))]);
 
         let rendered = template
             .render_system_prompt(&values)
             .expect("case values should render");
 
-        assert_eq!(rendered, "Patient: Ada\nHistory: False");
+        assert_eq!(rendered, "Patient: Ada\nHistory: True");
+    }
+
+    #[test]
+    fn template_preserves_strict_missing_values_for_case_names() {
+        let mut flat_case_template = sample_template();
+        flat_case_template.system_prompt = "{{ case }}".to_owned();
+        flat_case_template.variables.push(TemplateVariable {
+            name: "case".to_owned(),
+            kind: TemplateVariableKind::Text,
+            labels: BTreeMap::new(),
+            default: None,
+            required: false,
+            options: Vec::new(),
+        });
+        let values = BTreeMap::from([("patient_name".to_owned(), serde_json::json!("Ada"))]);
+        assert_eq!(
+            flat_case_template.render_system_prompt(&values),
+            Err(TemplateError::RenderingFailed)
+        );
+
+        let mut nested_case_template = sample_template();
+        nested_case_template.system_prompt = "{{ case.optional_value }}".to_owned();
+        nested_case_template.variables.push(TemplateVariable {
+            name: "optional_value".to_owned(),
+            kind: TemplateVariableKind::Text,
+            labels: BTreeMap::new(),
+            default: None,
+            required: false,
+            options: Vec::new(),
+        });
+        assert_eq!(
+            nested_case_template.render_system_prompt(&values),
+            Err(TemplateError::RenderingFailed)
+        );
     }
 
     #[test]
