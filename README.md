@@ -64,7 +64,7 @@ Epikrise does not connect to a hospital information system.
 | Tool          | Version | Notes                                                                |
 | ------------- | ------- | -------------------------------------------------------------------- |
 | Rust          | 1.98+   | stable toolchain, edition 2024                                       |
-| Node.js       | 22+     | pnpm 12.9.1, activated through Corepack                              |
+| Node.js       | 22+     | pnpm 12.10.1, activated through Corepack                              |
 | Platform deps | —       | see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
 
 A [dev container](.devcontainer/devcontainer.json) with everything preinstalled
