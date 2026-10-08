@@ -32,7 +32,7 @@ for your platform, plus Rust 1.98+ and Node 22+. macOS builds also require
 Homebrew Tesseract and German language data:
 
 ```sh
-brew install tesseract tesseract-lang
+brew install cmake ninja tesseract tesseract-lang
 ```
 
 `pnpm tauri` prepares the ignored, target-specific OCR files before
