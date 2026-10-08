@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::{BTreeMap, BTreeSet};
@@ -366,6 +367,26 @@ impl ClinicalTemplate {
         environment.set_auto_escape_callback(|_| minijinja::AutoEscape::None);
         environment.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
         environment.set_fuel(Some(TEMPLATE_RENDER_FUEL));
+        let locale = self.metadata.locale.clone();
+        environment.add_filter(
+            "format_date",
+            move |value: String| -> Result<String, minijinja::Error> {
+                let date = NaiveDate::parse_from_str(&value, "%Y-%m-%d").map_err(|_| {
+                    minijinja::Error::new(
+                        minijinja::ErrorKind::InvalidOperation,
+                        "date must use YYYY-MM-DD format",
+                    )
+                })?;
+                let formatted = if locale.starts_with("de") {
+                    date.format("%d.%m.%Y").to_string()
+                } else if locale.starts_with("en") {
+                    date.format("%B %-d, %Y").to_string()
+                } else {
+                    date.format("%Y-%m-%d").to_string()
+                };
+                Ok(formatted)
+            },
+        );
         let global_names: Vec<_> = environment
             .globals()
             .map(|(name, _)| name.to_owned())
@@ -870,6 +891,51 @@ mod tests {
         });
         assert_eq!(
             nested_case_template.render_system_prompt(&values),
+            Err(TemplateError::RenderingFailed)
+        );
+    }
+
+    #[test]
+    fn template_formats_dates_using_the_template_locale() {
+        let mut template = sample_template();
+        template.variables.push(TemplateVariable {
+            name: "visit_date".to_owned(),
+            kind: TemplateVariableKind::Date,
+            labels: BTreeMap::new(),
+            default: None,
+            required: true,
+            options: Vec::new(),
+        });
+        template.system_prompt = "{{ case.visit_date | format_date }}".to_owned();
+        let values = BTreeMap::from([
+            ("patient_name".to_owned(), serde_json::json!("Ada")),
+            ("visit_date".to_owned(), serde_json::json!("2025-01-02")),
+        ]);
+
+        let swiss_date = template
+            .render_system_prompt(&values)
+            .expect("Swiss date should render");
+        assert_eq!(swiss_date, "02.01.2025");
+
+        template.metadata.locale = "en".to_owned();
+        let english_date = template
+            .render_system_prompt(&values)
+            .expect("English date should render");
+        assert_eq!(english_date, "January 2, 2025");
+
+        template.system_prompt = "{{ case.visit_date }}".to_owned();
+        let unformatted_date = template
+            .render_system_prompt(&values)
+            .expect("unformatted date should retain its original value");
+        assert_eq!(unformatted_date, "2025-01-02");
+
+        template.system_prompt = "{{ case.visit_date | format_date }}".to_owned();
+        let invalid_values = BTreeMap::from([
+            ("patient_name".to_owned(), serde_json::json!("Ada")),
+            ("visit_date".to_owned(), serde_json::json!("2025-02-30")),
+        ]);
+        assert_eq!(
+            template.render_system_prompt(&invalid_values),
             Err(TemplateError::RenderingFailed)
         );
     }
