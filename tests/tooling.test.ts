@@ -848,10 +848,10 @@ describe("signed release artifacts", () => {
     expect(qualityWorkflow).toContain(
       "run: pnpm lint && pnpm format:check && pnpm build",
     );
+    expect(qualityWorkflow).toMatch(/pull_request:\s+branches:\s+\[main\]/);
     expect(qualityWorkflow).toMatch(
-      /pull_request:\s+branches:\s+\[main, development\]/,
+      /push:\s+branches:\s+\[main, development, documentation\]/,
     );
-    expect(qualityWorkflow).toMatch(/push:\s+branches:\s+\[main, development\]/);
     for (const workflow of qualityWorkflows) {
       const workflowSource = await readFile(
         path.join(repoRoot, ".github/workflows", workflow),
@@ -860,10 +860,14 @@ describe("signed release artifacts", () => {
       expect(releaseWorkflow).toContain(`uses: ./.github/workflows/${workflow}`);
       expect(workflowSource).toContain("workflow_call:");
       expect(workflowSource).toContain("ref: ${{ github.sha }}");
-      expect(workflowSource).toMatch(
-        /pull_request:\s+branches:\s+\[main, development\]/,
-      );
-      expect(workflowSource).toMatch(/push:\s+branches:\s+\[main, development\]/);
+      expect(workflowSource).toMatch(/pull_request:\s+branches:\s+\[main\]/);
+      if (workflow === "quality-checks.yml") {
+        expect(workflowSource).toMatch(
+          /push:\s+branches:\s+\[main, development, documentation\]/,
+        );
+      } else {
+        expect(workflowSource).toMatch(/push:\s+branches:\s+\[main, development\]/);
+      }
     }
     expect(releaseWorkflow).toContain(
       "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}",

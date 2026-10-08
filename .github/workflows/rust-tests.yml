@@ -2,7 +2,7 @@ name: Rust tests
 
 on:
   pull_request:
-    branches: [main, development]
+    branches: [main]
   push:
     branches: [main, development]
   workflow_call:

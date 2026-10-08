@@ -9,6 +9,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Added
 
+- Documented how to remove download quarantine from trusted unsigned macOS builds
+  when Gatekeeper blocks launch.
 - Markdown-formatted output previews and sanitized rich clipboard output that
   excludes remote images to prevent data leakage when pasted, with plain-text
   preview and reviewed-output copy safeguards retained. Switched to CalVer and
