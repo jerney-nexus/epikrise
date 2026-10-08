@@ -9,6 +9,7 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Added
 
+- Prompt conversion rejects template names that are blank after trimming.
 - Documented how to remove download quarantine from trusted unsigned macOS builds
   when Gatekeeper blocks launch.
 - Markdown-formatted output previews and sanitized rich clipboard output that
