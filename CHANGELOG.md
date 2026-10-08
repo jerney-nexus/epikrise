@@ -9,6 +9,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Added
 
+- Template prompts can reference declared values as `case.<variable_name>` while
+  retaining flat placeholders and strict missing-value errors.
 - Prompt conversion rejects template names that are blank after trimming.
 - Documented how to remove download quarantine from trusted unsigned macOS builds
   when Gatekeeper blocks launch.

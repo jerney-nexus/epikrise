@@ -293,7 +293,7 @@ impl ClinicalTemplate {
 
         let mut variable_names = BTreeSet::new();
         for variable in &self.variables {
-            if !is_valid_variable_name(&variable.name) {
+            if variable.name == "case" || !is_valid_variable_name(&variable.name) {
                 return Err(TemplateError::InvalidVariableName(variable.name.clone()));
             }
             if !variable_names.insert(&variable.name) {
@@ -353,6 +353,12 @@ impl ClinicalTemplate {
                 ));
             }
         }
+
+        let case_values = resolved_values.clone();
+        resolved_values.insert(
+            "case".to_owned(),
+            serde_json::Value::Object(case_values.into_iter().collect()),
+        );
 
         let mut environment = minijinja::Environment::new();
         environment.set_auto_escape_callback(|_| minijinja::AutoEscape::None);
@@ -819,6 +825,23 @@ mod tests {
     }
 
     #[test]
+    fn template_renders_declared_values_in_case_namespace() {
+        let mut template = sample_template();
+        template.system_prompt =
+            "Patient: {{ case.patient_name }}\nHistory: {{ case.include_history }}".to_owned();
+        let values = BTreeMap::from([
+            ("patient_name".to_owned(), serde_json::json!("Ada")),
+            ("include_history".to_owned(), serde_json::json!(false)),
+        ]);
+
+        let rendered = template
+            .render_system_prompt(&values)
+            .expect("case values should render");
+
+        assert_eq!(rendered, "Patient: Ada\nHistory: False");
+    }
+
+    #[test]
     fn template_renders_only_selected_sections_in_configured_order() {
         let mut template = sample_template();
         template.sections.push(TemplateSection {
@@ -899,6 +922,13 @@ mod tests {
             Err(TemplateError::InvalidVariableName(
                 "patient-name".to_owned()
             ))
+        );
+
+        let mut reserved_variable = sample_template();
+        reserved_variable.variables[0].name = "case".to_owned();
+        assert_eq!(
+            reserved_variable.validate(),
+            Err(TemplateError::InvalidVariableName("case".to_owned()))
         );
 
         let mut blank_default = sample_template();
