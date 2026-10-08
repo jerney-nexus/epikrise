@@ -849,7 +849,7 @@ describe("signed release artifacts", () => {
       "run: pnpm lint && pnpm format:check && pnpm build",
     );
     expect(qualityWorkflow).toMatch(
-      /pull_request:\s+branches:\s+\[main, development\]/,
+      /pull_request:\s+branches:\s+\[main, development, documentation\]/,
     );
     expect(qualityWorkflow).toMatch(
       /push:\s+branches:\s+\[main, development, documentation\]/,
@@ -863,7 +863,7 @@ describe("signed release artifacts", () => {
       expect(workflowSource).toContain("workflow_call:");
       expect(workflowSource).toContain("ref: ${{ github.sha }}");
       expect(workflowSource).toMatch(
-        /pull_request:\s+branches:\s+\[main, development\]/,
+        /pull_request:\s+branches:\s+\[main, development, documentation\]/,
       );
       expect(workflowSource).toMatch(
         /push:\s+branches:\s+\[main, development, documentation\]/,
