@@ -1469,14 +1469,15 @@ pub fn run() -> Result<(), tauri::Error> {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_PDF_VISION_PAGES, OcrTempSession, commit_case_generation,
-        load_template_library_from_paths, ocr_pdf_pages_with, parse_template_library,
-        prepare_case_generation, render_pdf_pages_for_vision, validate_template_changes,
-        validate_template_creation, validate_template_deletion, wipe_directory_contents,
+        MAX_PDF_VISION_PAGES, OcrTempSession, TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile,
+        commit_case_generation, load_template_library_from_paths, ocr_pdf_pages_with,
+        parse_template_library, prepare_case_generation, render_pdf_pages_for_vision,
+        validate_template_changes, validate_template_creation, validate_template_deletion,
+        wipe_directory_contents,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
-        TemplateError, TemplateValue,
+        TemplateError, TemplateValue, TemplateVariable, TemplateVariableKind,
     };
     use epikrise_llm::{
         AuthSource, ChatMessage, GenerationParams, LlmClient, LlmError, ModelCapabilities,
@@ -1565,6 +1566,39 @@ author = "Tests"
 "#,
         )
         .expect("synthetic template should be valid")
+    }
+
+    #[test]
+    fn schema_v1_library_with_flat_case_variable_still_loads_and_renders() {
+        let mut template = synthetic_template();
+        template.system_prompt = "Legacy value: {{ case }}".to_owned();
+        template.variables.push(TemplateVariable {
+            name: "case".to_owned(),
+            kind: TemplateVariableKind::Text,
+            labels: BTreeMap::new(),
+            default: None,
+            required: true,
+            options: Vec::new(),
+        });
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let templates_path = directory.path().join("templates.toml");
+        let legacy_path = directory.path().join("templates.json");
+        let contents = toml::to_string(&TemplateLibraryFile {
+            schema_version: TEMPLATE_LIBRARY_SCHEMA_VERSION,
+            templates: vec![template.clone()],
+        })
+        .expect("synthetic library should serialize");
+        fs::write(&templates_path, contents).expect("synthetic library should be written");
+
+        let restored = load_template_library_from_paths(&templates_path, &legacy_path)
+            .expect("schema-v1 library should load");
+        let values = BTreeMap::from([("case".to_owned(), serde_json::json!("synthetic"))]);
+
+        assert_eq!(restored, vec![template]);
+        assert_eq!(
+            restored[0].render_system_prompt(&values),
+            Ok("Legacy value: synthetic".to_owned())
+        );
     }
 
     #[test]

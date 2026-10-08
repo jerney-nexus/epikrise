@@ -293,7 +293,7 @@ impl ClinicalTemplate {
 
         let mut variable_names = BTreeSet::new();
         for variable in &self.variables {
-            if variable.name == "case" || !is_valid_variable_name(&variable.name) {
+            if !is_valid_variable_name(&variable.name) {
                 return Err(TemplateError::InvalidVariableName(variable.name.clone()));
             }
             if !variable_names.insert(&variable.name) {
@@ -354,11 +354,13 @@ impl ClinicalTemplate {
             }
         }
 
-        let case_values = resolved_values.clone();
-        resolved_values.insert(
-            "case".to_owned(),
-            serde_json::Value::Object(case_values.into_iter().collect()),
-        );
+        if !resolved_values.contains_key("case") {
+            let case_values = resolved_values.clone();
+            resolved_values.insert(
+                "case".to_owned(),
+                serde_json::Value::Object(case_values.into_iter().collect()),
+            );
+        }
 
         let mut environment = minijinja::Environment::new();
         environment.set_auto_escape_callback(|_| minijinja::AutoEscape::None);
@@ -922,13 +924,6 @@ mod tests {
             Err(TemplateError::InvalidVariableName(
                 "patient-name".to_owned()
             ))
-        );
-
-        let mut reserved_variable = sample_template();
-        reserved_variable.variables[0].name = "case".to_owned();
-        assert_eq!(
-            reserved_variable.validate(),
-            Err(TemplateError::InvalidVariableName("case".to_owned()))
         );
 
         let mut blank_default = sample_template();
