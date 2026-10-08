@@ -133,6 +133,7 @@
   let generalSettingsDialog: HTMLDialogElement | undefined;
   let modelSettingsDialog: HTMLDialogElement | undefined;
   let templateSettingsDialog: HTMLDialogElement | undefined;
+  let helpDialog: HTMLDialogElement | undefined;
   let addCredentialDialog: HTMLDialogElement | undefined;
   let templateEditorDialog: HTMLDialogElement | undefined;
   let templateEditDraft = $state<ClinicalTemplate | null>(null);
@@ -975,6 +976,10 @@
     templateSettingsDialog?.showModal();
   }
 
+  function openHelp() {
+    helpDialog?.showModal();
+  }
+
   function openAddCredential() {
     if (policyStatus?.active && !policyStatus.allowCredentialManagement) return;
     newCredentialLabel = "";
@@ -1011,6 +1016,7 @@
       generalSettingsDialog,
       modelSettingsDialog,
       templateSettingsDialog,
+      helpDialog,
     ].find((dialog) => dialog?.open);
     if (!topDialog) return;
 
@@ -2371,6 +2377,63 @@
       </form>
     </dialog>
 
+    <dialog
+      class="settings-dialog help-dialog"
+      bind:this={helpDialog}
+      aria-labelledby="help-title"
+      onkeydown={handleDialogKeydown}
+      oncancel={(event) => {
+        event.preventDefault();
+        helpDialog?.close();
+      }}
+    >
+      <section class="provider-settings help-content" aria-labelledby="help-title">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">{t("Help")}</p>
+            <h2 id="help-title">{t("Using Epikrise")}</h2>
+          </div>
+          <button
+            class="dialog-close"
+            type="button"
+            aria-label={t("Close help")}
+            onclick={() => helpDialog?.close()}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+
+        <div class="help-copy">
+          <section aria-labelledby="help-workflow-title">
+            <h3 id="help-workflow-title">{t("Workflow")}</h3>
+            <ol>
+              <li>{t("help-add-source")}</li>
+              <li>{t("help-choose-template")}</li>
+              <li>{t("help-review-draft")}</li>
+            </ol>
+          </section>
+
+          <section aria-labelledby="help-settings-title">
+            <h3 id="help-settings-title">{t("Settings")}</h3>
+            <p>{t("help-settings-details")}</p>
+          </section>
+
+          <section aria-labelledby="help-data-title">
+            <h3 id="help-data-title">{t("Data handling")}</h3>
+            <p>{t("help-case-memory")}</p>
+            <p>{t("help-local-endpoint")}</p>
+            <p>{t("help-remote-endpoint")}</p>
+            <p>{t("help-persistence")}</p>
+          </section>
+
+          <section aria-labelledby="help-review-title">
+            <h3 id="help-review-title">{t("Anonymization and review")}</h3>
+            <p>{t("help-anonymization")}</p>
+          </section>
+        </div>
+      </section>
+    </dialog>
+
     <section class="active-provider" aria-label={t("Active model and settings")}>
       <p class="eyebrow">{t("Active configuration")}</p>
       <dl class="provider-summary">
@@ -2408,6 +2471,9 @@
         {/if}
       </div>
       <div class="settings-actions">
+        <button class="settings-trigger" type="button" onclick={openHelp}>
+          {t("Help")}
+        </button>
         <button class="settings-trigger" type="button" onclick={openGeneralSettings}>
           {t("General settings")}
         </button>
@@ -3911,6 +3977,39 @@
 
   .settings-dialog {
     width: min(510px, calc(100vw - 28px));
+  }
+
+  .settings-dialog.help-dialog {
+    width: min(680px, calc(100vw - 28px));
+    max-height: calc(100vh - 2rem);
+  }
+
+  .help-copy {
+    display: grid;
+    gap: 18px;
+    margin-top: 20px;
+  }
+
+  .help-copy h3 {
+    margin: 0 0 8px;
+    font-size: 15px;
+  }
+
+  .help-copy p,
+  .help-copy ol {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .help-copy p + p {
+    margin-top: 8px;
+  }
+
+  .help-copy ol {
+    display: grid;
+    gap: 8px;
+    padding-left: 20px;
   }
 
   .settings-dialog.general-settings-dialog {
