@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, development]
   push:
-    branches: [main, development]
+    branches: [main, development, documentation]
   workflow_call:
   schedule:
     - cron: "17 5 * * 1"
