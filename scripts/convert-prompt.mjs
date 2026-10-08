@@ -69,6 +69,7 @@ async function main() {
   }
 
   const { inputPath, outputPath, options } = parsed;
+  if (!options.name.trim()) throw new Error("Template names must not be blank");
   if (path.resolve(inputPath) === path.resolve(outputPath)) {
     throw new Error("Input and output paths must be different");
   }

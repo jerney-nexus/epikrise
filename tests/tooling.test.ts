@@ -1505,6 +1505,33 @@ describe("frontend test harness", () => {
     }
   });
 
+  it("rejects whitespace-only template names without writing output", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-template-"));
+    const inputPath = path.join(directory, "prompt.txt");
+    const outputPath = path.join(directory, "converted.epitpl");
+    const scriptPath = fileURLToPath(
+      new URL("../scripts/convert-prompt.mjs", import.meta.url),
+    );
+
+    try {
+      await writeFile(inputPath, "Synthetic test prompt", "utf8");
+      await expect(
+        execFile(process.execPath, [
+          scriptPath,
+          inputPath,
+          outputPath,
+          "--name",
+          " \t ",
+        ]),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("Template names must not be blank"),
+      });
+      await expect(lstat(outputPath)).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects prompts containing MiniJinja comments", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-template-"));
     const inputPath = path.join(directory, "prompt.txt");
