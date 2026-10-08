@@ -269,5 +269,6 @@ reason. Fixtures used by tests must be synthetic.
 
 ## Reporting security issues
 
-Do not open a public issue for a vulnerability, in particular anything that
-could cause clinical content to leak. Contact the maintainer directly.
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+Do not open a public issue, especially for anything that could expose clinical
+content.
