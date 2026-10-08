@@ -851,7 +851,9 @@ describe("signed release artifacts", () => {
     expect(qualityWorkflow).toMatch(
       /pull_request:\s+branches:\s+\[main, development\]/,
     );
-    expect(qualityWorkflow).toMatch(/push:\s+branches:\s+\[main, development\]/);
+    expect(qualityWorkflow).toMatch(
+      /push:\s+branches:\s+\[main, development, documentation\]/,
+    );
     for (const workflow of qualityWorkflows) {
       const workflowSource = await readFile(
         path.join(repoRoot, ".github/workflows", workflow),
@@ -863,7 +865,9 @@ describe("signed release artifacts", () => {
       expect(workflowSource).toMatch(
         /pull_request:\s+branches:\s+\[main, development\]/,
       );
-      expect(workflowSource).toMatch(/push:\s+branches:\s+\[main, development\]/);
+      expect(workflowSource).toMatch(
+        /push:\s+branches:\s+\[main, development, documentation\]/,
+      );
     }
     expect(releaseWorkflow).toContain(
       "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}",
