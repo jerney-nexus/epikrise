@@ -39,8 +39,8 @@ const expectedSuffixes = {
   "aarch64-unknown-linux-gnu": [".deb", ".rpm", ".AppImage"],
   "x86_64-apple-darwin": [".dmg"],
   "aarch64-apple-darwin": [".dmg"],
-  "x86_64-pc-windows-msvc": [".exe"],
-  "aarch64-pc-windows-msvc": [".exe"],
+  "x86_64-pc-windows-msvc": [".exe", ".msix"],
+  "aarch64-pc-windows-msvc": [".exe", ".msix"],
 };
 
 /** @param {unknown} condition @param {string} message */
@@ -188,10 +188,7 @@ async function buildManifest(stageRoot, target, commit, requestId) {
 
 /** @param {string} bundleRoot @param {DesktopTarget} target */
 async function findPackages(bundleRoot, target) {
-  const bundleDirectory = target.endsWith("-pc-windows-msvc")
-    ? path.join(bundleRoot, "nsis")
-    : bundleRoot;
-  const paths = await collectFiles(bundleDirectory);
+  const paths = await collectFiles(bundleRoot);
   return paths.filter((filePath) =>
     expectedSuffixes[target].some((suffix) => filePath.endsWith(suffix)),
   );

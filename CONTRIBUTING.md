@@ -91,8 +91,7 @@ interactively before using this local option:
 pnpm windows:setup
 ```
 
-Then run an architecture-specific build or build both installers
-sequentially:
+Then build the requested NSIS target:
 
 ```sh
 pnpm windows:build:x64
@@ -135,13 +134,10 @@ rejects missing jobs, wrong SHAs/versions/targets, incomplete packages, and
 manifest or SHA-256 mismatches. GitHub retains the uploaded artifacts for 14
 days.
 
-Before enabling Windows jobs, a repository administrator must review the
-license for the pinned Microsoft Windows SDK/CRT and set the repository
-**Actions variable** `EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED` to the exact string
-`true`. The workflow only passes that value to the guarded setup script; it
-does not accept the license or store the SDK/CRT in Actions caches. If the
-variable is absent or different, setup fails before those downloads. Local
-`pnpm windows:setup` remains interactive and still requires typing `ACCEPT`.
+The Actions workflows do not cross-compile Windows targets or download a
+cross-build SDK/CRT. The diagnostic workflow is unsigned, read-only, and does not
+publish a release. The signed release workflow builds Windows MSI and NSIS
+variants on matching native Windows runners.
 
 Build artifacts are unsigned and macOS packages are not notarized. Expect
 SmartScreen/Gatekeeper warnings or installation restrictions; do not distribute

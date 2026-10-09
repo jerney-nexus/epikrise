@@ -53,7 +53,7 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   its updater public key; native installation and update acceptance remain
   outstanding.
 - Added a padded-CalVer-tag release workflow for signed Linux AppImage, macOS,
-  and Windows x64/ARM64 NSIS updater bundles, signatures, generated
+  and Windows x64/ARM64 MSI and NSIS updater bundles, signatures, generated
   `latest.json`, and GitHub release publication. Linux deb/rpm packages are
   built without updater support, and signing jobs use the protected `release`
   environment. Publication verifies updater signatures and uploaded bytes,

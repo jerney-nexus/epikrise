@@ -7,6 +7,15 @@ build_mode="${2:-diagnostic}"
 installer_family="${EPIKRISE_WINDOWS_INSTALLER_FAMILY:-}"
 webview_mode="${EPIKRISE_WINDOWS_WEBVIEW_MODE:-offline}"
 
+if [[ "${CI:-}" == "true" || "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
+  printf 'Windows cross-builds are only available to a human on Linux ARM64.\n' >&2
+  exit 1
+fi
+if [[ "$build_mode" != "diagnostic" || ( -n "$installer_family" && "$installer_family" != "nsis" ) ]]; then
+  printf 'Linux-hosted Windows cross-builds are limited to diagnostic NSIS installers.\n' >&2
+  exit 1
+fi
+
 sdk_version="10.0.26100"
 crt_version="14.44.17.14"
 visual_studio_version="17"
@@ -65,7 +74,7 @@ fi
 
 case "$build_mode" in
   diagnostic)
-    tauri_args=()
+    tauri_args=(--bundles nsis)
     ;;
   release)
     tauri_args=(
@@ -101,7 +110,7 @@ export PATH="$tool_wrapper_dir:$PATH"
 
 for target in "${targets[@]}"; do
   printf 'Preparing OCR assets for %s...\n' "$target"
-  bash scripts/prepare-ocr.sh --target "$target"
+  EPIKRISE_WINDOWS_NSIS_CROSS_BUILD=true bash scripts/prepare-ocr.sh --target "$target"
   if [[ "$build_mode" == "release" ]]; then
     printf 'Building the %s installer for %s...\n' "$installer_family" "$target"
     if [[ "$target" == x86_64-pc-windows-msvc ]]; then

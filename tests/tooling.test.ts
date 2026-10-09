@@ -413,6 +413,8 @@ describe("Windows cross-build versions", () => {
     expect(() => windowsArtifactName("x86_64", "msi", "offline", ".exe")).toThrow(
       "does not match",
     );
+    expect(buildScript).toContain("diagnostic NSIS installers");
+    expect(buildScript).toContain("EPIKRISE_WINDOWS_NSIS_CROSS_BUILD=true");
     expect(buildScript).toContain("tauri_args+=(--no-bundle)");
     expect(buildScript).toContain("windows-packages.mjs stage-layout");
     expect(buildScript).toContain("${GITHUB_SHA:-$(git rev-parse HEAD)}");
@@ -549,37 +551,56 @@ describe("Windows cross-build versions", () => {
     }
   });
 
-  it("rejects unsupported WebView2 variants before starting a release build", async () => {
-    const cacheRoot = await mkdtemp(path.join(tmpdir(), "epikrise-webview-mode-"));
-    const windowsCache = path.join(cacheRoot, "epikrise", "windows");
+  it("limits Linux cross-builds to human-invoked diagnostic NSIS builds", async () => {
+    await expect(
+      execFile("bash", ["scripts/build-windows.sh", "x64", "release"], {
+        cwd: repoRoot,
+        env: { ...process.env, CI: "" },
+      }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        "Linux-hosted Windows cross-builds are limited to diagnostic NSIS installers",
+      ),
+    });
+    await expect(
+      execFile("bash", ["scripts/build-windows.sh", "x64"], {
+        cwd: repoRoot,
+        env: { ...process.env, CI: "true" },
+      }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("only available to a human on Linux ARM64"),
+    });
+    await expect(
+      execFile("bash", ["scripts/build-windows.sh", "x64"], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          CI: "",
+          EPIKRISE_WINDOWS_INSTALLER_FAMILY: "msi",
+        },
+      }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        "Linux-hosted Windows cross-builds are limited to diagnostic NSIS installers",
+      ),
+    });
+  });
 
-    try {
-      await mkdir(windowsCache, { recursive: true });
-      await writeFile(
-        path.join(windowsCache, "sdk-license-accepted-17-10.0.26100-14.44.17.14"),
-        "",
-      );
-      await expect(
-        execFile("bash", ["scripts/build-windows.sh", "x64", "release"], {
+  it("rejects Windows OCR cross-targets in CI before fetching inputs", async () => {
+    await expect(
+      execFile(
+        "bash",
+        ["scripts/prepare-ocr.sh", "--target", "x86_64-pc-windows-msvc"],
+        {
           cwd: repoRoot,
-          env: {
-            ...process.env,
-            XDG_CACHE_HOME: cacheRoot,
-            EPIKRISE_WINDOWS_INSTALLER_FAMILY: "msi",
-            EPIKRISE_WINDOWS_WEBVIEW_MODE: "unsupported",
-            TAURI_SIGNING_PRIVATE_KEY: "synthetic-test-key",
-            TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
-          },
-        }),
-      ).rejects.toMatchObject({
-        code: 2,
-        stderr: expect.stringContaining(
-          "EPIKRISE_WINDOWS_WEBVIEW_MODE must be set to offline or bootstrapper",
-        ),
-      });
-    } finally {
-      await rm(cacheRoot, { recursive: true, force: true });
-    }
+          env: { ...process.env, CI: "true" },
+        },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        "only a human-invoked Linux NSIS build may cross-compile Windows",
+      ),
+    });
   });
 
   it("uses the same available CRT version for setup and builds", async () => {
@@ -818,6 +839,55 @@ describe("six-target desktop build tooling", () => {
     }
   });
 
+  it("stages both native Windows NSIS and MSIX packages", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-stage-"));
+    const bundleRoot = path.join(directory, "bundle");
+    const stageRoot = path.join(directory, "stage");
+    const target = "x86_64-pc-windows-msvc";
+
+    try {
+      await mkdir(path.join(bundleRoot, "nsis"), { recursive: true });
+      await mkdir(path.join(bundleRoot, "msix"), { recursive: true });
+      await writeFile(path.join(bundleRoot, "nsis", "epikrise-setup.exe"), "nsis");
+      await writeFile(path.join(bundleRoot, "msix", "epikrise.msix"), "msix");
+
+      const manifest = await stagePackages({
+        target,
+        commit,
+        requestId,
+        bundleRoot,
+        stageRoot,
+      });
+
+      expect(manifest.files.map((file) => file.path)).toEqual([
+        "files/epikrise-setup.exe",
+        "files/epikrise.msix",
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("packages only host-matched Windows app and OCR inputs into MSIX", async () => {
+    const packer = await readFile(
+      path.join(repoRoot, "scripts/build-windows-msix.ps1"),
+      "utf8",
+    );
+
+    expect(packer).toContain("$hostTriple -ne $Target");
+    expect(packer).toContain('"x86_64-pc-windows-msvc" { $architecture = "x64" }');
+    expect(packer).toContain('"aarch64-pc-windows-msvc" { $architecture = "arm64" }');
+    expect(packer).toContain('ProcessorArchitecture="$architecture"');
+    expect(packer).toContain("binaries\\tesseract-$Target.exe");
+    expect(packer).toContain("resources\\ocr\\pdfium\\pdfium.dll");
+    expect(packer).toContain("resources\\ocr\\tessdata\\deu.traineddata");
+    expect(packer).toContain("resources\\ocr\\tessdata\\eng.traineddata");
+    expect(packer).toContain(
+      "$makeAppx.FullName pack /d $layoutRoot /p $outputPath /o",
+    );
+    expect(packer).toContain("$Target.msix");
+  });
+
   it("rejects missing, stale, tampered, and unmanifested downloads", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-desktop-download-"));
     const version = JSON.parse(
@@ -833,7 +903,7 @@ describe("six-target desktop build tooling", () => {
           ? ["deb", "rpm", "AppImage"]
           : target.includes("apple-darwin")
             ? ["dmg"]
-            : ["exe"];
+            : ["exe", "msix"];
         const files = [];
         for (const extension of extensions) {
           const name = `${target}.${extension}`;
@@ -919,7 +989,7 @@ describe("six-target desktop build tooling", () => {
     }
   });
 
-  it("keeps the workflow manual, read-only, and fixed to the six planned runners", async () => {
+  it("keeps the workflow manual, read-only, and fixed to six native runners", async () => {
     const workflow = await readFile(
       path.join(repoRoot, ".github/workflows/desktop-builds.yml"),
       "utf8",
@@ -927,7 +997,8 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toMatch(/^\s+(push|pull_request):/m);
     expect(workflow).toContain("contents: read");
-    expect(workflow).toContain("vars.EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED");
+    expect(workflow).not.toContain("windows-setup.sh");
+    expect(workflow).not.toContain("cargo-xwin");
     expect(workflow).toContain(
       "src-tauri/target/host-$host_target/$TARGET/release/bundle",
     );
@@ -938,6 +1009,10 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("ubuntu-22.04");
     expect(workflow).toContain("macos-15-intel");
     expect(workflow).toContain("macos-15");
+    expect(workflow).toContain("runner: windows-2022");
+    expect(workflow).toContain("runner: windows-11-arm");
+    expect(workflow).toContain("--bundles nsis");
+    expect(workflow).toContain("scripts/build-windows-msix.ps1");
     for (const target of desktopTargets) expect(workflow).toContain(target);
   });
 });
@@ -1127,12 +1202,17 @@ describe("signed release artifacts", () => {
     expect(releaseTauriConfig.plugins.updater.requireSignedVersion).toBe(true);
     expect(diagnosticWorkflow).not.toContain("tauri.release.conf.json");
     expect(diagnosticWorkflow).not.toContain("--features");
-    expect(releaseWorkflow).toContain("EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis");
+    expect(releaseWorkflow).toMatch(
+      /target: x86_64-pc-windows-msvc\s+runner: windows-2022/,
+    );
+    expect(releaseWorkflow).toMatch(
+      /target: aarch64-pc-windows-msvc\s+runner: windows-11-arm/,
+    );
     expect(releaseWorkflow).toContain("windows-msi:");
     expect(releaseWorkflow).toContain("windows-input-${{ matrix.target }}");
     expect(releaseWorkflow).toContain("windows-packages.mjs verify-layout");
-    expect(releaseWorkflow).toContain("--bundles msi");
-    expect(releaseWorkflow).toContain("runs-on: windows-2022");
+    expect(releaseWorkflow).toContain('--bundles "$installer_family"');
+    expect(releaseWorkflow).toContain("runs-on: ${{ matrix.runner }}");
     expect(releaseWorkflow).toContain("--draft");
     expect(releaseWorkflow).toContain("validate-draft");
     expect(releaseWorkflow).toContain("--clobber");
@@ -1172,76 +1252,16 @@ describe("signed release artifacts", () => {
     expect(diagnosticWorkflow).not.toContain("gh release create");
   });
 
-  it("requires a signing key before starting a Windows release build", async () => {
-    const cacheRoot = await mkdtemp(path.join(tmpdir(), "epikrise-windows-release-"));
-    const windowsCache = path.join(cacheRoot, "epikrise", "windows");
-
-    try {
-      await mkdir(windowsCache, { recursive: true });
-      await writeFile(
-        path.join(windowsCache, "sdk-license-accepted-17-10.0.26100-14.44.17.14"),
-        "",
-      );
-      await expect(
-        execFile("bash", ["scripts/build-windows.sh", "x64", "release"], {
-          cwd: repoRoot,
-          env: {
-            ...process.env,
-            XDG_CACHE_HOME: cacheRoot,
-            EPIKRISE_WINDOWS_INSTALLER_FAMILY: "nsis",
-            TAURI_SIGNING_PRIVATE_KEY: "",
-            TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
-          },
-        }),
-      ).rejects.toMatchObject({
-        code: 1,
-        stderr: expect.stringContaining("TAURI_SIGNING_PRIVATE_KEY is required"),
-      });
-    } finally {
-      await rm(cacheRoot, { recursive: true, force: true });
-    }
+  it("keeps signed Windows release builds out of the Linux cross-build helper", async () => {
+    const releaseWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/signed-release.yml"),
+      "utf8",
+    );
+    expect(releaseWorkflow).not.toContain("scripts/build-windows.sh");
+    expect(releaseWorkflow).not.toContain("cargo-xwin");
+    expect(releaseWorkflow).toContain("runner: windows-2022");
+    expect(releaseWorkflow).toContain("runner: windows-11-arm");
   });
-
-  it.each([undefined, "both"])(
-    "rejects missing or conflicting signed Windows installer-family selection: %s",
-    async (family: string | undefined) => {
-      const cacheRoot = await mkdtemp(path.join(tmpdir(), "epikrise-windows-family-"));
-      const windowsCache = path.join(cacheRoot, "epikrise", "windows");
-      const environment: NodeJS.ProcessEnv = {
-        ...process.env,
-        XDG_CACHE_HOME: cacheRoot,
-        TAURI_SIGNING_PRIVATE_KEY: "synthetic-test-key",
-        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
-      };
-
-      if (family === undefined) {
-        delete environment.EPIKRISE_WINDOWS_INSTALLER_FAMILY;
-      } else {
-        environment.EPIKRISE_WINDOWS_INSTALLER_FAMILY = family;
-      }
-
-      try {
-        await mkdir(windowsCache, { recursive: true });
-        await writeFile(
-          path.join(windowsCache, "sdk-license-accepted-17-10.0.26100-14.44.17.14"),
-          "",
-        );
-        await expect(
-          execFile("bash", ["scripts/build-windows.sh", "x64", "release"], {
-            cwd: repoRoot,
-            env: environment,
-          }),
-        ).rejects.toMatchObject({
-          code: 2,
-          stderr: expect.stringContaining(
-            "EPIKRISE_WINDOWS_INSTALLER_FAMILY must be set to nsis or msi",
-          ),
-        });
-      } finally {
-        await rm(cacheRoot, { recursive: true, force: true });
-      }
-    },
-  );
 
   it("stages all platform packages and builds a signed static updater manifest", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-signed-release-"));
@@ -1712,6 +1732,7 @@ async function createWindowsOcrFixture(
     tessdataDir,
     environment: {
       ...process.env,
+      CI: "",
       PATH: `${binDir}:${process.env.PATH ?? ""}`,
       TESSDATA_DIR: reportedTessdataDir,
       TESSDATA_PACKAGE_DIR: tessdataDir,
@@ -1726,6 +1747,7 @@ async function createWindowsOcrFixture(
       EPIKRISE_OCR_BINARY_DIR: binaryDir,
       EPIKRISE_WINDOWS_OCR_CACHE: cacheRoot,
       EPIKRISE_WINDOWS_OCR_BUILDER: builderPath,
+      EPIKRISE_WINDOWS_NSIS_CROSS_BUILD: "true",
     },
   };
 }

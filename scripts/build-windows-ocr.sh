@@ -2,12 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
-  printf 'Windows OCR cross-compilation requires the Linux ARM64 dev container.\n' >&2
-  exit 1
-fi
-
 target="${1:-}"
+host_target="$(rustc -vV | sed -n 's/^host: //p')"
 case "$target" in
   x86_64-pc-windows-msvc)
     mingw_target="x86_64-w64-mingw32"
@@ -23,6 +19,27 @@ case "$target" in
     ;;
 esac
 
+if [[ "$target" == "$host_target" ]]; then
+  build_mode="native"
+elif [[ "$(uname -s)" == "Linux" && "$(uname -m)" == "aarch64" && "${CI:-}" != "true" && "${EPIKRISE_WINDOWS_NSIS_CROSS_BUILD:-}" == "true" ]]; then
+  build_mode="cross"
+else
+  printf 'Windows OCR cross-compilation is only permitted for a human-invoked Linux NSIS build.\n' >&2
+  exit 1
+fi
+
+if [[ "$build_mode" == "native" && "$host_target" != *-pc-windows-msvc ]]; then
+  printf 'Native Windows OCR compilation requires a Windows MSVC host.\n' >&2
+  exit 1
+fi
+if [[ "$build_mode" == "native" ]]; then
+  llvm_readobj="$(command -v llvm-readobj || true)"
+  if [[ -z "$llvm_readobj" ]]; then
+    printf 'Native Windows OCR validation requires llvm-readobj. Install LLVM and retry.\n' >&2
+    exit 1
+  fi
+fi
+
 cache_root="${EPIKRISE_WINDOWS_OCR_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/epikrise/windows-ocr}"
 binary_dir="${EPIKRISE_OCR_BINARY_DIR:-$repo_root/src-tauri/binaries}"
 download_dir="$cache_root/downloads"
@@ -31,10 +48,6 @@ build_dir="$cache_root/build/$target"
 prefix="$cache_root/install/$target"
 mkdir -p "$download_dir" "$source_dir" "$build_dir" "$prefix"
 
-llvm_version="20260922"
-llvm_archive="llvm-mingw-$llvm_version-ucrt-ubuntu-22.04-aarch64.tar.xz"
-llvm_sha256="07d21263c56bfe9a713db6fdb3f7434bf4c121a005e40397d3b4c0170fb06769"
-llvm_url="https://github.com/mstorsjo/llvm-mingw/releases/download/$llvm_version/$llvm_archive"
 zlib_archive="zlib-1.3.1.tar.gz"
 zlib_sha256="9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
 png_archive="libpng-v1.6.50.tar.gz"
@@ -75,20 +88,26 @@ extract_source() {
   printf '%s\n' "$destination"
 }
 
-llvm_archive_path="$(download_verified "$llvm_url" "$llvm_archive" "$llvm_sha256")"
-llvm_root="$cache_root/toolchains/llvm-mingw-$llvm_version"
-llvm_bin="$llvm_root/bin"
-if [[ ! -x "$llvm_bin/$mingw_target-clang++" ]]; then
-  mkdir -p "$llvm_root"
-  tar -xJf "$llvm_archive_path" --strip-components=1 -C "$llvm_root"
+if [[ "$build_mode" == "cross" ]]; then
+  llvm_version="20260922"
+  llvm_archive="llvm-mingw-$llvm_version-ucrt-ubuntu-22.04-aarch64.tar.xz"
+  llvm_sha256="07d21263c56bfe9a713db6fdb3f7434bf4c121a005e40397d3b4c0170fb06769"
+  llvm_url="https://github.com/mstorsjo/llvm-mingw/releases/download/$llvm_version/$llvm_archive"
+  llvm_archive_path="$(download_verified "$llvm_url" "$llvm_archive" "$llvm_sha256")"
+  llvm_root="$cache_root/toolchains/llvm-mingw-$llvm_version"
+  llvm_bin="$llvm_root/bin"
+  if [[ ! -x "$llvm_bin/$mingw_target-clang++" ]]; then
+    mkdir -p "$llvm_root"
+    tar -xJf "$llvm_archive_path" --strip-components=1 -C "$llvm_root"
+  fi
+  export PATH="$llvm_bin:$PATH"
+  sysroot="$llvm_root/$mingw_target"
+  compiler="$llvm_bin/$mingw_target-clang"
+  cxx_compiler="$llvm_bin/$mingw_target-clang++"
+  llvm_readobj="$llvm_bin/llvm-readobj"
+  mkdir -p "$prefix/lib"
+  ln -sfn "$sysroot/lib/libws2_32.a" "$prefix/lib/libWs2_32.a"
 fi
-export PATH="$llvm_bin:$PATH"
-sysroot="$llvm_root/$mingw_target"
-compiler="$llvm_bin/$mingw_target-clang"
-cxx_compiler="$llvm_bin/$mingw_target-clang++"
-llvm_readobj="$llvm_bin/llvm-readobj"
-mkdir -p "$prefix/lib"
-ln -sfn "$sysroot/lib/libws2_32.a" "$prefix/lib/libWs2_32.a"
 
 zlib_archive_path="$(download_verified 'https://zlib.net/fossils/zlib-1.3.1.tar.gz' "$zlib_archive" "$zlib_sha256")"
 png_archive_path="$(download_verified 'https://github.com/glennrp/libpng/archive/refs/tags/v1.6.50.tar.gz' "$png_archive" "$png_sha256")"
@@ -100,32 +119,54 @@ png_source="$(extract_source "$png_archive_path" "libpng-1.6.50")"
 lept_source="$(extract_source "$lept_archive_path" "leptonica-1.85.0")"
 tesseract_source="$(extract_source "$tesseract_archive_path" "tesseract-5.5.0")"
 
-cross_args=(
-  -G Ninja
-  -DCMAKE_SYSTEM_NAME=Windows
-  -DCMAKE_SYSTEM_PROCESSOR="$mingw_target"
-  -DCMAKE_C_COMPILER="$compiler"
-  -DCMAKE_CXX_COMPILER="$cxx_compiler"
-  -DCMAKE_FIND_ROOT_PATH="$prefix;$sysroot"
-  -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
-  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
-  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
-  -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
+cmake_args=(
   -DCMAKE_PREFIX_PATH="$prefix"
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="$prefix"
   -DCMAKE_INSTALL_LIBDIR=lib
-  "-DCMAKE_CXX_FLAGS=-include cstdlib"
-  "-DCMAKE_EXE_LINKER_FLAGS=-static -L$prefix/lib"
+  -DBUILD_SHARED_LIBS=OFF
+  -DZLIB_USE_STATIC_LIBS=ON
 )
+if [[ "$build_mode" == "native" ]]; then
+  cmake_arch="x64"
+  if [[ "$target" == aarch64-* ]]; then
+    cmake_arch="ARM64"
+  fi
+  cmake_args+=(
+    -G "Visual Studio 17 2022"
+    -A "$cmake_arch"
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+    -DCMAKE_FIND_LIBRARY_SUFFIXES=.lib
+  )
+else
+  cmake_args+=(
+    -G Ninja
+    -DCMAKE_SYSTEM_NAME=Windows
+    -DCMAKE_SYSTEM_PROCESSOR="$mingw_target"
+    -DCMAKE_C_COMPILER="$compiler"
+    -DCMAKE_CXX_COMPILER="$cxx_compiler"
+    -DCMAKE_FIND_ROOT_PATH="$prefix;$sysroot"
+    -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
+    -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
+    -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+    -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
+    "-DCMAKE_CXX_FLAGS=-include cstdlib"
+    "-DCMAKE_EXE_LINKER_FLAGS=-static -L$prefix/lib"
+  )
+fi
 
 build_and_install() {
   local name="$1"
   local source="$2"
   shift 2
-  cmake -S "$source" -B "$build_dir/$name" "${cross_args[@]}" "$@"
-  cmake --build "$build_dir/$name" --parallel
-  cmake --install "$build_dir/$name"
+  cmake -S "$source" -B "$build_dir/$name" "${cmake_args[@]}" "$@"
+  if [[ "$build_mode" == "native" ]]; then
+    cmake --build "$build_dir/$name" --config Release --parallel
+    cmake --install "$build_dir/$name" --config Release
+  else
+    cmake --build "$build_dir/$name" --parallel
+    cmake --install "$build_dir/$name"
+  fi
 }
 
 build_and_install zlib "$zlib_source" \

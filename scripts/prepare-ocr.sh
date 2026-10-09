@@ -79,18 +79,22 @@ case "$target" in
     ;;
 esac
 
-if [[ "$target" != "$host_target" && "$target" != *-pc-windows-msvc ]]; then
-  printf 'Host Tesseract cannot be staged for non-host target %s.\n' "$target" >&2
-  exit 1
+if [[ "$target" != "$host_target" ]]; then
+  if [[ "$target" != *-pc-windows-msvc || "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" || "${CI:-}" == "true" || "${EPIKRISE_WINDOWS_NSIS_CROSS_BUILD:-}" != "true" ]]; then
+    printf 'OCR target %s must match host %s; only a human-invoked Linux NSIS build may cross-compile Windows.\n' "$target" "$host_target" >&2
+    exit 1
+  fi
 fi
 
 tesseract_path="$(command -v tesseract || true)"
-if [[ -z "$tesseract_path" ]]; then
-  printf 'Tesseract was not found. Install it and the deu/eng language data before building.\n' >&2
-  exit 1
+tessdata_dir="${EPIKRISE_TESSDATA_DIR:-}"
+if [[ -z "$tessdata_dir" ]]; then
+  if [[ -z "$tesseract_path" ]]; then
+    printf 'Tesseract was not found. Install it and the deu/eng language data before building.\n' >&2
+    exit 1
+  fi
+  tessdata_dir="$(tesseract --list-langs 2>&1 | sed -n 's/.* in \"\([^\"]*\)\".*/\1/p' | head -n 1)"
 fi
-
-tessdata_dir="$(tesseract --list-langs 2>&1 | sed -n 's/.* in \"\([^\"]*\)\".*/\1/p' | head -n 1)"
 if [[ ! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata" ]]; then
   child_tessdata_dir="$tessdata_dir/tessdata"
   if [[ -f "$child_tessdata_dir/deu.traineddata" && -f "$child_tessdata_dir/eng.traineddata" ]]; then

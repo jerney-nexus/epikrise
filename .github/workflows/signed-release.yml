@@ -114,13 +114,13 @@ jobs:
             platform: macos
             bundles: dmg
           - target: x86_64-pc-windows-msvc
-            runner: ubuntu-22.04-arm
+            runner: windows-2022
             platform: windows
-            windows_arch: x64
+            windows_arch: x86_64
           - target: aarch64-pc-windows-msvc
-            runner: ubuntu-22.04-arm
+            runner: windows-11-arm
             platform: windows
-            windows_arch: arm64
+            windows_arch: aarch64
 
     env:
       TARGET: ${{ matrix.target }}
@@ -204,36 +204,49 @@ jobs:
         if: matrix.platform == 'macos'
         run: brew install ripgrep tesseract tesseract-lang
 
-      - name: Install Windows cross-build dependencies
+      - name: Install native Windows packaging tools
         if: matrix.platform == 'windows'
-        shell: bash
+        shell: pwsh
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential clang cmake curl file lld llvm nsis ninja-build \
-            pkg-config ripgrep libssl-dev libayatana-appindicator3-dev librsvg2-dev \
-            libwebkit2gtk-4.1-dev libxdo-dev patchelf tesseract-ocr \
-            tesseract-ocr-deu tesseract-ocr-eng
-          temp_file="$(mktemp)"
-          curl --fail --location --silent --show-error \
-            https://raw.githubusercontent.com/NSIS-Dev/NSIS/v312/Include/Win/RestartManager.nsh \
-            -o "$temp_file"
-          printf '%s  %s\n' \
-            67149978412da9b283e2e1abe48a360093df9caf6363373e2cabe463978b7c0e \
-            "$temp_file" | sha256sum --check --status
-          sudo install -D -m 0644 "$temp_file" \
-            /usr/share/nsis/Include/Win/RestartManager.nsh
-          rm -f "$temp_file"
+          choco install llvm nsis --yes --no-progress
+          choco install wixtoolset --version=3.14.1 --yes --no-progress
 
-      - name: Set up the pinned Windows SDK and CRT
+      - name: Record native Windows toolchain versions
         if: matrix.platform == 'windows'
-        working-directory: ${{ runner.temp }}/epikrise-release
-        env:
-          EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: ${{ vars.EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED }}
-        run: bash scripts/windows-setup.sh --ci
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -property installationPath
+          $vsVersion = & $vswhere -latest -property installationVersion
+          $sdkRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\Include"
+          $sdkVersion = Get-ChildItem $sdkRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty Name
+          $crtRoot = Join-Path $vsPath "VC\Tools\MSVC"
+          $crtVersion = Get-ChildItem $crtRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty Name
+          "WINDOWS_VISUAL_STUDIO_VERSION=$vsVersion" >> $env:GITHUB_ENV
+          "WINDOWS_SDK_VERSION=$sdkVersion" >> $env:GITHUB_ENV
+          "WINDOWS_CRT_VERSION=$crtVersion" >> $env:GITHUB_ENV
+
+      - name: Download verified Windows OCR language data
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $tessdata = Join-Path $env:RUNNER_TEMP "epikrise-tessdata"
+          New-Item -ItemType Directory -Force -Path $tessdata | Out-Null
+          $models = @{
+            "eng" = "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+            "deu" = "19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d"
+          }
+          $revision = "87416418657359cb625c412a48b6e1d6d41c29bd"
+          foreach ($model in $models.Keys) {
+            $destination = Join-Path $tessdata "$model.traineddata"
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/$revision/$model.traineddata" -OutFile $destination
+            if ((Get-FileHash -Algorithm SHA256 $destination).Hash.ToLowerInvariant() -ne $models[$model]) {
+              throw "SHA-256 mismatch for $model.traineddata"
+            }
+          }
+          "EPIKRISE_TESSDATA_DIR=$($tessdata -replace '\\', '/')" >> $env:GITHUB_ENV
 
       - name: Prepare target OCR resources
-        if: matrix.platform != 'windows'
         working-directory: ${{ runner.temp }}/epikrise-release
         run: bash scripts/prepare-ocr.sh --target "$TARGET"
 
@@ -242,27 +255,65 @@ jobs:
         working-directory: ${{ runner.temp }}/epikrise-release
         env:
           WINDOWS_ARCH: ${{ matrix.windows_arch }}
-          EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          for webview_mode in offline bootstrapper; do
-            EPIKRISE_WINDOWS_WEBVIEW_MODE="$webview_mode" \
-              bash scripts/build-windows.sh "$WINDOWS_ARCH" release
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            printf 'TAURI_SIGNING_PRIVATE_KEY is required for signed releases.\n' >&2
+            exit 1
+          fi
+          signing_private_key="$TAURI_SIGNING_PRIVATE_KEY"
+          signing_private_key_password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          release_root="src-tauri/target/host-$host_target/$TARGET/release"
+          release_version="$(node -p "require('./package.json').version")"
+          for installer_family in nsis msi; do
+            updater_feature="updater-windows-${WINDOWS_ARCH}-${installer_family}"
+            bundle_config="$(node scripts/windows-packages.mjs config "$WINDOWS_ARCH" "$installer_family" offline)"
+            TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
+              TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+              bash scripts/with-cargo-host-target.sh \
+                pnpm exec tauri build \
+                  --target "$TARGET" \
+                  --features "$updater_feature" \
+                  --config src-tauri/tauri.release.conf.json \
+                  --config '{"build":{"beforeBuildCommand":null}}' \
+                  --config "$bundle_config" \
+                  --no-bundle \
+                  --ci \
+                  --no-sign
+            if [[ "$installer_family" == "msi" ]]; then
+              node scripts/windows-packages.mjs stage-layout \
+                "$TARGET" msi "$release_root/epikrise.exe" \
+                "$PWD/src-tauri/resources/ocr" "$PWD/src-tauri/binaries" \
+                "$release_root/windows-layout" "$GITHUB_SHA" "$release_version" \
+                "$WINDOWS_SDK_VERSION" "$WINDOWS_CRT_VERSION" \
+                "$WINDOWS_VISUAL_STUDIO_VERSION"
+            fi
+            for webview_mode in offline bootstrapper; do
+              bundle_config="$(node scripts/windows-packages.mjs config "$WINDOWS_ARCH" "$installer_family" "$webview_mode")"
+              TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
+                TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+                bash scripts/with-cargo-host-target.sh \
+                  pnpm exec tauri bundle \
+                    --target "$TARGET" \
+                    --features "$updater_feature" \
+                    --config src-tauri/tauri.release.conf.json \
+                    --config '{"build":{"beforeBuildCommand":null}}' \
+                    --config "$bundle_config" \
+                    --bundles "$installer_family" \
+                    --ci \
+                    --no-sign
+              node scripts/windows-packages.mjs stage \
+                "$release_root/bundle/$installer_family" \
+                "$release_root/windows-packages" \
+                "$WINDOWS_ARCH" "$installer_family" "$webview_mode"
+            done
           done
-
-      - name: Build immutable Windows MSI inputs
-        if: matrix.platform == 'windows'
-        working-directory: ${{ runner.temp }}/epikrise-release
-        env:
-          WINDOWS_ARCH: ${{ matrix.windows_arch }}
-          EPIKRISE_WINDOWS_INSTALLER_FAMILY: msi
-          EPIKRISE_WINDOWS_WEBVIEW_MODE: offline
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: bash scripts/build-windows.sh "$WINDOWS_ARCH" release
+          unset signing_private_key signing_private_key_password
 
       - name: Build signed Linux or macOS updater bundles
         if: matrix.platform != 'windows'
@@ -343,10 +394,12 @@ jobs:
               lipo src-tauri/resources/ocr/pdfium/libpdfium.dylib -archs | grep -qw arm64
               ;;
             x86_64-pc-windows-msvc)
+              llvm-readobj --file-headers "src-tauri/target/host-$TARGET/$TARGET/release/epikrise.exe" | grep -F IMAGE_FILE_MACHINE_AMD64
               llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_AMD64
               llvm-readobj --file-headers src-tauri/resources/ocr/pdfium/pdfium.dll | grep -F IMAGE_FILE_MACHINE_AMD64
               ;;
             aarch64-pc-windows-msvc)
+              llvm-readobj --file-headers "src-tauri/target/host-$TARGET/$TARGET/release/epikrise.exe" | grep -F IMAGE_FILE_MACHINE_ARM64
               llvm-readobj --file-headers "src-tauri/binaries/tesseract-$TARGET.exe" | grep -F IMAGE_FILE_MACHINE_ARM64
               llvm-readobj --file-headers src-tauri/resources/ocr/pdfium/pdfium.dll | grep -F IMAGE_FILE_MACHINE_ARM64
               ;;
@@ -379,7 +432,7 @@ jobs:
             "$release_root/windows-layout" "$TARGET" msi "$GITHUB_SHA" \
             "$(node -p "require('./package.json').version")"
           package_count="$(find "$release_root/windows-packages" -maxdepth 1 -type f | wc -l)"
-          test "$package_count" -eq 4
+          test "$package_count" -eq 8
 
       - uses: actions/upload-artifact@v7
         if: matrix.platform != 'windows'
@@ -395,16 +448,16 @@ jobs:
         with:
           name: windows-input-${{ matrix.target }}
           path: |
-            ${{ runner.temp }}/epikrise-release/src-tauri/target/host-aarch64-unknown-linux-gnu/${{ matrix.target }}/release/windows-packages/
-            ${{ runner.temp }}/epikrise-release/src-tauri/target/host-aarch64-unknown-linux-gnu/${{ matrix.target }}/release/windows-layout/
+            ${{ runner.temp }}/epikrise-release/src-tauri/target/host-${{ matrix.target }}/${{ matrix.target }}/release/windows-packages/
+            ${{ runner.temp }}/epikrise-release/src-tauri/target/host-${{ matrix.target }}/${{ matrix.target }}/release/windows-layout/
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
 
   windows-msi:
     needs: build
-    name: Bundle MSI ${{ matrix.target }}
-    runs-on: windows-2022
+    name: Stage Windows release ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
     environment: release
     timeout-minutes: 60
     permissions:
@@ -415,8 +468,10 @@ jobs:
         include:
           - target: x86_64-pc-windows-msvc
             windows_arch: x86_64
+            runner: windows-2022
           - target: aarch64-pc-windows-msvc
             windows_arch: aarch64
+            runner: windows-11-arm
     env:
       TARGET: ${{ matrix.target }}
       WINDOWS_ARCH: ${{ matrix.windows_arch }}
@@ -500,42 +555,18 @@ jobs:
           cp "$layout_root/release/epikrise.exe" "$release_root/epikrise.exe"
           cp -a "$input_root/windows-packages" "$release_root/windows-packages"
 
-      - name: Bundle and stage signed Windows MSI variants
+      - name: Verify and stage native Windows release artifacts
         working-directory: ${{ runner.temp }}/epikrise-release
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
-            printf 'TAURI_SIGNING_PRIVATE_KEY is required for signed releases.\n' >&2
-            exit 1
-          fi
-          signing_private_key="$TAURI_SIGNING_PRIVATE_KEY"
-          signing_private_key_password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
-          unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
           host_target="$(rustc -vV | sed -n 's/^host: //p')"
           release_root="src-tauri/target/host-$host_target/$TARGET/release"
-          for webview_mode in offline bootstrapper; do
-            windows_bundle_config="$(node scripts/windows-packages.mjs config "$WINDOWS_ARCH" msi "$webview_mode")"
-            TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
-              TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
-              bash scripts/with-cargo-host-target.sh \
-                pnpm exec tauri bundle \
-                --target "$TARGET" \
-                --features "updater-windows-${WINDOWS_ARCH}-msi" \
-                --config src-tauri/tauri.release.conf.json \
-                --config '{"build":{"beforeBuildCommand":null}}' \
-                --config "$windows_bundle_config" \
-                --bundles msi \
-                --ci \
-                --no-sign
-            node scripts/windows-packages.mjs stage \
-              "$release_root/bundle/msi" "$release_root/windows-packages" \
-              "$WINDOWS_ARCH" msi "$webview_mode"
-          done
-          unset signing_private_key signing_private_key_password
+          node scripts/windows-packages.mjs verify-layout \
+            "$release_root/windows-layout" "$TARGET" msi "$GITHUB_SHA" \
+            "$(node -p "require('./package.json').version")"
+          package_count="$(find "$release_root/windows-packages" -maxdepth 1 -type f | wc -l)"
+          test "$package_count" -eq 8
           node scripts/release-artifacts.mjs stage \
             --target "$TARGET" \
             --bundle-root "$release_root/windows-packages" \
