@@ -114,6 +114,30 @@ describe("binary architecture verification", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("recognizes both architectures in a universal Mach-O header", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-universal-header-"));
+    const binaryPath = path.join(directory, "universal.bin");
+    const binary = Buffer.alloc(48);
+    binary.set([0xca, 0xfe, 0xba, 0xbe]);
+    binary.writeUInt32BE(2, 4);
+    binary.writeUInt32BE(0x01000007, 8);
+    binary.writeUInt32BE(3, 12);
+    binary.writeUInt32BE(0x0100000c, 28);
+    binary.writeUInt32BE(0, 32);
+
+    try {
+      await writeFile(binaryPath, binary);
+      await expect(
+        verifyBinaryArchitecture("x86_64-apple-darwin", binaryPath),
+      ).resolves.toBeUndefined();
+      await expect(
+        verifyBinaryArchitecture("aarch64-apple-darwin", binaryPath),
+      ).resolves.toBeUndefined();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("CalVer release versions", () => {
