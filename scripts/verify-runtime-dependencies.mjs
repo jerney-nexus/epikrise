@@ -19,17 +19,25 @@ export function assertResolvedLinuxDependencies(binaryPath, output) {
 }
 
 export function assertSystemOnlyMachODependencies(binaryPath, output) {
-  const externalLibraries = output
+  const libraryPaths = output
     .split(/\r?\n/)
     .slice(1)
     .map((line) => line.trim().split(/\s+\(/)[0])
-    .filter(Boolean)
-    .filter(
-      (libraryPath) =>
-        !libraryPath.startsWith("/usr/lib/") &&
-        !libraryPath.startsWith("/System/Library/") &&
-        !libraryPath.startsWith("/Library/Apple/"),
-    );
+    .filter(Boolean);
+  if (
+    binaryPath.endsWith(".dylib") &&
+    libraryPaths.length > 0 &&
+    path.basename(libraryPaths[0]) === path.basename(binaryPath)
+  ) {
+    libraryPaths.shift();
+  }
+
+  const externalLibraries = libraryPaths.filter(
+    (libraryPath) =>
+      !libraryPath.startsWith("/usr/lib/") &&
+      !libraryPath.startsWith("/System/Library/") &&
+      !libraryPath.startsWith("/Library/Apple/"),
+  );
 
   if (externalLibraries.length > 0) {
     throw new Error(
