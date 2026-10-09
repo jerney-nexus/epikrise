@@ -26,11 +26,11 @@ const elfMachineNames = {
   183: "aarch64",
 };
 
-function parseMachOArchitecture(binary, offset, littleEndian) {
-  if (offset + 8 > binary.length) throw new Error("truncated Mach-O header");
+function parseMachOArchitecture(binary, cpuTypeOffset, littleEndian) {
+  if (cpuTypeOffset + 4 > binary.length) throw new Error("truncated Mach-O header");
   const cpuType = littleEndian
-    ? binary.readUInt32LE(offset + 4)
-    : binary.readUInt32BE(offset + 4);
+    ? binary.readUInt32LE(cpuTypeOffset)
+    : binary.readUInt32BE(cpuTypeOffset);
   return architectureNames[cpuType] ?? `unknown (0x${cpuType.toString(16)})`;
 }
 
@@ -43,7 +43,7 @@ function inspectMachO(binary) {
     cffaedfe: { littleEndian: true },
   };
   if (thinFormats[magic]) {
-    return [parseMachOArchitecture(binary, 0, thinFormats[magic].littleEndian)];
+    return [parseMachOArchitecture(binary, 4, thinFormats[magic].littleEndian)];
   }
 
   const fatFormats = {
