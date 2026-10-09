@@ -34,13 +34,15 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   and credential-management controls. Policy restrictions provide clear
   feedback when they block a generation configuration, while an unset reasoning
   effort remains provider-defined.
-- ARM64 Linux cross-compilation for separate Windows x64 and ARM64 NSIS
-  installers, with static bundled OCR and offline WebView2 installation.
-- Added a manual six-target GitHub Actions desktop build workflow and
-  `pnpm build:all` dispatch/download command with exact-commit and artifact
-  manifest/hash verification. Windows CI SDK downloads require explicit
-  administrator license approval and skip interactive acceptance only in
-  approved CI mode; packages remain unsigned and unpublished.
+- Native host builds for Linux, macOS, and Windows, with Windows OCR compiled
+  natively for the matching MSVC architecture. A human can manually
+  cross-compile the Windows app and OCR inside the Linux ARM64 Dev Container and
+  package a diagnostic NSIS installer; Actions never cross-compile.
+- Added a manual six-target GitHub Actions desktop build workflow using native
+  OS/architecture-matched runners and a `pnpm build:all` dispatch/download
+  command with exact-commit and artifact manifest/hash verification. Windows
+  diagnostic builds produce unsigned NSIS and MSIX packages; no packages are
+  published by this workflow.
 - Added default-off, policy-enforced direct-release updater plumbing with
   explicit checks and install confirmation, target/version/URL validation,
   approved HTTPS host checks for every redirect, progress reporting, and

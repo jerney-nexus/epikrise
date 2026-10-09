@@ -71,17 +71,21 @@ and open a new terminal. Then retry `pnpm tauri build`.
 
 ### Building Windows installers
 
-Windows cross-compilation is configured for the ARM64 Linux dev container. Its
-setup installs LLVM, CMake, Ninja, NSIS and `cargo-xwin`; OCR sidecars and their
-static dependencies are compiled separately for x64 and ARM64. Provisioning
-also installs Tauri's required NSIS Restart Manager include. The pinned Windows
-PDFium and language resources are staged per target. If setup reports that the
-include is missing, rebuild the dev container to apply the updated provisioning.
+Outside the Linux Dev Container, native build commands compile the application
+and OCR for the host OS and architecture.
 
-Run setup interactively once. It displays the Microsoft SDK/CRT license link
-and downloads the pinned Windows SDK package `10.0.26100` and Visual C++
-toolset component `14.44.17.14` only
-after you type `ACCEPT`:
+On a native Windows host, `pnpm tauri build` builds Epikrise and OCR for that
+host's Windows architecture. Use a matching MSVC Rust toolchain, Visual Studio
+C++ build tools, CMake, LLVM (`llvm-readobj`), and Tesseract with German and
+English language data. Do not use the Linux cross-build setup on Windows.
+
+A human can manually cross-compile the Windows application and OCR inside the
+Linux ARM64 Dev Container. The local commands package those outputs as a
+diagnostic NSIS installer; local cross-builds do not produce MSI or MSIX
+packages and are never an Actions path. The container setup installs LLVM,
+CMake, Ninja, NSIS, and `cargo-xwin`, and stages pinned Windows PDFium and
+language resources per target. Review and accept the Microsoft SDK/CRT license
+interactively before using this local option:
 
 ```sh
 pnpm windows:setup
@@ -96,9 +100,9 @@ pnpm windows:build:arm64
 pnpm windows:build
 ```
 
-Installers are written to
-`src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`. Each includes the offline
-WebView2 installer, adding about 127 MB. The first build downloads and verifies
+Local cross-build NSIS installers are written to
+`src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/` and include
+the offline WebView2 installer. The first build downloads and verifies
 LLVM-MinGW, Tesseract, its dependencies, and PDFium; subsequent builds use
 target-specific caches. Tesseract's CMake TIFF capability probe is given an
 explicit cross-build result, so no Windows executable is run in Linux. TIFF
@@ -113,12 +117,12 @@ ARM64 systems.
 
 The manual **Desktop builds** workflow produces six native/target-matched
 packages: Linux x64 and ARM64 (`.deb`, `.rpm`, AppImage), macOS x64 and ARM64
-(`.dmg`), and Windows x64 and ARM64 (NSIS `.exe` with offline WebView2). Linux
-and macOS use native GitHub-hosted runners; Windows uses the existing
-Linux-ARM64 `cargo-xwin` cross-build. OCR sidecars are built from pinned source
-archives, and downloaded source/PDFium files are checksum-verified. Native
-Linux OCR is statically linked; macOS OCR links its third-party dependencies
-statically and checks that remaining dynamic libraries are provided by macOS.
+(`.dmg`), and Windows x64 and ARM64 (NSIS `.exe` and MSIX). Windows Actions
+jobs use native Windows runners and toolchains; Actions never cross-compile.
+OCR sidecars are built from pinned source archives, and downloaded
+source/PDFium files are checksum-verified. Native Linux OCR is statically
+linked; macOS OCR links its third-party dependencies statically and checks
+that remaining dynamic libraries are provided by macOS.
 
 Run `pnpm build:all` only after the workflow is present and enabled on GitHub.
 The worktree must be clean, and `HEAD` must be the exact commit pushed to the
