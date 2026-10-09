@@ -45,6 +45,7 @@ import {
   verifyUploadedReleaseAssets,
 } from "../scripts/release-artifacts.mjs";
 import { verifyBinaryArchitecture } from "../scripts/verify-binary-architecture.mjs";
+import { assertResolvedLinuxDependencies } from "../scripts/verify-runtime-dependencies.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -137,6 +138,23 @@ describe("binary architecture verification", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Linux runtime dependency verification", () => {
+  it("accepts resolved and statically linked binaries", () => {
+    expect(() =>
+      assertResolvedLinuxDependencies(
+        "app",
+        "libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0)\nnot a dynamic executable",
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects unresolved runtime libraries", () => {
+    expect(() =>
+      assertResolvedLinuxDependencies("app", "libwebkit.so => not found"),
+    ).toThrow("Unresolved runtime dependencies for app: libwebkit.so.");
   });
 });
 
