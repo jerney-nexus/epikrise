@@ -16,6 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { deriveReleaseVersions } from "./prepare-release.mjs";
+import { windowsArtifactName } from "./windows-packages.mjs";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const execFile = promisify(execFileCallback);
@@ -32,6 +33,11 @@ export const releaseTargets = /** @type {const} */ ([
   "aarch64-pc-windows-msvc",
 ]);
 
+/**
+ * @typedef {{ platform: string, suffixes: string[], updaterSuffix: string, artifactNames?: never, preserveArtifactNames?: never } | { artifactNames: string[], suffixes: string[], preserveArtifactNames: true, platform?: never, updaterSuffix?: never }} ReleaseTargetConfig
+ */
+
+/** @type {Record<string, ReleaseTargetConfig>} */
 const targetConfig = {
   "x86_64-unknown-linux-gnu": {
     platform: "linux-x86_64",
@@ -54,16 +60,32 @@ const targetConfig = {
     updaterSuffix: ".app.tar.gz",
   },
   "x86_64-pc-windows-msvc": {
-    platform: "windows-x86_64-nsis",
-    suffixes: [".exe", ".exe.sig"],
-    updaterSuffix: ".exe",
+    artifactNames: windowsArtifactNames("x86_64"),
+    suffixes: windowsArtifactNames("x86_64"),
+    preserveArtifactNames: true,
   },
   "aarch64-pc-windows-msvc": {
-    platform: "windows-aarch64-nsis",
-    suffixes: [".exe", ".exe.sig"],
-    updaterSuffix: ".exe",
+    artifactNames: windowsArtifactNames("aarch64"),
+    suffixes: windowsArtifactNames("aarch64"),
+    preserveArtifactNames: true,
   },
 };
+
+/** @param {string} architecture */
+function windowsArtifactNames(architecture) {
+  return ["nsis", "msi"].flatMap((installerFamily) =>
+    ["offline", "bootstrapper"].flatMap((webviewMode) => {
+      const extension = installerFamily === "msi" ? ".msi" : ".exe";
+      const packageName = windowsArtifactName(
+        architecture,
+        installerFamily,
+        webviewMode,
+        extension,
+      );
+      return [packageName, `${packageName}.sig`];
+    }),
+  );
+}
 
 /** @param {unknown} condition @param {string} message @returns {asserts condition} */
 function assert(condition, message) {
@@ -216,7 +238,11 @@ export async function stageReleaseArtifacts({
   const files = await collectFiles(bundleRoot);
   const selected = [];
   for (const suffix of config.suffixes) {
-    const matches = files.filter((file) => path.basename(file).endsWith(suffix));
+    const matches = files.filter((file) =>
+      config.artifactNames
+        ? path.basename(file) === suffix
+        : path.basename(file).endsWith(suffix),
+    );
     assert(
       matches.length === 1,
       `Expected exactly one ${suffix} artifact for ${target}, found ${matches.length}.`,
@@ -232,7 +258,9 @@ export async function stageReleaseArtifacts({
       metadata.isFile() && !metadata.isSymbolicLink(),
       "Release assets must be regular files.",
     );
-    const assetName = `${target}-${path.basename(sourcePath)}`;
+    const assetName = config.preserveArtifactNames
+      ? path.basename(sourcePath)
+      : `${target}-${path.basename(sourcePath)}`;
     await cp(sourcePath, path.join(stageRoot, assetName), { errorOnExist: true });
     if (assetName.endsWith(".sig")) {
       assert(
@@ -387,38 +415,53 @@ export async function createLatestManifest({
       files.length === config.suffixes.length + 1,
       `Unexpected release assets for ${target}.`,
     );
-    const updateBundles = files.filter((name) => name.endsWith(config.updaterSuffix));
-    assert(
-      updateBundles.length === 1,
-      `Expected exactly one updater bundle for ${target}.`,
-    );
-    const bundleName = updateBundles[0];
-    const signatureName = `${bundleName}.sig`;
-    assert(
-      files.includes(signatureName),
-      `Updater signature is missing for ${target}.`,
-    );
+    const updaterBundles = config.artifactNames
+      ? ["nsis", "msi"].map((installerFamily) => ({
+          platform: `windows-${
+            integrity.architecture === "arm64" ? "aarch64" : "x86_64"
+          }-${installerFamily}`,
+          bundleName: windowsArtifactName(
+            integrity.architecture === "arm64" ? "aarch64" : "x86_64",
+            installerFamily,
+            "offline",
+            installerFamily === "msi" ? ".msi" : ".exe",
+          ),
+        }))
+      : [
+          {
+            platform: config.platform,
+            bundleName: files.find((name) => name.endsWith(config.updaterSuffix)),
+          },
+        ];
 
-    for (const name of files) {
-      const metadata = await lstat(path.join(targetDirectory, name));
+    for (const updater of updaterBundles) {
+      assert(updater.bundleName, `Updater bundle is missing for ${target}.`);
+      const signatureName = `${updater.bundleName}.sig`;
       assert(
-        metadata.isFile() && !metadata.isSymbolicLink(),
-        "Release assets must be regular files.",
+        files.includes(signatureName),
+        `Updater signature is missing for ${updater.bundleName}.`,
       );
+      for (const name of [updater.bundleName, signatureName]) {
+        const metadata = await lstat(path.join(targetDirectory, name));
+        assert(
+          metadata.isFile() && !metadata.isSymbolicLink(),
+          "Release assets must be regular files.",
+        );
+      }
+      const signature = (
+        await readFile(path.join(targetDirectory, signatureName), "utf8")
+      ).trim();
+      assert(signature.length > 0, `Updater signature is empty for ${target}.`);
+      await signatureVerifier(
+        path.join(targetDirectory, updater.bundleName),
+        signature,
+        publicKey,
+      );
+      platforms[updater.platform] = {
+        signature,
+        url: `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(updater.bundleName)}`,
+      };
     }
-    const signature = (
-      await readFile(path.join(targetDirectory, signatureName), "utf8")
-    ).trim();
-    assert(signature.length > 0, `Updater signature is empty for ${target}.`);
-    await signatureVerifier(
-      path.join(targetDirectory, bundleName),
-      signature,
-      publicKey,
-    );
-    platforms[config.platform] = {
-      signature,
-      url: `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(bundleName)}`,
-    };
   }
 
   return {

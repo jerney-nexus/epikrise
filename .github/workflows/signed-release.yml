@@ -245,6 +245,23 @@ jobs:
           EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for webview_mode in offline bootstrapper; do
+            EPIKRISE_WINDOWS_WEBVIEW_MODE="$webview_mode" \
+              bash scripts/build-windows.sh "$WINDOWS_ARCH" release
+          done
+
+      - name: Build immutable Windows MSI inputs
+        if: matrix.platform == 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          WINDOWS_ARCH: ${{ matrix.windows_arch }}
+          EPIKRISE_WINDOWS_INSTALLER_FAMILY: msi
+          EPIKRISE_WINDOWS_WEBVIEW_MODE: offline
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bash scripts/build-windows.sh "$WINDOWS_ARCH" release
 
       - name: Build signed Linux or macOS updater bundles
@@ -336,6 +353,7 @@ jobs:
           esac
 
       - name: Stage and verify updater packages
+        if: matrix.platform != 'windows'
         working-directory: ${{ runner.temp }}/epikrise-release
         shell: bash
         run: |
@@ -344,6 +362,183 @@ jobs:
           node scripts/release-artifacts.mjs stage \
             --target "$TARGET" \
             --bundle-root "src-tauri/target/host-$host_target/$TARGET/release/bundle" \
+            --stage-root "release-staging/$TARGET" \
+            --commit "$GITHUB_SHA" \
+            --resource-root src-tauri/resources/ocr \
+            --binary-root src-tauri/binaries
+
+      - name: Verify immutable Windows build inputs
+        if: matrix.platform == 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          release_root="src-tauri/target/host-$host_target/$TARGET/release"
+          node scripts/windows-packages.mjs verify-layout \
+            "$release_root/windows-layout" "$TARGET" msi "$GITHUB_SHA" \
+            "$(node -p "require('./package.json').version")"
+          package_count="$(find "$release_root/windows-packages" -maxdepth 1 -type f | wc -l)"
+          test "$package_count" -eq 4
+
+      - uses: actions/upload-artifact@v7
+        if: matrix.platform != 'windows'
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ runner.temp }}/epikrise-release/release-staging/${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v7
+        if: matrix.platform == 'windows'
+        with:
+          name: windows-input-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/epikrise-release/src-tauri/target/host-aarch64-unknown-linux-gnu/${{ matrix.target }}/release/windows-packages/
+            ${{ runner.temp }}/epikrise-release/src-tauri/target/host-aarch64-unknown-linux-gnu/${{ matrix.target }}/release/windows-layout/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  windows-msi:
+    needs: build
+    name: Bundle MSI ${{ matrix.target }}
+    runs-on: windows-2022
+    environment: release
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            windows_arch: x86_64
+          - target: aarch64-pc-windows-msvc
+            windows_arch: aarch64
+    env:
+      TARGET: ${{ matrix.target }}
+      WINDOWS_ARCH: ${{ matrix.windows_arch }}
+
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.10.1
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install WiX Toolset
+        run: choco install wixtoolset --version=3.14.1 --yes --no-progress
+
+      - name: Add WiX Toolset to PATH
+        shell: pwsh
+        run: |
+          $wixPath = "${env:ProgramFiles(x86)}\WiX Toolset v3.14\bin"
+          if (-not (Test-Path $wixPath)) {
+            throw "WiX Toolset installation was not found at $wixPath"
+          }
+          $wixPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install source tooling
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare normalized release workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_root="$RUNNER_TEMP/epikrise-release"
+          mkdir -p "$build_root"
+          git archive "$GITHUB_SHA" | tar -x -C "$build_root"
+          node scripts/prepare-release.mjs --prepare-build-inputs "$build_root"
+          printf 'RELEASE_BUILD_ROOT=%s\n' "$build_root" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-input-${{ matrix.target }}
+          path: ${{ runner.temp }}/windows-input
+
+      - name: Install release workspace dependencies
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend without signing secrets
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: pnpm build
+
+      - name: Verify and restore immutable MSI inputs
+        working-directory: ${{ runner.temp }}/epikrise-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          input_root="$RUNNER_TEMP/windows-input"
+          layout_root="$input_root/windows-layout"
+          version="$(node -p "require('./package.json').version")"
+          node scripts/windows-packages.mjs verify-layout \
+            "$layout_root" "$TARGET" msi "$GITHUB_SHA" "$version"
+          cp -a "$layout_root/src-tauri/." src-tauri/
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          release_root="src-tauri/target/host-$host_target/$TARGET/release"
+          mkdir -p "$release_root"
+          cp "$layout_root/release/epikrise.exe" "$release_root/epikrise.exe"
+          cp -a "$input_root/windows-packages" "$release_root/windows-packages"
+
+      - name: Bundle and stage signed Windows MSI variants
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            printf 'TAURI_SIGNING_PRIVATE_KEY is required for signed releases.\n' >&2
+            exit 1
+          fi
+          signing_private_key="$TAURI_SIGNING_PRIVATE_KEY"
+          signing_private_key_password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          release_root="src-tauri/target/host-$host_target/$TARGET/release"
+          for webview_mode in offline bootstrapper; do
+            windows_bundle_config="$(node scripts/windows-packages.mjs config "$WINDOWS_ARCH" msi "$webview_mode")"
+            TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
+              TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+              bash scripts/with-cargo-host-target.sh \
+                pnpm exec tauri bundle \
+                --target "$TARGET" \
+                --features "updater-windows-${WINDOWS_ARCH}-msi" \
+                --config src-tauri/tauri.release.conf.json \
+                --config '{"build":{"beforeBuildCommand":null}}' \
+                --config "$windows_bundle_config" \
+                --bundles msi \
+                --ci \
+                --no-sign
+            node scripts/windows-packages.mjs stage \
+              "$release_root/bundle/msi" "$release_root/windows-packages" \
+              "$WINDOWS_ARCH" msi "$webview_mode"
+          done
+          unset signing_private_key signing_private_key_password
+          node scripts/release-artifacts.mjs stage \
+            --target "$TARGET" \
+            --bundle-root "$release_root/windows-packages" \
             --stage-root "release-staging/$TARGET" \
             --commit "$GITHUB_SHA" \
             --resource-root src-tauri/resources/ocr \
@@ -358,7 +553,9 @@ jobs:
           compression-level: 0
 
   publish:
-    needs: build
+    needs:
+      - build
+      - windows-msi
     runs-on: ubuntu-22.04
     permissions:
       contents: write

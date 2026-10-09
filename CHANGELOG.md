@@ -43,6 +43,9 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   command with exact-commit and artifact manifest/hash verification. Windows
   diagnostic builds produce unsigned NSIS and MSIX packages; no packages are
   published by this workflow.
+- Signed Windows x64 and ARM64 MSI installers with stable,
+  architecture-specific upgrade identities and offline or bootstrapper WebView2
+  variants.
 - Added default-off, policy-enforced direct-release updater plumbing with
   explicit checks and install confirmation, target/version/URL validation,
   approved HTTPS host checks for every redirect, progress reporting, and

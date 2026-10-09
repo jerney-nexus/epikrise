@@ -44,6 +44,14 @@ import {
   validateReleaseTag,
   verifyUploadedReleaseAssets,
 } from "../scripts/release-artifacts.mjs";
+import {
+  stageWindowsLayout,
+  windowsArtifactName,
+  windowsBundleConfig,
+  stageWindowsArtifacts,
+  windowsUpgradeCodes,
+  verifyWindowsLayout,
+} from "../scripts/windows-packages.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -88,7 +96,12 @@ describe("CalVer release versions", () => {
     ["2027.01.0", "2027.1.0", "27.1.0", "2027.1.0.0"],
   ])(
     "derives bounded protocol/package versions from %s without changing its tag",
-    (releaseVersion, protocolVersion, msiVersion, msixVersion) => {
+    (
+      releaseVersion: string,
+      protocolVersion: string,
+      msiVersion: string,
+      msixVersion: string,
+    ) => {
       expect(deriveReleaseVersions(releaseVersion)).toEqual({
         releaseVersion,
         updateProtocolVersion: protocolVersion,
@@ -122,7 +135,7 @@ describe("CalVer release versions", () => {
     ["2026.10.0", "2026.10.0", "26.10.0"],
   ])(
     "builds disposable Cargo and Tauri inputs with --locked for %s",
-    async (releaseVersion, protocolVersion, msiVersion) => {
+    async (releaseVersion: string, protocolVersion: string, msiVersion: string) => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-release-inputs-"));
       const tauriDirectory = path.join(directory, "src-tauri");
       const sourcePackage = JSON.parse(
@@ -366,6 +379,209 @@ describe("CalVer release versions", () => {
 });
 
 describe("Windows cross-build versions", () => {
+  it("pins distinct MSI upgrade identities and supported WebView2 modes", async () => {
+    const buildScript = await readFile(
+      path.join(repoRoot, "scripts/build-windows.sh"),
+      "utf8",
+    );
+
+    expect(Object.values(windowsUpgradeCodes)).toHaveLength(2);
+    expect(new Set(Object.values(windowsUpgradeCodes)).size).toBe(2);
+    expect(windowsBundleConfig("x86_64", "msi", "offline")).toMatchObject({
+      bundle: {
+        targets: ["msi"],
+        windows: {
+          webviewInstallMode: { type: "offlineInstaller", silent: true },
+          wix: { upgradeCode: windowsUpgradeCodes.x86_64 },
+        },
+      },
+    });
+    expect(windowsBundleConfig("aarch64", "nsis", "bootstrapper")).toMatchObject({
+      bundle: {
+        targets: ["nsis"],
+        windows: {
+          webviewInstallMode: { type: "embedBootstrapper", silent: true },
+        },
+      },
+    });
+    expect(windowsArtifactName("x86_64", "msi", "offline", ".msi")).not.toBe(
+      windowsArtifactName("x86_64", "msi", "bootstrapper", ".msi"),
+    );
+    expect(windowsArtifactName("x86_64", "nsis", "offline", ".exe")).not.toBe(
+      windowsArtifactName("aarch64", "nsis", "offline", ".exe"),
+    );
+    expect(() => windowsArtifactName("x86_64", "msi", "offline", ".exe")).toThrow(
+      "does not match",
+    );
+    expect(buildScript).toContain("tauri_args+=(--no-bundle)");
+    expect(buildScript).toContain("windows-packages.mjs stage-layout");
+    expect(buildScript).toContain("${GITHUB_SHA:-$(git rev-parse HEAD)}");
+  });
+
+  it("stages each Windows package and signature under its variant name", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-package-"));
+    const bundleRoot = path.join(directory, "bundle");
+    const outputRoot = path.join(directory, "packages");
+    await mkdir(bundleRoot, { recursive: true });
+    await writeFile(path.join(bundleRoot, "Epikrise-setup.exe"), "installer");
+    await writeFile(path.join(bundleRoot, "Epikrise-setup.exe.sig"), "signature");
+
+    try {
+      await expect(
+        stageWindowsArtifacts(bundleRoot, outputRoot, "x86_64", "nsis", "offline"),
+      ).resolves.toEqual([
+        "epikrise-windows-x86_64-nsis-offline.exe",
+        "epikrise-windows-x86_64-nsis-offline.exe.sig",
+      ]);
+      await expect(
+        readFile(
+          path.join(outputRoot, "epikrise-windows-x86_64-nsis-offline.exe"),
+          "utf8",
+        ),
+      ).resolves.toBe("installer");
+      await expect(
+        readFile(
+          path.join(outputRoot, "epikrise-windows-x86_64-nsis-offline.exe.sig"),
+          "utf8",
+        ),
+      ).resolves.toBe("signature");
+      await expect(
+        stageWindowsArtifacts(bundleRoot, outputRoot, "x86_64", "nsis", "offline"),
+      ).rejects.toMatchObject({ code: "EEXIST" });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("stages and verifies an immutable Windows MSI build layout", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-layout-"));
+    const resourceRoot = path.join(directory, "resources", "ocr");
+    const binaryRoot = path.join(directory, "binaries");
+    const stageRoot = path.join(directory, "layout");
+    const target = "x86_64-pc-windows-msvc";
+    const binaryPath = path.join(directory, "epikrise.exe");
+    await mkdir(path.join(resourceRoot, "pdfium"), { recursive: true });
+    await mkdir(path.join(resourceRoot, "tessdata"), { recursive: true });
+    await mkdir(binaryRoot, { recursive: true });
+    await writeFile(binaryPath, "synthetic executable");
+    await writeFile(path.join(resourceRoot, "pdfium", "pdfium.dll"), "pdfium");
+    await writeFile(path.join(resourceRoot, "tessdata", "deu.traineddata"), "deu");
+    await writeFile(path.join(resourceRoot, "tessdata", "eng.traineddata"), "eng");
+    await writeFile(path.join(binaryRoot, `tesseract-${target}.exe`), "tesseract");
+    const inspectBinary = async () => ({
+      expectedMachine: "IMAGE_FILE_MACHINE_AMD64",
+      imports: "KERNEL32.dll",
+    });
+    const options = {
+      target,
+      installerFamily: "msi",
+      binaryPath,
+      resourceRoot,
+      binaryRoot,
+      stageRoot,
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      version: "2026.09.4",
+      buildInputs: {
+        sdk_version: "10.0.26100",
+        crt_version: "14.44.17.14",
+        visual_studio_version: "17",
+      },
+      inspectBinary,
+    };
+
+    try {
+      const staged = await stageWindowsLayout(options);
+      expect(staged).toMatchObject({
+        target,
+        architecture: "x86_64",
+        installer_family: "msi",
+        architecture_verified: true,
+        build_inputs: options.buildInputs,
+        runtime_dependencies: expect.arrayContaining([
+          expect.objectContaining({ imports: "KERNEL32.dll" }),
+        ]),
+      });
+      await expect(
+        verifyWindowsLayout({
+          stageRoot,
+          target,
+          installerFamily: "msi",
+          commit: options.commit,
+          version: options.version,
+        }),
+      ).resolves.toMatchObject({ target, architecture_verified: true });
+
+      await writeFile(path.join(stageRoot, "unexpected-file"), "unexpected");
+      await expect(
+        verifyWindowsLayout({
+          stageRoot,
+          target,
+          installerFamily: "msi",
+          commit: options.commit,
+          version: options.version,
+        }),
+      ).rejects.toThrow("file set does not match");
+      await rm(path.join(stageRoot, "unexpected-file"));
+
+      await writeFile(path.join(stageRoot, "release", "epikrise.exe"), "mutated");
+      await expect(
+        verifyWindowsLayout({
+          stageRoot,
+          target,
+          installerFamily: "msi",
+          commit: options.commit,
+          version: options.version,
+        }),
+      ).rejects.toThrow("integrity check failed");
+
+      await expect(
+        stageWindowsLayout({
+          ...options,
+          stageRoot: path.join(directory, "wrong-architecture"),
+          inspectBinary: async () => ({
+            expectedMachine: "IMAGE_FILE_MACHINE_ARM64",
+            imports: "KERNEL32.dll",
+          }),
+        }),
+      ).rejects.toThrow("architecture mismatch");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unsupported WebView2 variants before starting a release build", async () => {
+    const cacheRoot = await mkdtemp(path.join(tmpdir(), "epikrise-webview-mode-"));
+    const windowsCache = path.join(cacheRoot, "epikrise", "windows");
+
+    try {
+      await mkdir(windowsCache, { recursive: true });
+      await writeFile(
+        path.join(windowsCache, "sdk-license-accepted-17-10.0.26100-14.44.17.14"),
+        "",
+      );
+      await expect(
+        execFile("bash", ["scripts/build-windows.sh", "x64", "release"], {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            XDG_CACHE_HOME: cacheRoot,
+            EPIKRISE_WINDOWS_INSTALLER_FAMILY: "msi",
+            EPIKRISE_WINDOWS_WEBVIEW_MODE: "unsupported",
+            TAURI_SIGNING_PRIVATE_KEY: "synthetic-test-key",
+            TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: 2,
+        stderr: expect.stringContaining(
+          "EPIKRISE_WINDOWS_WEBVIEW_MODE must be set to offline or bootstrapper",
+        ),
+      });
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
   it("uses the same available CRT version for setup and builds", async () => {
     const setupScript = await readFile(
       path.join(repoRoot, "scripts/windows-setup.sh"),
@@ -727,13 +943,21 @@ describe("six-target desktop build tooling", () => {
 });
 
 describe("signed release artifacts", () => {
+  const windowsPackageNames = (architecture: string) =>
+    ["nsis", "msi"].flatMap((family) =>
+      ["offline", "bootstrapper"].flatMap((mode) => {
+        const extension = family === "msi" ? ".msi" : ".exe";
+        const name = windowsArtifactName(architecture, family, mode, extension);
+        return [name, `${name}.sig`];
+      }),
+    );
   const targetSuffixes: Record<string, string[]> = {
     "x86_64-unknown-linux-gnu": [".deb", ".rpm", ".AppImage", ".AppImage.sig"],
     "aarch64-unknown-linux-gnu": [".deb", ".rpm", ".AppImage", ".AppImage.sig"],
     "x86_64-apple-darwin": [".dmg", ".app.tar.gz", ".app.tar.gz.sig"],
     "aarch64-apple-darwin": [".dmg", ".app.tar.gz", ".app.tar.gz.sig"],
-    "x86_64-pc-windows-msvc": [".exe", ".exe.sig"],
-    "aarch64-pc-windows-msvc": [".exe", ".exe.sig"],
+    "x86_64-pc-windows-msvc": windowsPackageNames("x86_64"),
+    "aarch64-pc-windows-msvc": windowsPackageNames("aarch64"),
   };
   const releaseCommit = "0123456789abcdef0123456789abcdef01234567";
 
@@ -904,6 +1128,11 @@ describe("signed release artifacts", () => {
     expect(diagnosticWorkflow).not.toContain("tauri.release.conf.json");
     expect(diagnosticWorkflow).not.toContain("--features");
     expect(releaseWorkflow).toContain("EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis");
+    expect(releaseWorkflow).toContain("windows-msi:");
+    expect(releaseWorkflow).toContain("windows-input-${{ matrix.target }}");
+    expect(releaseWorkflow).toContain("windows-packages.mjs verify-layout");
+    expect(releaseWorkflow).toContain("--bundles msi");
+    expect(releaseWorkflow).toContain("runs-on: windows-2022");
     expect(releaseWorkflow).toContain("--draft");
     expect(releaseWorkflow).toContain("validate-draft");
     expect(releaseWorkflow).toContain("--clobber");
@@ -975,7 +1204,7 @@ describe("signed release artifacts", () => {
 
   it.each([undefined, "both"])(
     "rejects missing or conflicting signed Windows installer-family selection: %s",
-    async (family) => {
+    async (family: string | undefined) => {
       const cacheRoot = await mkdtemp(path.join(tmpdir(), "epikrise-windows-family-"));
       const windowsCache = path.join(cacheRoot, "epikrise", "windows");
       const environment: NodeJS.ProcessEnv = {
@@ -1025,7 +1254,10 @@ describe("signed release artifacts", () => {
         await mkdir(bundleRoot, { recursive: true });
         for (const suffix of targetSuffixes[target]) {
           await writeFile(
-            path.join(bundleRoot, `epikrise${suffix}`),
+            path.join(
+              bundleRoot,
+              suffix.startsWith("epikrise-") ? suffix : `epikrise${suffix}`,
+            ),
             suffix.endsWith(".sig") ? `signature-${target}` : `bundle-${target}`,
           );
         }
@@ -1057,6 +1289,12 @@ describe("signed release artifacts", () => {
 
       expect(manifest.version).toBe("2026.9.4");
       expect(manifest.pub_date).toBe(pubDate);
+      expect(manifest.platforms["windows-x86_64-msi"].url).toContain(
+        "x86_64-msi-offline.msi",
+      );
+      expect(manifest.platforms["windows-x86_64-nsis"].url).toContain(
+        "x86_64-nsis-offline.exe",
+      );
       expect(manifest.platforms).toMatchObject({
         "linux-x86_64": {
           signature: "signature-x86_64-unknown-linux-gnu",
@@ -1074,12 +1312,18 @@ describe("signed release artifacts", () => {
         "windows-x86_64-nsis": {
           signature: "signature-x86_64-pc-windows-msvc",
         },
+        "windows-x86_64-msi": {
+          signature: "signature-x86_64-pc-windows-msvc",
+        },
         "windows-aarch64-nsis": {
           signature: "signature-aarch64-pc-windows-msvc",
         },
+        "windows-aarch64-msi": {
+          signature: "signature-aarch64-pc-windows-msvc",
+        },
       });
-      expect(Object.keys(manifest.platforms)).toHaveLength(6);
-      expect(verifiedSignatures).toHaveLength(6);
+      expect(Object.keys(manifest.platforms)).toHaveLength(8);
+      expect(verifiedSignatures).toHaveLength(8);
       const linuxIntegrity = JSON.parse(
         await readFile(
           path.join(
@@ -1251,6 +1495,33 @@ describe("signed release artifacts", () => {
           binaryRoot: path.join(directory, "binaries"),
         }),
       ).rejects.toThrow(".AppImage.sig");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an incomplete Windows installer-family and WebView2 matrix", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-matrix-"));
+    const bundleRoot = path.join(directory, "bundle");
+    const missingName = windowsArtifactName("x86_64", "msi", "offline", ".msi.sig");
+
+    try {
+      await mkdir(bundleRoot, { recursive: true });
+      for (const name of windowsPackageNames("x86_64")) {
+        if (name !== missingName)
+          await writeFile(path.join(bundleRoot, name), "artifact");
+      }
+      await expect(
+        stageReleaseArtifacts({
+          target: "x86_64-pc-windows-msvc",
+          bundleRoot,
+          stageRoot: path.join(directory, "staged"),
+          commit: releaseCommit,
+          version: "2026.09.4",
+          resourceRoot: path.join(directory, "resources", "ocr"),
+          binaryRoot: path.join(directory, "binaries"),
+        }),
+      ).rejects.toThrow(missingName);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
