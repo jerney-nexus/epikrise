@@ -48,6 +48,7 @@ import { verifyBinaryArchitecture } from "../scripts/verify-binary-architecture.
 import {
   assertResolvedLinuxDependencies,
   assertSystemOnlyMachODependencies,
+  assertSystemOnlyPEDependencies,
 } from "../scripts/verify-runtime-dependencies.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -180,6 +181,32 @@ describe("macOS runtime dependency verification", () => {
     ).toThrow(
       "Non-system runtime dependencies for Epikrise: /opt/homebrew/lib/libexample.dylib.",
     );
+  });
+});
+
+describe("Windows runtime dependency verification", () => {
+  it("accepts system libraries and Windows API sets", () => {
+    expect(() =>
+      assertSystemOnlyPEDependencies(
+        "Epikrise.exe",
+        "Image has the following dependencies:\n    KERNEL32.dll\n    api-ms-win-core-file-l1-2-0.dll\n    ucrtbase.dll",
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects dependencies that must be bundled", () => {
+    expect(() =>
+      assertSystemOnlyPEDependencies(
+        "pdfium.dll",
+        "Image has the following dependencies:\n    KERNEL32.dll\n    VCRUNTIME140.dll",
+      ),
+    ).toThrow("Non-system runtime dependencies for pdfium.dll: vcruntime140.dll.");
+  });
+
+  it("rejects dependency output that cannot be parsed", () => {
+    expect(() =>
+      assertSystemOnlyPEDependencies("Epikrise.exe", "No dependency table found"),
+    ).toThrow("Could not find PE runtime dependencies for Epikrise.exe.");
   });
 });
 

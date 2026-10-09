@@ -177,11 +177,6 @@ if ! printf '%s\n' "$headers" | rg -Fqi "$expected_machine"; then
   exit 1
 fi
 
-dependencies="$(dumpbin /dependents "$sidecar" | tr '[:upper:]' '[:lower:]' | rg -o '[[:alnum:]_.-]+\.dll' | sort -u || true)"
-non_system_dependencies="$(printf '%s\n' "$dependencies" | rg -iv '^(api-ms-win-|ext-ms-win-|kernel32\.dll$|user32\.dll$|advapi32\.dll$|bcrypt\.dll$|comctl32\.dll$|comdlg32\.dll$|gdi32\.dll$|msvcrt\.dll$|ole32\.dll$|oleaut32\.dll$|shell32\.dll$|shlwapi\.dll$|ucrtbase\.dll$|version\.dll$|winmm\.dll$|ws2_32\.dll$)' || true)"
-if [[ -n "$non_system_dependencies" ]]; then
-  printf 'Tesseract sidecar has non-system DLL imports that must be bundled:\n%s\n' "$non_system_dependencies" >&2
-  exit 1
-fi
+node "$repo_root/scripts/verify-runtime-dependencies.mjs" "$target" "$sidecar"
 
 printf 'Built native MSVC Tesseract sidecar: %s\n' "$sidecar"
