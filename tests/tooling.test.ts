@@ -45,7 +45,10 @@ import {
   verifyUploadedReleaseAssets,
 } from "../scripts/release-artifacts.mjs";
 import { verifyBinaryArchitecture } from "../scripts/verify-binary-architecture.mjs";
-import { assertResolvedLinuxDependencies } from "../scripts/verify-runtime-dependencies.mjs";
+import {
+  assertResolvedLinuxDependencies,
+  assertSystemOnlyMachODependencies,
+} from "../scripts/verify-runtime-dependencies.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -155,6 +158,28 @@ describe("Linux runtime dependency verification", () => {
     expect(() =>
       assertResolvedLinuxDependencies("app", "libwebkit.so => not found"),
     ).toThrow("Unresolved runtime dependencies for app: libwebkit.so.");
+  });
+});
+
+describe("macOS runtime dependency verification", () => {
+  it("accepts dependencies from macOS system locations", () => {
+    expect(() =>
+      assertSystemOnlyMachODependencies(
+        "Epikrise",
+        "Epikrise:\n\t/System/Library/Frameworks/Cocoa.framework/Cocoa (compatibility version 1.0.0)\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)",
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects dependencies outside system locations", () => {
+    expect(() =>
+      assertSystemOnlyMachODependencies(
+        "Epikrise",
+        "Epikrise:\n\t/opt/homebrew/lib/libexample.dylib (compatibility version 1.0.0)",
+      ),
+    ).toThrow(
+      "Non-system runtime dependencies for Epikrise: /opt/homebrew/lib/libexample.dylib.",
+    );
   });
 });
 

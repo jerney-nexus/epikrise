@@ -19,9 +19,13 @@ if [[ "${1:-}" == "build" ]]; then
 		exit 1
 	fi
 	node "$repo_root/scripts/verify-binary-architecture.mjs" "$host_target" "$app_binary"
-	if [[ "$host_target" == *-unknown-linux-gnu ]]; then
+	if [[ "$host_target" == *-unknown-linux-gnu || "$host_target" == *-apple-darwin ]]; then
+		pdfium_path="$repo_root/src-tauri/resources/ocr/pdfium/libpdfium.so"
+		if [[ "$host_target" == *-apple-darwin ]]; then
+			pdfium_path="$repo_root/src-tauri/resources/ocr/pdfium/libpdfium.dylib"
+		fi
 		node "$repo_root/scripts/verify-runtime-dependencies.mjs" "$host_target" \
-			"$repo_root/src-tauri/resources/ocr/pdfium/libpdfium.so" \
+			"$pdfium_path" \
 			"$repo_root/src-tauri/binaries/tesseract-$host_target" \
 			"$app_binary"
 	fi
