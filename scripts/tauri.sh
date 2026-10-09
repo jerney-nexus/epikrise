@@ -19,4 +19,10 @@ if [[ "${1:-}" == "build" ]]; then
 		exit 1
 	fi
 	node "$repo_root/scripts/verify-binary-architecture.mjs" "$host_target" "$app_binary"
+	if [[ "$host_target" == *-unknown-linux-gnu ]]; then
+		node "$repo_root/scripts/verify-runtime-dependencies.mjs" "$host_target" \
+			"$repo_root/src-tauri/resources/ocr/pdfium/libpdfium.so" \
+			"$repo_root/src-tauri/binaries/tesseract-$host_target" \
+			"$app_binary"
+	fi
 fi
