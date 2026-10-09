@@ -28,5 +28,10 @@ if [[ "${1:-}" == "build" ]]; then
 			"$pdfium_path" \
 			"$repo_root/src-tauri/binaries/tesseract-$host_target" \
 			"$app_binary"
+	elif [[ "$host_target" == *-pc-windows-msvc ]]; then
+		node "$repo_root/scripts/verify-runtime-dependencies.mjs" "$host_target" \
+			"$repo_root/src-tauri/resources/ocr/pdfium/pdfium.dll" \
+			"$repo_root/src-tauri/binaries/tesseract-$host_target.exe" \
+			"$app_binary"
 	fi
 fi
