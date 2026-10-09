@@ -182,6 +182,24 @@ describe("macOS runtime dependency verification", () => {
       "Non-system runtime dependencies for Epikrise: /opt/homebrew/lib/libexample.dylib.",
     );
   });
+
+  it("ignores a dylib's own install name but rejects other external libraries", () => {
+    expect(() =>
+      assertSystemOnlyMachODependencies(
+        "/app/libpdfium.dylib",
+        "/app/libpdfium.dylib:\n\t./libpdfium.dylib (compatibility version 1.0.0)\n\t/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation (compatibility version 1.0.0)",
+      ),
+    ).not.toThrow();
+
+    expect(() =>
+      assertSystemOnlyMachODependencies(
+        "/app/libpdfium.dylib",
+        "/app/libpdfium.dylib:\n\t./libpdfium.dylib (compatibility version 1.0.0)\n\t/opt/homebrew/lib/libexample.dylib (compatibility version 1.0.0)",
+      ),
+    ).toThrow(
+      "Non-system runtime dependencies for /app/libpdfium.dylib: /opt/homebrew/lib/libexample.dylib.",
+    );
+  });
 });
 
 describe("Windows runtime dependency verification", () => {
