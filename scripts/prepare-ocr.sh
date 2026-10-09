@@ -153,6 +153,7 @@ temp_dir="$(mktemp -d)"
 trap 'rm -rf "$temp_dir"' EXIT
 tar -xzf "$pdfium_cache_path" -C "$temp_dir" "$pdfium_member"
 install -m 0644 "$temp_dir/$pdfium_member" "$pdfium_path"
+node "$repo_root/scripts/verify-binary-architecture.mjs" "$target" "$pdfium_path"
 
 install -m 0644 "$tessdata_dir/deu.traineddata" "$resource_dir/tessdata/deu.traineddata"
 install -m 0644 "$tessdata_dir/eng.traineddata" "$resource_dir/tessdata/eng.traineddata"
@@ -172,4 +173,9 @@ fi
 if [[ ! -f "$binary_dir/tesseract-$target" && ! -f "$binary_dir/tesseract-$target.exe" ]]; then
   printf 'Tesseract sidecar was not produced for target %s.\n' "$target" >&2
   exit 1
+fi
+if [[ -f "$binary_dir/tesseract-$target.exe" ]]; then
+  node "$repo_root/scripts/verify-binary-architecture.mjs" "$target" "$binary_dir/tesseract-$target.exe"
+else
+  node "$repo_root/scripts/verify-binary-architecture.mjs" "$target" "$binary_dir/tesseract-$target"
 fi

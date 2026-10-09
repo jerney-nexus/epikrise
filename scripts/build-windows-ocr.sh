@@ -166,6 +166,7 @@ build_and_install tesseract "$tesseract_source" \
 
 sidecar="$binary_dir/tesseract-$target.exe"
 install -D -m 0755 "$prefix/bin/tesseract.exe" "$sidecar"
+node "$repo_root/scripts/verify-binary-architecture.mjs" "$target" "$sidecar"
 headers="$("$llvm_readobj" --file-headers "$sidecar")"
 if ! printf '%s\n' "$headers" | rg -q "$expected_machine"; then
   printf 'Tesseract sidecar has the wrong machine type for %s.\n' "$target" >&2

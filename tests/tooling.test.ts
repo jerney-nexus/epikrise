@@ -44,6 +44,7 @@ import {
   validateReleaseTag,
   verifyUploadedReleaseAssets,
 } from "../scripts/release-artifacts.mjs";
+import { verifyBinaryArchitecture } from "../scripts/verify-binary-architecture.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -60,6 +61,60 @@ const windowsOcrTargets = [
     checksum: "5d04b6d0281e78613ef836dea2e0fefe6831f3ae92b3573e8fdf55330de67d3d",
   },
 ];
+
+function createBinaryHeader(target: string) {
+  const binary = Buffer.alloc(128);
+  if (target.endsWith("-unknown-linux-gnu")) {
+    binary.write("\x7fELF", 0, "binary");
+    binary[4] = 2;
+    binary[5] = 1;
+    binary.writeUInt16LE(target.startsWith("x86_64-") ? 62 : 183, 18);
+  } else if (target.endsWith("-apple-darwin")) {
+    binary.set([0xcf, 0xfa, 0xed, 0xfe]);
+    binary.writeUInt32LE(target.startsWith("x86_64-") ? 0x01000007 : 0x0100000c, 4);
+  } else {
+    binary.write("MZ", 0, "ascii");
+    binary.writeUInt32LE(64, 0x3c);
+    binary.write("PE\0\0", 64, "binary");
+    binary.writeUInt16LE(target.startsWith("x86_64-") ? 0x8664 : 0xaa64, 68);
+  }
+  return binary;
+}
+
+describe("binary architecture verification", () => {
+  it.each([
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+  ])("accepts a matching %s binary header", async (target) => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-binary-header-"));
+    const binaryPath = path.join(directory, "fixture.bin");
+    try {
+      await writeFile(binaryPath, createBinaryHeader(target));
+      await expect(
+        verifyBinaryArchitecture(target, binaryPath),
+      ).resolves.toBeUndefined();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a binary header for the wrong target architecture", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-binary-header-"));
+    const binaryPath = path.join(directory, "fixture.exe");
+    try {
+      await writeFile(binaryPath, createBinaryHeader("x86_64-pc-windows-msvc"));
+      await expect(
+        verifyBinaryArchitecture("aarch64-pc-windows-msvc", binaryPath),
+      ).rejects.toThrow("expects PE arm64; found PE x86_64");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("CalVer release versions", () => {
   it("increments the patch within the current month", () => {
@@ -1560,6 +1615,7 @@ async function createWindowsOcrFixture(
     packageName?: string;
     packageMetadataAvailable?: boolean;
     installTesseract?: boolean;
+    targetTriple?: string;
   } = {},
 ) {
   const {
@@ -1570,6 +1626,7 @@ async function createWindowsOcrFixture(
     packageName = "tesseract-ocr-deu",
     packageMetadataAvailable = true,
     installTesseract = true,
+    targetTriple = windowsOcrTargets[0].target,
   } = options;
   const binDir = path.join(directory, "bin");
   const tessdataRoot = path.join(directory, "tessdata");
@@ -1588,6 +1645,8 @@ async function createWindowsOcrFixture(
   const dpkgLog = path.join(directory, "dpkg.log");
   const tarLog = path.join(directory, "tar.log");
   const tesseractLog = path.join(directory, "tesseract.log");
+  const pdfiumFixturePath = path.join(directory, "pdfium.fixture");
+  const tesseractFixturePath = path.join(directory, "tesseract.fixture");
   const builderPath = path.join(directory, "build-ocr.sh");
   await Promise.all([
     mkdir(binDir, { recursive: true }),
@@ -1595,6 +1654,8 @@ async function createWindowsOcrFixture(
   ]);
   await writeFile(path.join(tessdataDir, "deu.traineddata"), "deu", "utf8");
   await writeFile(path.join(tessdataDir, "eng.traineddata"), "eng", "utf8");
+  await writeFile(pdfiumFixturePath, createBinaryHeader(targetTriple));
+  await writeFile(tesseractFixturePath, createBinaryHeader(targetTriple));
   if (partialReportedParent) {
     await writeFile(path.join(tessdataRoot, "deu.traineddata"), "parent-deu", "utf8");
   }
@@ -1649,7 +1710,7 @@ async function createWindowsOcrFixture(
       '  if [[ "$1" == "-C" ]]; then destination="$2"; shift 2; else member="$1"; shift; fi',
       "done",
       'mkdir -p "$destination/$(dirname "$member")"',
-      'printf "fake pdfium dll" > "$destination/$member"',
+      'cp "$PDFIUM_FIXTURE_PATH" "$destination/$member"',
       'printf "%s" "$member" > "$TAR_LOG"',
       "",
     ].join("\n"),
@@ -1669,7 +1730,7 @@ async function createWindowsOcrFixture(
     [
       "#!/usr/bin/env bash",
       'mkdir -p "$EPIKRISE_OCR_BINARY_DIR"',
-      'printf "fake tesseract exe" > "$EPIKRISE_OCR_BINARY_DIR/tesseract-$1.exe"',
+      'cp "$TESSERACT_FIXTURE_PATH" "$EPIKRISE_OCR_BINARY_DIR/tesseract-$1.exe"',
       "",
     ].join("\n"),
   );
@@ -1683,6 +1744,8 @@ async function createWindowsOcrFixture(
     resourceDir,
     binaryDir,
     tarLog,
+    pdfiumFixturePath,
+    tesseractFixturePath,
     tessdataDir,
     environment: {
       ...process.env,
@@ -1696,6 +1759,8 @@ async function createWindowsOcrFixture(
       CURL_LOG: curlLog,
       DPKG_LOG: dpkgLog,
       TAR_LOG: tarLog,
+      PDFIUM_FIXTURE_PATH: pdfiumFixturePath,
+      TESSERACT_FIXTURE_PATH: tesseractFixturePath,
       TESSERACT_LOG: tesseractLog,
       EPIKRISE_OCR_RESOURCE_DIR: resourceDir,
       EPIKRISE_OCR_BINARY_DIR: binaryDir,
@@ -1845,7 +1910,13 @@ if (process.platform !== "win32") {
       it(`stages the matching PDFium and Tesseract for ${targetCase.target}`, async () => {
         const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-"));
         try {
-          const fixture = await createWindowsOcrFixture(directory, targetCase.checksum);
+          const fixture = await createWindowsOcrFixture(
+            directory,
+            targetCase.checksum,
+            {
+              targetTriple: targetCase.target,
+            },
+          );
           await execFile("bash", [prepareScript, "--target", targetCase.target], {
             cwd: repoRoot,
             env: fixture.environment,
@@ -1854,8 +1925,8 @@ if (process.platform !== "win32") {
           expect(await readFile(fixture.tarLog, "utf8")).toBe("bin/pdfium.dll");
 
           expect(
-            await readFile(path.join(fixture.resourceDir, "pdfium/pdfium.dll"), "utf8"),
-          ).toBe("fake pdfium dll");
+            await readFile(path.join(fixture.resourceDir, "pdfium/pdfium.dll")),
+          ).toEqual(await readFile(fixture.pdfiumFixturePath));
           expect(
             await readFile(
               path.join(fixture.resourceDir, "tessdata/deu.traineddata"),
@@ -1871,9 +1942,8 @@ if (process.platform !== "win32") {
           expect(
             await readFile(
               path.join(fixture.binaryDir, `tesseract-${targetCase.target}.exe`),
-              "utf8",
             ),
-          ).toBe("fake tesseract exe");
+          ).toEqual(await readFile(fixture.tesseractFixturePath));
           expect(await readFile(fixture.curlLog, "utf8")).toContain(targetCase.archive);
           expect(
             await readFile(
@@ -1891,6 +1961,31 @@ if (process.platform !== "win32") {
         }
       });
     }
+
+    it("rejects PDFium with the wrong architecture before building Tesseract", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-pdfium-arch-"));
+      try {
+        const fixture = await createWindowsOcrFixture(
+          directory,
+          windowsOcrTargets[1].checksum,
+        );
+        await expect(
+          execFile("bash", [prepareScript, "--target", windowsOcrTargets[1].target], {
+            cwd: repoRoot,
+            env: fixture.environment,
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("expects PE arm64; found PE x86_64"),
+        });
+        await expect(
+          readFile(
+            path.join(fixture.binaryDir, "tesseract-aarch64-pc-windows-msvc.exe"),
+          ),
+        ).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
 
     it("uses explicit language data without invoking Tesseract", async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise ocr tessdata "));
@@ -1957,7 +2052,7 @@ if (process.platform !== "win32") {
             "#!/usr/bin/env bash",
             'printf "%s\\n" "$1" > "$NATIVE_BUILDER_LOG"',
             'mkdir -p "$EPIKRISE_OCR_BINARY_DIR"',
-            'printf "native tesseract exe" > "$EPIKRISE_OCR_BINARY_DIR/tesseract-$1.exe"',
+            'cp "$TESSERACT_FIXTURE_PATH" "$EPIKRISE_OCR_BINARY_DIR/tesseract-$1.exe"',
             "",
           ].join("\n"),
         );
@@ -1981,9 +2076,8 @@ if (process.platform !== "win32") {
         expect(
           await readFile(
             path.join(fixture.binaryDir, "tesseract-x86_64-pc-windows-msvc.exe"),
-            "utf8",
           ),
-        ).toBe("native tesseract exe");
+        ).toEqual(await readFile(fixture.tesseractFixturePath));
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
