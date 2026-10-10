@@ -9,7 +9,6 @@
     "ms-playwright.playwright",
     "tamasfe.even-better-toml",
     "vitest.explorer",
-    "github.vscode-github-actions",
-    "graphite.gti-vscode"
+    "github.vscode-github-actions"
   ]
 }
