@@ -2,6 +2,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** @typedef {"ELF" | "Mach-O" | "PE"} BinaryFormat */
+/** @typedef {{ format: BinaryFormat, architectures: string[] }} BinaryInspection */
+/** @typedef {{ format: BinaryFormat, architecture: string }} TargetSpecification */
+
+/** @type {Record<string, TargetSpecification>} */
 const targetSpecifications = {
   "x86_64-unknown-linux-gnu": { format: "ELF", architecture: "x86_64" },
   "aarch64-unknown-linux-gnu": { format: "ELF", architecture: "aarch64" },
@@ -11,21 +16,30 @@ const targetSpecifications = {
   "aarch64-pc-windows-msvc": { format: "PE", architecture: "arm64" },
 };
 
+/** @type {Record<number, string>} */
 const architectureNames = {
   0x01000007: "x86_64",
   0x0100000c: "arm64",
 };
 
+/** @type {Record<number, string>} */
 const peMachineNames = {
   0x8664: "x86_64",
   0xaa64: "arm64",
 };
 
+/** @type {Record<number, string>} */
 const elfMachineNames = {
   62: "x86_64",
   183: "aarch64",
 };
 
+/**
+ * @param {Buffer} binary
+ * @param {number} cpuTypeOffset
+ * @param {boolean} littleEndian
+ * @returns {string}
+ */
 function parseMachOArchitecture(binary, cpuTypeOffset, littleEndian) {
   if (cpuTypeOffset + 4 > binary.length) throw new Error("truncated Mach-O header");
   const cpuType = littleEndian
@@ -34,8 +48,10 @@ function parseMachOArchitecture(binary, cpuTypeOffset, littleEndian) {
   return architectureNames[cpuType] ?? `unknown (0x${cpuType.toString(16)})`;
 }
 
+/** @param {Buffer} binary @returns {string[] | undefined} */
 function inspectMachO(binary) {
   const magic = binary.subarray(0, 4).toString("hex");
+  /** @type {Record<string, { littleEndian: boolean }>} */
   const thinFormats = {
     feedface: { littleEndian: false },
     cefaedfe: { littleEndian: true },
@@ -46,6 +62,7 @@ function inspectMachO(binary) {
     return [parseMachOArchitecture(binary, 4, thinFormats[magic].littleEndian)];
   }
 
+  /** @type {Record<string, { littleEndian: boolean, is64Bit: boolean }>} */
   const fatFormats = {
     cafebabe: { littleEndian: false, is64Bit: false },
     bebafeca: { littleEndian: true, is64Bit: false },
@@ -70,6 +87,7 @@ function inspectMachO(binary) {
   );
 }
 
+/** @param {Buffer} binary @returns {BinaryInspection} */
 function inspectBinaryArchitecture(binary) {
   if (binary.length >= 64 && binary.subarray(0, 2).toString() === "MZ") {
     const peOffset = binary.readUInt32LE(0x3c);
@@ -109,15 +127,18 @@ function inspectBinaryArchitecture(binary) {
   throw new Error("unrecognized executable format");
 }
 
+/** @param {string} target @param {string} filePath */
 export async function verifyBinaryArchitecture(target, filePath) {
   const specification = targetSpecifications[target];
   if (!specification) throw new Error(`Unsupported binary target: ${target}`);
 
+  /** @type {BinaryInspection} */
   let inspected;
   try {
     inspected = inspectBinaryArchitecture(await readFile(filePath));
   } catch (error) {
-    throw new Error(`Could not verify binary ${filePath}: ${error.message}`, {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not verify binary ${filePath}: ${message}`, {
       cause: error,
     });
   }
@@ -147,7 +168,7 @@ if (
       await verifyBinaryArchitecture(target, filePath);
       console.log(`Verified ${target} binary architecture: ${filePath}`);
     } catch (error) {
-      console.error(error.message);
+      console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
     }
   }
