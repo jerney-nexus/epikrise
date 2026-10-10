@@ -110,8 +110,9 @@ This creates AppImage, Debian (`.deb`), and RPM packages under
 
 Run `pnpm tauri build` from a Visual Studio Developer PowerShell or Command
 Prompt initialized for the host architecture (x64 or ARM64). The matching
-MSVC C++ toolchain must be available, including `cl` and `dumpbin`; `VSCMD_ARG_TGT_ARCH`
-must match the native host. Install Git for Windows so the launcher can find
+MSVC C++ toolchain must be available, including `cl` and `dumpbin`;
+`VSCMD_ARG_HOST_ARCH` and `VSCMD_ARG_TGT_ARCH` must both match the native host.
+Install Git for Windows so the launcher can find
 Git Bash, and ensure CMake, Ninja, `curl`, `tar`, and ripgrep (`rg`) are on
 `PATH`. The launcher uses Git Bash from PowerShell, Command Prompt, or Git Bash;
 WSL and cross-target builds are not supported by this command.

@@ -38,6 +38,13 @@ if [[ "${VSCMD_ARG_TGT_ARCH:-}" != "$expected_arch" ]]; then
   exit 1
 fi
 
+host_arch="${VSCMD_ARG_HOST_ARCH:-}"
+host_arch="${host_arch,,}"
+if [[ "$host_arch" != "$expected_arch" ]]; then
+  printf 'Open a Visual Studio developer shell hosted on %s (VSCMD_ARG_HOST_ARCH=%s).\n' "$expected_arch" "$expected_arch" >&2
+  exit 1
+fi
+
 for tool in cmake ninja cl dumpbin curl tar rg; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     printf 'Required native Windows OCR build tool is missing: %s.\n' "$tool" >&2
@@ -53,8 +60,9 @@ if [[ -z "$compiler_version" ]]; then
   printf 'VCToolsVersion is unavailable. Run this build from a Visual Studio developer shell.\n' >&2
   exit 1
 fi
-build_dir="$cache_root/build/msvc-$compiler_version/$target"
-prefix="$cache_root/install/msvc-$compiler_version/$target"
+toolchain_id="msvc-$compiler_version-$host_arch"
+build_dir="$cache_root/build/$toolchain_id/$target"
+prefix="$cache_root/install/$toolchain_id/$target"
 binary_dir="${EPIKRISE_OCR_BINARY_DIR:-$repo_root/src-tauri/binaries}"
 mkdir -p "$download_dir" "$source_dir" "$build_dir" "$prefix"
 

@@ -104,6 +104,15 @@ if [[ "$native_only" == true ]]; then
       --target=*)
         explicit_target="${1#--target=}"
         ;;
+      -t=*)
+        explicit_target="${1#-t=}"
+        ;;
+      -t?*)
+        explicit_target="${1#-t}"
+        ;;
+      --)
+        break
+        ;;
     esac
     shift
   done

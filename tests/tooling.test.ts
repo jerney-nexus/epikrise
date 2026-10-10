@@ -2231,6 +2231,52 @@ if (process.platform !== "win32") {
       }
     });
 
+    it("rejects an x64-hosted ARM64 MSVC toolchain before downloading", async () => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-ocr-msvc-host-arch-"),
+      );
+      const binDir = path.join(directory, "bin");
+      const curlLog = path.join(directory, "curl.log");
+      const target = "aarch64-pc-windows-msvc";
+      try {
+        await mkdir(binDir);
+        await writeExecutable(
+          path.join(binDir, "uname"),
+          "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+        );
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${target}\\n'\n`,
+        );
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+        );
+
+        await expect(
+          execFile(
+            "bash",
+            [path.join(repoRoot, "scripts/build-native-windows-ocr.sh"), target],
+            {
+              env: {
+                ...process.env,
+                PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+                VSCMD_ARG_TGT_ARCH: "arm64",
+                VSCMD_ARG_HOST_ARCH: "x64",
+                CURL_LOG: curlLog,
+                EPIKRISE_NATIVE_WINDOWS_OCR_CACHE: path.join(directory, "cache"),
+              },
+            },
+          ),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("developer shell hosted on arm64"),
+        });
+        await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
     it("separates native MSVC caches by toolset version and target", async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-msvc-cache-"));
       const binDir = path.join(directory, "bin");
@@ -2267,6 +2313,7 @@ if (process.platform !== "win32") {
                 ...process.env,
                 PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
                 VSCMD_ARG_TGT_ARCH: "x64",
+                VSCMD_ARG_HOST_ARCH: "x64",
                 VCToolsVersion: "14.44.35207",
                 CURL_LOG: curlLog,
                 EPIKRISE_NATIVE_WINDOWS_OCR_CACHE: cacheRoot,
@@ -2278,10 +2325,12 @@ if (process.platform !== "win32") {
         });
 
         expect(
-          await readdir(path.join(cacheRoot, "build", "msvc-14.44.35207", target)),
+          await readdir(path.join(cacheRoot, "build", "msvc-14.44.35207-x64", target)),
         ).toEqual([]);
         expect(
-          await readdir(path.join(cacheRoot, "install", "msvc-14.44.35207", target)),
+          await readdir(
+            path.join(cacheRoot, "install", "msvc-14.44.35207-x64", target),
+          ),
         ).toEqual([]);
         await expect(readdir(path.join(cacheRoot, "build", target))).rejects.toThrow();
         expect(await readFile(curlLog, "utf8")).toBe("called\n");

@@ -24,6 +24,12 @@ while [[ $# -gt 0 ]]; do
     --target=*)
       build_target="${1#--target=}"
       ;;
+    -t=*)
+      build_target="${1#-t=}"
+      ;;
+    -t?*)
+      build_target="${1#-t}"
+      ;;
     --debug|-d)
       build_profile="debug"
       ;;
