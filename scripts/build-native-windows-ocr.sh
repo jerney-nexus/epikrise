@@ -3,40 +3,66 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 target="${1:-}"
+host_os="$(uname -s)"
+case "$host_os" in
+  MINGW*|MSYS*|CYGWIN*) ;;
+  *)
+    printf 'Native MSVC OCR builds require a physical Windows host.\n' >&2
+    exit 1
+    ;;
+esac
+
 host_target="$(rustc -vV | sed -n 's/^host: //p')"
 if [[ "$target" != "$host_target" ]]; then
-  printf 'Native OCR builds require target %s to match host %s.\n' "$target" "$host_target" >&2
+  printf 'Native MSVC OCR builds require target %s to match Rust host %s.\n' "$target" "$host_target" >&2
   exit 1
 fi
 
 case "$target" in
-  x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu)
-    platform="linux"
+  x86_64-pc-windows-msvc)
+    expected_arch="x64"
+    expected_machine="8664 machine (x64)"
     ;;
-  x86_64-apple-darwin|aarch64-apple-darwin)
-    platform="macos"
+  aarch64-pc-windows-msvc)
+    expected_arch="arm64"
+    expected_machine="AA64 machine (ARM64)"
     ;;
   *)
-    printf 'Unsupported native OCR target: %s\n' "$target" >&2
+    printf 'Unsupported native Windows OCR target: %s\n' "$target" >&2
     exit 2
     ;;
 esac
 
-for tool in cmake ninja curl tar; do
+if [[ "${VSCMD_ARG_TGT_ARCH:-}" != "$expected_arch" ]]; then
+  printf 'Open a Visual Studio developer shell targeting %s (VSCMD_ARG_TGT_ARCH=%s).\n' "$expected_arch" "$expected_arch" >&2
+  exit 1
+fi
+
+host_arch="${VSCMD_ARG_HOST_ARCH:-}"
+host_arch="${host_arch,,}"
+if [[ "$host_arch" != "$expected_arch" ]]; then
+  printf 'Open a Visual Studio developer shell hosted on %s (VSCMD_ARG_HOST_ARCH=%s).\n' "$expected_arch" "$expected_arch" >&2
+  exit 1
+fi
+
+for tool in cmake ninja cl dumpbin curl tar rg; do
   if ! command -v "$tool" >/dev/null 2>&1; then
-    printf 'Required native OCR build tool is missing: %s\n' "$tool" >&2
+    printf 'Required native Windows OCR build tool is missing: %s.\n' "$tool" >&2
     exit 1
   fi
 done
 
-cache_root="${EPIKRISE_NATIVE_OCR_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/epikrise/native-ocr}"
+cache_root="${EPIKRISE_NATIVE_WINDOWS_OCR_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/epikrise/windows-ocr-native-msvc}"
 download_dir="$cache_root/downloads"
 source_dir="$cache_root/sources"
-build_dir="$cache_root/build/$target"
-if [[ "$platform" == "macos" ]]; then
-  build_dir="$cache_root/build/$target-static-libraries"
+compiler_version="${VCToolsVersion:-}"
+if [[ -z "$compiler_version" ]]; then
+  printf 'VCToolsVersion is unavailable. Run this build from a Visual Studio developer shell.\n' >&2
+  exit 1
 fi
-prefix="$cache_root/install/$target"
+toolchain_id="msvc-$compiler_version-$host_arch"
+build_dir="$cache_root/build/$toolchain_id/$target"
+prefix="$cache_root/install/$toolchain_id/$target"
 binary_dir="${EPIKRISE_OCR_BINARY_DIR:-$repo_root/src-tauri/binaries}"
 mkdir -p "$download_dir" "$source_dir" "$build_dir" "$prefix"
 
@@ -104,14 +130,11 @@ cmake_args=(
   -DCMAKE_INSTALL_PREFIX="$prefix"
   -DCMAKE_INSTALL_LIBDIR=lib
   -DCMAKE_PREFIX_PATH="$prefix"
+  -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+  -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
   -DBUILD_SHARED_LIBS=OFF
   -DZLIB_USE_STATIC_LIBS=ON
 )
-if [[ "$platform" == "linux" ]]; then
-  cmake_args+=("-DCMAKE_EXE_LINKER_FLAGS=-static")
-else
-  cmake_args+=("-DCMAKE_FIND_LIBRARY_SUFFIXES=.a" "-DCMAKE_FIND_FRAMEWORK=NEVER")
-fi
 
 build_and_install() {
   local name="$1"
@@ -153,26 +176,18 @@ build_and_install tesseract "$tesseract_source" \
   -DLEPT_TIFF_COMPILE_SUCCESS:BOOL=TRUE \
   -DLeptonica_DIR="$prefix/lib/cmake/leptonica"
 
-mkdir -p "$binary_dir"
-sidecar="$binary_dir/tesseract-$target"
-if [[ -L "$sidecar" ]]; then
-  rm -f "$sidecar"
-fi
-install -m 0755 "$prefix/bin/tesseract" "$sidecar"
+sidecar="$binary_dir/tesseract-$target.exe"
+install -D -m 0755 "$prefix/bin/tesseract.exe" "$sidecar"
 node "$repo_root/scripts/verify-binary-architecture.mjs" "$target" "$sidecar"
-if [[ "$platform" == "linux" ]]; then
-  ldd_output="$(ldd "$sidecar" 2>&1 || true)"
-  if [[ "$ldd_output" != *"not a dynamic executable"* && "$ldd_output" != *"statically linked"* ]]; then
-    printf 'Linux Tesseract sidecar is not statically linked.\n' >&2
-    exit 1
-  fi
-else
-  non_system_dependencies="$(otool -L "$sidecar" | tail -n +2 | grep -Ev '^[[:space:]]+(/usr/lib/|/System/Library/|/Library/Apple/)' || true)"
-  if [[ -n "$non_system_dependencies" ]]; then
-    printf 'macOS Tesseract sidecar depends on a non-system dynamic library.\n' >&2
-    otool -L "$sidecar" >&2
-    exit 1
-  fi
+headers="$(
+  MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:+$MSYS2_ARG_CONV_EXCL;}/headers" \
+    dumpbin /headers "$sidecar"
+)"
+if ! printf '%s\n' "$headers" | rg -Fqi "$expected_machine"; then
+  printf 'Tesseract sidecar has the wrong machine type for %s.\n' "$target" >&2
+  exit 1
 fi
 
-printf 'Built portable Tesseract sidecar: %s\n' "$sidecar"
+node "$repo_root/scripts/verify-runtime-dependencies.mjs" "$target" "$sidecar"
+
+printf 'Built native MSVC Tesseract sidecar: %s\n' "$sidecar"
