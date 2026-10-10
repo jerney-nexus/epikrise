@@ -5,6 +5,23 @@ import { fileURLToPath } from "node:url";
 
 const execFile = promisify(execFileCallback);
 
+/** @param {unknown} error */
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** @param {unknown} error */
+function getChildProcessOutput(error) {
+  if (typeof error !== "object" || error === null) return "";
+
+  const stdout =
+    "stdout" in error && typeof error.stdout === "string" ? error.stdout : "";
+  const stderr =
+    "stderr" in error && typeof error.stderr === "string" ? error.stderr : "";
+  return `${stdout}\n${stderr}`;
+}
+
+/** @param {string} binaryPath @param {string} output */
 export function assertResolvedLinuxDependencies(binaryPath, output) {
   const missingLibraries = output
     .split(/\r?\n/)
@@ -18,6 +35,7 @@ export function assertResolvedLinuxDependencies(binaryPath, output) {
   }
 }
 
+/** @param {string} binaryPath @param {string} output */
 export function assertSystemOnlyMachODependencies(binaryPath, output) {
   const libraryPaths = output
     .split(/\r?\n/)
@@ -84,6 +102,7 @@ const windowsSystemLibraries = new Set([
   "ws2_32.dll",
 ]);
 
+/** @param {string} binaryPath @param {string} output */
 export function assertSystemOnlyPEDependencies(binaryPath, output) {
   const dependencies = [
     ...new Set(
@@ -109,6 +128,7 @@ export function assertSystemOnlyPEDependencies(binaryPath, output) {
   }
 }
 
+/** @param {string} target @param {string[]} binaryPaths */
 export async function verifyLinuxRuntimeDependencies(target, binaryPaths) {
   if (!target.endsWith("-unknown-linux-gnu")) {
     throw new Error(`Linux runtime dependency checks do not support target ${target}.`);
@@ -120,10 +140,10 @@ export async function verifyLinuxRuntimeDependencies(target, binaryPaths) {
       const result = await execFile("ldd", [binaryPath]);
       output = `${result.stdout}\n${result.stderr}`;
     } catch (error) {
-      output = `${error.stdout ?? ""}\n${error.stderr ?? ""}`;
+      output = getChildProcessOutput(error);
       if (!output.includes("not a dynamic executable")) {
         throw new Error(
-          `Could not inspect runtime dependencies for ${binaryPath}: ${output.trim()}`,
+          `Could not inspect runtime dependencies for ${binaryPath}: ${(output || getErrorMessage(error)).trim()}`,
           {
             cause: error,
           },
@@ -136,6 +156,7 @@ export async function verifyLinuxRuntimeDependencies(target, binaryPaths) {
   }
 }
 
+/** @param {string} target @param {string[]} binaryPaths */
 export async function verifyMacOSRuntimeDependencies(target, binaryPaths) {
   if (!target.endsWith("-apple-darwin")) {
     throw new Error(`macOS runtime dependency checks do not support target ${target}.`);
@@ -148,7 +169,7 @@ export async function verifyMacOSRuntimeDependencies(target, binaryPaths) {
       output = `${result.stdout}\n${result.stderr}`;
     } catch (error) {
       throw new Error(
-        `Could not inspect runtime dependencies for ${binaryPath}: ${(error.stderr ?? error.message).trim()}`,
+        `Could not inspect runtime dependencies for ${binaryPath}: ${(getChildProcessOutput(error) || getErrorMessage(error)).trim()}`,
         { cause: error },
       );
     }
@@ -158,6 +179,7 @@ export async function verifyMacOSRuntimeDependencies(target, binaryPaths) {
   }
 }
 
+/** @param {string} target @param {string[]} binaryPaths */
 export async function verifyWindowsRuntimeDependencies(target, binaryPaths) {
   if (!target.endsWith("-pc-windows-msvc")) {
     throw new Error(
@@ -172,7 +194,7 @@ export async function verifyWindowsRuntimeDependencies(target, binaryPaths) {
       output = `${result.stdout}\n${result.stderr}`;
     } catch (error) {
       throw new Error(
-        `Could not inspect runtime dependencies for ${binaryPath}: ${(error.stderr ?? error.message).trim()}`,
+        `Could not inspect runtime dependencies for ${binaryPath}: ${(getChildProcessOutput(error) || getErrorMessage(error)).trim()}`,
         { cause: error },
       );
     }
@@ -204,7 +226,7 @@ if (
         throw new Error(`Runtime dependency checks do not support target ${target}.`);
       }
     } catch (error) {
-      console.error(error.message);
+      console.error(getErrorMessage(error));
       process.exitCode = 1;
     }
   }
