@@ -2,12 +2,13 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+tauri_command="$(bash "$repo_root/scripts/tauri-command.sh" "$@")"
 
 bash "$repo_root/scripts/with-cargo-host-target.sh" --native-only --validate-only tauri "$@"
 bash "$repo_root/scripts/prepare-ocr.sh"
 bash "$repo_root/scripts/with-cargo-host-target.sh" --native-only tauri "$@"
 
-if [[ "${1:-}" == "build" ]]; then
+if [[ "$tauri_command" == "build" ]]; then
 	host_target="$(rustc -vV | sed -n 's/^host: //p')"
 	app_name="epikrise"
 	if [[ "$host_target" == *-pc-windows-msvc ]]; then

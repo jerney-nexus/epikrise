@@ -108,9 +108,26 @@ This creates AppImage, Debian (`.deb`), and RPM packages under
 
 #### Local Windows build
 
-Native Windows installer builds are not currently supported by the repository
-scripts. The bundled Tesseract OCR sidecar is cross-compiled on Linux ARM64, so
-use the dev container instructions below.
+Run `pnpm tauri build` from a Visual Studio Developer PowerShell or Command
+Prompt initialized for the host architecture (x64 or ARM64). The matching
+MSVC C++ toolchain must be available, including `cl` and `dumpbin`; `VSCMD_ARG_TGT_ARCH`
+must match the native host. Install Git for Windows so the launcher can find
+Git Bash, and ensure CMake, Ninja, `curl`, `tar`, and ripgrep (`rg`) are on
+`PATH`. The launcher uses Git Bash from PowerShell, Command Prompt, or Git Bash;
+WSL and cross-target builds are not supported by this command.
+
+Set `EPIKRISE_TESSDATA_DIR` to a directory containing both
+`deu.traineddata` and `eng.traineddata` before building. For example, in
+PowerShell:
+
+```powershell
+$env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
+pnpm tauri build
+```
+
+When this variable is set, an unrelated installed Tesseract executable is not
+required. The first native OCR build needs network access to download and
+verify its source archives.
 
 #### Dev container build
 
@@ -216,7 +233,7 @@ recommended Coverage Gutters VS Code extension. Use `pnpm test:ui:coverage` or
 `pnpm test:rust:coverage` for a targeted coverage run.
 Rust tests, Clippy, and Tauri builds keep Cargo artifacts in a host-triple-specific
 directory under `src-tauri/target`, so macOS builds and dev-container builds do
-not share incompatible host artifacts.
+ot share incompatible host artifacts.
 
 Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`,
 `pnpm lint:actions` (GitHub Actions workflows), and `pnpm format:check`.
