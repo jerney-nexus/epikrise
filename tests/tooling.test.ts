@@ -1679,6 +1679,37 @@ describe("native Cargo host target guard", () => {
 describe("native Cargo host architecture guard", () => {
   const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
 
+  it("preserves non-native wrapper behavior on an emulated host", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-emulated-host-"));
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeMockUname(binDir, "x86_64-unknown-linux-gnu", "aarch64");
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
+      );
+
+      await execFile("bash", [wrapperPath, "cargo", "check"], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          CARGO_LOG: cargoLog,
+        },
+      });
+
+      expect(await readFile(cargoLog, "utf8")).toBe("check\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a Rust host triple that differs from physical architecture", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-physical-host-"));
     const binDir = path.join(directory, "bin");

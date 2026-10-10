@@ -14,6 +14,17 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 - Gemini profiles now use the Gemini Interactions API through `genai` 0.7.1,
   retaining existing provider credentials, request settings, streaming, and
   cancellation behavior.
+- Native-host Tauri builds verify the bundled app executable and OCR dependencies
+  across Linux, macOS, and Windows. Windows x64/ARM64 desktop and signed-release
+  workflows compile on matching native runners, and native Windows setup
+  requirements are documented. Linux native-host checks reject architecture
+  mismatches under QEMU user-mode emulation, cross-target Cargo configuration
+  (including forwarded `--config` overrides), and custom Tauri runners in native
+  build/dev commands. Clustered short target options are validated and reflected
+  in build-output verification. Local PowerShell setup and troubleshooting are
+  documented. The six-target Desktop builds workflow passed; native install,
+  launch, and uninstall were confirmed on Windows ARM64 and macOS Apple Silicon.
+  Live testing on the other platform targets is deferred.
 - Localized in-app help for the workflow, settings, case-data handling, and
   privacy boundaries.
 - Templates can format ISO `YYYY-MM-DD` values with the MiniJinja expression

@@ -10,11 +10,7 @@ bash "$repo_root/scripts/with-cargo-host-target.sh" --native-only tauri "$@"
 
 if [[ "$tauri_command" == "build" ]]; then
 	host_target="$(rustc -vV | sed -n 's/^host: //p')"
-	app_name="epikrise"
-	if [[ "$host_target" == *-pc-windows-msvc ]]; then
-		app_name+=".exe"
-	fi
-	app_binary="$repo_root/src-tauri/target/host-$host_target/release/$app_name"
+	app_binary="$(bash "$repo_root/scripts/tauri-build-output.sh" "$host_target" "$@")"
 	if [[ ! -f "$app_binary" ]]; then
 		printf 'Tauri build did not produce the expected native executable: %s\n' "$app_binary" >&2
 		exit 1
