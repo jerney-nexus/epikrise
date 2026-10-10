@@ -17,12 +17,14 @@ async function writeExecutable(filePath: string, content: string) {
 
 describe("native target shorthand guard", () => {
   it.each([
-    ["-t TARGET", ["-t", "aarch64-unknown-linux-gnu"]],
-    ["-t=TARGET", ["-t=aarch64-unknown-linux-gnu"]],
-    ["-tTARGET", ["-taarch64-unknown-linux-gnu"]],
+    ["-t TARGET", ["-t", "aarch64-unknown-linux-gnu"], "does not match native host"],
+    ["-t=TARGET", ["-t=aarch64-unknown-linux-gnu"], "does not match native host"],
+    ["-tTARGET", ["-taarch64-unknown-linux-gnu"], "does not match native host"],
+    ["--target=", ["--target="], "Missing value for --target"],
+    ["-t=", ["-t="], "Missing value for --target"],
   ])(
-    "rejects mismatched %s before invoking Cargo",
-    async (_description, targetArgs) => {
+    "rejects invalid %s before invoking Cargo",
+    async (_description, targetArgs, expectedError) => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));
       const binDir = path.join(directory, "bin");
       const cargoLog = path.join(directory, "cargo.log");
@@ -55,7 +57,7 @@ describe("native target shorthand guard", () => {
             },
           ),
         ).rejects.toMatchObject({
-          stderr: expect.stringContaining("does not match native host"),
+          stderr: expect.stringContaining(expectedError),
         });
         await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
       } finally {
