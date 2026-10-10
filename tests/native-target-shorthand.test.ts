@@ -16,8 +16,56 @@ async function writeExecutable(filePath: string, content: string) {
 }
 
 describe("native target shorthand guard", () => {
-  it("rejects a mismatched Tauri -t target before invoking Cargo", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));
+  it.each([
+    ["-t TARGET", ["-t", "aarch64-unknown-linux-gnu"]],
+    ["-t=TARGET", ["-t=aarch64-unknown-linux-gnu"]],
+    ["-tTARGET", ["-taarch64-unknown-linux-gnu"]],
+  ])(
+    "rejects mismatched %s before invoking Cargo",
+    async (_description, targetArgs) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));
+      const binDir = path.join(directory, "bin");
+      const cargoLog = path.join(directory, "cargo.log");
+
+      try {
+        await mkdir(binDir);
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+        );
+        await writeExecutable(
+          path.join(binDir, "uname"),
+          "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
+        );
+        await writeExecutable(
+          path.join(binDir, "cargo"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CARGO_LOG"\n',
+        );
+
+        await expect(
+          execFile(
+            "bash",
+            [wrapperPath, "--native-only", "cargo", ...targetArgs, "check"],
+            {
+              env: {
+                ...process.env,
+                PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+                CARGO_LOG: cargoLog,
+              },
+            },
+          ),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("does not match native host"),
+        });
+        await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("does not interpret target-like application args after --", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-end-"));
     const binDir = path.join(directory, "bin");
     const cargoLog = path.join(directory, "cargo.log");
 
@@ -33,32 +81,32 @@ describe("native target shorthand guard", () => {
       );
       await writeExecutable(
         path.join(binDir, "cargo"),
-        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CARGO_LOG"\n',
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
       );
 
-      await expect(
-        execFile(
-          "bash",
-          [
-            wrapperPath,
-            "--native-only",
-            "cargo",
-            "-t",
-            "aarch64-unknown-linux-gnu",
-            "check",
-          ],
-          {
-            env: {
-              ...process.env,
-              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-              CARGO_LOG: cargoLog,
-            },
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "cargo",
+          "run",
+          "--",
+          "--target",
+          "aarch64-unknown-linux-gnu",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            CARGO_LOG: cargoLog,
           },
-        ),
-      ).rejects.toMatchObject({
-        stderr: expect.stringContaining("does not match native host"),
-      });
-      await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
+        },
+      );
+
+      await expect(readFile(cargoLog, "utf8")).resolves.toBe(
+        "run -- --target aarch64-unknown-linux-gnu\n",
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
