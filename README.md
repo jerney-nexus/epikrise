@@ -108,9 +108,78 @@ This creates AppImage, Debian (`.deb`), and RPM packages under
 
 #### Local Windows build
 
-Native Windows installer builds are not currently supported by the repository
-scripts. The bundled Tesseract OCR sidecar is cross-compiled on Linux ARM64, so
-use the Dev Container instructions below.
+Run `pnpm.cmd tauri build` from a Visual Studio Developer PowerShell or Command
+Prompt initialized for the host architecture (x64 or ARM64). The matching
+MSVC C++ toolchain must be available, including `cl` and `dumpbin`; `VSCMD_ARG_TGT_ARCH`
+must match the native host. Install Git for Windows so the launcher can find
+Git Bash, and ensure CMake, Ninja, `curl`, `tar`, and ripgrep (`rg`) are on
+`PATH`. The launcher uses Git Bash from PowerShell, Command Prompt, or Git Bash;
+WSL and cross-target builds are not supported by this command.
+
+Set `EPIKRISE_TESSDATA_DIR` to a directory containing both
+`deu.traineddata` and `eng.traineddata` before building. For example, in
+PowerShell:
+
+```powershell
+$env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
+pnpm tauri build
+```
+
+When this variable is set, an unrelated installed Tesseract executable is not
+required. The first native OCR build needs network access to download and
+verify its source archives.
+
+Prerequisites are Node.js 22, Corepack/pnpm `12.15.0`, Rust for the native
+Windows architecture, Visual Studio's **Desktop development with C++**
+workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`,
+`cl`, `dumpbin`, `curl`, `tar`, and `rg` on `PATH`. On ARM64, include native
+ARM64 C++ tools.
+If CMake remains missing after installing **C++ CMake tools for Windows** in
+Visual Studio Installer, install it with
+`winget install --id Kitware.CMake --exact --source winget`. Install missing
+Ninja separately with
+`winget install --id Ninja-build.Ninja --exact --source winget`. See the
+[Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
+and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact
+steps.
+Provide Tesseract's German and English language data either through an
+installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder
+containing `deu.traineddata` and `eng.traineddata`.
+
+From the repository root:
+
+```powershell
+$pnpmShimDir = Join-Path $env:LOCALAPPDATA 'Epikrise\corepack'
+New-Item -ItemType Directory -Path $pnpmShimDir -Force | Out-Null
+corepack.cmd enable --install-directory $pnpmShimDir pnpm
+$env:Path = "$pnpmShimDir;$env:Path"
+
+node --version
+pnpm.cmd --version
+rustc -vV
+pnpm.cmd install --frozen-lockfile
+$env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
+Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'deu.traineddata')
+Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'eng.traineddata')
+```
+
+If Corepack cannot write under `C:\Program Files`, this user-local shim keeps
+pnpm in your profile and avoids changing PowerShell's execution policy. The
+version commands should report Node 22 and pnpm 12.15.0. Both `Test-Path`
+commands must print `True`; if not, see the language-data setup in
+[Contributing](CONTRIBUTING.md#native-build-from-windows). Run one build
+command matching the host architecture.
+
+In the same Developer PowerShell or Command Prompt, build for the current
+native host architecture:
+
+```powershell
+pnpm.cmd tauri build
+```
+
+The first build needs network access to download and verify OCR sources and
+PDFium. See [Contributing: native Windows build](CONTRIBUTING.md#native-build-from-windows)
+for verification and troubleshooting.
 
 #### Dev Container cross-build
 
@@ -224,7 +293,7 @@ recommended Coverage Gutters VS Code extension. Use `pnpm test:ui:coverage` or
 `pnpm test:rust:coverage` for a targeted coverage run.
 Rust tests, Clippy, and Tauri builds keep Cargo artifacts in a host-triple-specific
 directory under `src-tauri/target`, so macOS builds and dev-container builds do
-not share incompatible host artifacts.
+ot share incompatible host artifacts.
 
 Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`,
 `pnpm lint:actions` (GitHub Actions workflows), and `pnpm format:check`.

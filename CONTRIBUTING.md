@@ -71,10 +71,156 @@ and open a new terminal. Then retry `pnpm tauri build`.
 
 ### Building Windows installers
 
-- **Native Windows build:** not currently supported by the repository scripts.
+- **Native Windows build:** supported on matching Windows x64/ARM64 hosts; see
+  [Native build from Windows](#native-build-from-windows).
 - **Manual Linux cross-build:** builds diagnostic x64 and ARM64 NSIS installers
   from the native Linux ARM64 Dev Container. It is separate from the approved
   Windows cross-builds in GitHub Actions.
+
+#### Native build from Windows
+
+Use this path on Windows x64 to build x64, or on Windows ARM64 to build ARM64.
+The native wrapper deliberately rejects a target that does not match the host;
+cross-building from Windows is not supported by this command.
+
+Install these prerequisites before building:
+
+- Node.js 22 and Corepack. The repository pins pnpm `12.15.0`.
+- Rust for the Windows host architecture with the MSVC toolchain. On ARM64,
+  `rustc -vV` must report `host: aarch64-pc-windows-msvc`; on x64 it must
+  report `host: x86_64-pc-windows-msvc`.
+- Windows ARM64 builds also need `clang.exe` for the locked `ring` dependency.
+  In Visual Studio Installer, select **C++ Clang tools for Windows** under
+  **Desktop development with C++**. The build wrapper searches Visual Studio's
+  LLVM tools and adds the compiler to `PATH`.
+- Visual Studio or Visual Studio Build Tools. In Visual Studio Installer,
+  select **Desktop development with C++**, the Windows SDK, and the MSVC C++
+  compiler, headers, and libraries for the host architecture. On ARM64, make
+  sure the native ARM64 C++ tools are selected; x64-emulated tools are not
+  sufficient. The Visual Studio Installer's `vswhere.exe` and
+  `VC\Auxiliary\Build\vcvarsall.bat` must be present. See the
+  [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
+  and [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
+- Git for Windows, which provides Git Bash. The Tauri launcher locates and
+  starts Git Bash; it does not initialize Visual Studio. Run native Windows
+  builds from a Visual Studio Developer PowerShell or Command Prompt targeting
+  the host architecture. CMake, Ninja, `cl`, `dumpbin`, `curl`, `tar`, and `rg`
+  must be available to the build shell. To install CMake with Visual Studio, open **Visual Studio
+  Installer**, select
+  **Modify** for the installed Visual Studio or Build Tools instance, ensure
+  **Desktop development with C++** is selected, then open **Individual
+  components** and select **C++ CMake tools for Windows**. If the build still
+  reports CMake missing, install the standalone version from the WinGet
+  community repository so `cmake.exe` is added to `PATH`. Ninja is also a
+  separate tool:
+
+  ```powershell
+  winget show --id Kitware.CMake --exact --source winget
+  winget install --id Kitware.CMake --exact --source winget
+  winget show --id Ninja-build.Ninja --exact --source winget
+  winget install --id Ninja-build.Ninja --exact --source winget
+  ```
+
+  After installation, open a new PowerShell window and confirm that
+  `cmake --version` and `ninja --version` print versions. Visual Studio's
+  bundled CMake may not be added to the regular PATH; the wrapper adds its
+  standard bundled-tools directory to the build-shell PATH automatically. It
+  then checks that both tools are available before building.
+
+- Tesseract language data containing both `deu.traineddata` and
+  `eng.traineddata`. You do not need an installed Tesseract executable if you
+  set `EPIKRISE_TESSDATA_DIR` to that data directory.
+
+Run the following in **PowerShell** from the repository root, after opening a
+Visual Studio Developer PowerShell or Command Prompt initialized for the
+native host architecture. Do not use WSL or run these commands inside the Dev
+Container. Do not run `pnpm windows:setup` here; that command provisions the
+separate Linux Dev Container cross-build.
+
+```powershell
+$pnpmShimDir = Join-Path $env:LOCALAPPDATA 'Epikrise\corepack'
+New-Item -ItemType Directory -Path $pnpmShimDir -Force | Out-Null
+corepack.cmd enable --install-directory $pnpmShimDir pnpm
+$env:Path = "$pnpmShimDir;$env:Path"
+
+node --version
+pnpm.cmd --version
+rustc -vV
+pnpm.cmd install --frozen-lockfile
+```
+
+The user-local Corepack shim avoids writing under `C:\Program Files`. Use
+`pnpm.cmd` in PowerShell to avoid a blocked `pnpm.ps1`; the wrapper inherits
+this session's `PATH` and can find the same pnpm command.
+
+The version commands should report Node 22 and pnpm 12.15.0; `rustc -vV`
+must report the native host triple listed above.
+
+Set `EPIKRISE_TESSDATA_DIR` to a folder containing both
+`deu.traineddata` and `eng.traineddata`. If Tesseract is installed with both
+languages, point it to that installation's `tessdata` folder. Otherwise,
+download the project-pinned language files into a user-local folder and verify
+their checksums:
+
+```powershell
+$tessdataDir = Join-Path $env:LOCALAPPDATA 'Epikrise\tessdata'
+New-Item -ItemType Directory -Path $tessdataDir -Force | Out-Null
+$tessdataCommit = '65727574dfcd264acbb0c3e07860e4e9e9b22185'
+$expectedSha256 = @{
+  deu = '19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d'
+  eng = '7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2'
+}
+foreach ($language in @('deu', 'eng')) {
+  $file = Join-Path $tessdataDir "$language.traineddata"
+  $url = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/$tessdataCommit/$language.traineddata"
+  Invoke-WebRequest -Uri $url -OutFile $file
+  $actualSha256 = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actualSha256 -ne $expectedSha256[$language]) {
+    throw "$language.traineddata SHA-256 mismatch."
+  }
+}
+$env:EPIKRISE_TESSDATA_DIR = $tessdataDir
+```
+
+The data is stored under your local application data directory, not in the
+repository. Keep using the same PowerShell session so the environment variable
+and user-local pnpm shim remain available during the build.
+
+Run the build command in the same Developer PowerShell or Command Prompt:
+
+```powershell
+pnpm.cmd tauri build
+```
+
+The build scripts verify that the Rust host and MSVC target architecture match
+the physical Windows host. Native-only Tauri `build` and `dev` commands reject
+custom runners such as `cargo-xwin`; the default `cargo` runner remains
+available. They also validate cross-target Cargo configuration from Cargo
+config files, `CARGO_BUILD_TARGET`, and forwarded Cargo `--config` overrides
+against the effective command target before OCR preparation.
+
+The first build needs network access to download and checksum-verify the OCR
+source archives and PDFium. The unsigned diagnostic installer is written under
+`src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The wrapper
+returns a non-zero exit code if setup, compilation, bundling, or architecture
+verification fails.
+Diagnostic builds disable release LTO, use 16 codegen units, and compile at
+optimization level 2 to reduce peak memory use. Signed release builds retain
+the optimized release profile configured in `src-tauri/Cargo.toml`.
+
+Build caches are kept between runs: Cargo artifacts live under
+`src-tauri/target/host-<host-triple>/`, and the native OCR CMake/Ninja build
+cache lives under `%USERPROFILE%\.cache\epikrise\windows-ocr-native-msvc\`.
+Cargo reuses outputs that are still up to date; changes to Rust sources,
+toolchain/profile settings, or build inputs may require affected crates to
+compile again. The diagnostic profile has just changed to reduce memory, so
+its first run rebuilds artifacts for the new profile. Avoid `cargo clean` or
+deleting these cache directories unless you intentionally want a full rebuild.
+
+If compilation reports that `vcruntime.h` cannot be found, the installed MSVC
+toolset or its C++ headers are missing or inconsistent. Use Visual Studio
+Installer to add or repair the C++ build tools and Windows SDK for the host
+architecture, open a new PowerShell window, and rerun the native wrapper.
 
 #### Manual cross-build from Linux ARM64
 

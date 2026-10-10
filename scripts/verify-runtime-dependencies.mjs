@@ -74,6 +74,7 @@ const windowsSystemLibraries = new Set([
   "combase.dll",
   "crypt32.dll",
   "cryptbase.dll",
+  "dwrite.dll",
   "dwmapi.dll",
   "gdi32.dll",
   "gdi32full.dll",
@@ -141,7 +142,10 @@ export async function verifyLinuxRuntimeDependencies(target, binaryPaths) {
       output = `${result.stdout}\n${result.stderr}`;
     } catch (error) {
       output = getChildProcessOutput(error);
-      if (!output.includes("not a dynamic executable")) {
+      if (
+        !output.includes("not a dynamic executable") &&
+        !output.includes("statically linked")
+      ) {
         throw new Error(
           `Could not inspect runtime dependencies for ${binaryPath}: ${(output || getErrorMessage(error)).trim()}`,
           {
