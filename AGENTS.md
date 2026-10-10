@@ -25,8 +25,6 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - All PRs require passing tests before merge.
 - Prefer one shell command per tool call; avoid chaining commands. Run independent
   commands in parallel and choose the cheapest relevant check first.
-- Use subagents only for work that cannot reasonably be parallelized otherwise,
-  and choose the lowest-cost suitable model.
 - For GitHub work, use native `git` commands first when they can do the task
   (using VS Code authentication). For operations `git` cannot perform, try MCP
   first; if MCP is unavailable or fails, use GitHub CLI, starting with
