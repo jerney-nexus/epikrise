@@ -103,9 +103,17 @@ if [[ "$native_only" == true ]]; then
         ;;
       --target=*)
         explicit_target="${1#--target=}"
+        if [[ -z "$explicit_target" ]]; then
+          printf 'Missing value for --target.\n' >&2
+          exit 2
+        fi
         ;;
       -t=*)
         explicit_target="${1#-t=}"
+        if [[ -z "$explicit_target" ]]; then
+          printf 'Missing value for --target.\n' >&2
+          exit 2
+        fi
         ;;
       -t?*)
         explicit_target="${1#-t}"
