@@ -1639,6 +1639,7 @@ describe("native Cargo host target guard", () => {
 
   it.each([
     ["an explicit target", ["--target", "aarch64-unknown-linux-gnu"], undefined],
+    ["Tauri's target shorthand", ["-t", "aarch64-unknown-linux-gnu"], undefined],
     ["CARGO_BUILD_TARGET", [], "aarch64-unknown-linux-gnu"],
   ])("rejects %s before invoking Cargo", async (_description, args, buildTarget) => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));

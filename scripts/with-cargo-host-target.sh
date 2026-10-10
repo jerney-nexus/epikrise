@@ -93,7 +93,7 @@ if [[ "$native_only" == true ]]; then
   explicit_target=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --target)
+      --target|-t)
         shift
         if [[ $# -eq 0 || -z "$1" ]]; then
           printf 'Missing value for --target.\n' >&2
