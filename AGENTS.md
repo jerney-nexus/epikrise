@@ -29,6 +29,8 @@ Epikrise follows a modular architecture with a clear separation of concerns:
   (using VS Code authentication). For operations `git` cannot perform, try MCP
   first; if MCP is unavailable or fails, use GitHub CLI, starting with
   high-level `gh issue` or `gh pr` commands. Use `gh api` only as a last resort.
+- For Git stack operations, use `gh stack`; it requires an authenticated
+  GitHub CLI session.
 - Use the commands listed in the "Commands" section below for development, testing, and formatting tasks.
 - When working in the dev container, use `/workspaces/epikrise` as the project root.
 - Follow nearby patterns and keep changes focused.
