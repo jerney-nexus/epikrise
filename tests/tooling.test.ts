@@ -1609,6 +1609,56 @@ describe("native Cargo host target guard", () => {
     }
   });
 
+  it("rejects a mismatched Tauri runner target before OCR downloads", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-tauri-runner-target-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const curlLog = path.join(directory, "curl.log");
+
+    try {
+      await mkdir(binDir);
+      const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+      const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+      expect(host).toBeDefined();
+      const mismatchedTarget = host!.startsWith("x86_64-")
+        ? host!.replace("x86_64-", "aarch64-")
+        : host!.replace("aarch64-", "x86_64-");
+
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+      );
+      await writeMockUname(binDir, host!);
+      await writeExecutable(
+        path.join(binDir, "curl"),
+        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+      );
+
+      await expect(
+        execFile(
+          "bash",
+          [tauriScriptPath, "build", "--", "--target", mismatchedTarget],
+          {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+              CURL_LOG: curlLog,
+              EPIKRISE_OCR_RESOURCE_DIR: path.join(directory, "resources"),
+              EPIKRISE_OCR_BINARY_DIR: path.join(directory, "binaries"),
+            },
+          },
+        ),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("does not match native host"),
+      });
+      await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("forwards a matching native target to Cargo", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));
     const binDir = path.join(directory, "bin");

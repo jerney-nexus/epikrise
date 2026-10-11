@@ -11,7 +11,14 @@ shift
 
 build_target="${CARGO_BUILD_TARGET:-}"
 build_profile="release"
+after_separator=false
 while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--" && "$after_separator" == false ]]; then
+    after_separator=true
+    shift
+    continue
+  fi
+
   case "$1" in
     --target|-t)
       shift
@@ -33,12 +40,31 @@ while [[ $# -gt 0 ]]; do
     --debug|-d)
       build_profile="debug"
       ;;
-    --)
-      break
+    --profile)
+      shift
+      if [[ $# -eq 0 || -z "$1" ]]; then
+        printf 'Missing value for --profile.\n' >&2
+        exit 2
+      fi
+      build_profile="$1"
+      ;;
+    --profile=*)
+      build_profile="${1#--profile=}"
+      if [[ -z "$build_profile" ]]; then
+        printf 'Missing value for --profile.\n' >&2
+        exit 2
+      fi
+      ;;
+    --release|-r)
+      build_profile="release"
       ;;
   esac
   shift
 done
+
+if [[ "$build_profile" == "dev" ]]; then
+  build_profile="debug"
+fi
 
 target_dir="$repo_root/src-tauri/target/host-$host_target"
 if [[ -n "$build_target" ]]; then
