@@ -8,6 +8,12 @@ if [[ "${1:-}" == "--native-only" ]]; then
   shift
 fi
 
+tauri_build=false
+if [[ "${1:-}" == "--tauri-build" ]]; then
+  tauri_build=true
+  shift
+fi
+
 validate_only=false
 if [[ "${1:-}" == "--validate-only" ]]; then
   validate_only=true
@@ -103,8 +109,18 @@ if [[ "$native_only" == true ]]; then
   fi
 
   requested_target="${CARGO_BUILD_TARGET:-}"
-  explicit_target=""
+  explicit_targets=()
+  after_separator=false
   while [[ $# -gt 0 ]]; do
+    if [[ "$1" == "--" && "$after_separator" == false ]]; then
+      if [[ "$tauri_build" == true ]]; then
+        after_separator=true
+        shift
+        continue
+      fi
+      break
+    fi
+
     case "$1" in
       --target|-t)
         shift
@@ -112,33 +128,32 @@ if [[ "$native_only" == true ]]; then
           printf 'Missing value for --target.\n' >&2
           exit 2
         fi
-        explicit_target="$1"
+        explicit_targets+=("$1")
         ;;
       --target=*)
-        explicit_target="${1#--target=}"
-        if [[ -z "$explicit_target" ]]; then
+        target="${1#--target=}"
+        if [[ -z "$target" ]]; then
           printf 'Missing value for --target.\n' >&2
           exit 2
         fi
+        explicit_targets+=("$target")
         ;;
       -t=*)
-        explicit_target="${1#-t=}"
-        if [[ -z "$explicit_target" ]]; then
+        target="${1#-t=}"
+        if [[ -z "$target" ]]; then
           printf 'Missing value for --target.\n' >&2
           exit 2
         fi
+        explicit_targets+=("$target")
         ;;
       -t?*)
-        explicit_target="${1#-t}"
-        ;;
-      --)
-        break
+        explicit_targets+=("${1#-t}")
         ;;
     esac
     shift
   done
 
-  for target in "$requested_target" "$explicit_target"; do
+  for target in "$requested_target" "${explicit_targets[@]}"; do
     if [[ -n "$target" && "$target" != "$host_triple" ]]; then
       printf 'Requested target %s does not match native host %s.\n' "$target" "$host_triple" >&2
       exit 1

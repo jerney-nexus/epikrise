@@ -22,9 +22,21 @@ describe("native target shorthand guard", () => {
     ["-tTARGET", ["-taarch64-unknown-linux-gnu"], "does not match native host"],
     ["--target=", ["--target="], "Missing value for --target"],
     ["-t=", ["-t="], "Missing value for --target"],
+    [
+      "forwarded --target",
+      ["build", "--", "--target", "aarch64-unknown-linux-gnu"],
+      "does not match native host",
+      true,
+    ],
+    [
+      "forwarded missing --target",
+      ["build", "--", "--target"],
+      "Missing value for --target",
+      true,
+    ],
   ])(
     "rejects invalid %s before invoking Cargo",
-    async (_description, targetArgs, expectedError) => {
+    async (_description, targetArgs, expectedError, tauriBuild = false) => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));
       const binDir = path.join(directory, "bin");
       const cargoLog = path.join(directory, "cargo.log");
@@ -47,7 +59,14 @@ describe("native target shorthand guard", () => {
         await expect(
           execFile(
             "bash",
-            [wrapperPath, "--native-only", "cargo", ...targetArgs, "check"],
+            [
+              wrapperPath,
+              "--native-only",
+              ...(tauriBuild ? ["--tauri-build"] : []),
+              "cargo",
+              ...targetArgs,
+              ...(tauriBuild ? [] : ["check"]),
+            ],
             {
               env: {
                 ...process.env,
@@ -108,6 +127,59 @@ describe("native target shorthand guard", () => {
 
       await expect(readFile(cargoLog, "utf8")).resolves.toBe(
         "run -- --target aarch64-unknown-linux-gnu\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves matching Tauri runner targets after --", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-tauri-runner-target-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
+      );
+
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "--tauri-build",
+          "cargo",
+          "build",
+          "--",
+          "--target",
+          "x86_64-unknown-linux-gnu",
+          "--profile",
+          "custom",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            CARGO_LOG: cargoLog,
+          },
+        },
+      );
+
+      await expect(readFile(cargoLog, "utf8")).resolves.toBe(
+        "build -- --target x86_64-unknown-linux-gnu --profile custom\n",
       );
     } finally {
       await rm(directory, { recursive: true, force: true });

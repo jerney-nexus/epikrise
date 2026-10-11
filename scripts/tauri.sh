@@ -3,10 +3,16 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tauri_command="$(bash "$repo_root/scripts/tauri-command.sh" "$@")"
+native_guard_args=()
+if [[ "$tauri_command" == "build" ]]; then
+	native_guard_args+=(--tauri-build)
+fi
 
-bash "$repo_root/scripts/with-cargo-host-target.sh" --native-only --validate-only tauri "$@"
+bash "$repo_root/scripts/with-cargo-host-target.sh" \
+	--native-only "${native_guard_args[@]}" --validate-only tauri "$@"
 bash "$repo_root/scripts/prepare-ocr.sh"
-bash "$repo_root/scripts/with-cargo-host-target.sh" --native-only tauri "$@"
+bash "$repo_root/scripts/with-cargo-host-target.sh" \
+	--native-only "${native_guard_args[@]}" tauri "$@"
 
 if [[ "$tauri_command" == "build" ]]; then
 	host_target="$(rustc -vV | sed -n 's/^host: //p')"
