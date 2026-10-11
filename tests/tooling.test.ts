@@ -44,6 +44,7 @@ import {
   validateReleaseTag,
   verifyUploadedReleaseAssets,
 } from "../scripts/release-artifacts.mjs";
+import { runTauri } from "../scripts/tauri.mjs";
 import { verifyBinaryArchitecture } from "../scripts/verify-binary-architecture.mjs";
 import {
   assertResolvedLinuxDependencies,
@@ -186,6 +187,17 @@ describe("macOS runtime dependency verification", () => {
         "Epikrise:\n\t/System/Library/Frameworks/Cocoa.framework/Cocoa (compatibility version 1.0.0)\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)",
       ),
     ).not.toThrow();
+  });
+
+  it.each([
+    ["empty output", ""],
+    ["header-only output", "Epikrise:\n"],
+    ["unrecognized output", "not otool output\n"],
+    ["malformed dependency output", "Epikrise:\n\t/usr/lib/libSystem.B.dylib\n"],
+  ])("rejects %s", (_description, output) => {
+    expect(() => assertSystemOnlyMachODependencies("Epikrise", output)).toThrow(
+      "Could not recognize otool output for Epikrise.",
+    );
   });
 
   it("rejects dependencies outside system locations", () => {
@@ -1522,37 +1534,31 @@ async function writeMockUname(
 describe("native Cargo host target guard", () => {
   const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
   const tauriScriptPath = path.join(repoRoot, "scripts/tauri.sh");
-  const tauriLauncherPath = path.join(repoRoot, "scripts/tauri.mjs");
 
-  it("launches the Tauri workflow with arguments intact", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-launcher-"));
-    const binDir = path.join(directory, "bin");
-    const argumentLog = path.join(directory, "arguments.log");
-    try {
-      await mkdir(binDir);
-      await writeExecutable(
-        path.join(binDir, "bash"),
-        '#!/bin/bash\nprintf "%s\\n" "$@" > "$ARGUMENT_LOG"\n',
-      );
+  it("launches the Tauri workflow with Windows Git Bash and arguments intact", () => {
+    const args = ["--target", "native target"];
+    const gitBashPath = "C:\\Program Files\\Git\\bin\\bash.exe";
+    let invocation: { command: string; args: string[]; options: object } | undefined;
 
-      await execFile(
-        process.execPath,
-        [tauriLauncherPath, "--target", "native target"],
-        {
-          env: {
-            ...process.env,
-            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-            ARGUMENT_LOG: argumentLog,
-          },
-        },
-      );
+    const status = runTauri(args, {
+      platform: "win32",
+      resolveGitBash: () => gitBashPath,
+      spawn: (command, spawnArgs, options) => {
+        invocation = { command, args: spawnArgs, options };
+        return { status: 0 };
+      },
+    });
 
-      expect(await readFile(argumentLog, "utf8")).toBe(
-        `${tauriScriptPath}\n--target\nnative target\n`,
-      );
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    expect(status).toBe(0);
+    expect(invocation).toEqual({
+      command: gitBashPath,
+      args: [tauriScriptPath, ...args],
+      options: {
+        cwd: path.resolve(repoRoot),
+        env: process.env,
+        stdio: "inherit",
+      },
+    });
   });
 
   it("rejects a mismatched target before OCR downloads", async () => {

@@ -48,9 +48,19 @@ export function assertResolvedLinuxDependencies(binaryPath, output) {
 
 /** @param {string} binaryPath @param {string} output */
 export function assertSystemOnlyMachODependencies(binaryPath, output) {
-  const libraryPaths = output
-    .split(/\r?\n/)
-    .slice(1)
+  const [header, ...outputLines] = output.split(/\r?\n/);
+  const dependencyLines = outputLines.filter((line) => line.trim().length > 0);
+  if (
+    !header?.trim().endsWith(":") ||
+    dependencyLines.length === 0 ||
+    dependencyLines.some(
+      (line) => !/^\s*.+\s+\(compatibility version [^)]+\)\s*$/.test(line),
+    )
+  ) {
+    throw new Error(`Could not recognize otool output for ${binaryPath}.`);
+  }
+
+  const libraryPaths = dependencyLines
     .map((line) => line.trim().split(/\s+\(/)[0])
     .filter(Boolean);
   if (
