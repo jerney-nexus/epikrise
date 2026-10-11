@@ -1695,6 +1695,91 @@ describe("native Cargo host target guard", () => {
 describe("native Cargo host architecture guard", () => {
   const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
 
+  it("rejects an emulated x64 Rust host on a native ARM64 Windows machine", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-os-arch-"));
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-pc-windows-msvc\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "powershell.exe"),
+        "#!/usr/bin/env bash\nprintf 'Arm64\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CARGO_LOG"\n',
+      );
+
+      await expect(
+        execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            PROCESSOR_ARCHITECTURE: "AMD64",
+            PROCESSOR_ARCHITEW6432: "",
+            CARGO_LOG: cargoLog,
+          },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          "does not match detected physical host windows/aarch64",
+        ),
+      });
+      await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a native ARM64 Windows host despite an emulated x64 process", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-arm64-"));
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: aarch64-pc-windows-msvc\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "powershell.exe"),
+        "#!/usr/bin/env bash\nprintf 'Arm64\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
+      );
+
+      await execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          PROCESSOR_ARCHITECTURE: "AMD64",
+          PROCESSOR_ARCHITEW6432: "",
+          CARGO_LOG: cargoLog,
+        },
+      });
+
+      expect(await readFile(cargoLog, "utf8")).toBe("check\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a Rust host triple that differs from physical architecture", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-physical-host-"));
     const binDir = path.join(directory, "bin");

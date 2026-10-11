@@ -37,13 +37,26 @@ if [[ "$native_only" == true ]]; then
       ;;
     MINGW*|MSYS*|CYGWIN*)
       physical_os_family="windows"
-      windows_arch="${PROCESSOR_ARCHITEW6432:-${PROCESSOR_ARCHITECTURE:-}}"
-      case "$windows_arch" in
-        ARM64|arm64)
+      if ! windows_os_arch="$(
+        powershell.exe -NoLogo -NoProfile -NonInteractive \
+          -Command '[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture' \
+          2>/dev/null
+      )"; then
+        printf 'Could not determine native Windows OS architecture using PowerShell.\n' >&2
+        exit 1
+      fi
+      windows_os_arch="${windows_os_arch//$'\r'/}"
+      windows_os_arch="${windows_os_arch//$'\n'/}"
+      case "$windows_os_arch" in
+        Arm64|ARM64|arm64)
           physical_arch="aarch64"
           ;;
-        AMD64|amd64|x86_64)
+        X64|x64|AMD64|amd64|x86_64)
           physical_arch="x86_64"
+          ;;
+        *)
+          printf 'Unsupported native Windows OS architecture: %s.\n' "$windows_os_arch" >&2
+          exit 1
           ;;
       esac
       ;;
