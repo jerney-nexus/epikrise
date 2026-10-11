@@ -13,7 +13,7 @@ const scriptPath = path.join(repoRoot, "scripts", "tauri.sh");
 
 /**
  * @param {string[]} args
- * @param {{ platform?: string, resolveGitBash?: () => string | null, spawn?: Spawn }} [dependencies]
+ * @param {{ platform?: string, resolveGitBash?: () => string | undefined, spawn?: Spawn }} [dependencies]
  */
 export function runTauri(
   args,
