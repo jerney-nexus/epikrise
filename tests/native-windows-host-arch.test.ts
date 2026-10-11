@@ -38,6 +38,10 @@ describe("native Windows MSVC host architecture", () => {
         "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
       );
       await writeExecutable(
+        path.join(binDir, "powershell.exe"),
+        "#!/usr/bin/env bash\nprintf 'Arm64\\n'\n",
+      );
+      await writeExecutable(
         path.join(binDir, "rustc"),
         `#!/usr/bin/env bash\nprintf 'host: ${target}\\n'\n`,
       );
@@ -67,6 +71,57 @@ describe("native Windows MSVC host architecture", () => {
     }
   });
 
+  it("rejects an emulated x64 toolchain on a physical ARM64 Windows host before cache creation", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-msvc-physical-arm64-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const curlLog = path.join(directory, "curl.log");
+    const cacheRoot = path.join(directory, "cache");
+    const target = "x86_64-pc-windows-msvc";
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "powershell.exe"),
+        "#!/usr/bin/env bash\nprintf 'Arm64\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        `#!/usr/bin/env bash\nprintf 'host: ${target}\\n'\n`,
+      );
+      await writeExecutable(
+        path.join(binDir, "curl"),
+        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+      );
+
+      await expect(
+        execFile("bash", [builderPath, target], {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            VSCMD_ARG_TGT_ARCH: "x64",
+            VSCMD_ARG_HOST_ARCH: "x64",
+            CURL_LOG: curlLog,
+            EPIKRISE_NATIVE_WINDOWS_OCR_CACHE: cacheRoot,
+          },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          "does not match detected physical Windows architecture aarch64",
+        ),
+      });
+      await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      await expect(readdir(cacheRoot)).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("separates caches by MSVC host architecture", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-msvc-cache-"));
     const binDir = path.join(directory, "bin");
@@ -80,6 +135,10 @@ describe("native Windows MSVC host architecture", () => {
       await writeExecutable(
         path.join(binDir, "uname"),
         "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "powershell.exe"),
+        "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
       );
       await writeExecutable(
         path.join(binDir, "rustc"),
