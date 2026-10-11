@@ -132,7 +132,7 @@ if [[ "$native_only" == true ]]; then
     shift
   done
 
-  for target in "$requested_target" "${explicit_targets[@]}"; do
+  for target in "$requested_target" "${explicit_targets[@]-}"; do
     if [[ -n "$target" && "$target" != "$host_triple" ]]; then
       printf 'Requested target %s does not match native host %s.\n' "$target" "$host_triple" >&2
       exit 1
