@@ -26,16 +26,18 @@ export function findGitBash(
   const gitRoots = [env.ProgramFiles, env["ProgramFiles(x86)"]]
     .filter((directory) => typeof directory === "string")
     .map((directory) => path.win32.join(directory, "Git"));
-  const gitCandidates = gitRoots.flatMap((directory) => [
+  const pathDirectories = (env.PATH ?? "").split(path.win32.delimiter);
+  const pathGitRoots = pathDirectories
+    .filter((directory) => path.win32.basename(directory).toLowerCase() === "cmd")
+    .map((directory) => path.win32.dirname(directory));
+  const gitCandidates = [...gitRoots, ...pathGitRoots].flatMap((directory) => [
     path.win32.join(directory, "bin", "bash.exe"),
     path.win32.join(directory, "usr", "bin", "bash.exe"),
   ]);
-  const pathCandidates = (env.PATH ?? "")
-    .split(path.win32.delimiter)
-    .flatMap((directory) => [
-      path.win32.join(directory, "bash.exe"),
-      path.win32.join(directory, "bash"),
-    ]);
+  const pathCandidates = pathDirectories.flatMap((directory) => [
+    path.win32.join(directory, "bash.exe"),
+    path.win32.join(directory, "bash"),
+  ]);
 
   return [...gitCandidates, ...pathCandidates].find(
     (candidate) => exists(candidate) && verify(candidate),
