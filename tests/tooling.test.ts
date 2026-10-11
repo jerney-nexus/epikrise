@@ -160,6 +160,22 @@ describe("Linux runtime dependency verification", () => {
       assertResolvedLinuxDependencies("app", "libwebkit.so => not found"),
     ).toThrow("Unresolved runtime dependencies for app: libwebkit.so.");
   });
+
+  it.each(["", "ldd output format changed"])(
+    "rejects empty or unrecognized ldd output: %s",
+    (output) => {
+      expect(() => assertResolvedLinuxDependencies("app", output)).toThrow(
+        "Could not recognize ldd output for app.",
+      );
+    },
+  );
+
+  it.each(["statically linked", "app: not a dynamic executable"])(
+    "accepts recognized static ldd diagnostics: %s",
+    (output) => {
+      expect(() => assertResolvedLinuxDependencies("app", output)).not.toThrow();
+    },
+  );
 });
 
 describe("macOS runtime dependency verification", () => {

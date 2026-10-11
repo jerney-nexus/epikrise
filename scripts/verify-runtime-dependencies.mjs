@@ -23,8 +23,8 @@ function getChildProcessOutput(error) {
 
 /** @param {string} binaryPath @param {string} output */
 export function assertResolvedLinuxDependencies(binaryPath, output) {
-  const missingLibraries = output
-    .split(/\r?\n/)
+  const lines = output.split(/\r?\n/);
+  const missingLibraries = lines
     .filter((line) => /=>\s+not found\s*$/.test(line))
     .map((line) => line.trim().split(/\s+/)[0]);
 
@@ -32,6 +32,17 @@ export function assertResolvedLinuxDependencies(binaryPath, output) {
     throw new Error(
       `Unresolved runtime dependencies for ${binaryPath}: ${missingLibraries.join(", ")}.`,
     );
+  }
+
+  const hasDependencyRecord = lines.some((line) =>
+    /^\s*\S+\.so(?:\.\S+)*\s+(?:=>\s+\S+|\(0x[0-9a-f]+\))/i.test(line),
+  );
+  const hasStaticLinkDiagnostic = lines.some((line) =>
+    /(?:^|:\s*)(?:not a dynamic executable|statically linked)$/i.test(line.trim()),
+  );
+
+  if (!hasDependencyRecord && !hasStaticLinkDiagnostic) {
+    throw new Error(`Could not recognize ldd output for ${binaryPath}.`);
   }
 }
 

@@ -33,4 +33,27 @@ describe("Git Bash selection", () => {
       ),
     ).toBeUndefined();
   });
+
+  it("finds Git Bash from a per-user Git cmd PATH entry", () => {
+    const gitBash = path.win32.join(
+      "C:\\Users\\user\\AppData\\Local\\Programs",
+      "Git",
+      "bin",
+      "bash.exe",
+    );
+
+    expect(
+      findGitBash(
+        {
+          PATH: path.win32.join(
+            "C:\\Users\\user\\AppData\\Local\\Programs",
+            "Git",
+            "cmd",
+          ),
+        },
+        (candidate) => candidate === gitBash,
+        (candidate) => candidate === gitBash,
+      ),
+    ).toBe(gitBash);
+  });
 });
