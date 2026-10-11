@@ -12,18 +12,16 @@ case "$host_os" in
     ;;
 esac
 
-host_target="$(rustc -vV | sed -n 's/^host: //p')"
-if [[ "$target" != "$host_target" ]]; then
-  printf 'Native MSVC OCR builds require target %s to match Rust host %s.\n' "$target" "$host_target" >&2
-  exit 1
-fi
+physical_arch="$(bash "$repo_root/scripts/detect-windows-os-architecture.sh")"
 
 case "$target" in
   x86_64-pc-windows-msvc)
+    expected_rust_arch="x86_64"
     expected_arch="x64"
     expected_machine="8664 machine (x64)"
     ;;
   aarch64-pc-windows-msvc)
+    expected_rust_arch="aarch64"
     expected_arch="arm64"
     expected_machine="AA64 machine (ARM64)"
     ;;
@@ -32,6 +30,18 @@ case "$target" in
     exit 2
     ;;
 esac
+
+if [[ "$physical_arch" != "$expected_rust_arch" ]]; then
+  printf 'Native MSVC OCR target %s does not match detected physical Windows architecture %s.\n' \
+    "$target" "$physical_arch" >&2
+  exit 1
+fi
+
+host_target="$(rustc -vV | sed -n 's/^host: //p')"
+if [[ "$target" != "$host_target" ]]; then
+  printf 'Native MSVC OCR builds require target %s to match Rust host %s.\n' "$target" "$host_target" >&2
+  exit 1
+fi
 
 if [[ "${VSCMD_ARG_TGT_ARCH:-}" != "$expected_arch" ]]; then
   printf 'Open a Visual Studio developer shell targeting %s (VSCMD_ARG_TGT_ARCH=%s).\n' "$expected_arch" "$expected_arch" >&2

@@ -2395,6 +2395,10 @@ if (process.platform !== "win32") {
           "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
         );
         await writeExecutable(
+          path.join(binDir, "powershell.exe"),
+          "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
+        );
+        await writeExecutable(
           path.join(binDir, "rustc"),
           `#!/usr/bin/env bash\nprintf 'host: ${target}\\n'\n`,
         );
