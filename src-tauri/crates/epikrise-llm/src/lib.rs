@@ -241,9 +241,10 @@ impl KeyringCredentialStore {
             .values()
             .filter_map(|metadata| {
                 #[cfg(target_os = "windows")]
-                if metadata.get("Target").map(String::as_str) != Some(KEYRING_SERVICE) {
-                    return None;
-                }
+                let account_id = metadata
+                    .get("Target")?
+                    .strip_suffix(&format!(".{KEYRING_SERVICE}"))?;
+                #[cfg(not(target_os = "windows"))]
                 let account_id = metadata
                     .get("acct")
                     .or_else(|| metadata.get("username"))
