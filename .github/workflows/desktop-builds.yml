@@ -143,6 +143,7 @@ jobs:
         if: matrix.target == 'aarch64-pc-windows-msvc' && inputs.windows_arm64_symbols
         env:
           WINDOWS_ARCH: arm64
+          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
           CARGO_PROFILE_RELEASE_DEBUG: "2"
           CARGO_PROFILE_RELEASE_STRIP: none
         shell: cmd
@@ -152,6 +153,7 @@ jobs:
         if: matrix.platform == 'windows' && (matrix.target != 'aarch64-pc-windows-msvc' || !inputs.windows_arm64_symbols)
         env:
           WINDOWS_ARCH: ${{ matrix.windows_arch }}
+          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
         shell: cmd
         run: call scripts\build-native-windows.cmd "%WINDOWS_ARCH%" diagnostic
 

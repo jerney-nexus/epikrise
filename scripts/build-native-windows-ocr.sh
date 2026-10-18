@@ -55,8 +55,9 @@ if [[ "$host_arch" != "$expected_arch" ]]; then
   exit 1
 fi
 
-if [[ -n "${EPIKRISE_MSVC_TOOLS_BIN:-}" ]]; then
-  msvc_tools_bin="$(cygpath -u "$EPIKRISE_MSVC_TOOLS_BIN")"
+if [[ -n "${EPIKRISE_MSVC_CL_EXE:-}" ]]; then
+  msvc_cl_exe="$(cygpath -u "$EPIKRISE_MSVC_CL_EXE")"
+  msvc_tools_bin="$(dirname "$msvc_cl_exe")"
   PATH="$msvc_tools_bin:$PATH"
   export PATH
 fi
