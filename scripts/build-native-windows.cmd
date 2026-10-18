@@ -79,6 +79,38 @@ exit /b 1
 :msvc_cl_found
 del /q "%msvc_cl_file%" >nul 2>&1
 
+for %%I in ("%EPIKRISE_MSVC_CL_EXE%") do set "msvc_compiler_dir=%%~dpI"
+for %%I in ("%msvc_compiler_dir%..\..\..") do set "msvc_toolset_dir=%%~fI"
+for %%I in ("%msvc_toolset_dir%") do set "VCToolsVersion=%%~nxI"
+set "VCINSTALLDIR=%VSINSTALLDIR%\VC\"
+set "VCToolsInstallDir=%msvc_toolset_dir%\"
+set "PATH=%msvc_compiler_dir%;%PATH%"
+set "INCLUDE=%msvc_toolset_dir%\include;%INCLUDE%"
+set "LIB=%msvc_toolset_dir%\lib\%windows_arch%;%LIB%"
+
+if /I not "%windows_arch%"=="arm64" goto clang_ready
+set "EPIKRISE_CLANG_EXE="
+set "clang_file=%TEMP%\epikrise-clang-%RANDOM%.txt"
+where.exe clang.exe > "%clang_file%"
+if errorlevel 1 goto clang_search_visual_studio
+set /p "EPIKRISE_CLANG_EXE="<"%clang_file%"
+if defined EPIKRISE_CLANG_EXE goto clang_found
+:clang_search_visual_studio
+if not exist "%VSINSTALLDIR%\VC\Tools\Llvm" goto clang_missing
+where.exe /r "%VSINSTALLDIR%\VC\Tools\Llvm" clang.exe > "%clang_file%"
+if errorlevel 1 goto clang_missing
+set /p "EPIKRISE_CLANG_EXE="<"%clang_file%"
+if defined EPIKRISE_CLANG_EXE goto clang_found
+:clang_missing
+del /q "%clang_file%" >nul 2>&1
+echo Clang is required to build ring for Windows ARM64. Install C++ Clang tools for Windows in Visual Studio Installer. 1>&2
+exit /b 1
+:clang_found
+del /q "%clang_file%" >nul 2>&1
+for %%I in ("%EPIKRISE_CLANG_EXE%") do set "clang_bin=%%~dpI"
+set "PATH=%clang_bin%;%PATH%"
+:clang_ready
+
 if defined MSYS2_ENV_CONV_EXCL goto msys_env_conv_excl_existing
 set "MSYS2_ENV_CONV_EXCL=INCLUDE=;LIB=;LIBPATH="
 goto msys_env_conv_excl_ready

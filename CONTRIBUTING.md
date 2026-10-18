@@ -90,6 +90,10 @@ Install these prerequisites before building:
 - Rust for the Windows host architecture with the MSVC toolchain. On ARM64,
   `rustc -vV` must report `host: aarch64-pc-windows-msvc`; on x64 it must
   report `host: x86_64-pc-windows-msvc`.
+- Windows ARM64 builds also need `clang.exe` for the locked `ring` dependency.
+  In Visual Studio Installer, select **C++ Clang tools for Windows** under
+  **Desktop development with C++**. The build wrapper searches Visual Studio's
+  LLVM tools and adds the compiler to `PATH`.
 - Visual Studio or Visual Studio Build Tools. In Visual Studio Installer,
   select **Desktop development with C++**, the Windows SDK, and the MSVC C++
   compiler, headers, and libraries for the host architecture. On ARM64, make
