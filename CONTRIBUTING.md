@@ -216,6 +216,12 @@ cross-target Cargo configuration from Cargo config files, `CARGO_BUILD_TARGET`,
 and forwarded Cargo `--config` overrides against the effective command target
 before OCR preparation.
 
+The generic `pnpm tauri build` and `pnpm tauri dev` commands also initialize
+Visual Studio automatically when launched from a regular PowerShell, Command
+Prompt, or Git Bash session. They select the current Windows architecture and
+preserve the Tauri arguments; the explicit wrapper commands above remain the
+recommended path for diagnostic native builds.
+
 The first build needs network access to download and checksum-verify the OCR
 source archives and PDFium. The unsigned diagnostic installer is written under
 `src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The wrapper

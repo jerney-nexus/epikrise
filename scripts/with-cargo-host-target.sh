@@ -70,6 +70,13 @@ if [[ "$native_only" == true ]]; then
       ;;
   esac
 
+  if [[ "$physical_os_family" == "linux" ]]; then
+    physical_arch="$(
+      node "$repo_root/scripts/verify-linux-host-architecture.mjs" \
+        "$host_triple" "$physical_arch"
+    )"
+  fi
+
   rust_host_arch="${host_triple%%-*}"
   case "$host_triple" in
     *-unknown-linux-*)

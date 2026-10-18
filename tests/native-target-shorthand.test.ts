@@ -15,6 +15,21 @@ async function writeExecutable(filePath: string, content: string) {
   await chmod(filePath, 0o755);
 }
 
+async function writeMockLinuxHostArchitecture(binDir: string) {
+  await writeExecutable(
+    path.join(binDir, "node"),
+    [
+      "#!/usr/bin/env bash",
+      'if [[ "$1" == */verify-linux-host-architecture.mjs ]]; then',
+      "  printf '%s\\n' \"$3\"",
+      "else",
+      `  exec ${JSON.stringify(process.execPath)} "$@"`,
+      "fi",
+      "",
+    ].join("\n"),
+  );
+}
+
 describe("native target shorthand guard", () => {
   it("allows a native build without an explicit target", async () => {
     const directory = await mkdtemp(
@@ -33,6 +48,7 @@ describe("native target shorthand guard", () => {
         path.join(binDir, "uname"),
         "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
       );
+      await writeMockLinuxHostArchitecture(binDir);
       await writeExecutable(
         path.join(binDir, "cargo"),
         '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
@@ -87,6 +103,7 @@ describe("native target shorthand guard", () => {
           path.join(binDir, "uname"),
           "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
         );
+        await writeMockLinuxHostArchitecture(binDir);
         await writeExecutable(
           path.join(binDir, "cargo"),
           '#!/usr/bin/env bash\nprintf "called\\n" >> "$CARGO_LOG"\n',
@@ -136,6 +153,7 @@ describe("native target shorthand guard", () => {
         path.join(binDir, "uname"),
         "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
       );
+      await writeMockLinuxHostArchitecture(binDir);
       await writeExecutable(
         path.join(binDir, "cargo"),
         '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
@@ -186,6 +204,7 @@ describe("native target shorthand guard", () => {
         path.join(binDir, "uname"),
         "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
       );
+      await writeMockLinuxHostArchitecture(binDir);
       await writeExecutable(
         path.join(binDir, "cargo"),
         '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',

@@ -10,7 +10,7 @@ if /I "%windows_arch%"=="x64" (
 ) else if /I "%windows_arch%"=="arm64" (
   set "windows_arch=arm64"
 ) else (
-  echo Usage: %~nx0 ^<x64^|arm64^> [diagnostic^|release] 1>&2
+  echo Usage: %~nx0 ^<x64^|arm64^> [diagnostic^|release^|tauri] 1>&2
   exit /b 2
 )
 
@@ -150,5 +150,15 @@ del /q "%git_bash_output%" >nul 2>&1
 echo Git for Windows Bash could not be located or verified. Install Git for Windows. 1>&2
 exit /b 1
 :git_bash_found
+set "EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED=1"
+if /I "%build_mode%"=="tauri" goto tauri_launcher
 call "%EPIKRISE_GIT_BASH_EXE%" scripts/build-native-windows.sh "%windows_arch%" "%build_mode%"
+exit /b %errorlevel%
+
+:tauri_launcher
+if not defined EPIKRISE_TAURI_ARGS_JSON (
+  echo Tauri arguments were not provided by the Node launcher. 1>&2
+  exit /b 2
+)
+node scripts\tauri.mjs --run-with-msvc-env
 exit /b %errorlevel%
