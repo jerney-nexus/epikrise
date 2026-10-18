@@ -162,6 +162,15 @@ describe("Linux runtime dependency verification", () => {
     ).toThrow("Unresolved runtime dependencies for app: libwebkit.so.");
   });
 
+  it("rejects unavailable library versions when dependency paths resolve", () => {
+    expect(() =>
+      assertResolvedLinuxDependencies(
+        "app",
+        "libc.so.6 => /lib/libc.so.6 (0x0)\napp: /lib/libc.so.6: version 'GLIBC_2.38' not found (required by app)",
+      ),
+    ).toThrow("Unresolved runtime library versions for app:");
+  });
+
   it.each(["", "ldd output format changed"])(
     "rejects empty or unrecognized ldd output: %s",
     (output) => {

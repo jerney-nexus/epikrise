@@ -16,7 +16,7 @@ async function writeExecutable(filePath: string, content: string) {
 }
 
 describe("non-native Cargo host guard", () => {
-  it("preserves wrapper behavior on an emulated host", async () => {
+  it("does not enforce native-only matching for ordinary Cargo commands", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-emulated-host-"));
     const binDir = path.join(directory, "bin");
     const cargoLog = path.join(directory, "cargo.log");
@@ -26,6 +26,10 @@ describe("non-native Cargo host guard", () => {
       await writeExecutable(
         path.join(binDir, "rustc"),
         "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        '#!/bin/sh\ncase "$1" in\n  -s) printf "Linux\\n" ;;\n  -m) printf "aarch64\\n" ;;\nesac\n',
       );
       await writeExecutable(
         path.join(binDir, "cargo"),
