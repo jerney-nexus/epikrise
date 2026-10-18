@@ -9,8 +9,10 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Added
 
-- Native-host Tauri builds now verify the bundled app executable and OCR
-  dependencies, with native Windows setup requirements documented.
+- Native-host Tauri builds verify the bundled app executable and OCR dependencies
+  across Linux, macOS, and Windows. Windows x64/ARM64 desktop and signed-release
+  workflows compile on matching native runners, with local PowerShell setup and
+  troubleshooting documented.
 - Localized in-app help for the workflow, settings, case-data handling, and
   privacy boundaries.
 - Templates can format ISO `YYYY-MM-DD` values with the MiniJinja expression
