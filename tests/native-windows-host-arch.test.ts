@@ -157,7 +157,7 @@ describe("native Windows MSVC host architecture", () => {
       }
       await writeExecutable(
         path.join(binDir, "cygpath"),
-        '#!/usr/bin/env bash\nprintf "%s\\n" "$MSVC_BIN_DIR"\n',
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$MSVC_CL_PATH"\n',
       );
       await writeExecutable(
         path.join(binDir, "curl"),
@@ -172,8 +172,8 @@ describe("native Windows MSVC host architecture", () => {
             VSCMD_ARG_TGT_ARCH: "x64",
             VSCMD_ARG_HOST_ARCH: "x64",
             VCToolsVersion: toolset,
-            EPIKRISE_MSVC_TOOLS_BIN: "C:\\Visual Studio\\VC\\Tools\\MSVC\\bin",
-            MSVC_BIN_DIR: msvcBinDir,
+            EPIKRISE_MSVC_CL_EXE: "C:\\Visual Studio\\VC\\Tools\\MSVC\\bin\\cl.exe",
+            MSVC_CL_PATH: path.join(msvcBinDir, "cl.exe"),
             CURL_LOG: curlLog,
             EPIKRISE_NATIVE_WINDOWS_OCR_CACHE: cacheRoot,
           },

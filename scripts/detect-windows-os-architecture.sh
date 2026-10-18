@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-windows_os_arch="${RUNNER_ARCH:-${PROCESSOR_ARCHITEW6432:-}}"
+windows_os_arch="${EPIKRISE_RUNNER_ARCH:-${RUNNER_ARCH:-${PROCESSOR_ARCHITEW6432:-}}}"
 if [[ -z "$windows_os_arch" ]]; then
   if ! windows_os_arch="$(
     powershell.exe -NoLogo -NoProfile -NonInteractive \

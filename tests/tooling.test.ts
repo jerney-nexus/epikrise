@@ -906,6 +906,7 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toMatch(/^\s+(push|pull_request):/m);
     expect(workflow).toContain("contents: read");
+    expect(workflow).toContain("EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}");
     expect(workflow).toContain(
       "src-tauri/target/host-$host_target/$TARGET/release/bundle",
     );
@@ -934,13 +935,9 @@ describe("six-target desktop build tooling", () => {
     );
     expect(buildScript).toContain('if exist "%vswhere%" goto vswhere_found');
     expect(buildScript).toContain('if exist "%vcvarsall%" goto vcvarsall_found');
-    expect(buildScript).toContain(
-      'set "msvc_tools_bin=%VCToolsInstallDir%bin\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%"',
-    );
-    expect(buildScript).toContain('set "EPIKRISE_MSVC_TOOLS_BIN=%msvc_tools_bin%"');
-    expect(buildScript).toContain(
-      'if exist "%msvc_tools_bin%\\cl.exe" goto msvc_tools_found',
-    );
+    expect(buildScript).toContain('where.exe cl.exe > "%msvc_cl_file%"');
+    expect(buildScript).toContain('set /p "EPIKRISE_MSVC_CL_EXE="<"%msvc_cl_file%"');
+    expect(buildScript).toContain("if defined EPIKRISE_MSVC_CL_EXE goto msvc_cl_found");
     expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
   });
 });
@@ -1853,7 +1850,7 @@ describe("native Cargo host architecture guard", () => {
           PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
           PROCESSOR_ARCHITECTURE: "AMD64",
           PROCESSOR_ARCHITEW6432: "",
-          RUNNER_ARCH: "ARM64",
+          EPIKRISE_RUNNER_ARCH: "ARM64",
           CARGO_LOG: cargoLog,
         },
       });
