@@ -942,6 +942,16 @@ describe("six-target desktop build tooling", () => {
     expect(buildScript).toContain('set "PATH=%vs_cmake_bin%;%PATH%"');
     expect(buildScript).toContain("where.exe cmake.exe >nul 2>&1");
     expect(buildScript).toContain(
+      'set "INCLUDE=%msvc_toolset_dir%\\include;%INCLUDE%"',
+    );
+    expect(buildScript).toContain(
+      'set "LIB=%msvc_toolset_dir%\\lib\\%windows_arch%;%LIB%"',
+    );
+    expect(buildScript).toContain(
+      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\Llvm" clang.exe',
+    );
+    expect(buildScript).toContain("Clang is required to build ring for Windows ARM64.");
+    expect(buildScript).toContain(
       'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" cl.exe | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\cl.exe"',
     );
     expect(buildScript).toContain('set /p "EPIKRISE_MSVC_CL_EXE="<"%msvc_cl_file%"');
