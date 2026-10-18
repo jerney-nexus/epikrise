@@ -101,14 +101,15 @@ Install these prerequisites before building:
   `VC\Auxiliary\Build\vcvarsall.bat` must be present. See the
   [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
   and [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
-- Git for Windows, which provides Git Bash. The wrapper starts Bash after
-  initializing Visual Studio. If Git is installed but the wrapper reports that
-  `bash` is missing, add the Git for Windows `bin` folder to this PowerShell
-  session's `PATH` as shown below. The native wrapper locates Visual Studio and
-  initializes its developer environment. CMake, Ninja, `cl`, `dumpbin`, `curl`,
-  `tar`, and `rg` must also be available to the build shell. To install CMake
-  with Visual Studio, open **Visual Studio Installer**, select
-  **Modify** for the installed Visual Studio or Build Tools instance, ensure
+- Git for Windows, which provides Git Bash. The wrapper locates and verifies
+  Git Bash itself, then starts it after initializing Visual Studio; you do not
+  need to open a Git Bash window or add Bash to `PATH` for a standard
+  installation. If Git for Windows is installed in a custom location and the
+  wrapper cannot find it, add its `cmd` or `bin` folder to this PowerShell
+  session's `PATH`. CMake, Ninja, `cl`, `dumpbin`, `curl`, `tar`, and `rg` must
+  also be available to the build shell. To install CMake with Visual Studio,
+  open **Visual Studio Installer**, select **Modify** for the installed Visual
+  Studio or Build Tools instance, ensure
   **Desktop development with C++** is selected, then open **Individual
   components** and select **C++ CMake tools for Windows**. If the build still
   reports CMake missing, install the standalone version from the WinGet
@@ -157,25 +158,10 @@ The user-local Corepack shim avoids writing under `C:\Program Files`. Use
 this session's `PATH` and can find the same pnpm command.
 
 The version commands should report Node 22 and pnpm 12.15.0; `rustc -vV`
-must report the native host triple listed above. To add Git Bash to this
-PowerShell session's `PATH` if necessary, locate its standard installation
-using `git.exe`:
-
-```powershell
-$gitExe = (Get-Command git.exe -ErrorAction Stop).Source
-$gitRoot = Split-Path (Split-Path $gitExe -Parent) -Parent
-$gitBin = Join-Path $gitRoot 'bin'
-$bash = Join-Path $gitBin 'bash.exe'
-if (-not (Test-Path $bash)) {
-  throw "Git Bash was not found at $bash. Install Git for Windows or locate its bin folder."
-}
-$env:Path = "$gitBin;$env:Path"
-& $bash --version
-```
-
-The last command should print the Bash version; retry the wrapper in this same
-PowerShell window. Install Git for Windows if `git.exe` or `bash.exe` cannot be
-found.
+must report the native host triple listed above. The wrapper locates and
+verifies Git Bash for standard installations. For a custom installation, add
+its `cmd` or `bin` folder to this PowerShell session's `PATH` and retry the
+wrapper. Install Git for Windows if it is not installed.
 
 Set `EPIKRISE_TESSDATA_DIR` to a folder containing both
 `deu.traineddata` and `eng.traineddata`. If Tesseract is installed with both
@@ -221,8 +207,8 @@ On Windows x64:
 .\scripts\build-native-windows.cmd x64 diagnostic
 ```
 
-The wrapper uses Git Bash and checks that the Rust host, MSVC host, MSVC target,
-and requested target architecture all match.
+The wrapper locates Git Bash and checks that the Rust host, MSVC host, MSVC
+target, and requested target architecture all match.
 
 Native-only Tauri `build` and `dev` commands reject custom runners such as
 `cargo-xwin`; the default `cargo` runner remains available. They also validate
