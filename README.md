@@ -203,8 +203,10 @@ pnpm windows:build
 The installers are written under
 `src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`.
 They include local OCR resources and the offline WebView2 installer. Initial
-tool and asset downloads require network access; native Windows testing is still
-required. See [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
+tool and asset downloads require network access. Native install, launch, and
+uninstall have been confirmed on Windows ARM64; live Windows x64 testing is
+deferred. See
+[CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
 
 ### Cross-platform Actions builds
 
@@ -234,7 +236,11 @@ interactive acceptance. The CI builds are unsigned and unnotarized: Windows
 SmartScreen and macOS Gatekeeper may warn or block installation. This workflow
 does not publish releases or use the separate direct-release updater
 configuration. A successful package build is not a substitute for native
-installation and synthetic OCR acceptance testing on each target; see
+installation and runtime acceptance testing on each target. The six-target
+Actions build passed, and native install, launch, and uninstall were confirmed
+on Windows ARM64 and macOS Apple Silicon. Live testing on Windows x64, macOS
+Intel, and Linux x64/ARM64 is deferred; synthetic OCR and other per-target
+runtime checks remain outstanding. See
 [CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
 
 On macOS, copy `Epikrise.app` from the mounted image to `/Applications` first.

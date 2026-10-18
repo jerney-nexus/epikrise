@@ -335,9 +335,20 @@ Build artifacts are unsigned and macOS packages are not notarized. Expect
 SmartScreen/Gatekeeper warnings or installation restrictions; do not distribute
 them into a clinical environment as trusted installers. The workflow does not
 publish releases or configure updates. Inspect package contents and test
-installation, launch, PDFium, German/English synthetic OCR, credentials,
-clipboard and uninstall on native Linux, macOS and Windows systems for every
-architecture. Cross-build success alone does not prove runtime support.
+PDFium, German/English synthetic OCR, credentials, clipboard and uninstall on
+native Linux, macOS and Windows systems for every architecture. Cross-build
+success alone does not prove runtime support.
+
+Validation evidence as of 2026-10-18:
+
+- All six native Desktop builds succeeded in
+  [Actions run 39154332435](https://github.com/jerney-nexus/epikrise/actions/runs/39154332435)
+  for commit `3016dfe78a67a8074ffc280f1a4664271e94d989`.
+- Native install, launch, and uninstall were confirmed on Windows ARM64 and
+  macOS Apple Silicon.
+- Live installation and runtime testing on Windows x64, macOS Intel, and Linux
+  x64/ARM64 is deferred. These lifecycle checks do not complete the separate
+  PDFium, synthetic OCR, credentials, or clipboard acceptance checks.
 
 ## Project layout
 
