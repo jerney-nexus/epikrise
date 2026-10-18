@@ -69,7 +69,7 @@ jobs:
           GIT_CONFIG_KEY_0: init.defaultBranch
           GIT_CONFIG_VALUE_0: main
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ inputs.expected_sha }}
           persist-credentials: false
 
       - name: Verify requested commit
@@ -164,8 +164,7 @@ jobs:
         shell: bash
         run: |
           read -r -a bundles <<< "$BUNDLE_TARGETS"
-          bash scripts/with-cargo-host-target.sh \
-            pnpm exec tauri build --target "$TARGET" --bundles "${bundles[@]}" --no-sign
+          pnpm tauri build --target "$TARGET" --bundles "${bundles[@]}" --no-sign
 
       - name: Verify staged OCR architectures
         shell: bash

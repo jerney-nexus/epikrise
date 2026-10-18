@@ -53,8 +53,6 @@ if /I not "%VSCMD_ARG_TGT_ARCH%"=="%windows_arch%" (
   exit /b 1
 )
 
-set "EPIKRISE_RUNNER_ARCH=%VSCMD_ARG_HOST_ARCH%"
-
 set "vs_cmake_bin=%VSINSTALLDIR%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
 if not exist "%vs_cmake_bin%\cmake.exe" goto vs_cmake_not_found
 set "PATH=%vs_cmake_bin%;%PATH%"
