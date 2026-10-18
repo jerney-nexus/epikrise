@@ -108,41 +108,17 @@ This creates AppImage, Debian (`.deb`), and RPM packages under
 
 #### Local Windows build
 
-Run `pnpm.cmd tauri build` from a Visual Studio Developer PowerShell or Command
-Prompt initialized for the host architecture (x64 or ARM64). The matching
-MSVC C++ toolchain must be available, including `cl` and `dumpbin`;
-`VSCMD_ARG_HOST_ARCH` and `VSCMD_ARG_TGT_ARCH` must both match the native host.
-Install Git for Windows so the launcher can find
-Git Bash, and ensure CMake, Ninja, `curl`, `tar`, and ripgrep (`rg`) are on
-`PATH`. The launcher uses Git Bash from PowerShell, Command Prompt, or Git Bash;
-WSL and cross-target builds are not supported by this command.
-
-Set `EPIKRISE_TESSDATA_DIR` to a directory containing both
-`deu.traineddata` and `eng.traineddata` before building. For example, in
-PowerShell:
-
-```powershell
-$env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
-pnpm tauri build
-```
-
-When this variable is set, an unrelated installed Tesseract executable is not
-required. The first native OCR build needs network access to download and
-verify its source archives.
+Use a normal PowerShell window at the repository root. The wrapper initializes
+Visual Studio itself, so a Developer shell is not required. Windows x64 builds
+x64; Windows ARM64 builds ARM64. Cross-target builds are not supported by this
+native command.
 
 Prerequisites are Node.js 22, Corepack/pnpm `12.15.0`, Rust for the native
 Windows architecture, Visual Studio's **Desktop development with C++**
 workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`,
 `cl`, `dumpbin`, `curl`, `tar`, and `rg` on `PATH`. On ARM64, include native
 ARM64 C++ tools.
-If CMake remains missing after installing **C++ CMake tools for Windows** in
-Visual Studio Installer, install it with
-`winget install --id Kitware.CMake --exact --source winget`. Install missing
-Ninja separately with
-`winget install --id Ninja-build.Ninja --exact --source winget`. See the
-[Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
-and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact
-steps.
+See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows).
 Provide Tesseract's German and English language data either through an
 installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder
 containing `deu.traineddata` and `eng.traineddata`.
@@ -158,6 +134,7 @@ $env:Path = "$pnpmShimDir;$env:Path"
 node --version
 pnpm.cmd --version
 rustc -vV
+Get-Command bash.exe
 pnpm.cmd install --frozen-lockfile
 $env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
 Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'deu.traineddata')
@@ -171,16 +148,32 @@ commands must print `True`; if not, see the language-data setup in
 [Contributing](CONTRIBUTING.md#native-build-from-windows). Run one build
 command matching the host architecture.
 
-In the same Developer PowerShell or Command Prompt, build for the current
-native host architecture:
+If CMake remains missing after installing **C++ CMake tools for Windows** in
+Visual Studio Installer, install it with
+`winget install --id Kitware.CMake --exact --source winget`. Install missing
+Ninja separately with
+`winget install --id Ninja-build.Ninja --exact --source winget`. See the
+[Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
+and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact
+steps.
+
+Windows ARM64:
 
 ```powershell
-pnpm.cmd tauri build
+.\scripts\build-native-windows.cmd arm64 diagnostic
 ```
 
-The first build needs network access to download and verify OCR sources and
-PDFium. See [Contributing: native Windows build](CONTRIBUTING.md#native-build-from-windows)
-for verification and troubleshooting.
+Windows x64:
+
+```powershell
+.\scripts\build-native-windows.cmd x64 diagnostic
+```
+
+The command produces an unsigned diagnostic installer under
+`src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The first build
+needs network access to download and verify OCR sources and PDFium. See
+[Contributing: native Windows build](CONTRIBUTING.md#native-build-from-windows)
+for full prerequisites, the x64 command, verification, and troubleshooting.
 
 #### Dev Container cross-build
 

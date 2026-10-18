@@ -1841,7 +1841,7 @@ describe("native Cargo host architecture guard", () => {
       );
       await writeExecutable(
         path.join(binDir, "powershell.exe"),
-        "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
+        "#!/usr/bin/env bash\nprintf 'Arm64\\n'\n",
       );
       await writeExecutable(
         path.join(binDir, "cargo"),
@@ -1853,8 +1853,8 @@ describe("native Cargo host architecture guard", () => {
           ...process.env,
           PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
           PROCESSOR_ARCHITECTURE: "AMD64",
-          PROCESSOR_ARCHITEW6432: "",
-          EPIKRISE_RUNNER_ARCH: "ARM64",
+          PROCESSOR_ARCHITEW6432: "AMD64",
+          RUNNER_ARCH: "",
           CARGO_LOG: cargoLog,
         },
       });
