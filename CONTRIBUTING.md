@@ -99,9 +99,26 @@ Install these prerequisites before building:
   [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
   and [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
 - Git for Windows, which provides Git Bash. The wrapper starts Bash after
-  initializing Visual Studio. If it reports that `bash` is missing, add the
-  Git for Windows `bin` folder to this PowerShell session's `PATH`. CMake,
-  Ninja, `curl`, `tar`, and `grep` must also be available to the build shell.
+  initializing Visual Studio. If Git is installed but the wrapper reports that
+  `bash` is missing, add the Git for Windows `bin` folder to this PowerShell
+  session's `PATH`. For the standard Git for Windows layout, run:
+
+  ```powershell
+  $gitExe = (Get-Command git.exe -ErrorAction Stop).Source
+  $gitRoot = Split-Path (Split-Path $gitExe -Parent) -Parent
+  $gitBin = Join-Path $gitRoot 'bin'
+  $bash = Join-Path $gitBin 'bash.exe'
+  if (-not (Test-Path $bash)) {
+    throw "Git Bash was not found at $bash. Install Git for Windows or locate its bin folder."
+  }
+  $env:Path = "$gitBin;$env:Path"
+  & $bash --version
+  ```
+
+  The last command should print the Bash version; retry the wrapper in this same
+  PowerShell window. Install Git for Windows if `git.exe` or `bash.exe` cannot
+  be found. CMake, Ninja, `curl`, `tar`, and `grep` must also be available to
+  the build shell.
   To install CMake with Visual Studio, open **Visual Studio Installer**, select
   **Modify** for the installed Visual Studio or Build Tools instance, ensure
   **Desktop development with C++** is selected, then open **Individual
