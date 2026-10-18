@@ -926,6 +926,16 @@ describe("six-target desktop build tooling", () => {
     expect(verifyOcrStep).toBeGreaterThan(windowsBuildStep);
     expect(workflow).toContain("x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)");
   });
+
+  it("checks Visual Studio paths outside parenthesized CMD blocks", async () => {
+    const buildScript = await readFile(
+      path.join(repoRoot, "scripts/build-native-windows.cmd"),
+      "utf8",
+    );
+    expect(buildScript).toContain('if exist "%vswhere%" goto vswhere_found');
+    expect(buildScript).toContain('if exist "%vcvarsall%" goto vcvarsall_found');
+    expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
+  });
 });
 
 describe("signed release artifacts", () => {
