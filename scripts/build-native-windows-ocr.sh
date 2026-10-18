@@ -55,6 +55,12 @@ if [[ "$host_arch" != "$expected_arch" ]]; then
   exit 1
 fi
 
+if [[ -n "${EPIKRISE_MSVC_TOOLS_BIN:-}" ]]; then
+  msvc_tools_bin="$(cygpath -u "$EPIKRISE_MSVC_TOOLS_BIN")"
+  PATH="$msvc_tools_bin:$PATH"
+  export PATH
+fi
+
 for tool in cmake ninja cl dumpbin curl tar grep; do
   if ! command -v "$tool" >/dev/null 2>&1 \
     && ! command -v "$tool.exe" >/dev/null 2>&1; then

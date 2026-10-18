@@ -934,6 +934,13 @@ describe("six-target desktop build tooling", () => {
     );
     expect(buildScript).toContain('if exist "%vswhere%" goto vswhere_found');
     expect(buildScript).toContain('if exist "%vcvarsall%" goto vcvarsall_found');
+    expect(buildScript).toContain(
+      'set "msvc_tools_bin=%VCToolsInstallDir%bin\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%"',
+    );
+    expect(buildScript).toContain('set "EPIKRISE_MSVC_TOOLS_BIN=%msvc_tools_bin%"');
+    expect(buildScript).toContain(
+      'if exist "%msvc_tools_bin%\\cl.exe" goto msvc_tools_found',
+    );
     expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
   });
 });
@@ -1833,7 +1840,7 @@ describe("native Cargo host architecture guard", () => {
       );
       await writeExecutable(
         path.join(binDir, "powershell.exe"),
-        "#!/usr/bin/env bash\nprintf 'Arm64\\n'\n",
+        "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
       );
       await writeExecutable(
         path.join(binDir, "cargo"),
@@ -1846,6 +1853,7 @@ describe("native Cargo host architecture guard", () => {
           PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
           PROCESSOR_ARCHITECTURE: "AMD64",
           PROCESSOR_ARCHITEW6432: "",
+          RUNNER_ARCH: "ARM64",
           CARGO_LOG: cargoLog,
         },
       });
