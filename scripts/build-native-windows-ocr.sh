@@ -56,7 +56,8 @@ if [[ "$host_arch" != "$expected_arch" ]]; then
 fi
 
 for tool in cmake ninja cl dumpbin curl tar grep; do
-  if ! command -v "$tool" >/dev/null 2>&1; then
+  if ! command -v "$tool" >/dev/null 2>&1 \
+    && ! command -v "$tool.exe" >/dev/null 2>&1; then
     printf 'Required native Windows OCR build tool is missing: %s.\n' "$tool" >&2
     exit 1
   fi

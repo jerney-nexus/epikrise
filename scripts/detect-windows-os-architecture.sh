@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! windows_os_arch="$(
-  powershell.exe -NoLogo -NoProfile -NonInteractive \
-    -Command '[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture' \
-    2>/dev/null
-)"; then
-  printf 'Could not determine native Windows OS architecture using PowerShell.\n' >&2
-  exit 1
+windows_os_arch="${PROCESSOR_ARCHITEW6432:-}"
+if [[ -z "$windows_os_arch" ]]; then
+  if ! windows_os_arch="$(
+    powershell.exe -NoLogo -NoProfile -NonInteractive \
+      -Command '[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture' \
+      2>/dev/null
+  )"; then
+    printf 'Could not determine native Windows OS architecture using PowerShell.\n' >&2
+    exit 1
+  fi
 fi
 
 windows_os_arch="${windows_os_arch//$'\r'/}"

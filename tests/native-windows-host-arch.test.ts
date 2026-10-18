@@ -144,7 +144,7 @@ describe("native Windows MSVC host architecture", () => {
         path.join(binDir, "rustc"),
         `#!/usr/bin/env bash\nprintf 'host: ${target}\\n'\n`,
       );
-      for (const tool of ["cmake", "ninja", "cl", "dumpbin", "tar", "grep"]) {
+      for (const tool of ["cmake", "ninja", "cl.exe", "dumpbin.exe", "tar", "grep"]) {
         await writeExecutable(path.join(binDir, tool), "#!/usr/bin/env bash\nexit 0\n");
       }
       await writeExecutable(
