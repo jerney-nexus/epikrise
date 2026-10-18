@@ -127,6 +127,7 @@ function runTauriWithWindowsEnvironment(
       env: { ...env, [windowsArgumentsVariable]: JSON.stringify(args) },
       stdio: "inherit",
       windowsHide: true,
+      windowsVerbatimArguments: true,
     },
   );
   if (result.error) {

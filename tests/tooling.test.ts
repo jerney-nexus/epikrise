@@ -1704,7 +1704,10 @@ describe("native Cargo host target guard", () => {
     const invocations: {
       command: string;
       args: string[];
-      options: { env?: NodeJS.ProcessEnv };
+      options: {
+        env?: NodeJS.ProcessEnv;
+        windowsVerbatimArguments?: boolean;
+      };
     }[] = [];
 
     const status = runTauri(args, {
@@ -1738,6 +1741,7 @@ describe("native Cargo host target guard", () => {
     expect(invocations[1].options.env?.EPIKRISE_TAURI_ARGS_JSON).toBe(
       JSON.stringify(args),
     );
+    expect(invocations[1].options.windowsVerbatimArguments).toBe(true);
     expect(invocations[1].options.env?.VSCMD_ARG_HOST_ARCH).toBeUndefined();
   });
 
@@ -1778,40 +1782,43 @@ describe("native Cargo host target guard", () => {
     expect(invocation?.options.env?.EPIKRISE_TAURI_ARGS_JSON).toBeUndefined();
   });
 
-  it("preserves Windows Tauri argument boundaries through the environment trampoline", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-args-"));
-    const fakeBashPath = path.join(directory, "fake-bash");
-    const argumentsPath = path.join(directory, "arguments.bin");
-    const args = ["build", "--config", "one & two", "--features", "a|b"];
+  it.skipIf(process.platform === "win32")(
+    "preserves Windows Tauri argument boundaries through the environment trampoline",
+    async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-args-"));
+      const fakeBashPath = path.join(directory, "fake-bash");
+      const argumentsPath = path.join(directory, "arguments.bin");
+      const args = ["build", "--config", "one & two", "--features", "a|b"];
 
-    try {
-      await writeExecutable(
-        fakeBashPath,
-        '#!/usr/bin/env bash\nprintf "%s\\0" "$@" > "$TAURI_ARGS_LOG"\n',
-      );
+      try {
+        await writeExecutable(
+          fakeBashPath,
+          '#!/usr/bin/env bash\nprintf "%s\\0" "$@" > "$TAURI_ARGS_LOG"\n',
+        );
 
-      await execFile(
-        process.execPath,
-        [path.join(repoRoot, "scripts/tauri.mjs"), "--run-with-msvc-env"],
-        {
-          env: {
-            ...process.env,
-            EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED: "1",
-            EPIKRISE_TAURI_ARGS_JSON: JSON.stringify(args),
-            EPIKRISE_GIT_BASH_EXE: fakeBashPath,
-            TAURI_ARGS_LOG: argumentsPath,
+        await execFile(
+          process.execPath,
+          [path.join(repoRoot, "scripts/tauri.mjs"), "--run-with-msvc-env"],
+          {
+            env: {
+              ...process.env,
+              EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED: "1",
+              EPIKRISE_TAURI_ARGS_JSON: JSON.stringify(args),
+              EPIKRISE_GIT_BASH_EXE: fakeBashPath,
+              TAURI_ARGS_LOG: argumentsPath,
+            },
           },
-        },
-      );
+        );
 
-      const forwardedArguments = (await readFile(argumentsPath, "utf8"))
-        .split("\0")
-        .slice(0, -1);
-      expect(forwardedArguments).toEqual([tauriScriptPath, ...args]);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
+        const forwardedArguments = (await readFile(argumentsPath, "utf8"))
+          .split("\0")
+          .slice(0, -1);
+        expect(forwardedArguments).toEqual([tauriScriptPath, ...args]);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("rejects a mismatched target before OCR downloads", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-target-"));
