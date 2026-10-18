@@ -35,7 +35,7 @@ export function assertResolvedLinuxDependencies(binaryPath, output) {
   }
 
   const unavailableLibraryVersions = lines.filter((line) =>
-    /\bversion\s+['"][^'"]+['"]\s+not found\b/i.test(line),
+    /\bversion\s+(?:'[^']+'|"[^"]+"|`[^']+')\s+not found\b/i.test(line),
   );
   if (unavailableLibraryVersions.length > 0) {
     throw new Error(

@@ -171,6 +171,15 @@ describe("Linux runtime dependency verification", () => {
     ).toThrow("Unresolved runtime library versions for app:");
   });
 
+  it("rejects ldd version diagnostics with a backtick and apostrophe", () => {
+    expect(() =>
+      assertResolvedLinuxDependencies(
+        "app",
+        "libc.so.6 => /lib/libc.so.6 (0x0)\napp: /lib/libc.so.6: version `GLIBC_2.38' not found (required by app)",
+      ),
+    ).toThrow("Unresolved runtime library versions for app:");
+  });
+
   it.each(["", "ldd output format changed"])(
     "rejects empty or unrecognized ldd output: %s",
     (output) => {
@@ -1008,6 +1017,8 @@ describe("six-target desktop build tooling", () => {
     expect(ocrBuildScript).toContain(
       'INCLUDE="$msvc_include_dir_windows${INCLUDE:+;$INCLUDE}"',
     );
+    expect(ocrBuildScript).toContain('-DCMAKE_C_COMPILER="$msvc_cl_cmake"');
+    expect(ocrBuildScript).toContain('-DCMAKE_CXX_COMPILER="$msvc_cl_cmake"');
   });
 
   it("uses a lower-memory release profile for native Windows diagnostic builds", async () => {
@@ -2694,6 +2705,10 @@ if (process.platform !== "win32") {
             "#!/usr/bin/env bash\nexit 0\n",
           );
         }
+        await writeExecutable(
+          path.join(binDir, "cygpath"),
+          '#!/usr/bin/env bash\nprintf "%s\\n" "$2"\n',
+        );
         await writeExecutable(
           path.join(binDir, "curl"),
           '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
