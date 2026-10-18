@@ -61,15 +61,24 @@ if [[ -n "${EPIKRISE_MSVC_CL_EXE:-}" ]]; then
   msvc_cl_exe="$(cygpath -u "$EPIKRISE_MSVC_CL_EXE")"
   msvc_tools_bin="$(dirname "$msvc_cl_exe")"
   msvc_toolset_dir="$(dirname "$(dirname "$(dirname "$(dirname "$msvc_cl_exe")")")")"
+  msvc_include_dir="$msvc_toolset_dir/include"
   msvc_lib_dir="$msvc_toolset_dir/lib/$expected_arch"
+  if [[ ! -f "$msvc_include_dir/vcruntime.h" ]]; then
+    printf 'MSVC C++ runtime header was not found: %s/vcruntime.h.\n' "$msvc_include_dir" >&2
+    printf 'Repair the Visual Studio C++ workload and install its MSVC headers for this toolset.\n' >&2
+    exit 1
+  fi
   if [[ ! -f "$msvc_lib_dir/libcmt.lib" ]]; then
     printf 'MSVC runtime library was not found: %s/libcmt.lib.\n' "$msvc_lib_dir" >&2
     exit 1
   fi
+  msvc_include_dir_windows="$(cygpath -w "$msvc_include_dir")"
   msvc_lib_dir_windows="$(cygpath -w "$msvc_lib_dir")"
   PATH="$msvc_tools_bin:$PATH"
+  INCLUDE="$msvc_include_dir_windows${INCLUDE:+;$INCLUDE}"
   LIB="$msvc_lib_dir_windows${LIB:+;$LIB}"
   export PATH
+  export INCLUDE
   export LIB
 fi
 
