@@ -920,6 +920,11 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("macos-15-intel");
     expect(workflow).toContain("macos-15");
     for (const target of desktopTargets) expect(workflow).toContain(target);
+    const windowsBuildStep = workflow.indexOf("- name: Build Windows installer");
+    const verifyOcrStep = workflow.indexOf("- name: Verify staged OCR architectures");
+    expect(windowsBuildStep).toBeGreaterThanOrEqual(0);
+    expect(verifyOcrStep).toBeGreaterThan(windowsBuildStep);
+    expect(workflow).toContain("x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)");
   });
 });
 
@@ -1106,6 +1111,9 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain("--clobber");
     expect(releaseWorkflow).toContain("epikrise-signed-release-commit:");
     expect(releaseWorkflow).toContain("Verify staged OCR architectures");
+    expect(releaseWorkflow).toContain(
+      "x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)",
+    );
     expect(releaseWorkflow).toMatch(
       /Verify staged OCR architectures[\s\S]*Stage and verify updater packages/,
     );
