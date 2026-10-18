@@ -120,9 +120,11 @@ workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`,
 ARM64 C++ tools.
 In Visual Studio Installer, add **C++ CMake tools for Windows** and
 **Ninja: build system** under **Individual components** if CMake or Ninja is
-missing. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
+missing. Install missing Ninja separately with
+`winget install --id Ninja-build.Ninja --exact --source winget`. See the
+[Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
 and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact
-installation steps.
+steps.
 Provide Tesseract's German and English language data either through an
 installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder
 containing `deu.traineddata` and `eng.traineddata`.
