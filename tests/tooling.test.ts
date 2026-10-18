@@ -940,6 +940,7 @@ describe("six-target desktop build tooling", () => {
     );
     expect(buildScript).toContain('set /p "EPIKRISE_MSVC_CL_EXE="<"%msvc_cl_file%"');
     expect(buildScript).toContain("if defined EPIKRISE_MSVC_CL_EXE goto msvc_cl_found");
+    expect(buildScript).toContain('set "MSYS2_ENV_CONV_EXCL=INCLUDE=;LIB=;LIBPATH="');
     expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
   });
 });

@@ -168,7 +168,7 @@ describe("native Windows MSVC host architecture", () => {
       );
       await writeExecutable(
         path.join(binDir, "curl"),
-        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nprintf "%s\\n" "$MSYS2_ENV_CONV_EXCL" > "$MSYS_ENV_LOG"\nexit 1\n',
       );
 
       await expect(
@@ -181,11 +181,19 @@ describe("native Windows MSVC host architecture", () => {
             EPIKRISE_MSVC_CL_EXE: `C:\\Visual Studio\\VC\\Tools\\MSVC\\${toolset}\\bin\\Hostx64\\x64\\cl.exe`,
             MSVC_CL_PATH: path.join(msvcBinDir, "cl.exe"),
             CURL_LOG: curlLog,
+            MSYS_ENV_LOG: path.join(directory, "msys-env.log"),
             EPIKRISE_NATIVE_WINDOWS_OCR_CACHE: cacheRoot,
           },
         }),
       ).rejects.toThrow();
 
+      const conversionExclusions = await readFile(
+        path.join(directory, "msys-env.log"),
+        "utf8",
+      );
+      expect(conversionExclusions.trim().split(";")).toEqual(
+        expect.arrayContaining(["INCLUDE=", "LIB=", "LIBPATH="]),
+      );
       expect(
         await readdir(path.join(cacheRoot, "build", `msvc-${toolset}-x64`, target)),
       ).toEqual([]);
