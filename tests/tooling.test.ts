@@ -975,6 +975,44 @@ describe("six-target desktop build tooling", () => {
       'INCLUDE="$msvc_include_dir_windows${INCLUDE:+;$INCLUDE}"',
     );
   });
+
+  it("uses a lower-memory release profile for native Windows diagnostic builds", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-windows-diagnostic-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const buildLog = path.join(directory, "build.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "pnpm"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$CARGO_PROFILE_RELEASE_CODEGEN_UNITS" "$CARGO_PROFILE_RELEASE_LTO" "$CARGO_PROFILE_RELEASE_OPT_LEVEL" "$*" > "$BUILD_LOG"\n',
+      );
+
+      await execFile(
+        "bash",
+        ["scripts/build-native-windows.sh", "arm64", "diagnostic"],
+        {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            BUILD_LOG: buildLog,
+          },
+        },
+      );
+
+      expect((await readFile(buildLog, "utf8")).trimEnd().split(/\r?\n/)).toEqual([
+        "16",
+        "false",
+        "2",
+        "tauri build --target aarch64-pc-windows-msvc",
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("signed release artifacts", () => {

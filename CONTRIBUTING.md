@@ -225,6 +225,9 @@ source archives and PDFium. The unsigned diagnostic installer is written under
 `src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The wrapper
 returns a non-zero exit code if setup, compilation, bundling, or architecture
 verification fails.
+Diagnostic builds disable release LTO, use 16 codegen units, and compile at
+optimization level 2 to reduce peak memory use. Signed release builds retain
+the optimized release profile configured in `src-tauri/Cargo.toml`.
 
 If compilation reports that `vcruntime.h` cannot be found, the installed MSVC
 toolset or its C++ headers are missing or inconsistent. Use Visual Studio

@@ -61,5 +61,8 @@ if [[ "$build_mode" == "release" ]]; then
     TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$release_private_key_password" \
     pnpm tauri build --target "$target" "${tauri_args[@]}"
 else
-  pnpm tauri build --target "$target" "${tauri_args[@]}"
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 \
+    CARGO_PROFILE_RELEASE_LTO=false \
+    CARGO_PROFILE_RELEASE_OPT_LEVEL=2 \
+    pnpm tauri build --target "$target" "${tauri_args[@]}"
 fi
