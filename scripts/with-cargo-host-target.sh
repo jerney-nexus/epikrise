@@ -14,6 +14,12 @@ if [[ "${1:-}" == "--tauri-build" ]]; then
   shift
 fi
 
+tauri_dev=false
+if [[ "${1:-}" == "--tauri-dev" ]]; then
+  tauri_dev=true
+  shift
+fi
+
 validate_only=false
 if [[ "${1:-}" == "--validate-only" ]]; then
   validate_only=true
@@ -92,11 +98,13 @@ if [[ "$native_only" == true ]]; then
   after_separator=false
   while [[ $# -gt 0 ]]; do
     if [[ "$1" == "--" && "$after_separator" == false ]]; then
-      if [[ "$tauri_build" == true ]]; then
+      if [[ "$tauri_build" == true || "$tauri_dev" == true ]]; then
         after_separator=true
         shift
         continue
       fi
+      break
+    elif [[ "$1" == "--" && "$tauri_dev" == true ]]; then
       break
     fi
 

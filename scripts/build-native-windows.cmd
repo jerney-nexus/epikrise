@@ -22,16 +22,22 @@ exit /b 1
 
 set "VSINSTALLDIR="
 set "vswhere_output=%TEMP%\epikrise-vswhere-%RANDOM%.txt"
-"%vswhere%" -latest -products * -property installationPath > "%vswhere_output%"
+if /I "%windows_arch%"=="arm64" goto vs_arm64_component
+set "vs_component=Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
+goto vs_component_ready
+:vs_arm64_component
+set "vs_component=Microsoft.VisualStudio.Component.VC.Tools.ARM64"
+:vs_component_ready
+"%vswhere%" -latest -products * -requires %vs_component% -property installationPath > "%vswhere_output%"
 if not errorlevel 1 goto vswhere_query_succeeded
 del /q "%vswhere_output%" >nul 2>&1
-echo Visual Studio installation could not be located by vswhere. 1>&2
+echo Visual Studio with the required %windows_arch% C++ tools could not be located by vswhere. 1>&2
 exit /b 1
 :vswhere_query_succeeded
 set /p "VSINSTALLDIR="<"%vswhere_output%"
 del /q "%vswhere_output%" >nul 2>&1
 if not defined VSINSTALLDIR (
-  echo Visual Studio installation was not found. 1>&2
+  echo Visual Studio with the required %windows_arch% C++ tools was not found. 1>&2
   exit /b 1
 )
 

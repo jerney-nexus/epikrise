@@ -939,6 +939,15 @@ describe("six-target desktop build tooling", () => {
       "utf8",
     );
     expect(buildScript).toContain('if exist "%vswhere%" goto vswhere_found');
+    expect(buildScript).toContain(
+      'set "vs_component=Microsoft.VisualStudio.Component.VC.Tools.x86.x64"',
+    );
+    expect(buildScript).toContain(
+      'set "vs_component=Microsoft.VisualStudio.Component.VC.Tools.ARM64"',
+    );
+    expect(buildScript).toContain(
+      '"%vswhere%" -latest -products * -requires %vs_component% -property installationPath',
+    );
     expect(buildScript).toContain('if exist "%vcvarsall%" goto vcvarsall_found');
     expect(buildScript).not.toContain('set "EPIKRISE_RUNNER_ARCH=');
     expect(buildScript).toContain(
@@ -970,6 +979,11 @@ describe("six-target desktop build tooling", () => {
     expect(buildScript).toContain("if defined EPIKRISE_MSVC_CL_EXE goto msvc_cl_found");
     expect(buildScript).toContain('set "MSYS2_ENV_CONV_EXCL=INCLUDE=;LIB=;LIBPATH="');
     expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
+
+    const tauriScript = await readFile(path.join(repoRoot, "scripts/tauri.sh"), "utf8");
+    expect(tauriScript).toContain("native_guard_args=(--native-only)");
+    expect(tauriScript).toContain("native_guard_args+=(--tauri-dev)");
+    expect(tauriScript.match(/\$\{native_guard_args\[@\]\}/g)).toHaveLength(2);
 
     const ocrBuildScript = await readFile(
       path.join(repoRoot, "scripts/build-native-windows-ocr.sh"),
@@ -1718,51 +1732,94 @@ describe("native Cargo host target guard", () => {
     }
   });
 
-  it("rejects a mismatched Tauri runner target before OCR downloads", async () => {
+  it.each(["build", "dev"])(
+    "rejects a mismatched %s runner target before OCR downloads",
+    async (command) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-tauri-runner-target-"),
+      );
+      const binDir = path.join(directory, "bin");
+      const curlLog = path.join(directory, "curl.log");
+
+      try {
+        await mkdir(binDir);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        const mismatchedTarget = host!.startsWith("x86_64-")
+          ? host!.replace("x86_64-", "aarch64-")
+          : host!.replace("aarch64-", "x86_64-");
+
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+        );
+
+        await expect(
+          execFile(
+            "bash",
+            [tauriScriptPath, command, "--", "--target", mismatchedTarget],
+            {
+              cwd: repoRoot,
+              env: {
+                ...process.env,
+                PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+                CURL_LOG: curlLog,
+                EPIKRISE_OCR_RESOURCE_DIR: path.join(directory, "resources"),
+                EPIKRISE_OCR_BINARY_DIR: path.join(directory, "binaries"),
+              },
+            },
+          ),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("does not match native host"),
+        });
+        await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("ignores application targets after tauri dev's second separator", async () => {
     const directory = await mkdtemp(
-      path.join(tmpdir(), "epikrise-tauri-runner-target-"),
+      path.join(tmpdir(), "epikrise-tauri-dev-app-args-"),
     );
     const binDir = path.join(directory, "bin");
-    const curlLog = path.join(directory, "curl.log");
 
     try {
       await mkdir(binDir);
-      const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
-      const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
-      expect(host).toBeDefined();
-      const mismatchedTarget = host!.startsWith("x86_64-")
-        ? host!.replace("x86_64-", "aarch64-")
-        : host!.replace("aarch64-", "x86_64-");
-
       await writeExecutable(
         path.join(binDir, "rustc"),
-        `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
       );
-      await writeMockUname(binDir, host!);
-      await writeExecutable(
-        path.join(binDir, "curl"),
-        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
-      );
+      await writeMockUname(binDir, "x86_64-unknown-linux-gnu");
 
-      await expect(
-        execFile(
-          "bash",
-          [tauriScriptPath, "build", "--", "--target", mismatchedTarget],
-          {
-            cwd: repoRoot,
-            env: {
-              ...process.env,
-              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-              CURL_LOG: curlLog,
-              EPIKRISE_OCR_RESOURCE_DIR: path.join(directory, "resources"),
-              EPIKRISE_OCR_BINARY_DIR: path.join(directory, "binaries"),
-            },
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "--tauri-dev",
+          "--validate-only",
+          "tauri",
+          "dev",
+          "--",
+          "--",
+          "--target",
+          "aarch64-unknown-linux-gnu",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
           },
-        ),
-      ).rejects.toMatchObject({
-        stderr: expect.stringContaining("does not match native host"),
-      });
-      await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+        },
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
