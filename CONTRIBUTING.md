@@ -123,9 +123,8 @@ Install these prerequisites before building:
 
   After installation, open a new PowerShell window and confirm that
   `cmake --version` and `ninja --version` print versions. Visual Studio's
-  bundled CMake may not be added to the regular PATH; the wrapper adds its
-  standard bundled-tools directory to the build-shell PATH automatically. It
-  then checks that both tools are available before building.
+  bundled CMake may not be added to the regular PATH; ensure its tools and
+  Ninja are available on `PATH` before building.
 
 - Tesseract language data containing both `deu.traineddata` and
   `eng.traineddata`. You do not need an installed Tesseract executable if you
@@ -146,7 +145,6 @@ $env:Path = "$pnpmShimDir;$env:Path"
 node --version
 pnpm.cmd --version
 rustc -vV
-Get-Command bash.exe
 pnpm.cmd install --frozen-lockfile
 ```
 
