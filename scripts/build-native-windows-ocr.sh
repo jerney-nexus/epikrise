@@ -63,6 +63,15 @@ if [[ -n "${EPIKRISE_MSVC_CL_EXE:-}" ]]; then
   export PATH
 fi
 
+msys2_env_conv_excl="${MSYS2_ENV_CONV_EXCL:-}"
+for variable in INCLUDE LIB LIBPATH; do
+  case ";$msys2_env_conv_excl;" in
+    *";$variable=;"*) ;;
+    *) msys2_env_conv_excl="${msys2_env_conv_excl:+$msys2_env_conv_excl;}$variable=" ;;
+  esac
+done
+export MSYS2_ENV_CONV_EXCL="$msys2_env_conv_excl"
+
 for tool in cmake ninja cl dumpbin curl tar grep; do
   if ! command -v "$tool" >/dev/null 2>&1 \
     && ! command -v "$tool.exe" >/dev/null 2>&1; then

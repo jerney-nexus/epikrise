@@ -66,5 +66,12 @@ exit /b 1
 :msvc_cl_found
 del /q "%msvc_cl_file%" >nul 2>&1
 
+if defined MSYS2_ENV_CONV_EXCL goto msys_env_conv_excl_existing
+set "MSYS2_ENV_CONV_EXCL=INCLUDE=;LIB=;LIBPATH="
+goto msys_env_conv_excl_ready
+:msys_env_conv_excl_existing
+set "MSYS2_ENV_CONV_EXCL=%MSYS2_ENV_CONV_EXCL%;INCLUDE=;LIB=;LIBPATH="
+:msys_env_conv_excl_ready
+
 call bash scripts/build-native-windows.sh "%windows_arch%" "%build_mode%"
 exit /b %errorlevel%
