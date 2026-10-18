@@ -55,6 +55,7 @@ if [[ "$host_arch" != "$expected_arch" ]]; then
   exit 1
 fi
 
+msvc_cl_exe=""
 if [[ -n "${EPIKRISE_MSVC_CL_EXE:-}" ]]; then
   msvc_cl_exe="$(cygpath -u "$EPIKRISE_MSVC_CL_EXE")"
   msvc_tools_bin="$(dirname "$msvc_cl_exe")"
@@ -75,8 +76,14 @@ download_dir="$cache_root/downloads"
 source_dir="$cache_root/sources"
 compiler_version="${VCToolsVersion:-}"
 if [[ -z "$compiler_version" ]]; then
-  printf 'VCToolsVersion is unavailable. Run this build from a Visual Studio developer shell.\n' >&2
-  exit 1
+  if [[ -n "$msvc_cl_exe" ]]; then
+    msvc_toolset_dir="$(dirname "$(dirname "$(dirname "$(dirname "$msvc_cl_exe")")")")"
+    compiler_version="$(basename "$msvc_toolset_dir")"
+  fi
+  if [[ -z "$compiler_version" ]]; then
+    printf 'Could not determine the MSVC toolset version from VCToolsVersion or the resolved compiler path.\n' >&2
+    exit 1
+  fi
 fi
 toolchain_id="msvc-$compiler_version-$host_arch"
 build_dir="$cache_root/build/$toolchain_id/$target"

@@ -125,15 +125,22 @@ describe("native Windows MSVC host architecture", () => {
   it("separates caches by MSVC host architecture", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-msvc-cache-"));
     const binDir = path.join(directory, "bin");
-    const msvcBinDir = path.join(directory, "msvc-bin");
     const cacheRoot = path.join(directory, "cache");
     const curlLog = path.join(directory, "curl.log");
     const target = "x86_64-pc-windows-msvc";
     const toolset = "14.44.35207";
+    const msvcBinDir = path.join(
+      directory,
+      "msvc-bin",
+      toolset,
+      "bin",
+      "Hostx64",
+      "x64",
+    );
 
     try {
       await mkdir(binDir);
-      await mkdir(msvcBinDir);
+      await mkdir(msvcBinDir, { recursive: true });
       await writeExecutable(
         path.join(binDir, "uname"),
         "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
@@ -171,8 +178,7 @@ describe("native Windows MSVC host architecture", () => {
             PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
             VSCMD_ARG_TGT_ARCH: "x64",
             VSCMD_ARG_HOST_ARCH: "x64",
-            VCToolsVersion: toolset,
-            EPIKRISE_MSVC_CL_EXE: "C:\\Visual Studio\\VC\\Tools\\MSVC\\bin\\cl.exe",
+            EPIKRISE_MSVC_CL_EXE: `C:\\Visual Studio\\VC\\Tools\\MSVC\\${toolset}\\bin\\Hostx64\\x64\\cl.exe`,
             MSVC_CL_PATH: path.join(msvcBinDir, "cl.exe"),
             CURL_LOG: curlLog,
             EPIKRISE_NATIVE_WINDOWS_OCR_CACHE: cacheRoot,
