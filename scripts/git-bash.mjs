@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** @param {string} executable */
 function isGitBash(executable) {
@@ -42,4 +43,19 @@ export function findGitBash(
   return [...gitCandidates, ...pathCandidates].find(
     (candidate) => exists(candidate) && verify(candidate),
   );
+}
+
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  const gitBash = findGitBash();
+  if (gitBash) {
+    console.log(gitBash);
+  } else {
+    console.error(
+      "Git for Windows Bash is required. Install Git for Windows and ensure its Bash is discoverable.",
+    );
+    process.exitCode = 1;
+  }
 }

@@ -138,5 +138,17 @@ goto msys_env_conv_excl_ready
 set "MSYS2_ENV_CONV_EXCL=%MSYS2_ENV_CONV_EXCL%;INCLUDE=;LIB=;LIBPATH="
 :msys_env_conv_excl_ready
 
-call bash scripts/build-native-windows.sh "%windows_arch%" "%build_mode%"
+set "EPIKRISE_GIT_BASH_EXE="
+set "git_bash_output=%TEMP%\epikrise-git-bash-%RANDOM%.txt"
+node scripts\git-bash.mjs > "%git_bash_output%"
+if errorlevel 1 goto git_bash_missing
+set /p "EPIKRISE_GIT_BASH_EXE="<"%git_bash_output%"
+del /q "%git_bash_output%" >nul 2>&1
+if defined EPIKRISE_GIT_BASH_EXE goto git_bash_found
+:git_bash_missing
+del /q "%git_bash_output%" >nul 2>&1
+echo Git for Windows Bash could not be located or verified. Install Git for Windows. 1>&2
+exit /b 1
+:git_bash_found
+call "%EPIKRISE_GIT_BASH_EXE%" scripts/build-native-windows.sh "%windows_arch%" "%build_mode%"
 exit /b %errorlevel%

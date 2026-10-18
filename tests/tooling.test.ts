@@ -978,6 +978,11 @@ describe("six-target desktop build tooling", () => {
     expect(buildScript).toContain('set /p "EPIKRISE_MSVC_CL_EXE="<"%msvc_cl_file%"');
     expect(buildScript).toContain("if defined EPIKRISE_MSVC_CL_EXE goto msvc_cl_found");
     expect(buildScript).toContain('set "MSYS2_ENV_CONV_EXCL=INCLUDE=;LIB=;LIBPATH="');
+    expect(buildScript).toContain('node scripts\\git-bash.mjs > "%git_bash_output%"');
+    expect(buildScript).toContain(
+      'call "%EPIKRISE_GIT_BASH_EXE%" scripts/build-native-windows.sh "%windows_arch%" "%build_mode%"',
+    );
+    expect(buildScript).not.toContain("call bash scripts/build-native-windows.sh");
     expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
 
     const tauriScript = await readFile(path.join(repoRoot, "scripts/tauri.sh"), "utf8");
@@ -1732,9 +1737,13 @@ describe("native Cargo host target guard", () => {
     }
   });
 
-  it.each(["build", "dev"])(
-    "rejects a mismatched %s runner target before OCR downloads",
-    async (command) => {
+  it.each([
+    { command: "build", appArgs: [] },
+    { command: "dev", appArgs: [] },
+    { command: "dev", appArgs: ["--", "--help"] },
+  ])(
+    "rejects a mismatched $command runner target before OCR downloads",
+    async ({ command, appArgs }) => {
       const directory = await mkdtemp(
         path.join(tmpdir(), "epikrise-tauri-runner-target-"),
       );
@@ -1763,7 +1772,7 @@ describe("native Cargo host target guard", () => {
         await expect(
           execFile(
             "bash",
-            [tauriScriptPath, command, "--", "--target", mismatchedTarget],
+            [tauriScriptPath, command, "--", "--target", mismatchedTarget, ...appArgs],
             {
               cwd: repoRoot,
               env: {

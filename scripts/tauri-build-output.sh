@@ -55,8 +55,19 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       ;;
-    --release|-r)
+    --release)
       build_profile="release"
+      ;;
+    -r)
+      if [[ "$after_separator" == true ]]; then
+        build_profile="release"
+      else
+        shift
+        if [[ $# -eq 0 || -z "$1" ]]; then
+          printf 'Missing value for --runner.\n' >&2
+          exit 2
+        fi
+      fi
       ;;
   esac
   shift
