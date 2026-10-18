@@ -56,11 +56,21 @@ if [[ "$host_arch" != "$expected_arch" ]]; then
 fi
 
 msvc_cl_exe=""
+msvc_toolset_dir=""
 if [[ -n "${EPIKRISE_MSVC_CL_EXE:-}" ]]; then
   msvc_cl_exe="$(cygpath -u "$EPIKRISE_MSVC_CL_EXE")"
   msvc_tools_bin="$(dirname "$msvc_cl_exe")"
+  msvc_toolset_dir="$(dirname "$(dirname "$(dirname "$(dirname "$msvc_cl_exe")")")")"
+  msvc_lib_dir="$msvc_toolset_dir/lib/$expected_arch"
+  if [[ ! -f "$msvc_lib_dir/libcmt.lib" ]]; then
+    printf 'MSVC runtime library was not found: %s/libcmt.lib.\n' "$msvc_lib_dir" >&2
+    exit 1
+  fi
+  msvc_lib_dir_windows="$(cygpath -w "$msvc_lib_dir")"
   PATH="$msvc_tools_bin:$PATH"
+  LIB="$msvc_lib_dir_windows${LIB:+;$LIB}"
   export PATH
+  export LIB
 fi
 
 msys2_env_conv_excl="${MSYS2_ENV_CONV_EXCL:-}"
@@ -85,8 +95,7 @@ download_dir="$cache_root/downloads"
 source_dir="$cache_root/sources"
 compiler_version="${VCToolsVersion:-}"
 if [[ -z "$compiler_version" ]]; then
-  if [[ -n "$msvc_cl_exe" ]]; then
-    msvc_toolset_dir="$(dirname "$(dirname "$(dirname "$(dirname "$msvc_cl_exe")")")")"
+  if [[ -n "$msvc_toolset_dir" ]]; then
     compiler_version="$(basename "$msvc_toolset_dir")"
   fi
   if [[ -z "$compiler_version" ]]; then

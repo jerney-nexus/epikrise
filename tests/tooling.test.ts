@@ -1809,6 +1809,7 @@ describe("native Cargo host architecture guard", () => {
             PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
             PROCESSOR_ARCHITECTURE: "AMD64",
             PROCESSOR_ARCHITEW6432: "ARM64",
+            EPIKRISE_RUNNER_ARCH: "ARM64",
             CARGO_LOG: cargoLog,
           },
         }),
