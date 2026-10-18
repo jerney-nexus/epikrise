@@ -1000,6 +1000,9 @@ describe("six-target desktop build tooling", () => {
     expect(buildScript).toContain(
       'call "%EPIKRISE_GIT_BASH_EXE%" scripts/build-native-windows.sh "%windows_arch%" "%build_mode%"',
     );
+    expect(buildScript).toContain('set "EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED=1"');
+    expect(buildScript).toContain('if /I "%build_mode%"=="tauri" goto tauri_launcher');
+    expect(buildScript).toContain("node scripts\\tauri.mjs --run-with-msvc-env");
     expect(buildScript).not.toContain("call bash scripts/build-native-windows.sh");
     expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
 
@@ -1671,19 +1674,92 @@ async function writeMockUname(
       "",
     ].join("\n"),
   );
+  if (system === "Linux") {
+    await writeExecutable(
+      path.join(binDir, "node"),
+      [
+        "#!/usr/bin/env bash",
+        'if [[ "$1" == */verify-linux-host-architecture.mjs ]]; then',
+        "  printf '%s\\n' \"$3\"",
+        "else",
+        `  exec ${JSON.stringify(process.execPath)} "$@"`,
+        "fi",
+        "",
+      ].join("\n"),
+    );
+  }
 }
 
 describe("native Cargo host target guard", () => {
   const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
   const tauriScriptPath = path.join(repoRoot, "scripts/tauri.sh");
 
-  it("launches the Tauri workflow with Windows Git Bash and arguments intact", () => {
-    const args = ["--target", "native target"];
+  it("initializes MSVC for regular Windows-shell Tauri invocations without losing arguments", () => {
+    const args = ["build", "--target", "aarch64-pc-windows-msvc", "--config", "a & b"];
     const gitBashPath = "C:\\Program Files\\Git\\bin\\bash.exe";
-    let invocation: { command: string; args: string[]; options: object } | undefined;
+    const env: NodeJS.ProcessEnv = { ...process.env, ComSpec: "cmd.exe" };
+    delete env.EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED;
+    delete env.VSCMD_ARG_HOST_ARCH;
+    delete env.VSCMD_ARG_TGT_ARCH;
+    const invocations: {
+      command: string;
+      args: string[];
+      options: { env?: NodeJS.ProcessEnv };
+    }[] = [];
 
     const status = runTauri(args, {
       platform: "win32",
+      env,
+      resolveGitBash: () => gitBashPath,
+      spawn: (command, spawnArgs, options) => {
+        invocations.push({ command, args: spawnArgs, options });
+        if (command === "powershell.exe") {
+          return { status: 0, stdout: "Arm64\r\n" };
+        }
+        return { status: 0 };
+      },
+    });
+
+    expect(status).toBe(0);
+    expect(invocations).toHaveLength(2);
+    expect(invocations[0]).toMatchObject({
+      command: "powershell.exe",
+      args: expect.arrayContaining([
+        "[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture",
+      ]),
+    });
+    expect(invocations[1].command).toBe("cmd.exe");
+    expect(invocations[1].args).toEqual([
+      "/d",
+      "/s",
+      "/c",
+      `call "${path.join(repoRoot, "scripts/build-native-windows.cmd")}" arm64 tauri`,
+    ]);
+    expect(invocations[1].options.env?.EPIKRISE_TAURI_ARGS_JSON).toBe(
+      JSON.stringify(args),
+    );
+    expect(invocations[1].options.env?.VSCMD_ARG_HOST_ARCH).toBeUndefined();
+  });
+
+  it("reuses the initialized MSVC environment for nested Tauri commands", () => {
+    const args = ["build", "--target", "x86_64-pc-windows-msvc"];
+    const gitBashPath = "C:\\Program Files\\Git\\bin\\bash.exe";
+    const env = {
+      ...process.env,
+      EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED: "1",
+      EPIKRISE_TAURI_ARGS_JSON: '["outer"]',
+    };
+    let invocation:
+      | {
+          command: string;
+          args: string[];
+          options: { env?: NodeJS.ProcessEnv };
+        }
+      | undefined;
+
+    const status = runTauri(args, {
+      platform: "win32",
+      env,
       resolveGitBash: () => gitBashPath,
       spawn: (command, spawnArgs, options) => {
         invocation = { command, args: spawnArgs, options };
@@ -1692,15 +1768,49 @@ describe("native Cargo host target guard", () => {
     });
 
     expect(status).toBe(0);
-    expect(invocation).toEqual({
+    expect(invocation).toMatchObject({
       command: gitBashPath,
       args: [tauriScriptPath, ...args],
-      options: {
-        cwd: path.resolve(repoRoot),
-        env: process.env,
-        stdio: "inherit",
-      },
     });
+    expect(invocation?.options.env?.EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED).toBe(
+      undefined,
+    );
+    expect(invocation?.options.env?.EPIKRISE_TAURI_ARGS_JSON).toBeUndefined();
+  });
+
+  it("preserves Windows Tauri argument boundaries through the environment trampoline", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-args-"));
+    const fakeBashPath = path.join(directory, "fake-bash");
+    const argumentsPath = path.join(directory, "arguments.bin");
+    const args = ["build", "--config", "one & two", "--features", "a|b"];
+
+    try {
+      await writeExecutable(
+        fakeBashPath,
+        '#!/usr/bin/env bash\nprintf "%s\\0" "$@" > "$TAURI_ARGS_LOG"\n',
+      );
+
+      await execFile(
+        process.execPath,
+        [path.join(repoRoot, "scripts/tauri.mjs"), "--run-with-msvc-env"],
+        {
+          env: {
+            ...process.env,
+            EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED: "1",
+            EPIKRISE_TAURI_ARGS_JSON: JSON.stringify(args),
+            EPIKRISE_GIT_BASH_EXE: fakeBashPath,
+            TAURI_ARGS_LOG: argumentsPath,
+          },
+        },
+      );
+
+      const forwardedArguments = (await readFile(argumentsPath, "utf8"))
+        .split("\0")
+        .slice(0, -1);
+      expect(forwardedArguments).toEqual([tauriScriptPath, ...args]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("rejects a mismatched target before OCR downloads", async () => {
