@@ -55,6 +55,7 @@ describe("native Windows MSVC host architecture", () => {
           env: {
             ...process.env,
             PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            EPIKRISE_RUNNER_ARCH: "ARM64",
             VSCMD_ARG_TGT_ARCH: "arm64",
             VSCMD_ARG_HOST_ARCH: "x64",
             CURL_LOG: curlLog,
@@ -104,6 +105,7 @@ describe("native Windows MSVC host architecture", () => {
           env: {
             ...process.env,
             PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            EPIKRISE_RUNNER_ARCH: "ARM64",
             VSCMD_ARG_TGT_ARCH: "x64",
             VSCMD_ARG_HOST_ARCH: "x64",
             CURL_LOG: curlLog,
@@ -129,18 +131,15 @@ describe("native Windows MSVC host architecture", () => {
     const curlLog = path.join(directory, "curl.log");
     const target = "x86_64-pc-windows-msvc";
     const toolset = "14.44.35207";
-    const msvcBinDir = path.join(
-      directory,
-      "msvc-bin",
-      toolset,
-      "bin",
-      "Hostx64",
-      "x64",
-    );
+    const msvcToolsetDir = path.join(directory, "msvc-bin", toolset);
+    const msvcBinDir = path.join(msvcToolsetDir, "bin", "Hostx64", "x64");
+    const msvcLibDir = path.join(msvcToolsetDir, "lib", "x64");
 
     try {
       await mkdir(binDir);
       await mkdir(msvcBinDir, { recursive: true });
+      await mkdir(msvcLibDir, { recursive: true });
+      await writeFile(path.join(msvcLibDir, "libcmt.lib"), "mock static runtime");
       await writeExecutable(
         path.join(binDir, "uname"),
         "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
@@ -164,11 +163,11 @@ describe("native Windows MSVC host architecture", () => {
       }
       await writeExecutable(
         path.join(binDir, "cygpath"),
-        '#!/usr/bin/env bash\nprintf "%s\\n" "$MSVC_CL_PATH"\n',
+        '#!/usr/bin/env bash\ncase "$1" in\n  -u) printf "%s\\n" "$MSVC_CL_PATH" ;;\n  -w) printf "%s\\n" "$MSVC_LIB_PATH" ;;\n  *) exit 2 ;;\nesac\n',
       );
       await writeExecutable(
         path.join(binDir, "curl"),
-        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nprintf "%s\\n" "$MSYS2_ENV_CONV_EXCL" > "$MSYS_ENV_LOG"\nexit 1\n',
+        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nprintf "%s\\n%s\\n" "$MSYS2_ENV_CONV_EXCL" "$LIB" > "$MSYS_ENV_LOG"\nexit 1\n',
       );
 
       await expect(
@@ -176,10 +175,12 @@ describe("native Windows MSVC host architecture", () => {
           env: {
             ...process.env,
             PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            EPIKRISE_RUNNER_ARCH: "X64",
             VSCMD_ARG_TGT_ARCH: "x64",
             VSCMD_ARG_HOST_ARCH: "x64",
             EPIKRISE_MSVC_CL_EXE: `C:\\Visual Studio\\VC\\Tools\\MSVC\\${toolset}\\bin\\Hostx64\\x64\\cl.exe`,
             MSVC_CL_PATH: path.join(msvcBinDir, "cl.exe"),
+            MSVC_LIB_PATH: `C:\\Visual Studio\\VC\\Tools\\MSVC\\${toolset}\\lib\\x64`,
             CURL_LOG: curlLog,
             MSYS_ENV_LOG: path.join(directory, "msys-env.log"),
             EPIKRISE_NATIVE_WINDOWS_OCR_CACHE: cacheRoot,
@@ -187,12 +188,16 @@ describe("native Windows MSVC host architecture", () => {
         }),
       ).rejects.toThrow();
 
-      const conversionExclusions = await readFile(
-        path.join(directory, "msys-env.log"),
-        "utf8",
-      );
+      const [conversionExclusions, libSearchPath] = (
+        await readFile(path.join(directory, "msys-env.log"), "utf8")
+      )
+        .trimEnd()
+        .split(/\r?\n/);
       expect(conversionExclusions.trim().split(";")).toEqual(
         expect.arrayContaining(["INCLUDE=", "LIB=", "LIBPATH="]),
+      );
+      expect(libSearchPath.split(";")[0]).toBe(
+        `C:\\Visual Studio\\VC\\Tools\\MSVC\\${toolset}\\lib\\x64`,
       );
       expect(
         await readdir(path.join(cacheRoot, "build", `msvc-${toolset}-x64`, target)),
