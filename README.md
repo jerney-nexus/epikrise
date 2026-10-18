@@ -133,7 +133,6 @@ $env:Path = "$pnpmShimDir;$env:Path"
 node --version
 pnpm.cmd --version
 rustc -vV
-Get-Command bash.exe
 pnpm.cmd install --frozen-lockfile
 $env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
 Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'deu.traineddata')

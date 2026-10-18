@@ -98,9 +98,11 @@ Install these prerequisites before building:
   `VC\Auxiliary\Build\vcvarsall.bat` must be present. See the
   [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
   and [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
-- Git for Windows, with its `bin` directory on `PATH` so the wrapper can start
-  `bash.exe`. CMake, Ninja, `curl`, `tar`, and `grep` must also be available to
-  the build shell; Visual Studio can provide CMake and Ninja.
+- Git for Windows, which provides Git Bash. The wrapper starts Bash after
+  initializing Visual Studio. If it reports that `bash` is missing, add the
+  Git for Windows `bin` folder to this PowerShell session's `PATH`. CMake,
+  Ninja, `curl`, `tar`, and `grep` must also be available to the build shell;
+  Visual Studio can provide CMake and Ninja.
 - Tesseract language data containing both `deu.traineddata` and
   `eng.traineddata`. You do not need an installed Tesseract executable if you
   set `EPIKRISE_TESSDATA_DIR` to that data directory.
@@ -120,7 +122,6 @@ $env:Path = "$pnpmShimDir;$env:Path"
 node --version
 pnpm.cmd --version
 rustc -vV
-Get-Command bash.exe
 pnpm.cmd install --frozen-lockfile
 ```
 
@@ -129,21 +130,7 @@ The user-local Corepack shim avoids writing under `C:\Program Files`. Use
 this session's `PATH` and can find the same pnpm command.
 
 The version commands should report Node 22 and pnpm 12.10.1; `rustc -vV`
-must report the native host triple listed above. `Get-Command bash.exe` must
-find Git Bash. If it cannot, add the Git for Windows `bin` folder to this
-PowerShell session's `PATH` and run the check again. This checks common
-install locations:
-
-```powershell
-$gitBin = @(
-  "$env:ProgramFiles\Git\bin",
-  "${env:ProgramFiles(x86)}\Git\bin",
-  "$env:LOCALAPPDATA\Programs\Git\bin"
-) | Where-Object { Test-Path (Join-Path $_ 'bash.exe') } | Select-Object -First 1
-if (-not $gitBin) { throw 'Git for Windows Bash was not found. Install Git for Windows or set $gitBin to its bin folder.' }
-$env:Path = "$gitBin;$env:Path"
-Get-Command bash.exe
-```
+must report the native host triple listed above.
 
 Set `EPIKRISE_TESSDATA_DIR` to a folder containing both
 `deu.traineddata` and `eng.traineddata`. If Tesseract is installed with both
