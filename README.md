@@ -118,7 +118,11 @@ Windows architecture, Visual Studio's **Desktop development with C++**
 workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`,
 `cl`, `dumpbin`, `curl`, `tar`, and `rg` on `PATH`. On ARM64, include native
 ARM64 C++ tools.
-See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows).
+In Visual Studio Installer, add **C++ CMake tools for Windows** and
+**Ninja: build system** under **Individual components** if CMake or Ninja is
+missing. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
+and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact
+installation steps.
 Provide Tesseract's German and English language data either through an
 installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder
 containing `deu.traineddata` and `eng.traineddata`.

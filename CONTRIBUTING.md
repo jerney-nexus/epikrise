@@ -112,7 +112,9 @@ Install these prerequisites before building:
   components** and select **C++ CMake tools for Windows**. If the build still
   reports CMake missing, install the standalone version from the WinGet
   community repository so `cmake.exe` is added to `PATH`. Ninja is also a
-  separate tool:
+  separate tool. Visual Studio Installer can provide both **C++ CMake tools for
+  Windows** and **Ninja: build system** under **Individual components**; if
+  either is unavailable on `PATH`, use the WinGet commands below.
 
   ```powershell
   winget show --id Kitware.CMake --exact --source winget
