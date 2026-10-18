@@ -127,7 +127,8 @@ Install these prerequisites before building:
   After installation, open a new PowerShell window and confirm that
   `cmake --version` and `ninja --version` print versions. Visual Studio's
   bundled CMake may not be added to the regular PATH; ensure its tools and
-  Ninja are available on `PATH` before building.
+  Ninja are available on `PATH` before building. The wrapper checks for both
+  tools before starting the build.
 
 - Tesseract language data containing both `deu.traineddata` and
   `eng.traineddata`. You do not need an installed Tesseract executable if you
