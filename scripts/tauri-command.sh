@@ -2,12 +2,22 @@
 set -euo pipefail
 
 tauri_command=""
+skip_next=false
 for argument in "$@"; do
+  if [[ "$skip_next" == true ]]; then
+    skip_next=false
+    continue
+  fi
+
   if [[ "$argument" == "--" ]]; then
     break
   fi
 
   case "$argument" in
+    --runner)
+      skip_next=true
+      continue
+      ;;
     -v*|--verbose)
       continue
       ;;

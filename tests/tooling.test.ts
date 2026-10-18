@@ -1868,6 +1868,58 @@ describe("native Cargo host target guard", () => {
   });
 
   it.each([
+    ["split after the subcommand", ["build", "--runner", "cargo-xwin"]],
+    ["equals form after the subcommand", ["build", "--runner=cargo-xwin"]],
+    ["split before the subcommand", ["--runner", "cargo-xwin", "build"]],
+    ["equals form before the subcommand", ["--runner=cargo-xwin", "build"]],
+  ])(
+    "rejects a cross-compilation runner in native builds (%s) before OCR downloads",
+    async (_description, args) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-tauri-cross-runner-"),
+      );
+      const binDir = path.join(directory, "bin");
+      const curlLog = path.join(directory, "curl.log");
+
+      try {
+        await mkdir(binDir);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+        );
+
+        await expect(
+          execFile("bash", [tauriScriptPath, ...args], {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+              CURL_LOG: curlLog,
+              EPIKRISE_OCR_RESOURCE_DIR: path.join(directory, "resources"),
+              EPIKRISE_OCR_BINARY_DIR: path.join(directory, "binaries"),
+            },
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining(
+            "Custom Tauri runner cargo-xwin is not allowed for native-only builds",
+          ),
+        });
+        await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
     { command: "build", appArgs: [] },
     { command: "dev", appArgs: [] },
     { command: "dev", appArgs: ["--", "--help"] },
@@ -2014,6 +2066,47 @@ esac
       expect(await readFile(ocrLog, "utf8")).toBe("unset|unset\n");
       expect(await readFile(tauriLog, "utf8")).toBe(
         "test-signing-key|test-signing-password\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("allows the default Cargo runner for a native Tauri build", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-native-cargo-runner-"),
+    );
+    const binDir = path.join(directory, "bin");
+
+    try {
+      await mkdir(binDir);
+      const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+      const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+      expect(host).toBeDefined();
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+      );
+      await writeMockUname(binDir, host!);
+
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "--tauri-build",
+          "--validate-only",
+          "tauri",
+          "--runner",
+          "cargo",
+          "build",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          },
+        },
       );
     } finally {
       await rm(directory, { recursive: true, force: true });
