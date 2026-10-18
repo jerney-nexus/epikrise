@@ -948,6 +948,16 @@ describe("six-target desktop build tooling", () => {
     expect(buildScript).toContain("if defined EPIKRISE_MSVC_CL_EXE goto msvc_cl_found");
     expect(buildScript).toContain('set "MSYS2_ENV_CONV_EXCL=INCLUDE=;LIB=;LIBPATH="');
     expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
+
+    const ocrBuildScript = await readFile(
+      path.join(repoRoot, "scripts/build-native-windows-ocr.sh"),
+      "utf8",
+    );
+    expect(ocrBuildScript).toContain('msvc_include_dir="$msvc_toolset_dir/include"');
+    expect(ocrBuildScript).toContain('"$msvc_include_dir/vcruntime.h"');
+    expect(ocrBuildScript).toContain(
+      'INCLUDE="$msvc_include_dir_windows${INCLUDE:+;$INCLUDE}"',
+    );
   });
 });
 
