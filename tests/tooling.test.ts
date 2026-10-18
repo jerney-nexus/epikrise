@@ -937,6 +937,11 @@ describe("six-target desktop build tooling", () => {
     expect(buildScript).toContain('if exist "%vcvarsall%" goto vcvarsall_found');
     expect(buildScript).toContain('set "EPIKRISE_RUNNER_ARCH=%VSCMD_ARG_HOST_ARCH%"');
     expect(buildScript).toContain(
+      'set "vs_cmake_bin=%VSINSTALLDIR%\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin"',
+    );
+    expect(buildScript).toContain('set "PATH=%vs_cmake_bin%;%PATH%"');
+    expect(buildScript).toContain("where.exe cmake.exe >nul 2>&1");
+    expect(buildScript).toContain(
       'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" cl.exe | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\cl.exe"',
     );
     expect(buildScript).toContain('set /p "EPIKRISE_MSVC_CL_EXE="<"%msvc_cl_file%"');
