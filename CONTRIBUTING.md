@@ -238,7 +238,6 @@ verification fails.
 Diagnostic builds disable release LTO, use 16 codegen units, and compile at
 optimization level 2 to reduce peak memory use. Signed release builds retain
 the optimized release profile configured in `src-tauri/Cargo.toml`.
-
 Build caches are kept between runs: Cargo artifacts live under
 `src-tauri/target/host-<host-triple>/`, and the native OCR CMake/Ninja build
 cache lives under `%USERPROFILE%\.cache\epikrise\windows-ocr-native-msvc\`.
