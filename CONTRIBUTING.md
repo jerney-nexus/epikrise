@@ -71,24 +71,151 @@ and open a new terminal. Then retry `pnpm tauri build`.
 
 ### Building Windows installers
 
-Windows cross-compilation is configured for the ARM64 Linux dev container. Its
-setup installs LLVM, CMake, Ninja, NSIS and `cargo-xwin`; OCR sidecars and their
-static dependencies are compiled separately for x64 and ARM64. Provisioning
-also installs Tauri's required NSIS Restart Manager include. The pinned Windows
-PDFium and language resources are staged per target. If setup reports that the
-include is missing, rebuild the dev container to apply the updated provisioning.
+Choose the build path that matches where you are working:
 
-Run setup interactively once. It displays the Microsoft SDK/CRT license link
-and downloads the pinned Windows SDK package `10.0.26100` and Visual C++
-toolset component `14.44.17.14` only
-after you type `ACCEPT`:
+- **Native Windows build:** builds only for the current Windows host
+  architecture. Use this to verify a Windows build without the Dev Container.
+- **Dev Container cross-build:** builds Windows x64 and ARM64 installers from
+  the ARM64 Linux Dev Container. This is not a native Windows build.
+
+#### Native build from Windows
+
+Use this path on Windows x64 to build x64, or on Windows ARM64 to build ARM64.
+The native wrapper deliberately rejects a target that does not match the host;
+cross-building from Windows is not supported by this command.
+
+Install these prerequisites before building:
+
+- Node.js 22 and Corepack. The repository pins pnpm `12.10.1`.
+- Rust for the Windows host architecture with the MSVC toolchain. On ARM64,
+  `rustc -vV` must report `host: aarch64-pc-windows-msvc`; on x64 it must
+  report `host: x86_64-pc-windows-msvc`.
+- Visual Studio or Visual Studio Build Tools. In Visual Studio Installer,
+  select **Desktop development with C++**, the Windows SDK, and the MSVC C++
+  compiler, headers, and libraries for the host architecture. On ARM64, make
+  sure the native ARM64 C++ tools are selected; x64-emulated tools are not
+  sufficient. The Visual Studio Installer's `vswhere.exe` and
+  `VC\Auxiliary\Build\vcvarsall.bat` must be present. See the
+  [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
+  and [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
+- Git for Windows, with its `bin` directory on `PATH` so the wrapper can start
+  `bash.exe`. CMake, Ninja, `curl`, `tar`, and `grep` must also be available to
+  the build shell; Visual Studio can provide CMake and Ninja.
+- Tesseract language data containing both `deu.traineddata` and
+  `eng.traineddata`. You do not need an installed Tesseract executable if you
+  set `EPIKRISE_TESSDATA_DIR` to that data directory.
+
+Run the following in **PowerShell** from the repository root. A regular
+PowerShell or Command Prompt is sufficient; the wrapper locates Visual Studio
+and initializes its developer environment itself. Do not use WSL or run these
+commands inside the Dev Container. Do not run `pnpm windows:setup` here; that
+command provisions the separate Linux Dev Container cross-build.
+
+```powershell
+$pnpmShimDir = Join-Path $env:LOCALAPPDATA 'Epikrise\corepack'
+New-Item -ItemType Directory -Path $pnpmShimDir -Force | Out-Null
+corepack.cmd enable --install-directory $pnpmShimDir pnpm
+$env:Path = "$pnpmShimDir;$env:Path"
+
+node --version
+pnpm.cmd --version
+rustc -vV
+Get-Command bash.exe
+pnpm.cmd install --frozen-lockfile
+```
+
+The user-local Corepack shim avoids writing under `C:\Program Files`. Use
+`pnpm.cmd` in PowerShell to avoid a blocked `pnpm.ps1`; the wrapper inherits
+this session's `PATH` and can find the same pnpm command.
+
+The version commands should report Node 22 and pnpm 12.10.1; `rustc -vV`
+must report the native host triple listed above. `Get-Command bash.exe` must
+find Git Bash. If it cannot, add the Git for Windows `bin` folder to this
+PowerShell session's `PATH` and run the check again. This checks common
+install locations:
+
+```powershell
+$gitBin = @(
+  "$env:ProgramFiles\Git\bin",
+  "${env:ProgramFiles(x86)}\Git\bin",
+  "$env:LOCALAPPDATA\Programs\Git\bin"
+) | Where-Object { Test-Path (Join-Path $_ 'bash.exe') } | Select-Object -First 1
+if (-not $gitBin) { throw 'Git for Windows Bash was not found. Install Git for Windows or set $gitBin to its bin folder.' }
+$env:Path = "$gitBin;$env:Path"
+Get-Command bash.exe
+```
+
+Set `EPIKRISE_TESSDATA_DIR` to a folder containing both
+`deu.traineddata` and `eng.traineddata`. If Tesseract is installed with both
+languages, point it to that installation's `tessdata` folder. Otherwise,
+download the project-pinned language files into a user-local folder and verify
+their checksums:
+
+```powershell
+$tessdataDir = Join-Path $env:LOCALAPPDATA 'Epikrise\tessdata'
+New-Item -ItemType Directory -Path $tessdataDir -Force | Out-Null
+$tessdataCommit = '65727574dfcd264acbb0c3e07860e4e9e9b22185'
+$expectedSha256 = @{
+  deu = '19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d'
+  eng = '7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2'
+}
+foreach ($language in @('deu', 'eng')) {
+  $file = Join-Path $tessdataDir "$language.traineddata"
+  $url = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/$tessdataCommit/$language.traineddata"
+  Invoke-WebRequest -Uri $url -OutFile $file
+  $actualSha256 = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actualSha256 -ne $expectedSha256[$language]) {
+    throw "$language.traineddata SHA-256 mismatch."
+  }
+}
+$env:EPIKRISE_TESSDATA_DIR = $tessdataDir
+```
+
+The data is stored under your local application data directory, not in the
+repository. Keep using the same PowerShell session so the environment variable
+and user-local pnpm shim remain available during the build.
+
+Run **one** build command, matching the Windows host.
+
+On Windows ARM64:
+
+```powershell
+.\scripts\build-native-windows.cmd arm64 diagnostic
+```
+
+On Windows x64:
+
+```powershell
+.\scripts\build-native-windows.cmd x64 diagnostic
+```
+
+The wrapper uses Git Bash and checks that the Rust host, MSVC host, MSVC target,
+and requested target architecture all match.
+
+The first build needs network access to download and checksum-verify the OCR
+source archives and PDFium. The unsigned diagnostic installer is written under
+`src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The wrapper
+returns a non-zero exit code if setup, compilation, bundling, or architecture
+verification fails.
+
+If compilation reports that `vcruntime.h` cannot be found, the installed MSVC
+toolset or its C++ headers are missing or inconsistent. Use Visual Studio
+Installer to add or repair the C++ build tools and Windows SDK for the host
+architecture, open a new PowerShell window, and rerun the native wrapper.
+
+#### Cross-build from the ARM64 Linux Dev Container
+
+Use this path when building from the documented ARM64 Linux Dev Container. It
+requires LLVM, CMake, Ninja, NSIS, `cargo-xwin`, and Tauri's NSIS Restart
+Manager include. Run the setup interactively once; it displays the Microsoft
+SDK/CRT license link and downloads the pinned Windows SDK package `10.0.26100`
+and Visual C++ toolset component `14.44.17.14` only after you type `ACCEPT`:
 
 ```sh
 pnpm windows:setup
 ```
 
-Then run an architecture-specific build or build both installers
-sequentially:
+Then build one architecture or both:
 
 ```sh
 pnpm windows:build:x64
@@ -97,14 +224,15 @@ pnpm windows:build
 ```
 
 Installers are written to
-`src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`. Each includes the offline
-WebView2 installer, adding about 127 MB. The first build downloads and verifies
-LLVM-MinGW, Tesseract, its dependencies, and PDFium; subsequent builds use
-target-specific caches. Tesseract's CMake TIFF capability probe is given an
-explicit cross-build result, so no Windows executable is run in Linux. TIFF
-input is not needed by the app's OCR path, which passes PNG images to Tesseract.
+`src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`. Each
+includes the offline WebView2 installer, adding about 127 MB. The first
+cross-build downloads and verifies LLVM-MinGW, Tesseract, its dependencies,
+and PDFium; subsequent builds use target-specific caches. Tesseract's CMake
+TIFF capability probe is given an explicit cross-build result, so no Windows
+executable is run in Linux. TIFF input is not needed by the app's OCR path,
+which passes PNG images to Tesseract.
 
-A successful cross-build does not replace runtime acceptance testing. Test
+Cross-build success does not replace runtime acceptance testing. Test
 installation without WebView2, launch, OCR with German and English synthetic
 images, clipboard and credentials, and uninstall on native Windows x64 and
 ARM64 systems.
@@ -114,11 +242,13 @@ ARM64 systems.
 The manual **Desktop builds** workflow produces six native/target-matched
 packages: Linux x64 and ARM64 (`.deb`, `.rpm`, AppImage), macOS x64 and ARM64
 (`.dmg`), and Windows x64 and ARM64 (NSIS `.exe` with offline WebView2). Linux
-and macOS use native GitHub-hosted runners; Windows uses the existing
-Linux-ARM64 `cargo-xwin` cross-build. OCR sidecars are built from pinned source
-archives, and downloaded source/PDFium files are checksum-verified. Native
-Linux OCR is statically linked; macOS OCR links its third-party dependencies
-statically and checks that remaining dynamic libraries are provided by macOS.
+and macOS use native GitHub-hosted runners. Windows jobs run on Windows
+GitHub-hosted runners and use the native Windows build wrapper above; they do
+not use the Dev Container or `cargo-xwin`. OCR sidecars are built from pinned
+source archives, and downloaded source/PDFium files are checksum-verified.
+Native Linux OCR is statically linked; macOS OCR links its third-party
+dependencies statically and checks that remaining dynamic libraries are
+provided by macOS.
 
 Run `pnpm build:all` only after the workflow is present and enabled on GitHub.
 The worktree must be clean, and `HEAD` must be the exact commit pushed to the

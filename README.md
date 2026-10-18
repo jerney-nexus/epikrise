@@ -106,31 +106,66 @@ This creates AppImage, Debian (`.deb`), and RPM packages under
 
 ### Windows Installers
 
-#### Local Windows build
+#### Native Windows build
 
-Run `pnpm tauri build` from a Visual Studio Developer PowerShell or Command
-Prompt initialized for the host architecture (x64 or ARM64). The matching
-MSVC C++ toolchain must be available, including `cl` and `dumpbin`;
-`VSCMD_ARG_HOST_ARCH` and `VSCMD_ARG_TGT_ARCH` must both match the native host.
-Install Git for Windows so the launcher can find
-Git Bash, and ensure CMake, Ninja, `curl`, `tar`, and ripgrep (`rg`) are on
-`PATH`. The launcher uses Git Bash from PowerShell, Command Prompt, or Git Bash;
-WSL and cross-target builds are not supported by this command.
+Use a normal PowerShell window at the repository root. The wrapper initializes
+Visual Studio itself, so a Developer shell is not required. Windows x64 builds
+x64; Windows ARM64 builds ARM64. Cross-target builds are not supported by this
+native command.
 
-Set `EPIKRISE_TESSDATA_DIR` to a directory containing both
-`deu.traineddata` and `eng.traineddata` before building. For example, in
-PowerShell:
+Prerequisites are Node.js 22, Corepack/pnpm `12.10.1`, Rust for the native
+Windows architecture, Visual Studio's **Desktop development with C++**
+workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`,
+`curl`, `tar`, and `grep` on `PATH`. On ARM64, include native ARM64 C++ tools.
+See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows).
+Provide Tesseract's German and English language data either through an
+installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder
+containing `deu.traineddata` and `eng.traineddata`.
+
+From the repository root:
 
 ```powershell
+$pnpmShimDir = Join-Path $env:LOCALAPPDATA 'Epikrise\corepack'
+New-Item -ItemType Directory -Path $pnpmShimDir -Force | Out-Null
+corepack.cmd enable --install-directory $pnpmShimDir pnpm
+$env:Path = "$pnpmShimDir;$env:Path"
+
+node --version
+pnpm.cmd --version
+rustc -vV
+Get-Command bash.exe
+pnpm.cmd install --frozen-lockfile
 $env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
-pnpm tauri build
+Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'deu.traineddata')
+Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'eng.traineddata')
 ```
 
-When this variable is set, an unrelated installed Tesseract executable is not
-required. The first native OCR build needs network access to download and
-verify its source archives.
+If Corepack cannot write under `C:\Program Files`, this user-local shim keeps
+pnpm in your profile and avoids changing PowerShell's execution policy. The
+version commands should report Node 22 and pnpm 12.10.1. Both `Test-Path`
+commands must print `True`; if not, see the language-data setup in
+[Contributing](CONTRIBUTING.md#native-build-from-windows). Run one build
+command matching the host architecture.
 
-#### Dev container build
+Windows ARM64:
+
+```powershell
+.\scripts\build-native-windows.cmd arm64 diagnostic
+```
+
+Windows x64:
+
+```powershell
+.\scripts\build-native-windows.cmd x64 diagnostic
+```
+
+The command produces an unsigned diagnostic installer under
+`src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The first build
+needs network access to download and verify OCR sources and PDFium. See
+[Contributing: native Windows build](CONTRIBUTING.md#native-build-from-windows)
+for full prerequisites, the x64 command, verification, and troubleshooting.
+
+#### Dev Container cross-build
 
 From the ARM64 Linux dev container, run `pnpm windows:setup` once and review
 the Microsoft SDK/CRT license when prompted. Then build one architecture or both
