@@ -906,7 +906,12 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toMatch(/^\s+(push|pull_request):/m);
     expect(workflow).toContain("contents: read");
+    expect(workflow).toContain("ref: ${{ inputs.expected_sha }}");
     expect(workflow).toContain("EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}");
+    expect(workflow).toContain(
+      'pnpm tauri build --target "$TARGET" --bundles "${bundles[@]}" --no-sign',
+    );
+    expect(workflow).not.toContain("pnpm exec tauri build");
     expect(workflow).toContain(
       "src-tauri/target/host-$host_target/$TARGET/release/bundle",
     );
@@ -935,7 +940,7 @@ describe("six-target desktop build tooling", () => {
     );
     expect(buildScript).toContain('if exist "%vswhere%" goto vswhere_found');
     expect(buildScript).toContain('if exist "%vcvarsall%" goto vcvarsall_found');
-    expect(buildScript).toContain('set "EPIKRISE_RUNNER_ARCH=%VSCMD_ARG_HOST_ARCH%"');
+    expect(buildScript).not.toContain('set "EPIKRISE_RUNNER_ARCH=');
     expect(buildScript).toContain(
       'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" link.exe 2>nul | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\link.exe"',
     );
@@ -1849,7 +1854,7 @@ describe("native Cargo host target guard", () => {
 describe("native Cargo host architecture guard", () => {
   const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
 
-  it("rejects an emulated x64 Rust host on a native ARM64 Windows machine", async () => {
+  it("rejects an x64 toolchain on a native ARM64 Windows machine", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-os-arch-"));
     const binDir = path.join(directory, "bin");
     const cargoLog = path.join(directory, "cargo.log");
@@ -1881,6 +1886,7 @@ describe("native Cargo host architecture guard", () => {
             PROCESSOR_ARCHITECTURE: "AMD64",
             PROCESSOR_ARCHITEW6432: "ARM64",
             EPIKRISE_RUNNER_ARCH: "ARM64",
+            VSCMD_ARG_HOST_ARCH: "x64",
             CARGO_LOG: cargoLog,
           },
         }),

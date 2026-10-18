@@ -136,16 +136,14 @@ describe("Tauri build output path", () => {
         ? "epikrise.exe"
         : "epikrise";
       expect(stdout).toBe(
-        path.posix
-          .join(
-            repoRoot,
-            "src-tauri/target",
-            `host-${host}`,
-            targetSuffix,
-            profile,
-            executable,
-          )
-          .replace(repoRoot, toGitBashPath(repoRoot)),
+        path.posix.join(
+          toGitBashPath(repoRoot),
+          "src-tauri/target",
+          `host-${host}`,
+          targetSuffix,
+          profile,
+          executable,
+        ),
       );
     },
   );
