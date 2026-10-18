@@ -56,8 +56,10 @@ if [[ "$host_arch" != "$expected_arch" ]]; then
 fi
 
 msvc_cl_exe=""
+msvc_cl_cmake=""
 msvc_toolset_dir=""
 if [[ -n "${EPIKRISE_MSVC_CL_EXE:-}" ]]; then
+  msvc_cl_cmake="$EPIKRISE_MSVC_CL_EXE"
   msvc_cl_exe="$(cygpath -u "$EPIKRISE_MSVC_CL_EXE")"
   msvc_tools_bin="$(dirname "$msvc_cl_exe")"
   msvc_toolset_dir="$(dirname "$(dirname "$(dirname "$(dirname "$msvc_cl_exe")")")")"
@@ -80,6 +82,15 @@ if [[ -n "${EPIKRISE_MSVC_CL_EXE:-}" ]]; then
   export PATH
   export INCLUDE
   export LIB
+else
+  msvc_cl_exe="$(command -v cl.exe || command -v cl || true)"
+  if [[ -n "$msvc_cl_exe" ]]; then
+    msvc_cl_cmake="$(cygpath -w "$msvc_cl_exe")"
+  fi
+fi
+if [[ -z "$msvc_cl_exe" || -z "$msvc_cl_cmake" ]]; then
+  printf 'Could not locate the selected MSVC compiler executable.\n' >&2
+  exit 1
 fi
 
 msys2_env_conv_excl="${MSYS2_ENV_CONV_EXCL:-}"
@@ -182,6 +193,8 @@ cmake_args=(
   -DCMAKE_INSTALL_PREFIX="$prefix"
   -DCMAKE_INSTALL_LIBDIR=lib
   -DCMAKE_PREFIX_PATH="$prefix"
+  -DCMAKE_C_COMPILER="$msvc_cl_cmake"
+  -DCMAKE_CXX_COMPILER="$msvc_cl_cmake"
   -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
   -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
   -DBUILD_SHARED_LIBS=OFF
