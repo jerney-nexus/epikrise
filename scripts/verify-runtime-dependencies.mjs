@@ -34,6 +34,15 @@ export function assertResolvedLinuxDependencies(binaryPath, output) {
     );
   }
 
+  const unavailableLibraryVersions = lines.filter((line) =>
+    /\bversion\s+['"][^'"]+['"]\s+not found\b/i.test(line),
+  );
+  if (unavailableLibraryVersions.length > 0) {
+    throw new Error(
+      `Unresolved runtime library versions for ${binaryPath}: ${unavailableLibraryVersions.map((line) => line.trim()).join("; ")}.`,
+    );
+  }
+
   const hasDependencyRecord = lines.some((line) =>
     /^\s*\S+\.so(?:\.\S+)*\s+(?:=>\s+\S+|\(0x[0-9a-f]+\))/i.test(line),
   );
