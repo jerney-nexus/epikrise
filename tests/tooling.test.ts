@@ -906,10 +906,12 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toMatch(/^\s+(push|pull_request):/m);
     expect(workflow).toContain("contents: read");
-    expect(workflow).toContain("vars.EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED");
     expect(workflow).toContain(
       "src-tauri/target/host-$host_target/$TARGET/release/bundle",
     );
+    expect(workflow).toContain("windows-2025");
+    expect(workflow).toContain("windows-11-vs2026-arm");
+    expect(workflow).toContain("build-native-windows.cmd");
     expect(workflow).not.toContain("~/.cache/epikrise/windows\n");
     expect(workflow).toContain("actions/upload-artifact@v7");
     expect(workflow).toContain("${{ runner.arch }}");

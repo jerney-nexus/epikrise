@@ -55,7 +55,7 @@ if [[ "$host_arch" != "$expected_arch" ]]; then
   exit 1
 fi
 
-for tool in cmake ninja cl dumpbin curl tar rg; do
+for tool in cmake ninja cl dumpbin curl tar grep; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     printf 'Required native Windows OCR build tool is missing: %s.\n' "$tool" >&2
     exit 1
@@ -193,7 +193,7 @@ headers="$(
   MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:+$MSYS2_ARG_CONV_EXCL;}/headers" \
     dumpbin /headers "$sidecar"
 )"
-if ! printf '%s\n' "$headers" | rg -Fqi "$expected_machine"; then
+if ! printf '%s\n' "$headers" | grep -Fqi "$expected_machine"; then
   printf 'Tesseract sidecar has the wrong machine type for %s.\n' "$target" >&2
   exit 1
 fi
