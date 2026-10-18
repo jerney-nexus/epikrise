@@ -3,6 +3,10 @@ set -euo pipefail
 
 tauri_command=""
 for argument in "$@"; do
+  if [[ "$argument" == "--" ]]; then
+    break
+  fi
+
   case "$argument" in
     -v*|--verbose)
       continue
