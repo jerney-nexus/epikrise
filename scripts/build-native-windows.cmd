@@ -55,7 +55,7 @@ if /I not "%VSCMD_ARG_TGT_ARCH%"=="%windows_arch%" (
 
 set "EPIKRISE_MSVC_CL_EXE="
 set "msvc_cl_file=%TEMP%\epikrise-msvc-cl-%RANDOM%.txt"
-where.exe cl.exe > "%msvc_cl_file%"
+where.exe /r "%VSINSTALLDIR%\VC\Tools\MSVC" cl.exe | findstr /i /c:"\Host%VSCMD_ARG_HOST_ARCH%\%VSCMD_ARG_TGT_ARCH%\cl.exe" > "%msvc_cl_file%"
 if errorlevel 1 goto msvc_cl_missing
 set /p "EPIKRISE_MSVC_CL_EXE="<"%msvc_cl_file%"
 if defined EPIKRISE_MSVC_CL_EXE goto msvc_cl_found
