@@ -117,8 +117,10 @@ Prerequisites are Node.js 22, Corepack/pnpm `12.10.1`, Rust for the native
 Windows architecture, Visual Studio's **Desktop development with C++**
 workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`,
 `curl`, `tar`, and `grep` on `PATH`. On ARM64, include native ARM64 C++ tools.
-If CMake is missing, add **C++ CMake tools for Windows** under **Individual
-components** in Visual Studio Installer. Install missing Ninja separately with
+If CMake remains missing after installing **C++ CMake tools for Windows** in
+Visual Studio Installer, install it with
+`winget install --id Kitware.CMake --exact --source winget`. Install missing
+Ninja separately with
 `winget install --id Ninja-build.Ninja --exact --source winget`. See the
 [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
 and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact
