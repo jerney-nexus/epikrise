@@ -55,6 +55,17 @@ if /I not "%VSCMD_ARG_TGT_ARCH%"=="%windows_arch%" (
 
 set "EPIKRISE_RUNNER_ARCH=%VSCMD_ARG_HOST_ARCH%"
 
+set "vs_cmake_bin=%VSINSTALLDIR%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+if not exist "%vs_cmake_bin%\cmake.exe" goto vs_cmake_not_found
+set "PATH=%vs_cmake_bin%;%PATH%"
+goto vs_cmake_ready
+:vs_cmake_not_found
+where.exe cmake.exe >nul 2>&1
+if not errorlevel 1 goto vs_cmake_ready
+echo CMake was not found in Visual Studio's bundled tools or PATH. Install the C++ CMake tools component. 1>&2
+exit /b 1
+:vs_cmake_ready
+
 set "EPIKRISE_MSVC_CL_EXE="
 set "msvc_cl_file=%TEMP%\epikrise-msvc-cl-%RANDOM%.txt"
 where.exe /r "%VSINSTALLDIR%\VC\Tools\MSVC" cl.exe | findstr /i /c:"\Host%VSCMD_ARG_HOST_ARCH%\%VSCMD_ARG_TGT_ARCH%\cl.exe" > "%msvc_cl_file%"
