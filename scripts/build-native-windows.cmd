@@ -20,7 +20,16 @@ if not exist "%vswhere%" (
   exit /b 1
 )
 
-for /f "usebackq delims=" %%I in (`"%vswhere%" -latest -products * -property installationPath`) do set "VSINSTALLDIR=%%I"
+set "VSINSTALLDIR="
+set "vswhere_output=%TEMP%\epikrise-vswhere-%RANDOM%.txt"
+"%vswhere%" -latest -products * -property installationPath > "%vswhere_output%"
+if errorlevel 1 (
+  del /q "%vswhere_output%" >nul 2>&1
+  echo Visual Studio installation could not be located by vswhere. 1>&2
+  exit /b 1
+)
+set /p "VSINSTALLDIR="<"%vswhere_output%"
+del /q "%vswhere_output%" >nul 2>&1
 if not defined VSINSTALLDIR (
   echo Visual Studio installation was not found. 1>&2
   exit /b 1

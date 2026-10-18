@@ -304,8 +304,7 @@ jobs:
               lipo "src-tauri/binaries/tesseract-$TARGET" -archs | grep -qw arm64
               lipo src-tauri/resources/ocr/pdfium/libpdfium.dylib -archs | grep -qw arm64
               ;;
-            x86_64-pc-windows-msvc)
-            aarch64-pc-windows-msvc)
+            x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)
               node scripts/verify-binary-architecture.mjs "$TARGET" "src-tauri/binaries/tesseract-$TARGET.exe"
               node scripts/verify-binary-architecture.mjs "$TARGET" src-tauri/resources/ocr/pdfium/pdfium.dll
               ;;

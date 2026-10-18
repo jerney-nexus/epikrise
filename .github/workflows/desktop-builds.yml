@@ -139,34 +139,6 @@ jobs:
         if: matrix.platform != 'windows'
         run: bash scripts/prepare-ocr.sh --target "$TARGET"
 
-      - name: Verify staged OCR architectures
-        shell: bash
-        run: |
-          case "$TARGET" in
-            x86_64-unknown-linux-gnu)
-              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'Advanced Micro Devices X86-64'
-              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'Advanced Micro Devices X86-64'
-              ;;
-            aarch64-unknown-linux-gnu)
-              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'AArch64'
-              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'AArch64'
-              ;;
-            x86_64-apple-darwin)
-              lipo "src-tauri/binaries/tesseract-$TARGET" -archs | grep -qw x86_64
-              lipo src-tauri/resources/ocr/pdfium/libpdfium.dylib -archs | grep -qw x86_64
-              ;;
-            aarch64-apple-darwin)
-              lipo "src-tauri/binaries/tesseract-$TARGET" -archs | grep -qw arm64
-              lipo src-tauri/resources/ocr/pdfium/libpdfium.dylib -archs | grep -qw arm64
-              ;;
-            x86_64-pc-windows-msvc)
-              ;;
-            aarch64-pc-windows-msvc)
-              node scripts/verify-binary-architecture.mjs "$TARGET" "src-tauri/binaries/tesseract-$TARGET.exe"
-              node scripts/verify-binary-architecture.mjs "$TARGET" src-tauri/resources/ocr/pdfium/pdfium.dll
-              ;;
-          esac
-
       - name: Build Windows ARM64 diagnostic installer
         if: matrix.target == 'aarch64-pc-windows-msvc' && inputs.windows_arm64_symbols
         env:
@@ -192,6 +164,32 @@ jobs:
           read -r -a bundles <<< "$BUNDLE_TARGETS"
           bash scripts/with-cargo-host-target.sh \
             pnpm exec tauri build --target "$TARGET" --bundles "${bundles[@]}" --no-sign
+
+      - name: Verify staged OCR architectures
+        shell: bash
+        run: |
+          case "$TARGET" in
+            x86_64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'Advanced Micro Devices X86-64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'Advanced Micro Devices X86-64'
+              ;;
+            aarch64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'AArch64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'AArch64'
+              ;;
+            x86_64-apple-darwin)
+              lipo "src-tauri/binaries/tesseract-$TARGET" -archs | grep -qw x86_64
+              lipo src-tauri/resources/ocr/pdfium/libpdfium.dylib -archs | grep -qw x86_64
+              ;;
+            aarch64-apple-darwin)
+              lipo "src-tauri/binaries/tesseract-$TARGET" -archs | grep -qw arm64
+              lipo src-tauri/resources/ocr/pdfium/libpdfium.dylib -archs | grep -qw arm64
+              ;;
+            x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)
+              node scripts/verify-binary-architecture.mjs "$TARGET" "src-tauri/binaries/tesseract-$TARGET.exe"
+              node scripts/verify-binary-architecture.mjs "$TARGET" src-tauri/resources/ocr/pdfium/pdfium.dll
+              ;;
+          esac
 
       - name: Stage packages and manifest
         shell: bash
