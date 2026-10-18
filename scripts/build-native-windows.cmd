@@ -68,7 +68,7 @@ exit /b 1
 
 set "EPIKRISE_MSVC_CL_EXE="
 set "msvc_cl_file=%TEMP%\epikrise-msvc-cl-%RANDOM%.txt"
-where.exe /r "%VSINSTALLDIR%\VC\Tools\MSVC" cl.exe | findstr /i /c:"\Host%VSCMD_ARG_HOST_ARCH%\%VSCMD_ARG_TGT_ARCH%\cl.exe" > "%msvc_cl_file%"
+where.exe /r "%VSINSTALLDIR%\VC\Tools\MSVC" cl.exe 2>nul | findstr /i /c:"\Host%VSCMD_ARG_HOST_ARCH%\%VSCMD_ARG_TGT_ARCH%\cl.exe" > "%msvc_cl_file%"
 if errorlevel 1 goto msvc_cl_missing
 set /p "EPIKRISE_MSVC_CL_EXE="<"%msvc_cl_file%"
 if defined EPIKRISE_MSVC_CL_EXE goto msvc_cl_found
@@ -81,7 +81,7 @@ del /q "%msvc_cl_file%" >nul 2>&1
 
 set "EPIKRISE_MSVC_LINK_EXE="
 set "msvc_link_file=%TEMP%\epikrise-msvc-link-%RANDOM%.txt"
-where.exe /r "%VSINSTALLDIR%\VC\Tools\MSVC" link.exe | findstr /i /c:"\Host%VSCMD_ARG_HOST_ARCH%\%VSCMD_ARG_TGT_ARCH%\link.exe" > "%msvc_link_file%"
+where.exe /r "%VSINSTALLDIR%\VC\Tools\MSVC" link.exe 2>nul | findstr /i /c:"\Host%VSCMD_ARG_HOST_ARCH%\%VSCMD_ARG_TGT_ARCH%\link.exe" > "%msvc_link_file%"
 if errorlevel 1 goto msvc_link_missing
 set /p "EPIKRISE_MSVC_LINK_EXE="<"%msvc_link_file%"
 if defined EPIKRISE_MSVC_LINK_EXE goto msvc_link_found
@@ -107,13 +107,13 @@ if /I "%windows_arch%"=="x64" set "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=%E
 if /I not "%windows_arch%"=="arm64" goto clang_ready
 set "EPIKRISE_CLANG_EXE="
 set "clang_file=%TEMP%\epikrise-clang-%RANDOM%.txt"
-where.exe clang.exe > "%clang_file%"
+where.exe clang.exe > "%clang_file%" 2>nul
 if errorlevel 1 goto clang_search_visual_studio
 set /p "EPIKRISE_CLANG_EXE="<"%clang_file%"
 if defined EPIKRISE_CLANG_EXE goto clang_found
 :clang_search_visual_studio
 if not exist "%VSINSTALLDIR%\VC\Tools\Llvm" goto clang_missing
-where.exe /r "%VSINSTALLDIR%\VC\Tools\Llvm" clang.exe > "%clang_file%"
+where.exe /r "%VSINSTALLDIR%\VC\Tools\Llvm" clang.exe > "%clang_file%" 2>nul
 if errorlevel 1 goto clang_missing
 set /p "EPIKRISE_CLANG_EXE="<"%clang_file%"
 if defined EPIKRISE_CLANG_EXE goto clang_found
