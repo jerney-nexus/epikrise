@@ -102,12 +102,21 @@ Install these prerequisites before building:
   initializing Visual Studio. If it reports that `bash` is missing, add the
   Git for Windows `bin` folder to this PowerShell session's `PATH`. CMake,
   Ninja, `curl`, `tar`, and `grep` must also be available to the build shell.
-  To install CMake and Ninja with Visual Studio, open **Visual Studio Installer**,
-  select **Modify** for the installed Visual Studio or Build Tools instance,
-  ensure **Desktop development with C++** is selected, then open **Individual
-  components** and select **C++ CMake tools for Windows** and **Ninja: build
-  system**. Apply the changes, open a new PowerShell window, and rerun the build
-  wrapper; it initializes Visual Studio and checks for both tools.
+  To install CMake with Visual Studio, open **Visual Studio Installer**, select
+  **Modify** for the installed Visual Studio or Build Tools instance, ensure
+  **Desktop development with C++** is selected, then open **Individual
+  components** and select **C++ CMake tools for Windows**. Ninja is a separate
+  tool; install it from the WinGet community repository in PowerShell:
+
+  ```powershell
+  winget show --id Ninja-build.Ninja --exact --source winget
+  winget install --id Ninja-build.Ninja --exact --source winget
+  ```
+
+  After installation, open a new PowerShell window and confirm that
+  `ninja --version` prints a version. The wrapper initializes Visual Studio and
+  checks that both CMake and Ninja are available to the build shell.
+
 - Tesseract language data containing both `deu.traineddata` and
   `eng.traineddata`. You do not need an installed Tesseract executable if you
   set `EPIKRISE_TESSDATA_DIR` to that data directory.
