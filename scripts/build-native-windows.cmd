@@ -53,5 +53,12 @@ if /I not "%VSCMD_ARG_TGT_ARCH%"=="%windows_arch%" (
   exit /b 1
 )
 
+set "msvc_tools_bin=%VCToolsInstallDir%bin\Host%VSCMD_ARG_HOST_ARCH%\%VSCMD_ARG_TGT_ARCH%"
+if exist "%msvc_tools_bin%\cl.exe" goto msvc_tools_found
+echo Visual Studio compiler was not found: "%msvc_tools_bin%\cl.exe" 1>&2
+exit /b 1
+:msvc_tools_found
+set "EPIKRISE_MSVC_TOOLS_BIN=%msvc_tools_bin%"
+
 call bash scripts/build-native-windows.sh "%windows_arch%" "%build_mode%"
 exit /b %errorlevel%

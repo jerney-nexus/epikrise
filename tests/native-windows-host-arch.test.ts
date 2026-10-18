@@ -125,6 +125,7 @@ describe("native Windows MSVC host architecture", () => {
   it("separates caches by MSVC host architecture", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-msvc-cache-"));
     const binDir = path.join(directory, "bin");
+    const msvcBinDir = path.join(directory, "msvc-bin");
     const cacheRoot = path.join(directory, "cache");
     const curlLog = path.join(directory, "curl.log");
     const target = "x86_64-pc-windows-msvc";
@@ -132,6 +133,7 @@ describe("native Windows MSVC host architecture", () => {
 
     try {
       await mkdir(binDir);
+      await mkdir(msvcBinDir);
       await writeExecutable(
         path.join(binDir, "uname"),
         "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
@@ -144,9 +146,19 @@ describe("native Windows MSVC host architecture", () => {
         path.join(binDir, "rustc"),
         `#!/usr/bin/env bash\nprintf 'host: ${target}\\n'\n`,
       );
-      for (const tool of ["cmake", "ninja", "cl.exe", "dumpbin.exe", "tar", "grep"]) {
+      for (const tool of ["cmake", "ninja", "tar", "grep"]) {
         await writeExecutable(path.join(binDir, tool), "#!/usr/bin/env bash\nexit 0\n");
       }
+      for (const tool of ["cl.exe", "dumpbin.exe"]) {
+        await writeExecutable(
+          path.join(msvcBinDir, tool),
+          "#!/usr/bin/env bash\nexit 0\n",
+        );
+      }
+      await writeExecutable(
+        path.join(binDir, "cygpath"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$MSVC_BIN_DIR"\n',
+      );
       await writeExecutable(
         path.join(binDir, "curl"),
         '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
@@ -160,6 +172,8 @@ describe("native Windows MSVC host architecture", () => {
             VSCMD_ARG_TGT_ARCH: "x64",
             VSCMD_ARG_HOST_ARCH: "x64",
             VCToolsVersion: toolset,
+            EPIKRISE_MSVC_TOOLS_BIN: "C:\\Visual Studio\\VC\\Tools\\MSVC\\bin",
+            MSVC_BIN_DIR: msvcBinDir,
             CURL_LOG: curlLog,
             EPIKRISE_NATIVE_WINDOWS_OCR_CACHE: cacheRoot,
           },
