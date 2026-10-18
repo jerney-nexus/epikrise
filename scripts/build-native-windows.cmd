@@ -53,6 +53,8 @@ if /I not "%VSCMD_ARG_TGT_ARCH%"=="%windows_arch%" (
   exit /b 1
 )
 
+set "EPIKRISE_RUNNER_ARCH=%VSCMD_ARG_HOST_ARCH%"
+
 set "EPIKRISE_MSVC_CL_EXE="
 set "msvc_cl_file=%TEMP%\epikrise-msvc-cl-%RANDOM%.txt"
 where.exe /r "%VSINSTALLDIR%\VC\Tools\MSVC" cl.exe | findstr /i /c:"\Host%VSCMD_ARG_HOST_ARCH%\%VSCMD_ARG_TGT_ARCH%\cl.exe" > "%msvc_cl_file%"
