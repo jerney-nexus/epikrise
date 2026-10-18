@@ -101,12 +101,13 @@ Install these prerequisites before building:
   `VC\Auxiliary\Build\vcvarsall.bat` must be present. See the
   [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
   and [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
-- Git for Windows, with its `bin` directory on `PATH` so the native wrapper can
-  start `bash.exe`; confirm it is available with `Get-Command bash.exe`. The
-  native wrapper locates Visual Studio and initializes its developer
-  environment. CMake, Ninja, `cl`, `dumpbin`, `curl`, `tar`, and `rg` must be
-  available to the build shell. To install CMake with Visual Studio, open **Visual Studio
-  Installer**, select
+- Git for Windows, which provides Git Bash. The wrapper starts Bash after
+  initializing Visual Studio. If Git is installed but the wrapper reports that
+  `bash` is missing, add the Git for Windows `bin` folder to this PowerShell
+  session's `PATH` as shown below. The native wrapper locates Visual Studio and
+  initializes its developer environment. CMake, Ninja, `cl`, `dumpbin`, `curl`,
+  `tar`, and `rg` must also be available to the build shell. To install CMake
+  with Visual Studio, open **Visual Studio Installer**, select
   **Modify** for the installed Visual Studio or Build Tools instance, ensure
   **Desktop development with C++** is selected, then open **Individual
   components** and select **C++ CMake tools for Windows**. If the build still
@@ -155,21 +156,25 @@ The user-local Corepack shim avoids writing under `C:\Program Files`. Use
 this session's `PATH` and can find the same pnpm command.
 
 The version commands should report Node 22 and pnpm 12.15.0; `rustc -vV`
-must report the native host triple listed above. `Get-Command bash.exe` must
-find Git Bash. If it cannot, add the Git for Windows `bin` folder to this
-PowerShell session's `PATH` and run the check again. This checks common
-install locations:
+must report the native host triple listed above. To add Git Bash to this
+PowerShell session's `PATH` if necessary, locate its standard installation
+using `git.exe`:
 
 ```powershell
-$gitBin = @(
-  "$env:ProgramFiles\Git\bin",
-  "${env:ProgramFiles(x86)}\Git\bin",
-  "$env:LOCALAPPDATA\Programs\Git\bin"
-) | Where-Object { Test-Path (Join-Path $_ 'bash.exe') } | Select-Object -First 1
-if (-not $gitBin) { throw 'Git for Windows Bash was not found. Install Git for Windows or set $gitBin to its bin folder.' }
+$gitExe = (Get-Command git.exe -ErrorAction Stop).Source
+$gitRoot = Split-Path (Split-Path $gitExe -Parent) -Parent
+$gitBin = Join-Path $gitRoot 'bin'
+$bash = Join-Path $gitBin 'bash.exe'
+if (-not (Test-Path $bash)) {
+  throw "Git Bash was not found at $bash. Install Git for Windows or locate its bin folder."
+}
 $env:Path = "$gitBin;$env:Path"
-Get-Command bash.exe
+& $bash --version
 ```
+
+The last command should print the Bash version; retry the wrapper in this same
+PowerShell window. Install Git for Windows if `git.exe` or `bash.exe` cannot be
+found.
 
 Set `EPIKRISE_TESSDATA_DIR` to a folder containing both
 `deu.traineddata` and `eng.traineddata`. If Tesseract is installed with both
