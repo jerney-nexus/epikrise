@@ -15,19 +15,19 @@ if /I "%windows_arch%"=="x64" (
 )
 
 set "vswhere=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-if not exist "%vswhere%" (
-  echo Visual Studio locator was not found: %vswhere% 1>&2
-  exit /b 1
-)
+if exist "%vswhere%" goto vswhere_found
+echo Visual Studio locator was not found: "%vswhere%" 1>&2
+exit /b 1
+:vswhere_found
 
 set "VSINSTALLDIR="
 set "vswhere_output=%TEMP%\epikrise-vswhere-%RANDOM%.txt"
 "%vswhere%" -latest -products * -property installationPath > "%vswhere_output%"
-if errorlevel 1 (
-  del /q "%vswhere_output%" >nul 2>&1
-  echo Visual Studio installation could not be located by vswhere. 1>&2
-  exit /b 1
-)
+if not errorlevel 1 goto vswhere_query_succeeded
+del /q "%vswhere_output%" >nul 2>&1
+echo Visual Studio installation could not be located by vswhere. 1>&2
+exit /b 1
+:vswhere_query_succeeded
 set /p "VSINSTALLDIR="<"%vswhere_output%"
 del /q "%vswhere_output%" >nul 2>&1
 if not defined VSINSTALLDIR (
@@ -36,10 +36,10 @@ if not defined VSINSTALLDIR (
 )
 
 set "vcvarsall=%VSINSTALLDIR%\VC\Auxiliary\Build\vcvarsall.bat"
-if not exist "%vcvarsall%" (
-  echo Visual Studio environment setup was not found: %vcvarsall% 1>&2
-  exit /b 1
-)
+if exist "%vcvarsall%" goto vcvarsall_found
+echo Visual Studio environment setup was not found: "%vcvarsall%" 1>&2
+exit /b 1
+:vcvarsall_found
 
 call "%vcvarsall%" %windows_arch%
 if errorlevel 1 exit /b %errorlevel%
