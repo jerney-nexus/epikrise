@@ -1834,6 +1834,62 @@ describe("native Cargo host target guard", () => {
     }
   });
 
+  it("keeps signing credentials out of OCR preparation", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-signing-env-"));
+    const binDir = path.join(directory, "bin");
+    const ocrLog = path.join(directory, "ocr.log");
+    const tauriLog = path.join(directory, "tauri.log");
+
+    try {
+      await mkdir(binDir);
+      const { stdout: bashPath } = await execFile("bash", ["-c", "command -v bash"]);
+      await writeExecutable(
+        path.join(binDir, "bash"),
+        `#!/bin/sh
+script="$1"
+shift
+case "$script" in
+  */scripts/tauri-command.sh)
+    printf 'dev'
+    ;;
+  */scripts/with-cargo-host-target.sh)
+    case " $* " in
+      *" --validate-only "*) exit 0 ;;
+    esac
+    printf '%s|%s\\n' "\${TAURI_SIGNING_PRIVATE_KEY-unset}" "\${TAURI_SIGNING_PRIVATE_KEY_PASSWORD-unset}" > "$TAURI_LOG"
+    ;;
+  */scripts/prepare-ocr.sh)
+    printf '%s|%s\\n' "\${TAURI_SIGNING_PRIVATE_KEY-unset}" "\${TAURI_SIGNING_PRIVATE_KEY_PASSWORD-unset}" > "$OCR_LOG"
+    ;;
+  *)
+    printf 'Unexpected Bash invocation: %s\\n' "$script" >&2
+    exit 1
+    ;;
+esac
+`,
+      );
+
+      await execFile(bashPath.trim(), [tauriScriptPath, "dev"], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          OCR_LOG: ocrLog,
+          TAURI_LOG: tauriLog,
+          TAURI_SIGNING_PRIVATE_KEY: "test-signing-key",
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "test-signing-password",
+        },
+      });
+
+      expect(await readFile(ocrLog, "utf8")).toBe("unset|unset\n");
+      expect(await readFile(tauriLog, "utf8")).toBe(
+        "test-signing-key|test-signing-password\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("forwards a matching native target to Cargo", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));
     const binDir = path.join(directory, "bin");

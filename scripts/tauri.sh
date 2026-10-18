@@ -2,6 +2,12 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+signing_private_key="${TAURI_SIGNING_PRIVATE_KEY-}"
+signing_private_key_password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD-}"
+signing_private_key_was_set="${TAURI_SIGNING_PRIVATE_KEY+x}"
+signing_private_key_password_was_set="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD+x}"
+unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+
 tauri_command="$(bash "$repo_root/scripts/tauri-command.sh" "$@")"
 native_guard_args=(--native-only)
 if [[ "$tauri_command" == "build" ]]; then
@@ -12,9 +18,27 @@ fi
 
 bash "$repo_root/scripts/with-cargo-host-target.sh" \
 	"${native_guard_args[@]}" --validate-only tauri "$@"
-bash "$repo_root/scripts/prepare-ocr.sh"
-bash "$repo_root/scripts/with-cargo-host-target.sh" \
-	"${native_guard_args[@]}" tauri "$@"
+(
+	unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+	bash "$repo_root/scripts/prepare-ocr.sh"
+)
+
+if [[ -n "$signing_private_key_was_set" ]]; then
+	export TAURI_SIGNING_PRIVATE_KEY="$signing_private_key"
+fi
+if [[ -n "$signing_private_key_password_was_set" ]]; then
+	export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password"
+fi
+if bash "$repo_root/scripts/with-cargo-host-target.sh" \
+	"${native_guard_args[@]}" tauri "$@"; then
+	tauri_status=0
+else
+	tauri_status=$?
+fi
+unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+if [[ "$tauri_status" -ne 0 ]]; then
+	exit "$tauri_status"
+fi
 
 if [[ "$tauri_command" == "build" ]]; then
 	host_target="$(rustc -vV | sed -n 's/^host: //p')"
