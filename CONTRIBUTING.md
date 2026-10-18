@@ -229,6 +229,15 @@ Diagnostic builds disable release LTO, use 16 codegen units, and compile at
 optimization level 2 to reduce peak memory use. Signed release builds retain
 the optimized release profile configured in `src-tauri/Cargo.toml`.
 
+Build caches are kept between runs: Cargo artifacts live under
+`src-tauri/target/host-<host-triple>/`, and the native OCR CMake/Ninja build
+cache lives under `%USERPROFILE%\.cache\epikrise\windows-ocr-native-msvc\`.
+Cargo reuses outputs that are still up to date; changes to Rust sources,
+toolchain/profile settings, or build inputs may require affected crates to
+compile again. The diagnostic profile has just changed to reduce memory, so
+its first run rebuilds artifacts for the new profile. Avoid `cargo clean` or
+deleting these cache directories unless you intentionally want a full rebuild.
+
 If compilation reports that `vcruntime.h` cannot be found, the installed MSVC
 toolset or its C++ headers are missing or inconsistent. Use Visual Studio
 Installer to add or repair the C++ build tools and Windows SDK for the host

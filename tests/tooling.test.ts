@@ -937,7 +937,7 @@ describe("six-target desktop build tooling", () => {
     expect(buildScript).toContain('if exist "%vcvarsall%" goto vcvarsall_found');
     expect(buildScript).toContain('set "EPIKRISE_RUNNER_ARCH=%VSCMD_ARG_HOST_ARCH%"');
     expect(buildScript).toContain(
-      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" link.exe | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\link.exe"',
+      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" link.exe 2>nul | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\link.exe"',
     );
     expect(buildScript).toContain(
       'set "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=%EPIKRISE_MSVC_LINK_EXE%"',
@@ -953,12 +953,13 @@ describe("six-target desktop build tooling", () => {
     expect(buildScript).toContain(
       'set "LIB=%msvc_toolset_dir%\\lib\\%windows_arch%;%LIB%"',
     );
+    expect(buildScript).toContain('where.exe clang.exe > "%clang_file%" 2>nul');
     expect(buildScript).toContain(
-      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\Llvm" clang.exe',
+      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\Llvm" clang.exe > "%clang_file%" 2>nul',
     );
     expect(buildScript).toContain("Clang is required to build ring for Windows ARM64.");
     expect(buildScript).toContain(
-      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" cl.exe | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\cl.exe"',
+      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" cl.exe 2>nul | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\cl.exe"',
     );
     expect(buildScript).toContain('set /p "EPIKRISE_MSVC_CL_EXE="<"%msvc_cl_file%"');
     expect(buildScript).toContain("if defined EPIKRISE_MSVC_CL_EXE goto msvc_cl_found");
