@@ -935,7 +935,9 @@ describe("six-target desktop build tooling", () => {
     );
     expect(buildScript).toContain('if exist "%vswhere%" goto vswhere_found');
     expect(buildScript).toContain('if exist "%vcvarsall%" goto vcvarsall_found');
-    expect(buildScript).toContain('where.exe cl.exe > "%msvc_cl_file%"');
+    expect(buildScript).toContain(
+      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" cl.exe | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\cl.exe"',
+    );
     expect(buildScript).toContain('set /p "EPIKRISE_MSVC_CL_EXE="<"%msvc_cl_file%"');
     expect(buildScript).toContain("if defined EPIKRISE_MSVC_CL_EXE goto msvc_cl_found");
     expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
