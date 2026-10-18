@@ -79,14 +79,30 @@ exit /b 1
 :msvc_cl_found
 del /q "%msvc_cl_file%" >nul 2>&1
 
+set "EPIKRISE_MSVC_LINK_EXE="
+set "msvc_link_file=%TEMP%\epikrise-msvc-link-%RANDOM%.txt"
+where.exe /r "%VSINSTALLDIR%\VC\Tools\MSVC" link.exe | findstr /i /c:"\Host%VSCMD_ARG_HOST_ARCH%\%VSCMD_ARG_TGT_ARCH%\link.exe" > "%msvc_link_file%"
+if errorlevel 1 goto msvc_link_missing
+set /p "EPIKRISE_MSVC_LINK_EXE="<"%msvc_link_file%"
+if defined EPIKRISE_MSVC_LINK_EXE goto msvc_link_found
+:msvc_link_missing
+del /q "%msvc_link_file%" >nul 2>&1
+echo Visual Studio linker could not be located for host %VSCMD_ARG_HOST_ARCH% and target %VSCMD_ARG_TGT_ARCH%. 1>&2
+exit /b 1
+:msvc_link_found
+del /q "%msvc_link_file%" >nul 2>&1
+
 for %%I in ("%EPIKRISE_MSVC_CL_EXE%") do set "msvc_compiler_dir=%%~dpI"
 for %%I in ("%msvc_compiler_dir%..\..\..") do set "msvc_toolset_dir=%%~fI"
 for %%I in ("%msvc_toolset_dir%") do set "VCToolsVersion=%%~nxI"
+for %%I in ("%EPIKRISE_MSVC_LINK_EXE%") do set "msvc_link_dir=%%~dpI"
 set "VCINSTALLDIR=%VSINSTALLDIR%\VC\"
 set "VCToolsInstallDir=%msvc_toolset_dir%\"
-set "PATH=%msvc_compiler_dir%;%PATH%"
+set "PATH=%msvc_link_dir%;%msvc_compiler_dir%;%PATH%"
 set "INCLUDE=%msvc_toolset_dir%\include;%INCLUDE%"
 set "LIB=%msvc_toolset_dir%\lib\%windows_arch%;%LIB%"
+if /I "%windows_arch%"=="arm64" set "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=%EPIKRISE_MSVC_LINK_EXE%"
+if /I "%windows_arch%"=="x64" set "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=%EPIKRISE_MSVC_LINK_EXE%"
 
 if /I not "%windows_arch%"=="arm64" goto clang_ready
 set "EPIKRISE_CLANG_EXE="
