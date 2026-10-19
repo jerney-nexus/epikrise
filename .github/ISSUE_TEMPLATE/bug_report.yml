@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible problem with Epikrise
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include patient data, clinical text, credentials, API keys, or other sensitive information. Use synthetic examples only. For security vulnerabilities, use the private reporting link in the issue chooser instead of opening a public issue.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the problem without including clinical content or secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use synthetic, non-sensitive examples. Include only the minimum steps needed.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Epikrise version
+      description: Find the app version in About or provide the commit if using a development build.
+      placeholder: "2026.10.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Include relevant non-sensitive details, such as steps already tried. Do not attach clinical documents or screenshots containing patient data.
+    validations:
+      required: false
