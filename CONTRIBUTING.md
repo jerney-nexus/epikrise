@@ -212,9 +212,9 @@ Prompt, or Git Bash session. They select the current Windows architecture and
 preserve the Tauri arguments; the explicit wrapper commands above remain the
 recommended path for diagnostic native builds. Native-only Tauri `build` and
 `dev` commands reject custom runners such as `cargo-xwin`; the default `cargo`
-runner remains available. They also reject cross-target Cargo configuration
+runner remains available. They also validate cross-target Cargo configuration
 from Cargo config files, `CARGO_BUILD_TARGET`, and forwarded Cargo `--config`
-overrides unless the effective command target is native.
+overrides against the effective command target before OCR preparation.
 
 The first build needs network access to download and checksum-verify the OCR
 source archives and PDFium. The unsigned diagnostic installer is written under
