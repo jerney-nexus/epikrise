@@ -104,12 +104,13 @@ if [[ "$native_only" == true ]]; then
   explicit_targets=()
   after_separator=false
   while [[ $# -gt 0 ]]; do
-    if [[ "$tauri_build" == true && "$after_separator" == false ]]; then
+    if [[ ( "$tauri_build" == true || "$tauri_dev" == true ) && "$after_separator" == false ]]; then
       case "$1" in
-        --runner)
+        --runner|-r)
+          runner_option="$1"
           shift
           if [[ $# -eq 0 || -z "$1" ]]; then
-            printf 'Missing value for --runner.\n' >&2
+            printf 'Missing value for %s.\n' "$runner_option" >&2
             exit 2
           fi
           if [[ "$1" != "cargo" ]]; then
@@ -117,12 +118,19 @@ if [[ "$native_only" == true ]]; then
             exit 1
           fi
           ;;
-        --runner=*)
-          runner="${1#--runner=}"
+        --runner=*|-r=*)
+          runner="${1#*=}"
           if [[ -z "$runner" ]]; then
-            printf 'Missing value for --runner.\n' >&2
+            printf 'Missing value for runner option %s.\n' "${1%%=*}" >&2
             exit 2
           fi
+          if [[ "$runner" != "cargo" ]]; then
+            printf 'Custom Tauri runner %s is not allowed for native-only builds.\n' "$runner" >&2
+            exit 1
+          fi
+          ;;
+        -r?*)
+          runner="${1#-r}"
           if [[ "$runner" != "cargo" ]]; then
             printf 'Custom Tauri runner %s is not allowed for native-only builds.\n' "$runner" >&2
             exit 1

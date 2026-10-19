@@ -14,7 +14,7 @@ for argument in "$@"; do
   fi
 
   case "$argument" in
-    --runner)
+    --runner|-r)
       skip_next=true
       continue
       ;;
