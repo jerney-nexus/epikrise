@@ -1879,6 +1879,15 @@ describe("native Cargo host target guard", () => {
     ["equals form after the subcommand", ["build", "--runner=cargo-xwin"]],
     ["split before the subcommand", ["--runner", "cargo-xwin", "build"]],
     ["equals form before the subcommand", ["--runner=cargo-xwin", "build"]],
+    ["short split after build", ["build", "-r", "cargo-xwin"]],
+    ["short equals after build", ["build", "-r=cargo-xwin"]],
+    ["short attached after build", ["build", "-rcargo-xwin"]],
+    ["split in dev", ["dev", "--runner", "cargo-xwin"]],
+    ["equals form in dev", ["dev", "--runner=cargo-xwin"]],
+    ["short split in dev", ["dev", "-r", "cargo-xwin"]],
+    ["short equals in dev", ["dev", "-r=cargo-xwin"]],
+    ["short attached in dev", ["dev", "-rcargo-xwin"]],
+    ["short split before dev", ["-r", "cargo-xwin", "dev"]],
   ])(
     "rejects a cross-compilation runner in native builds (%s) before OCR downloads",
     async (_description, args) => {
@@ -2017,6 +2026,59 @@ describe("native Cargo host target guard", () => {
             PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
           },
         },
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves Cargo arguments after the first Tauri dev separator", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-tauri-dev-cargo-args-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+      const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+      expect(host).toBeDefined();
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+      );
+      await writeMockUname(binDir, host!);
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
+      );
+
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "--tauri-dev",
+          "cargo",
+          "dev",
+          "--",
+          "--features",
+          "forwarded-feature",
+          "--",
+          "--app-argument",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            CARGO_LOG: cargoLog,
+          },
+        },
+      );
+
+      await expect(readFile(cargoLog, "utf8")).resolves.toBe(
+        "dev -- --features forwarded-feature -- --app-argument\n",
       );
     } finally {
       await rm(directory, { recursive: true, force: true });
