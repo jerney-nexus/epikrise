@@ -100,8 +100,15 @@ if [[ "$native_only" == true ]]; then
     exit 1
   fi
 
-  requested_target="${CARGO_BUILD_TARGET:-}"
-  explicit_targets=()
+  target_validation_mode="cargo"
+  if [[ "$tauri_build" == true ]]; then
+    target_validation_mode="tauri-build"
+  elif [[ "$tauri_dev" == true ]]; then
+    target_validation_mode="tauri-dev"
+  fi
+  node "$repo_root/scripts/validate-native-cargo-target.mjs" \
+    "$host_triple" "$target_validation_mode" "$@"
+
   after_separator=false
   while [[ $# -gt 0 ]]; do
     if [[ ( "$tauri_build" == true || "$tauri_dev" == true ) && "$after_separator" == false ]]; then
@@ -150,43 +157,7 @@ if [[ "$native_only" == true ]]; then
       break
     fi
 
-    case "$1" in
-      --target|-t)
-        shift
-        if [[ $# -eq 0 || -z "$1" ]]; then
-          printf 'Missing value for --target.\n' >&2
-          exit 2
-        fi
-        explicit_targets+=("$1")
-        ;;
-      --target=*)
-        target="${1#--target=}"
-        if [[ -z "$target" ]]; then
-          printf 'Missing value for --target.\n' >&2
-          exit 2
-        fi
-        explicit_targets+=("$target")
-        ;;
-      -t=*)
-        target="${1#-t=}"
-        if [[ -z "$target" ]]; then
-          printf 'Missing value for --target.\n' >&2
-          exit 2
-        fi
-        explicit_targets+=("$target")
-        ;;
-      -t?*)
-        explicit_targets+=("${1#-t}")
-        ;;
-    esac
     shift
-  done
-
-  for target in "$requested_target" "${explicit_targets[@]-}"; do
-    if [[ -n "$target" && "$target" != "$host_triple" ]]; then
-      printf 'Requested target %s does not match native host %s.\n' "$target" "$host_triple" >&2
-      exit 1
-    fi
   done
 fi
 
