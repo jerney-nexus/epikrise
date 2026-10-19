@@ -45,6 +45,15 @@ function parseConfigFile(filePath, source) {
   }
 }
 
+/** @param {string} directory */
+function preferredConfigFile(directory) {
+  const extensionless = path.join(directory, "config");
+  if (existsSync(extensionless)) return extensionless;
+
+  const toml = path.join(directory, "config.toml");
+  return existsSync(toml) ? toml : undefined;
+}
+
 /**
  * @param {string} cwd
  * @param {NodeJS.ProcessEnv} env
@@ -55,16 +64,14 @@ function configTargetFromDirectories(cwd, env) {
     directories.unshift(directory);
     if (path.dirname(directory) === directory) break;
   }
-
   const cargoHome = path.resolve(env.CARGO_HOME || path.join(os.homedir(), ".cargo"));
-  const configPaths = [
-    path.join(cargoHome, "config"),
-    path.join(cargoHome, "config.toml"),
-    ...directories.flatMap((directory) => [
-      path.join(directory, ".cargo", "config"),
-      path.join(directory, ".cargo", "config.toml"),
-    ]),
-  ];
+  const configPaths = [];
+  const cargoHomeConfig = preferredConfigFile(cargoHome);
+  if (cargoHomeConfig) configPaths.push(cargoHomeConfig);
+  for (const directory of directories) {
+    const configPath = preferredConfigFile(path.join(directory, ".cargo"));
+    if (configPath) configPaths.push(configPath);
+  }
   /** @type {string[]} */
   let targets = [];
   let configured = false;
@@ -144,7 +151,9 @@ function parseShortTarget(args, index) {
   const cluster = option.slice(1);
   const targetIndex = cluster.indexOf("t");
   if (targetIndex < 0) return undefined;
-  if (!/^v*$/.test(cluster.slice(0, targetIndex))) {
+  for (const shortOption of cluster.slice(0, targetIndex)) {
+    if (shortOption === "v") continue;
+    if ("cFfjprZ".includes(shortOption)) return undefined;
     throw new Error(
       `Unsupported short-option cluster containing target shorthand: ${option}. Use -t or -vt.`,
     );
@@ -163,6 +172,31 @@ function parseShortTarget(args, index) {
 
 /**
  * @param {string[]} args
+ * @param {number} index
+ */
+function skipShortOptionValue(args, index, parseConfig) {
+  const argument = args[index];
+  if (!argument.startsWith("-") || argument.startsWith("--")) return undefined;
+
+  const cluster = argument.slice(1);
+  const valueOptions = parseConfig ? "FfjpZ" : "cFfjprZ";
+  for (let optionIndex = 0; optionIndex < cluster.length; optionIndex += 1) {
+    const shortOption = cluster[optionIndex];
+    if (shortOption === "t") return undefined;
+    if (!valueOptions.includes(shortOption)) continue;
+
+    if (optionIndex + 1 < cluster.length) return 0;
+    const value = args[index + 1];
+    if (!value || value === "--") {
+      throw new Error(`Missing value for -${shortOption}.`);
+    }
+    return 1;
+  }
+  return undefined;
+}
+
+/**
+ * @param {string[]} args
  * @param {{ parseConfig: boolean, stopAtSeparator: boolean }} options
  */
 function collectTargets(args, { parseConfig, stopAtSeparator }) {
@@ -175,11 +209,12 @@ function collectTargets(args, { parseConfig, stopAtSeparator }) {
       continue;
     }
 
-    if (parseConfig && (argument === "--config" || argument.startsWith("--config="))) {
-      configs.push(argument);
+    if (argument === "--config" || argument.startsWith("--config=")) {
+      if (parseConfig) configs.push(argument);
       if (argument === "--config") {
-        if (!args[index + 1]) throw new Error("Missing value for Cargo --config.");
-        configs.push(args[++index]);
+        const value = args[++index];
+        if (!value) throw new Error("Missing value for Cargo --config.");
+        if (parseConfig) configs.push(value);
       }
       continue;
     }
@@ -199,6 +234,11 @@ function collectTargets(args, { parseConfig, stopAtSeparator }) {
       if (!target) throw new Error("Missing value for --target.");
       targets.push(target);
     } else if (argument.startsWith("-") && !argument.startsWith("--")) {
+      const consumed = skipShortOptionValue(args, index, parseConfig);
+      if (consumed !== undefined) {
+        index += consumed;
+        continue;
+      }
       const parsed = parseShortTarget(args, index);
       if (parsed) {
         targets.push(parsed.target);
@@ -220,6 +260,12 @@ export function resolveNativeCargoTargets(
   { tauriBuild = false, tauriDev = false, cwd = process.cwd(), env = process.env } = {},
 ) {
   const isTauriCommand = tauriBuild || tauriDev;
+  const launchDirectory = path.resolve(cwd);
+  const cargoCwd = isTauriCommand
+    ? path.basename(launchDirectory) === "src-tauri"
+      ? launchDirectory
+      : path.join(launchDirectory, "src-tauri")
+    : launchDirectory;
   /** @type {string[]} */
   let targets;
   /** @type {string[]} */
@@ -248,8 +294,8 @@ export function resolveNativeCargoTargets(
     configOverrides = cargoOptions.configs;
   }
 
-  const override = configTargetsFromOverrides(configOverrides, cwd);
-  const fileConfig = configTargetFromDirectories(cwd, env);
+  const override = configTargetsFromOverrides(configOverrides, cargoCwd);
+  const fileConfig = configTargetFromDirectories(cargoCwd, env);
   const configuredTargets = override.configured
     ? override.targets
     : env.CARGO_BUILD_TARGET
