@@ -173,6 +173,7 @@ function parseShortTarget(args, index) {
 /**
  * @param {string[]} args
  * @param {number} index
+ * @param {boolean} parseConfig
  */
 function skipShortOptionValue(args, index, parseConfig) {
   const argument = args[index];
