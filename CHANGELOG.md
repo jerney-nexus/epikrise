@@ -14,11 +14,13 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   workflows compile on matching native runners, and generic Windows `pnpm tauri
 build`/`dev` commands initialize MSVC from regular shells. Linux native-host
   checks reject architecture mismatches under QEMU user-mode emulation and
-  custom Tauri runners in native build/dev commands. Local PowerShell setup
-  and troubleshooting are documented. The six-target Desktop builds workflow
-  passed; native install, launch, and uninstall were confirmed on Windows
-  ARM64 and macOS Apple Silicon. Live testing on the other platform targets is
-  deferred.
+  cross-target Cargo configuration, including forwarded `--config` overrides,
+  and custom Tauri runners in native build/dev commands. Clustered short target
+  options are validated and reflected in build-output verification. Local
+  PowerShell setup and troubleshooting are documented. The six-target Desktop
+  builds workflow passed; native install, launch, and uninstall were confirmed
+  on Windows ARM64 and macOS Apple Silicon. Live testing on the other platform
+  targets is deferred.
 - Localized in-app help for the workflow, settings, case-data handling, and
   privacy boundaries.
 - Templates can format ISO `YYYY-MM-DD` values with the MiniJinja expression

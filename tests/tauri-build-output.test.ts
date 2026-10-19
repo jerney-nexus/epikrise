@@ -1,4 +1,6 @@
 import { execFile as execFileCallback } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -53,6 +55,22 @@ describe("Tauri build output path", () => {
       "attached short target option",
       "x86_64-unknown-linux-gnu",
       ["-tx86_64-unknown-linux-gnu"],
+      undefined,
+      "release",
+      "x86_64-unknown-linux-gnu/",
+    ],
+    [
+      "clustered short target option",
+      "x86_64-unknown-linux-gnu",
+      ["-vt", "x86_64-unknown-linux-gnu"],
+      undefined,
+      "release",
+      "x86_64-unknown-linux-gnu/",
+    ],
+    [
+      "attached clustered short target option",
+      "x86_64-unknown-linux-gnu",
+      ["-vtx86_64-unknown-linux-gnu"],
       undefined,
       "release",
       "x86_64-unknown-linux-gnu/",
@@ -161,6 +179,53 @@ describe("Tauri build output path", () => {
           executable,
         ),
       );
+    },
+  );
+
+  it.each([
+    ["project Cargo config", ["build"], "project"],
+    [
+      "forwarded Cargo --config override",
+      ["build", "--", "--config", 'build.target = "x86_64-unknown-linux-gnu"'],
+      "override",
+    ],
+  ])(
+    "includes the target directory from %s in the verified output path",
+    async (_description, args, configSource) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-build-output-config-"),
+      );
+      const cargoHome = path.join(directory, "cargo-home");
+      const host = "x86_64-unknown-linux-gnu";
+
+      try {
+        await mkdir(cargoHome);
+        if (configSource === "project") {
+          await mkdir(path.join(directory, ".cargo"));
+          await writeFile(
+            path.join(directory, ".cargo/config.toml"),
+            `[build]\ntarget = "${host}"\n`,
+          );
+        }
+
+        const { stdout } = await execFile("bash", [outputScriptPath, host, ...args], {
+          cwd: directory,
+          env: { ...process.env, CARGO_HOME: cargoHome },
+        });
+
+        expect(stdout).toBe(
+          path.posix.join(
+            toGitBashPath(repoRoot),
+            "src-tauri/target",
+            `host-${host}`,
+            `${host}/`,
+            "release",
+            "epikrise",
+          ),
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
     },
   );
 });

@@ -72,6 +72,18 @@ describe("native target shorthand guard", () => {
     ["-t TARGET", ["-t", "aarch64-unknown-linux-gnu"], "does not match native host"],
     ["-t=TARGET", ["-t=aarch64-unknown-linux-gnu"], "does not match native host"],
     ["-tTARGET", ["-taarch64-unknown-linux-gnu"], "does not match native host"],
+    [
+      "clustered -vt TARGET",
+      ["-vt", "aarch64-unknown-linux-gnu"],
+      "does not match native host",
+      true,
+    ],
+    [
+      "clustered -vtTARGET",
+      ["-vtaarch64-unknown-linux-gnu"],
+      "does not match native host",
+      true,
+    ],
     ["--target=", ["--target="], "Missing value for --target"],
     ["-t=", ["-t="], "Missing value for --target"],
     [
@@ -235,6 +247,57 @@ describe("native target shorthand guard", () => {
 
       await expect(readFile(cargoLog, "utf8")).resolves.toBe(
         "build -- --target x86_64-unknown-linux-gnu --profile custom\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("allows matching clustered target shorthand for native builds", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-native-target-cluster-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
+      );
+      await writeMockLinuxHostArchitecture(binDir);
+
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "--tauri-build",
+          "cargo",
+          "build",
+          "-vt",
+          "x86_64-unknown-linux-gnu",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            CARGO_LOG: cargoLog,
+          },
+        },
+      );
+
+      await expect(readFile(cargoLog, "utf8")).resolves.toBe(
+        "build -vt x86_64-unknown-linux-gnu\n",
       );
     } finally {
       await rm(directory, { recursive: true, force: true });

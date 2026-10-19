@@ -1875,6 +1875,75 @@ describe("native Cargo host target guard", () => {
   });
 
   it.each([
+    ["project Cargo config", ["build"], "project-config"],
+    [
+      "forwarded Cargo --config override",
+      ["build", "--", "--config", 'build.target = "__CROSS_TARGET__"'],
+      "cli-override",
+    ],
+  ])(
+    "rejects a cross-target from %s before OCR preparation",
+    async (_description, args, configSource) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-tauri-cargo-config-"),
+      );
+      const binDir = path.join(directory, "bin");
+      const cargoHome = path.join(directory, "cargo-home");
+      const curlLog = path.join(directory, "curl.log");
+
+      try {
+        await mkdir(binDir);
+        await mkdir(cargoHome);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        const mismatchedTarget = host!.startsWith("aarch64-")
+          ? host!.replace("aarch64-", "x86_64-")
+          : host!.replace("x86_64-", "aarch64-");
+        if (configSource === "project-config") {
+          await mkdir(path.join(directory, ".cargo"));
+          await writeFile(
+            path.join(directory, ".cargo/config.toml"),
+            `[build]\ntarget = "${mismatchedTarget}"\n`,
+          );
+        }
+
+        const scenarioArgs = args.map((argument) =>
+          argument.replace("__CROSS_TARGET__", mismatchedTarget),
+        );
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+        );
+
+        await expect(
+          execFile("bash", [tauriScriptPath, ...scenarioArgs], {
+            cwd: directory,
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+              CARGO_HOME: cargoHome,
+              CURL_LOG: curlLog,
+              EPIKRISE_OCR_RESOURCE_DIR: path.join(directory, "resources"),
+              EPIKRISE_OCR_BINARY_DIR: path.join(directory, "binaries"),
+            },
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("does not match native host"),
+        });
+        await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
     ["split after the subcommand", ["build", "--runner", "cargo-xwin"]],
     ["equals form after the subcommand", ["build", "--runner=cargo-xwin"]],
     ["split before the subcommand", ["--runner", "cargo-xwin", "build"]],
