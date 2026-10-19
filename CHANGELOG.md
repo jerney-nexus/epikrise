@@ -13,8 +13,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   across Linux, macOS, and Windows. Windows x64/ARM64 desktop and signed-release
   workflows compile on matching native runners, and generic Windows `pnpm tauri
 build`/`dev` commands initialize MSVC from regular shells. Linux native-host
-  checks reject architecture mismatches under QEMU user-mode emulation and
-  cross-target Cargo configuration, including forwarded `--config` overrides,
+  checks reject architecture mismatches under QEMU user-mode emulation,
+  cross-target Cargo configuration (including forwarded `--config` overrides),
   and custom Tauri runners in native build/dev commands. Clustered short target
   options are validated and reflected in build-output verification. Local
   PowerShell setup and troubleshooting are documented. The six-target Desktop
