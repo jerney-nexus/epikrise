@@ -8,15 +8,7 @@
 
 ## Validation
 
-<!-- List the checks you ran and any relevant manual testing. -->
-
-- [ ] `pnpm format:rust:fmt`
-- [ ] `pnpm check`
-- [ ] `pnpm test`
-- [ ] `pnpm build`
-- [ ] `pnpm lint:actions`
-- [ ] `pnpm audit:rust`
-- [ ] `pnpm audit:pnpm`
+<!-- List relevant checks and their outcomes, plus any manual testing. Note any applicable checks you did not run and why. See CONTRIBUTING.md for the repository's quality gates. -->
 
 ## Safety and privacy
 
