@@ -9,11 +9,11 @@ signing_private_key_password_was_set="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD+x}"
 unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 
 tauri_command="$(bash "$repo_root/scripts/tauri-command.sh" "$@")"
-native_guard_args=(--native-only)
+native_guard_args=(--native-only --tauri-cli)
 if [[ "$tauri_command" == "build" ]]; then
-	native_guard_args+=(--tauri-build)
+	native_guard_args=(--native-only --tauri-build)
 elif [[ "$tauri_command" == "dev" ]]; then
-	native_guard_args+=(--tauri-dev)
+	native_guard_args=(--native-only --tauri-dev)
 fi
 
 bash "$repo_root/scripts/with-cargo-host-target.sh" \

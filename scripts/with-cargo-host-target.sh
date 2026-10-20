@@ -8,6 +8,12 @@ if [[ "${1:-}" == "--native-only" ]]; then
   shift
 fi
 
+tauri_cli=false
+if [[ "${1:-}" == "--tauri-cli" ]]; then
+  tauri_cli=true
+  shift
+fi
+
 tauri_build=false
 if [[ "${1:-}" == "--tauri-build" ]]; then
   tauri_build=true
@@ -106,6 +112,8 @@ if [[ "$native_only" == true ]]; then
     target_validation_mode="tauri-build"
   elif [[ "$tauri_dev" == true ]]; then
     target_validation_mode="tauri-dev"
+  elif [[ "$tauri_cli" == true ]]; then
+    target_validation_mode="tauri-command"
   fi
   node "$repo_root/scripts/validate-native-cargo-target.mjs" \
     "$host_triple" "$target_validation_mode" "$@"

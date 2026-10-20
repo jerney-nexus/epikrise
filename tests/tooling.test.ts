@@ -1041,8 +1041,9 @@ describe("six-target desktop build tooling", () => {
     expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
 
     const tauriScript = await readFile(path.join(repoRoot, "scripts/tauri.sh"), "utf8");
-    expect(tauriScript).toContain("native_guard_args=(--native-only)");
-    expect(tauriScript).toContain("native_guard_args+=(--tauri-dev)");
+    expect(tauriScript).toContain("native_guard_args=(--native-only --tauri-cli)");
+    expect(tauriScript).toContain("native_guard_args=(--native-only --tauri-build)");
+    expect(tauriScript).toContain("native_guard_args=(--native-only --tauri-dev)");
     expect(tauriScript.match(/\$\{native_guard_args\[@\]\}/g)).toHaveLength(2);
 
     const ocrBuildScript = await readFile(
@@ -2261,6 +2262,46 @@ esac
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    ["bundle", ["tauri", "bundle", "--config", "src-tauri/tauri.conf.json"]],
+    [
+      "build help",
+      ["tauri", "build", "--config", "src-tauri/tauri.conf.json", "--help"],
+    ],
+  ])(
+    "validates Tauri %s configuration without parsing it as Cargo TOML",
+    async (_name, args) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-config-"));
+      const binDir = path.join(directory, "bin");
+
+      try {
+        await mkdir(binDir);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+
+        await execFile(
+          "bash",
+          [wrapperPath, "--native-only", "--tauri-cli", "--validate-only", ...args],
+          {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            },
+          },
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it.each([
     ["long runner option", ["tauri", "--runner", "cargo", "build"]],

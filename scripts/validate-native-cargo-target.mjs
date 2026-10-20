@@ -282,13 +282,19 @@ function collectTargets(
  * Resolve target options and effective Cargo configuration for a build.
  *
  * @param {string[]} args
- * @param {{ tauriBuild?: boolean, tauriDev?: boolean, cwd?: string, env?: NodeJS.ProcessEnv }} [options]
+ * @param {{ tauriBuild?: boolean, tauriDev?: boolean, tauriCommand?: boolean, cwd?: string, env?: NodeJS.ProcessEnv }} [options]
  */
 export function resolveNativeCargoTargets(
   args,
-  { tauriBuild = false, tauriDev = false, cwd = process.cwd(), env = process.env } = {},
+  {
+    tauriBuild = false,
+    tauriDev = false,
+    tauriCommand = false,
+    cwd = process.cwd(),
+    env = process.env,
+  } = {},
 ) {
-  const isTauriCommand = tauriBuild || tauriDev;
+  const isTauriCommand = tauriBuild || tauriDev || tauriCommand;
   const launchDirectory = path.resolve(cwd);
   const cargoCwd = isTauriCommand
     ? path.basename(launchDirectory) === "src-tauri"
@@ -303,7 +309,8 @@ export function resolveNativeCargoTargets(
   if (isTauriCommand) {
     const separator = args.indexOf("--");
     const tauriArgs = separator < 0 ? args : args.slice(0, separator);
-    const runnerArgs = separator < 0 ? [] : args.slice(separator + 1);
+    const runnerArgs =
+      tauriBuild || tauriDev ? (separator < 0 ? [] : args.slice(separator + 1)) : [];
     const tauriOptions = collectTargets(tauriArgs, {
       parseConfig: false,
       stopAtSeparator: false,
@@ -341,7 +348,7 @@ export function resolveNativeCargoTargets(
  *
  * @param {string} hostTriple
  * @param {string[]} args
- * @param {{ tauriBuild?: boolean, tauriDev?: boolean, cwd?: string, env?: NodeJS.ProcessEnv }} [options]
+ * @param {{ tauriBuild?: boolean, tauriDev?: boolean, tauriCommand?: boolean, cwd?: string, env?: NodeJS.ProcessEnv }} [options]
  */
 export function validateNativeCargoTarget(hostTriple, args, options = {}) {
   if (options.tauriBuild) {
@@ -376,10 +383,16 @@ if (
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const [hostTriple, mode, ...args] = process.argv.slice(2);
-  const supportedModes = ["cargo", "tauri-build", "tauri-dev", "resolve-tauri-build"];
+  const supportedModes = [
+    "cargo",
+    "tauri-build",
+    "tauri-dev",
+    "tauri-command",
+    "resolve-tauri-build",
+  ];
   if (!hostTriple || !supportedModes.includes(mode)) {
     console.error(
-      "Usage: node validate-native-cargo-target.mjs <host-triple> <cargo|tauri-build|tauri-dev|resolve-tauri-build> [arguments...]",
+      "Usage: node validate-native-cargo-target.mjs <host-triple> <cargo|tauri-build|tauri-dev|tauri-command|resolve-tauri-build> [arguments...]",
     );
     process.exitCode = 2;
   } else {
@@ -387,6 +400,7 @@ if (
       const options = {
         tauriBuild: mode === "tauri-build" || mode === "resolve-tauri-build",
         tauriDev: mode === "tauri-dev",
+        tauriCommand: mode === "tauri-command",
       };
       if (mode === "resolve-tauri-build") {
         const targets = resolveNativeCargoTargets(args, options);
