@@ -18,7 +18,7 @@ function getChildProcessOutput(error) {
     "stdout" in error && typeof error.stdout === "string" ? error.stdout : "";
   const stderr =
     "stderr" in error && typeof error.stderr === "string" ? error.stderr : "";
-  return `${stdout}\n${stderr}`;
+  return `${stdout}\n${stderr}`.trim();
 }
 
 /** @param {string} binaryPath @param {string} output */

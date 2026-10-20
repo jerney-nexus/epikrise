@@ -54,6 +54,10 @@ import {
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+const runtimeDependenciesScriptPath = path.join(
+  repoRoot,
+  "scripts/verify-runtime-dependencies.mjs",
+);
 
 const windowsOcrTargets = [
   {
@@ -305,6 +309,37 @@ describe("Windows runtime dependency verification", () => {
     expect(() =>
       assertSystemOnlyPEDependencies("Epikrise.exe", "No dependency table found"),
     ).toThrow("Could not find PE runtime dependencies for Epikrise.exe.");
+  });
+
+  it.each([
+    ["Linux", "x86_64-unknown-linux-gnu", "ldd"],
+    ["macOS", "x86_64-apple-darwin", "otool"],
+    ["Windows", "x86_64-pc-windows-msvc", "dumpbin"],
+  ])("reports a missing %s inspection tool", async (_platform, target, tool) => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-missing-inspection-tool-"),
+    );
+
+    try {
+      await expect(
+        execFile(
+          process.execPath,
+          [runtimeDependenciesScriptPath, target, "fixture.bin"],
+          {
+            env: {
+              ...process.env,
+              PATH: directory,
+            },
+          },
+        ),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          `Could not inspect runtime dependencies for fixture.bin: spawn ${tool} ENOENT`,
+        ),
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 
