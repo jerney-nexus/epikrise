@@ -5,11 +5,12 @@ import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
 
 /** @typedef {Record<string, unknown>} CargoConfig */
+/** @typedef {string | string[]} CargoTarget */
 
 /**
  * @param {CargoConfig} config
  * @param {string} source
- * @returns {string[] | undefined}
+ * @returns {CargoTarget | undefined}
  */
 function targetValues(config, source) {
   const build = config.build;
@@ -22,11 +23,27 @@ function targetValues(config, source) {
 
   const target = /** @type {Record<string, unknown>} */ (build).target;
   if (target === undefined) return undefined;
-  const targets = Array.isArray(target) ? target : [target];
-  if (!targets.every((target) => typeof target === "string" && target.length > 0)) {
-    throw new Error(`${source} has an invalid build.target value.`);
+  if (typeof target === "string" && target.length > 0) return target;
+  if (
+    Array.isArray(target) &&
+    target.every((value) => typeof value === "string" && value.length > 0)
+  ) {
+    return /** @type {string[]} */ (target);
   }
-  return /** @type {string[]} */ (targets);
+  throw new Error(`${source} has an invalid build.target value.`);
+}
+
+/**
+ * @param {CargoTarget | undefined} previous
+ * @param {CargoTarget | undefined} next
+ * @returns {CargoTarget | undefined}
+ */
+function mergeTargetValues(previous, next) {
+  if (next === undefined) return previous;
+  if (Array.isArray(previous) && Array.isArray(next)) {
+    return [...previous, ...next];
+  }
+  return next;
 }
 
 /**
@@ -64,7 +81,10 @@ function configTargetFromDirectories(cwd, env) {
     directories.unshift(directory);
     if (path.dirname(directory) === directory) break;
   }
-  const cargoHome = path.resolve(env.CARGO_HOME || path.join(os.homedir(), ".cargo"));
+  const cargoHome = path.resolve(
+    cwd,
+    env.CARGO_HOME || path.join(os.homedir(), ".cargo"),
+  );
   const configPaths = [];
   const cargoHomeConfig = preferredConfigFile(cargoHome);
   if (cargoHomeConfig) configPaths.push(cargoHomeConfig);
@@ -72,9 +92,8 @@ function configTargetFromDirectories(cwd, env) {
     const configPath = preferredConfigFile(path.join(directory, ".cargo"));
     if (configPath) configPaths.push(configPath);
   }
-  /** @type {string[]} */
-  let targets = [];
-  let configured = false;
+  /** @type {CargoTarget | undefined} */
+  let targets;
 
   for (const configPath of configPaths) {
     if (!existsSync(configPath)) continue;
@@ -82,13 +101,10 @@ function configTargetFromDirectories(cwd, env) {
       parseConfigFile(configPath, configPath),
       configPath,
     );
-    if (configuredTargets !== undefined) {
-      targets = configuredTargets;
-      configured = true;
-    }
+    targets = mergeTargetValues(targets, configuredTargets);
   }
 
-  return { targets, configured };
+  return { targets, configured: targets !== undefined };
 }
 
 /** @param {string} value */
@@ -108,9 +124,8 @@ function parseInlineConfig(value) {
  * @param {string} cwd
  */
 function configTargetsFromOverrides(args, cwd) {
-  /** @type {string[]} */
-  let targets = [];
-  let configured = false;
+  /** @type {CargoTarget | undefined} */
+  let targets;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--") break;
@@ -134,12 +149,9 @@ function configTargetsFromOverrides(args, cwd) {
       config,
       `Cargo --config ${JSON.stringify(value)}`,
     );
-    if (configuredTargets !== undefined) {
-      targets = configuredTargets;
-      configured = true;
-    }
+    targets = mergeTargetValues(targets, configuredTargets);
   }
-  return { targets, configured };
+  return { targets, configured: targets !== undefined };
 }
 
 /**
@@ -297,14 +309,14 @@ export function resolveNativeCargoTargets(
 
   const override = configTargetsFromOverrides(configOverrides, cargoCwd);
   const fileConfig = configTargetFromDirectories(cargoCwd, env);
-  const configuredTargets = override.configured
-    ? override.targets
-    : env.CARGO_BUILD_TARGET
-      ? [env.CARGO_BUILD_TARGET]
-      : fileConfig.configured
-        ? fileConfig.targets
-        : [];
-  return targets.length ? targets : configuredTargets;
+  let configuredTargets = fileConfig.targets;
+  if (env.CARGO_BUILD_TARGET) configuredTargets = env.CARGO_BUILD_TARGET;
+  if (override.configured) {
+    configuredTargets = mergeTargetValues(configuredTargets, override.targets);
+  }
+  if (targets.length) return targets;
+  if (Array.isArray(configuredTargets)) return configuredTargets;
+  return configuredTargets === undefined ? [] : [configuredTargets];
 }
 
 /**
@@ -315,6 +327,21 @@ export function resolveNativeCargoTargets(
  * @param {{ tauriBuild?: boolean, tauriDev?: boolean, cwd?: string, env?: NodeJS.ProcessEnv }} [options]
  */
 export function validateNativeCargoTarget(hostTriple, args, options = {}) {
+  if (options.tauriBuild) {
+    const separator = args.indexOf("--");
+    const cargoArgs = separator < 0 ? [] : args.slice(separator + 1);
+    if (
+      cargoArgs.some(
+        (argument) =>
+          argument === "--target-dir" || argument.startsWith("--target-dir="),
+      )
+    ) {
+      throw new Error(
+        "Cargo --target-dir is not allowed for native Tauri builds; the host target directory is fixed.",
+      );
+    }
+  }
+
   const effectiveTargets = resolveNativeCargoTargets(args, options);
   for (const target of effectiveTargets) {
     if (target !== hostTriple) {

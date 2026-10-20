@@ -143,6 +143,46 @@ if [[ "$native_only" == true ]]; then
             exit 1
           fi
           ;;
+        -*)
+          if [[ "$1" != --* ]]; then
+            short_options="${1#-}"
+            while [[ -n "$short_options" ]]; do
+              short_option="${short_options:0:1}"
+              short_options="${short_options:1}"
+              case "$short_option" in
+                r)
+                  if [[ -n "$short_options" ]]; then
+                    runner="$short_options"
+                    if [[ "$runner" == =* ]]; then
+                      runner="${runner#=}"
+                    fi
+                  else
+                    runner_option="$1"
+                    shift
+                    if [[ $# -eq 0 || -z "$1" ]]; then
+                      printf 'Missing value for %s.\n' "$runner_option" >&2
+                      exit 2
+                    fi
+                    runner="$1"
+                  fi
+                  if [[ "$runner" != "cargo" ]]; then
+                    printf 'Custom Tauri runner %s is not allowed for native-only builds.\n' "$runner" >&2
+                    exit 1
+                  fi
+                  break
+                  ;;
+                v)
+                  ;;
+                c|f|t)
+                  break
+                  ;;
+                *)
+                  break
+                  ;;
+              esac
+            done
+          fi
+          ;;
       esac
     fi
 

@@ -1881,6 +1881,16 @@ describe("native Cargo host target guard", () => {
       ["build", "--", "--config", 'build.target = "__CROSS_TARGET__"'],
       "cli-override",
     ],
+    [
+      "forwarded Cargo --target-dir",
+      ["build", "--", "--target-dir", "custom-target"],
+      "target-dir",
+    ],
+    [
+      "forwarded Cargo --target-dir equals override",
+      ["build", "--", "--target-dir=custom-target"],
+      "target-dir",
+    ],
   ])(
     "rejects a cross-target from %s before OCR preparation",
     async (_description, args, configSource) => {
@@ -1934,7 +1944,11 @@ describe("native Cargo host target guard", () => {
             },
           }),
         ).rejects.toMatchObject({
-          stderr: expect.stringContaining("does not match native host"),
+          stderr: expect.stringContaining(
+            configSource === "target-dir"
+              ? "Cargo --target-dir is not allowed for native Tauri builds"
+              : "does not match native host",
+          ),
         });
         await expect(readFile(curlLog, "utf8")).rejects.toThrow();
       } finally {
@@ -1951,6 +1965,8 @@ describe("native Cargo host target guard", () => {
     ["short split after build", ["build", "-r", "cargo-xwin"]],
     ["short equals after build", ["build", "-r=cargo-xwin"]],
     ["short attached after build", ["build", "-rcargo-xwin"]],
+    ["clustered short attached after build", ["build", "-vrcargo-xwin"]],
+    ["clustered short split after build", ["build", "-vr", "cargo-xwin"]],
     ["split in dev", ["dev", "--runner", "cargo-xwin"]],
     ["equals form in dev", ["dev", "--runner=cargo-xwin"]],
     ["short split in dev", ["dev", "-r", "cargo-xwin"]],
@@ -2210,46 +2226,44 @@ esac
     }
   });
 
-  it("allows the default Cargo runner for a native Tauri build", async () => {
-    const directory = await mkdtemp(
-      path.join(tmpdir(), "epikrise-native-cargo-runner-"),
-    );
-    const binDir = path.join(directory, "bin");
-
-    try {
-      await mkdir(binDir);
-      const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
-      const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
-      expect(host).toBeDefined();
-      await writeExecutable(
-        path.join(binDir, "rustc"),
-        `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+  it.each([
+    ["long runner option", ["tauri", "--runner", "cargo", "build"]],
+    ["clustered short runner", ["tauri", "-vrcargo", "build"]],
+    ["split clustered short runner", ["tauri", "-vr", "cargo", "build"]],
+  ])(
+    "allows the default Cargo runner for a native Tauri build (%s)",
+    async (_name, args) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-native-cargo-runner-"),
       );
-      await writeMockUname(binDir, host!);
+      const binDir = path.join(directory, "bin");
 
-      await execFile(
-        "bash",
-        [
-          wrapperPath,
-          "--native-only",
-          "--tauri-build",
-          "--validate-only",
-          "tauri",
-          "--runner",
-          "cargo",
-          "build",
-        ],
-        {
-          env: {
-            ...process.env,
-            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+      try {
+        await mkdir(binDir);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+
+        await execFile(
+          "bash",
+          [wrapperPath, "--native-only", "--tauri-build", "--validate-only", ...args],
+          {
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            },
           },
-        },
-      );
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("forwards a matching native target to Cargo", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));

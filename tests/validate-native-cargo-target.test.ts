@@ -88,6 +88,117 @@ describe("native Cargo target validation", () => {
     }
   });
 
+  it("merges target arrays from Cargo home and project configuration", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-cargo-config-"));
+    const cargoHome = path.join(directory, "cargo-home");
+    const projectCargo = path.join(directory, ".cargo");
+
+    try {
+      await mkdir(cargoHome);
+      await mkdir(projectCargo);
+      await writeFile(
+        path.join(cargoHome, "config.toml"),
+        `[build]\ntarget = ["${crossTarget}"]\n`,
+      );
+      await writeFile(
+        path.join(projectCargo, "config.toml"),
+        `[build]\ntarget = ["${hostTriple}"]\n`,
+      );
+
+      expect(() =>
+        validateNativeCargoTarget(hostTriple, ["tauri", "build"], {
+          tauriBuild: true,
+          cwd: directory,
+          env: { CARGO_HOME: cargoHome },
+        }),
+      ).toThrow(`Requested target ${crossTarget} does not match native host`);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("merges target arrays from repeated Cargo --config overrides", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-cargo-config-"));
+    const cargoHome = path.join(directory, "cargo-home");
+
+    try {
+      await mkdir(cargoHome);
+      expect(() =>
+        validateNativeCargoTarget(
+          hostTriple,
+          [
+            "tauri",
+            "build",
+            "--",
+            "--config",
+            `build.target=["${crossTarget}"]`,
+            "--config",
+            `build.target=["${hostTriple}"]`,
+          ],
+          {
+            tauriBuild: true,
+            cwd: directory,
+            env: { CARGO_HOME: cargoHome },
+          },
+        ),
+      ).toThrow(`Requested target ${crossTarget} does not match native host`);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("merges target arrays from Cargo config files and --config overrides", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-cargo-config-"));
+    const cargoHome = path.join(directory, "cargo-home");
+
+    try {
+      await mkdir(cargoHome);
+      await mkdir(path.join(directory, ".cargo"));
+      await writeFile(
+        path.join(directory, ".cargo/config.toml"),
+        `[build]\ntarget = ["${crossTarget}"]\n`,
+      );
+
+      expect(() =>
+        validateNativeCargoTarget(
+          hostTriple,
+          ["tauri", "build", "--", "--config", `build.target=["${hostTriple}"]`],
+          {
+            tauriBuild: true,
+            cwd: directory,
+            env: { CARGO_HOME: cargoHome },
+          },
+        ),
+      ).toThrow(`Requested target ${crossTarget} does not match native host`);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves relative CARGO_HOME from Tauri's Cargo working directory", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-cargo-config-"));
+    const cargoHome = path.join(directory, "cargo-home");
+
+    try {
+      await mkdir(path.join(directory, "src-tauri"), { recursive: true });
+      await mkdir(cargoHome);
+      await writeFile(
+        path.join(cargoHome, "config.toml"),
+        `[build]\ntarget = "${crossTarget}"\n`,
+      );
+
+      expect(() =>
+        validateNativeCargoTarget(hostTriple, ["tauri", "build"], {
+          tauriBuild: true,
+          cwd: directory,
+          env: { CARGO_HOME: "../cargo-home" },
+        }),
+      ).toThrow(`Requested target ${crossTarget} does not match native host`);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("uses src-tauri as the Cargo configuration directory for Tauri builds", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-cargo-config-"));
     const cargoHome = path.join(directory, "cargo-home");
@@ -275,5 +386,14 @@ describe("native Cargo target validation", () => {
         },
       ),
     ).toEqual([]);
+  });
+
+  it.each([
+    ["split", ["tauri", "build", "--", "--target-dir", "custom-target"]],
+    ["equals", ["tauri", "build", "--", "--target-dir=custom-target"]],
+  ])("rejects a forwarded Cargo target directory override (%s)", (_form, args) => {
+    expect(() =>
+      validateNativeCargoTarget(hostTriple, args, { tauriBuild: true }),
+    ).toThrow("Cargo --target-dir is not allowed for native Tauri builds");
   });
 });
