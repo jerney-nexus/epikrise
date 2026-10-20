@@ -754,6 +754,40 @@ test("creates, selects, and removes a provider credential", async ({ page }) => 
   );
 });
 
+test("explains when a saved credential cannot be listed", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Provider settings" }).click();
+  await page.getByRole("button", { name: "Add provider credential" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add provider credential" });
+  await dialog.getByLabel("Credential label").fill("Work key");
+  await dialog.getByLabel("API key").fill("synthetic-secret");
+  await page.evaluate(() => {
+    const fixture = window.__EPIKRISE_TEST__;
+    if (!fixture) throw new Error("Tauri test fixture was not installed");
+    fixture.failNextCredentialList = true;
+  });
+  await dialog.getByRole("button", { name: "Add credential", exact: true }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: /Credential saved, but the list could not be refreshed\./ })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: /desktop session bus is available\./ })
+      .first(),
+  ).toBeVisible();
+
+  const commands = await page.evaluate(
+    () => window.__EPIKRISE_TEST__?.commands.map(({ command }) => command) ?? [],
+  );
+  expect(commands).toContain("set_provider_credential");
+});
+
 policyTest("shows administrator-managed settings as restricted", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Provider settings" }).click();

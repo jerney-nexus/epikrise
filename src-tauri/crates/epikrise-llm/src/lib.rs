@@ -154,6 +154,14 @@ pub struct KeyringCredentialStore;
 
 const KEYRING_SERVICE: &str = "com.jerney-nexus.epikrise";
 
+fn credential_store_error(operation: &str, error: impl std::fmt::Display) -> LlmError {
+    #[cfg(target_os = "linux")]
+    eprintln!("Epikrise system credential store {operation} failed: {error}");
+    #[cfg(not(target_os = "linux"))]
+    let _ = (operation, error);
+    LlmError::Authentication
+}
+
 fn adapter_key(adapter: &ProviderAdapter) -> &'static str {
     match adapter {
         ProviderAdapter::OpenAi => "open_ai",
@@ -210,7 +218,8 @@ fn credential_entry(credential_id: &str) -> Result<keyring::Entry, LlmError> {
     {
         return Err(LlmError::InvalidProfile);
     }
-    keyring::Entry::new(KEYRING_SERVICE, credential_id).map_err(|_| LlmError::Authentication)
+    keyring::Entry::new(KEYRING_SERVICE, credential_id)
+        .map_err(|error| credential_store_error("entry creation", error))
 }
 
 impl CredentialStore for KeyringCredentialStore {
@@ -219,14 +228,15 @@ impl CredentialStore for KeyringCredentialStore {
         match entry.get_password() {
             Ok(password) => Ok(Some(password)),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(_) => Err(LlmError::Authentication),
+            Err(error) => Err(credential_store_error("read", error)),
         }
     }
 }
 
 impl KeyringCredentialStore {
     pub fn list(&self) -> Result<Vec<CredentialSummary>, LlmError> {
-        let search = keyring_search::Search::new().map_err(|_| LlmError::Authentication)?;
+        let search = keyring_search::Search::new()
+            .map_err(|error| credential_store_error("search initialization", error))?;
         #[cfg(target_os = "windows")]
         let search_result = search.by_target(KEYRING_SERVICE);
         #[cfg(not(target_os = "windows"))]
@@ -235,7 +245,9 @@ impl KeyringCredentialStore {
         let credentials = match search_result {
             Ok(credentials) => credentials,
             Err(keyring_search::Error::NoResults) => return Ok(Vec::new()),
-            Err(_) => return Err(LlmError::Authentication),
+            Err(error) => {
+                return Err(credential_store_error("credential search", error));
+            }
         };
         let mut summaries: Vec<CredentialSummary> = credentials
             .values()
@@ -271,13 +283,13 @@ impl KeyringCredentialStore {
         }
         credential_entry(credential_id)?
             .set_password(secret)
-            .map_err(|_| LlmError::Authentication)
+            .map_err(|error| credential_store_error("write", error))
     }
 
     pub fn delete(&self, credential_id: &str) -> Result<(), LlmError> {
         match credential_entry(credential_id)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(_) => Err(LlmError::Authentication),
+            Err(error) => Err(credential_store_error("delete", error)),
         }
     }
 }
@@ -641,14 +653,25 @@ mod tests {
     use super::{
         AuthSource, ChatMessage, GenaiLlmClient, GenerationParams, KeyringCredentialStore,
         LlmClient, LlmError, MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile,
-        ReasoningEffort, credential_account_id, credential_entry, genai_adapter, map_http_status,
-        parse_credential_account, prepare_request, should_fallback_to_completion,
-        validate_endpoint,
+        ReasoningEffort, credential_account_id, credential_entry, credential_store_error,
+        genai_adapter, map_http_status, parse_credential_account, prepare_request,
+        should_fallback_to_completion, validate_endpoint,
     };
     use std::sync::Arc;
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     use super::CredentialStore;
+
+    #[cfg(target_os = "linux")]
+    fn linux_smoke_credential_id() -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique_suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        format!("test:linux-smoke-{}-{unique_suffix}", std::process::id())
+    }
 
     #[cfg(target_os = "windows")]
     fn windows_smoke_credential_id() -> String {
@@ -1163,6 +1186,41 @@ mod tests {
         assert_eq!(
             KeyringCredentialStore.set("test", "  "),
             Err(LlmError::InvalidProfile)
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires an unlocked desktop Secret Service"]
+    fn linux_keyring_smoke_round_trips_and_deletes_a_disposable_credential() {
+        const TEST_SECRET: &str = "epikrise-linux-keyring-smoke-test";
+
+        let store = KeyringCredentialStore;
+        let credential_id = linux_smoke_credential_id();
+        let set_result = store.set(&credential_id, TEST_SECRET);
+        let get_result = if set_result.is_ok() {
+            store.get(&credential_id)
+        } else {
+            Err(LlmError::Authentication)
+        };
+        let delete_result = store.delete(&credential_id);
+
+        assert!(
+            set_result.is_ok(),
+            "credential write failed: {set_result:?}"
+        );
+        assert_eq!(get_result, Ok(Some(TEST_SECRET.to_owned())));
+        assert!(
+            delete_result.is_ok(),
+            "credential cleanup failed: {delete_result:?}"
+        );
+    }
+
+    #[test]
+    fn credential_store_errors_keep_the_authentication_contract() {
+        assert_eq!(
+            credential_store_error("write", std::io::Error::other("test failure")),
+            LlmError::Authentication
         );
     }
 
