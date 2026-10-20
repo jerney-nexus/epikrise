@@ -34,6 +34,7 @@ if [[ -z "$host_triple" ]]; then
 fi
 
 command_args=("$@")
+runner_specified=false
 if [[ "$native_only" == true ]]; then
   physical_os="$(uname -s)"
   physical_arch="$(uname -m)"
@@ -114,6 +115,7 @@ if [[ "$native_only" == true ]]; then
     if [[ ( "$tauri_build" == true || "$tauri_dev" == true ) && "$after_separator" == false ]]; then
       case "$1" in
         --runner|-r)
+          runner_specified=true
           runner_option="$1"
           shift
           if [[ $# -eq 0 || -z "$1" ]]; then
@@ -126,6 +128,7 @@ if [[ "$native_only" == true ]]; then
           fi
           ;;
         --runner=*|-r=*)
+          runner_specified=true
           runner="${1#*=}"
           if [[ -z "$runner" ]]; then
             printf 'Missing value for runner option %s.\n' "${1%%=*}" >&2
@@ -137,6 +140,7 @@ if [[ "$native_only" == true ]]; then
           fi
           ;;
         -r?*)
+          runner_specified=true
           runner="${1#-r}"
           if [[ "$runner" != "cargo" ]]; then
             printf 'Custom Tauri runner %s is not allowed for native-only builds.\n' "$runner" >&2
@@ -151,6 +155,7 @@ if [[ "$native_only" == true ]]; then
               short_options="${short_options:1}"
               case "$short_option" in
                 r)
+                  runner_specified=true
                   if [[ -n "$short_options" ]]; then
                     runner="$short_options"
                     if [[ "$runner" == =* ]]; then
@@ -207,6 +212,22 @@ if [[ "$validate_only" == true ]]; then
     exit 2
   fi
   exit 0
+fi
+
+if [[ "$native_only" == true && ( "$tauri_build" == true || "$tauri_dev" == true ) && "$runner_specified" == false && "${command_args[0]:-}" == "tauri" ]]; then
+  runner_insert_at="${#command_args[@]}"
+  for index in "${!command_args[@]}"; do
+    if [[ "${command_args[$index]}" == "--" ]]; then
+      runner_insert_at="$index"
+      break
+    fi
+  done
+  command_args=(
+    "${command_args[@]:0:runner_insert_at}"
+    --runner
+    cargo
+    "${command_args[@]:runner_insert_at}"
+  )
 fi
 
 export CARGO_TARGET_DIR="$repo_root/src-tauri/target/host-$host_triple"
