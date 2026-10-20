@@ -14,17 +14,40 @@ for argument in "$@"; do
   fi
 
   case "$argument" in
-    --runner|-r)
+    --runner|--config|--target|--features|-r|-c|-t|-f)
       skip_next=true
       continue
       ;;
-    -v*|--verbose)
+    --verbose)
       continue
       ;;
     -h|--help|-V|--version)
       exit 0
       ;;
     -* )
+      if [[ "$argument" != --* ]]; then
+        short_options="${argument#-}"
+        while [[ -n "$short_options" ]]; do
+          short_option="${short_options:0:1}"
+          short_options="${short_options:1}"
+          case "$short_option" in
+            h|V)
+              exit 0
+              ;;
+            v|d)
+              ;;
+            r|c|t|f)
+              if [[ -z "$short_options" ]]; then
+                skip_next=true
+              fi
+              break
+              ;;
+            *)
+              break
+              ;;
+          esac
+        done
+      fi
       continue
       ;;
     *)

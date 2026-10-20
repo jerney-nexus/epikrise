@@ -14,6 +14,10 @@ describe("Tauri command detection", () => {
     [["-vv", "build"], "build"],
     [["--help", "build"], ""],
     [["build", "--help"], ""],
+    [["build", "-vh"], ""],
+    [["-fhelp", "build"], "build"],
+    [["build", "-fhelp"], "build"],
+    [["-f", "-h", "build"], "build"],
   ])("detects build after global options %j", async (args, expected) => {
     const { stdout } = await execFile("bash", [commandScriptPath, ...args]);
     expect(stdout).toBe(expected);
