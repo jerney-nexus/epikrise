@@ -123,7 +123,7 @@ function parseInlineConfig(value) {
  * @param {string[]} args
  * @param {string} cwd
  */
-function configTargetsFromOverrides(args, cwd) {
+function configTargetsFromOverrides(args, cwd, rejectTargetDirectory = false) {
   /** @type {CargoTarget | undefined} */
   let targets;
   for (let index = 0; index < args.length; index += 1) {
@@ -149,6 +149,18 @@ function configTargetsFromOverrides(args, cwd) {
       config,
       `Cargo --config ${JSON.stringify(value)}`,
     );
+    const build = config.build;
+    if (
+      rejectTargetDirectory &&
+      typeof build === "object" &&
+      build !== null &&
+      !Array.isArray(build) &&
+      Object.hasOwn(build, "target-dir")
+    ) {
+      throw new Error(
+        "Cargo build.target-dir is not allowed for native Tauri builds; the host target directory is fixed.",
+      );
+    }
     targets = mergeTargetValues(targets, configuredTargets);
   }
   return { targets, configured: targets !== undefined };
@@ -312,7 +324,7 @@ export function resolveNativeCargoTargets(
     configOverrides = cargoOptions.configs;
   }
 
-  const override = configTargetsFromOverrides(configOverrides, cargoCwd);
+  const override = configTargetsFromOverrides(configOverrides, cargoCwd, tauriBuild);
   const fileConfig = configTargetFromDirectories(cargoCwd, env);
   let configuredTargets = fileConfig.targets;
   if (env.CARGO_BUILD_TARGET) configuredTargets = env.CARGO_BUILD_TARGET;

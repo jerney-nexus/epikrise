@@ -108,6 +108,40 @@ describe("binary architecture verification", () => {
     }
   });
 
+  it.each([
+    {
+      label: "ELF32",
+      offset: 4,
+      value: 1,
+      message: "ELF binary must use the 64-bit class",
+    },
+    {
+      label: "big-endian ELF",
+      offset: 5,
+      value: 2,
+      message: "ELF binary must use little-endian byte order",
+    },
+  ])(
+    "rejects $label headers for supported Linux targets",
+    async ({ offset, value, message }) => {
+      for (const target of ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]) {
+        const directory = await mkdtemp(path.join(tmpdir(), "epikrise-binary-header-"));
+        const binaryPath = path.join(directory, "fixture.bin");
+        const binary = createBinaryHeader(target);
+        binary[offset] = value;
+
+        try {
+          await writeFile(binaryPath, binary);
+          await expect(verifyBinaryArchitecture(target, binaryPath)).rejects.toThrow(
+            message,
+          );
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      }
+    },
+  );
+
   it("rejects a binary header for the wrong target architecture", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-binary-header-"));
     const binaryPath = path.join(directory, "fixture.exe");
