@@ -154,6 +154,7 @@ pub struct KeyringCredentialStore;
 
 const KEYRING_SERVICE: &str = "com.jerney-nexus.epikrise";
 
+#[allow(clippy::print_stderr)] // Local backend diagnostics help diagnose Linux keyring failures.
 fn credential_store_error(operation: &str, error: impl std::fmt::Display) -> LlmError {
     #[cfg(target_os = "linux")]
     eprintln!("Epikrise system credential store {operation} failed: {error}");
@@ -670,7 +671,9 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        format!("test:linux-smoke-{}-{unique_suffix}", std::process::id())
+        let label = format!("linux-smoke-{}-{unique_suffix}", std::process::id());
+        credential_account_id(&ProviderAdapter::OpenAi, &label)
+            .expect("smoke-test credential ID should be valid")
     }
 
     #[cfg(target_os = "windows")]
@@ -1203,16 +1206,24 @@ mod tests {
         } else {
             Err(LlmError::Authentication)
         };
+        let list_result = store.list();
         let delete_result = store.delete(&credential_id);
 
+        assert!(
+            delete_result.is_ok(),
+            "credential cleanup failed: {delete_result:?}"
+        );
         assert!(
             set_result.is_ok(),
             "credential write failed: {set_result:?}"
         );
         assert_eq!(get_result, Ok(Some(TEST_SECRET.to_owned())));
+        let listed_credentials = list_result.expect("credential listing should succeed");
         assert!(
-            delete_result.is_ok(),
-            "credential cleanup failed: {delete_result:?}"
+            listed_credentials
+                .iter()
+                .any(|credential| credential.id == credential_id),
+            "credential listing did not include the saved credential"
         );
     }
 
