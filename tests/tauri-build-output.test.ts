@@ -93,6 +93,22 @@ describe("Tauri build output path", () => {
     ],
     ["debug profile", "x86_64-unknown-linux-gnu", ["--debug"], undefined, "debug", ""],
     [
+      "clustered verbose debug profile",
+      "x86_64-unknown-linux-gnu",
+      ["-vd"],
+      undefined,
+      "debug",
+      "",
+    ],
+    [
+      "clustered debug verbose profile",
+      "x86_64-unknown-linux-gnu",
+      ["-dv"],
+      undefined,
+      "debug",
+      "",
+    ],
+    [
       "debug profile with Tauri runner option",
       "x86_64-unknown-linux-gnu",
       ["build", "--debug", "-r", "cargo"],

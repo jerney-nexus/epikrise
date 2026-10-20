@@ -1967,6 +1967,8 @@ describe("native Cargo host target guard", () => {
     ["short attached after build", ["build", "-rcargo-xwin"]],
     ["clustered short attached after build", ["build", "-vrcargo-xwin"]],
     ["clustered short split after build", ["build", "-vr", "cargo-xwin"]],
+    ["debug before clustered runner", ["build", "-drcargo-xwin"]],
+    ["split runner after debug", ["build", "-dr", "cargo-xwin"]],
     ["split in dev", ["dev", "--runner", "cargo-xwin"]],
     ["equals form in dev", ["dev", "--runner=cargo-xwin"]],
     ["short split in dev", ["dev", "-r", "cargo-xwin"]],
