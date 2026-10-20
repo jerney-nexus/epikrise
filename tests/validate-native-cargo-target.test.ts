@@ -408,4 +408,39 @@ describe("native Cargo target validation", () => {
       validateNativeCargoTarget(hostTriple, args, { tauriBuild: true }),
     ).toThrow("Cargo --target-dir is not allowed for native Tauri builds");
   });
+
+  it("rejects a forwarded target directory in inline Cargo config", () => {
+    expect(() =>
+      validateNativeCargoTarget(
+        hostTriple,
+        ["tauri", "build", "--", "--config", 'build.target-dir = "/tmp/native-target"'],
+        { tauriBuild: true },
+      ),
+    ).toThrow("Cargo build.target-dir is not allowed for native Tauri builds");
+  });
+
+  it("rejects a forwarded target directory in a Cargo config file", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-cargo-config-"));
+    const cargoHome = path.join(directory, "cargo-home");
+    const configPath = path.join(directory, "target-dir.toml");
+
+    try {
+      await mkdir(cargoHome);
+      await writeFile(configPath, '[build]\ntarget-dir = "/tmp/native-target"\n');
+
+      expect(() =>
+        validateNativeCargoTarget(
+          hostTriple,
+          ["tauri", "build", "--", "--config", configPath],
+          {
+            tauriBuild: true,
+            cwd: directory,
+            env: { CARGO_HOME: cargoHome },
+          },
+        ),
+      ).toThrow("Cargo build.target-dir is not allowed for native Tauri builds");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });

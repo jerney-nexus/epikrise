@@ -109,11 +109,14 @@ function inspectBinaryArchitecture(binary) {
     binary[0] === 0x7f &&
     binary.toString("ascii", 1, 4) === "ELF"
   ) {
-    const byteOrder = binary[5];
-    if (byteOrder !== 1 && byteOrder !== 2) {
-      throw new Error("invalid ELF byte order");
+    if (binary[4] !== 2) {
+      throw new Error("ELF binary must use the 64-bit class");
     }
-    const machine = byteOrder === 1 ? binary.readUInt16LE(18) : binary.readUInt16BE(18);
+    const byteOrder = binary[5];
+    if (byteOrder !== 1) {
+      throw new Error("ELF binary must use little-endian byte order");
+    }
+    const machine = binary.readUInt16LE(18);
     return {
       format: "ELF",
       architectures: [elfMachineNames[machine] ?? `unknown (${machine})`],
