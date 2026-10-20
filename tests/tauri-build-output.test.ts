@@ -76,6 +76,14 @@ describe("Tauri build output path", () => {
       "x86_64-unknown-linux-gnu/",
     ],
     [
+      "clustered feature value containing target shorthand",
+      "x86_64-unknown-linux-gnu",
+      ["-vfdirect-release-updater"],
+      undefined,
+      "release",
+      "",
+    ],
+    [
       "environment target",
       "x86_64-unknown-linux-gnu",
       [],

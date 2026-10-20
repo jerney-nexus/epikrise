@@ -40,20 +40,6 @@ while [[ $# -gt 0 ]]; do
     -t?*)
       build_target="${1#-t}"
       ;;
-    -v*t)
-      shift
-      if [[ $# -eq 0 || -z "$1" || "$1" == "--" ]]; then
-        printf 'Missing value for --target.\n' >&2
-        exit 2
-      fi
-      build_target="$1"
-      ;;
-    -v*t?*)
-      build_target="${1#-v*t}"
-      if [[ "$build_target" == =* ]]; then
-        build_target="${build_target#=}"
-      fi
-      ;;
     --debug|-d)
       build_profile="debug"
       ;;
