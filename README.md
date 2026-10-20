@@ -106,13 +106,72 @@ This creates AppImage, Debian (`.deb`), and RPM packages under
 
 ### Windows Installers
 
-#### Local Windows build
+#### Native Windows build
 
-Native Windows installer builds are not currently supported by the repository
-scripts. The bundled Tesseract OCR sidecar is cross-compiled on Linux ARM64, so
-use the dev container instructions below.
+Use a normal PowerShell window at the repository root. The wrapper initializes
+Visual Studio itself, so a Developer shell is not required. Windows x64 builds
+x64; Windows ARM64 builds ARM64. Cross-target builds are not supported by this
+native command.
 
-#### Dev container build
+Prerequisites are Node.js 22, Corepack/pnpm `12.10.1`, Rust for the native
+Windows architecture, Visual Studio's **Desktop development with C++**
+workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`,
+`curl`, `tar`, and `grep` on `PATH`. On ARM64, include native ARM64 C++ tools.
+If CMake remains missing after installing **C++ CMake tools for Windows** in
+Visual Studio Installer, install it with
+`winget install --id Kitware.CMake --exact --source winget`. Install missing
+Ninja separately with
+`winget install --id Ninja-build.Ninja --exact --source winget`. See the
+[Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
+and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact
+steps.
+Provide Tesseract's German and English language data either through an
+installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder
+containing `deu.traineddata` and `eng.traineddata`.
+
+From the repository root:
+
+```powershell
+$pnpmShimDir = Join-Path $env:LOCALAPPDATA 'Epikrise\corepack'
+New-Item -ItemType Directory -Path $pnpmShimDir -Force | Out-Null
+corepack.cmd enable --install-directory $pnpmShimDir pnpm
+$env:Path = "$pnpmShimDir;$env:Path"
+
+node --version
+pnpm.cmd --version
+rustc -vV
+pnpm.cmd install --frozen-lockfile
+$env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
+Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'deu.traineddata')
+Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'eng.traineddata')
+```
+
+If Corepack cannot write under `C:\Program Files`, this user-local shim keeps
+pnpm in your profile and avoids changing PowerShell's execution policy. The
+version commands should report Node 22 and pnpm 12.10.1. Both `Test-Path`
+commands must print `True`; if not, see the language-data setup in
+[Contributing](CONTRIBUTING.md#native-build-from-windows). Run one build
+command matching the host architecture.
+
+Windows ARM64:
+
+```powershell
+.\scripts\build-native-windows.cmd arm64 diagnostic
+```
+
+Windows x64:
+
+```powershell
+.\scripts\build-native-windows.cmd x64 diagnostic
+```
+
+The command produces an unsigned diagnostic installer under
+`src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The first build
+needs network access to download and verify OCR sources and PDFium. See
+[Contributing: native Windows build](CONTRIBUTING.md#native-build-from-windows)
+for full prerequisites, the x64 command, verification, and troubleshooting.
+
+#### Dev Container cross-build
 
 From the ARM64 Linux dev container, run `pnpm windows:setup` once and review
 the Microsoft SDK/CRT license when prompted. Then build one architecture or both
@@ -127,8 +186,10 @@ pnpm windows:build
 The installers are written under
 `src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`.
 They include local OCR resources and the offline WebView2 installer. Initial
-tool and asset downloads require network access; native Windows testing is still
-required. See [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
+tool and asset downloads require network access. Native install, launch, and
+uninstall have been confirmed on Windows ARM64; live Windows x64 testing is
+deferred. See
+[CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
 
 ### Cross-platform Actions builds
 
@@ -156,7 +217,11 @@ interactive acceptance. The CI builds are unsigned and unnotarized: Windows
 SmartScreen and macOS Gatekeeper may warn or block installation. This workflow
 does not publish releases or use the separate direct-release updater
 configuration. A successful package build is not a substitute for native
-installation and synthetic OCR acceptance testing on each target; see
+installation and runtime acceptance testing on each target. The six-target
+Actions build passed, and native install, launch, and uninstall were confirmed
+on Windows ARM64 and macOS Apple Silicon. Live testing on Windows x64, macOS
+Intel, and Linux x64/ARM64 is deferred; synthetic OCR and other per-target
+runtime checks remain outstanding. See
 [CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
 
 On macOS, copy `Epikrise.app` from the mounted image to `/Applications` first.

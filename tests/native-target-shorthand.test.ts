@@ -1,0 +1,306 @@
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { execFile as execFileCallback } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+const execFile = promisify(execFileCallback);
+const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
+
+async function writeExecutable(filePath: string, content: string) {
+  await writeFile(filePath, content, "utf8");
+  await chmod(filePath, 0o755);
+}
+
+async function writeMockLinuxHostArchitecture(binDir: string) {
+  await writeExecutable(
+    path.join(binDir, "node"),
+    [
+      "#!/usr/bin/env bash",
+      'if [[ "$1" == */verify-linux-host-architecture.mjs ]]; then',
+      "  printf '%s\\n' \"$3\"",
+      "else",
+      `  exec ${JSON.stringify(process.execPath)} "$@"`,
+      "fi",
+      "",
+    ].join("\n"),
+  );
+}
+
+describe("native target shorthand guard", () => {
+  it("allows a native build without an explicit target", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-native-target-default-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
+      );
+      await writeMockLinuxHostArchitecture(binDir);
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
+      );
+
+      await execFile("bash", [wrapperPath, "--native-only", "cargo", "build"], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          CARGO_LOG: cargoLog,
+        },
+      });
+
+      await expect(readFile(cargoLog, "utf8")).resolves.toBe("build\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["-t TARGET", ["-t", "aarch64-unknown-linux-gnu"], "does not match native host"],
+    ["-t=TARGET", ["-t=aarch64-unknown-linux-gnu"], "does not match native host"],
+    ["-tTARGET", ["-taarch64-unknown-linux-gnu"], "does not match native host"],
+    [
+      "clustered -vt TARGET",
+      ["-vt", "aarch64-unknown-linux-gnu"],
+      "does not match native host",
+      true,
+    ],
+    [
+      "clustered -vtTARGET",
+      ["-vtaarch64-unknown-linux-gnu"],
+      "does not match native host",
+      true,
+    ],
+    ["--target=", ["--target="], "Missing value for --target"],
+    ["-t=", ["-t="], "Missing value for --target"],
+    [
+      "forwarded --target",
+      ["build", "--", "--target", "aarch64-unknown-linux-gnu"],
+      "does not match native host",
+      true,
+    ],
+    [
+      "forwarded missing --target",
+      ["build", "--", "--target"],
+      "Missing value for --target",
+      true,
+    ],
+  ])(
+    "rejects invalid %s before invoking Cargo",
+    async (_description, targetArgs, expectedError, tauriBuild = false) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));
+      const binDir = path.join(directory, "bin");
+      const cargoLog = path.join(directory, "cargo.log");
+
+      try {
+        await mkdir(binDir);
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+        );
+        await writeExecutable(
+          path.join(binDir, "uname"),
+          "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
+        );
+        await writeMockLinuxHostArchitecture(binDir);
+        await writeExecutable(
+          path.join(binDir, "cargo"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CARGO_LOG"\n',
+        );
+
+        await expect(
+          execFile(
+            "bash",
+            [
+              wrapperPath,
+              "--native-only",
+              ...(tauriBuild ? ["--tauri-build"] : []),
+              "cargo",
+              ...targetArgs,
+              ...(tauriBuild ? [] : ["check"]),
+            ],
+            {
+              env: {
+                ...process.env,
+                PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+                CARGO_LOG: cargoLog,
+              },
+            },
+          ),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining(expectedError),
+        });
+        await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("does not interpret target-like application args after --", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-end-"));
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
+      );
+      await writeMockLinuxHostArchitecture(binDir);
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
+      );
+
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "cargo",
+          "run",
+          "--",
+          "--target",
+          "aarch64-unknown-linux-gnu",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            CARGO_LOG: cargoLog,
+          },
+        },
+      );
+
+      await expect(readFile(cargoLog, "utf8")).resolves.toBe(
+        "run -- --target aarch64-unknown-linux-gnu\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves matching Tauri runner targets after --", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-tauri-runner-target-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
+      );
+      await writeMockLinuxHostArchitecture(binDir);
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
+      );
+
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "--tauri-build",
+          "cargo",
+          "build",
+          "--",
+          "--target",
+          "x86_64-unknown-linux-gnu",
+          "--profile",
+          "custom",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            CARGO_LOG: cargoLog,
+          },
+        },
+      );
+
+      await expect(readFile(cargoLog, "utf8")).resolves.toBe(
+        "build -- --target x86_64-unknown-linux-gnu --profile custom\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("allows matching clustered target shorthand for native builds", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-native-target-cluster-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nif [[ \"$1\" == \"-s\" ]]; then printf 'Linux\\n'; else printf 'x86_64\\n'; fi\n",
+      );
+      await writeMockLinuxHostArchitecture(binDir);
+
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "--tauri-build",
+          "cargo",
+          "build",
+          "-vt",
+          "x86_64-unknown-linux-gnu",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            CARGO_LOG: cargoLog,
+          },
+        },
+      );
+
+      await expect(readFile(cargoLog, "utf8")).resolves.toBe(
+        "build -vt x86_64-unknown-linux-gnu\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});

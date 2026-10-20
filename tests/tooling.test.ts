@@ -44,9 +44,20 @@ import {
   validateReleaseTag,
   verifyUploadedReleaseAssets,
 } from "../scripts/release-artifacts.mjs";
+import { runTauri } from "../scripts/tauri.mjs";
+import { verifyBinaryArchitecture } from "../scripts/verify-binary-architecture.mjs";
+import {
+  assertResolvedLinuxDependencies,
+  assertSystemOnlyMachODependencies,
+  assertSystemOnlyPEDependencies,
+} from "../scripts/verify-runtime-dependencies.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+const runtimeDependenciesScriptPath = path.join(
+  repoRoot,
+  "scripts/verify-runtime-dependencies.mjs",
+);
 
 const windowsOcrTargets = [
   {
@@ -60,6 +71,277 @@ const windowsOcrTargets = [
     checksum: "5d04b6d0281e78613ef836dea2e0fefe6831f3ae92b3573e8fdf55330de67d3d",
   },
 ];
+
+function createBinaryHeader(target: string) {
+  const binary = Buffer.alloc(128);
+  if (target.endsWith("-unknown-linux-gnu")) {
+    binary.write("\x7fELF", 0, "binary");
+    binary[4] = 2;
+    binary[5] = 1;
+    binary.writeUInt16LE(target.startsWith("x86_64-") ? 62 : 183, 18);
+  } else if (target.endsWith("-apple-darwin")) {
+    binary.set([0xcf, 0xfa, 0xed, 0xfe]);
+    binary.writeUInt32LE(target.startsWith("x86_64-") ? 0x01000007 : 0x0100000c, 4);
+  } else {
+    binary.write("MZ", 0, "ascii");
+    binary.writeUInt32LE(64, 0x3c);
+    binary.write("PE\0\0", 64, "binary");
+    binary.writeUInt16LE(target.startsWith("x86_64-") ? 0x8664 : 0xaa64, 68);
+  }
+  return binary;
+}
+
+describe("binary architecture verification", () => {
+  it.each([
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+  ])("accepts a matching %s binary header", async (target) => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-binary-header-"));
+    const binaryPath = path.join(directory, "fixture.bin");
+    try {
+      await writeFile(binaryPath, createBinaryHeader(target));
+      await expect(
+        verifyBinaryArchitecture(target, binaryPath),
+      ).resolves.toBeUndefined();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    {
+      label: "ELF32",
+      offset: 4,
+      value: 1,
+      message: "ELF binary must use the 64-bit class",
+    },
+    {
+      label: "big-endian ELF",
+      offset: 5,
+      value: 2,
+      message: "ELF binary must use little-endian byte order",
+    },
+  ])(
+    "rejects $label headers for supported Linux targets",
+    async ({ offset, value, message }) => {
+      for (const target of ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]) {
+        const directory = await mkdtemp(path.join(tmpdir(), "epikrise-binary-header-"));
+        const binaryPath = path.join(directory, "fixture.bin");
+        const binary = createBinaryHeader(target);
+        binary[offset] = value;
+
+        try {
+          await writeFile(binaryPath, binary);
+          await expect(verifyBinaryArchitecture(target, binaryPath)).rejects.toThrow(
+            message,
+          );
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      }
+    },
+  );
+
+  it("rejects a binary header for the wrong target architecture", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-binary-header-"));
+    const binaryPath = path.join(directory, "fixture.exe");
+    try {
+      await writeFile(binaryPath, createBinaryHeader("x86_64-pc-windows-msvc"));
+      await expect(
+        verifyBinaryArchitecture("aarch64-pc-windows-msvc", binaryPath),
+      ).rejects.toThrow("expects PE arm64; found PE x86_64");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("recognizes both architectures in a universal Mach-O header", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-universal-header-"));
+    const binaryPath = path.join(directory, "universal.bin");
+    const binary = Buffer.alloc(48);
+    binary.set([0xca, 0xfe, 0xba, 0xbe]);
+    binary.writeUInt32BE(2, 4);
+    binary.writeUInt32BE(0x01000007, 8);
+    binary.writeUInt32BE(3, 12);
+    binary.writeUInt32BE(0x0100000c, 28);
+    binary.writeUInt32BE(0, 32);
+
+    try {
+      await writeFile(binaryPath, binary);
+      await expect(
+        verifyBinaryArchitecture("x86_64-apple-darwin", binaryPath),
+      ).resolves.toBeUndefined();
+      await expect(
+        verifyBinaryArchitecture("aarch64-apple-darwin", binaryPath),
+      ).resolves.toBeUndefined();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Linux runtime dependency verification", () => {
+  it("accepts resolved and statically linked binaries", () => {
+    expect(() =>
+      assertResolvedLinuxDependencies(
+        "app",
+        "libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0)\nnot a dynamic executable",
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects unresolved runtime libraries", () => {
+    expect(() =>
+      assertResolvedLinuxDependencies("app", "libwebkit.so => not found"),
+    ).toThrow("Unresolved runtime dependencies for app: libwebkit.so.");
+  });
+
+  it("rejects unavailable library versions when dependency paths resolve", () => {
+    expect(() =>
+      assertResolvedLinuxDependencies(
+        "app",
+        "libc.so.6 => /lib/libc.so.6 (0x0)\napp: /lib/libc.so.6: version 'GLIBC_2.38' not found (required by app)",
+      ),
+    ).toThrow("Unresolved runtime library versions for app:");
+  });
+
+  it("rejects ldd version diagnostics with a backtick and apostrophe", () => {
+    expect(() =>
+      assertResolvedLinuxDependencies(
+        "app",
+        "libc.so.6 => /lib/libc.so.6 (0x0)\napp: /lib/libc.so.6: version `GLIBC_2.38' not found (required by app)",
+      ),
+    ).toThrow("Unresolved runtime library versions for app:");
+  });
+
+  it.each(["", "ldd output format changed"])(
+    "rejects empty or unrecognized ldd output: %s",
+    (output) => {
+      expect(() => assertResolvedLinuxDependencies("app", output)).toThrow(
+        "Could not recognize ldd output for app.",
+      );
+    },
+  );
+
+  it.each(["statically linked", "app: not a dynamic executable"])(
+    "accepts recognized static ldd diagnostics: %s",
+    (output) => {
+      expect(() => assertResolvedLinuxDependencies("app", output)).not.toThrow();
+    },
+  );
+});
+
+describe("macOS runtime dependency verification", () => {
+  it("accepts dependencies from macOS system locations", () => {
+    expect(() =>
+      assertSystemOnlyMachODependencies(
+        "Epikrise",
+        "Epikrise:\n\t/System/Library/Frameworks/Cocoa.framework/Cocoa (compatibility version 1.0.0)\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)",
+      ),
+    ).not.toThrow();
+  });
+
+  it.each([
+    ["empty output", ""],
+    ["header-only output", "Epikrise:\n"],
+    ["unrecognized output", "not otool output\n"],
+    ["malformed dependency output", "Epikrise:\n\t/usr/lib/libSystem.B.dylib\n"],
+  ])("rejects %s", (_description, output) => {
+    expect(() => assertSystemOnlyMachODependencies("Epikrise", output)).toThrow(
+      "Could not recognize otool output for Epikrise.",
+    );
+  });
+
+  it("rejects dependencies outside system locations", () => {
+    expect(() =>
+      assertSystemOnlyMachODependencies(
+        "Epikrise",
+        "Epikrise:\n\t/opt/homebrew/lib/libexample.dylib (compatibility version 1.0.0)",
+      ),
+    ).toThrow(
+      "Non-system runtime dependencies for Epikrise: /opt/homebrew/lib/libexample.dylib.",
+    );
+  });
+
+  it("ignores a dylib's own install name but rejects other external libraries", () => {
+    expect(() =>
+      assertSystemOnlyMachODependencies(
+        "/app/libpdfium.dylib",
+        "/app/libpdfium.dylib:\n\t./libpdfium.dylib (compatibility version 1.0.0)\n\t/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation (compatibility version 1.0.0)",
+      ),
+    ).not.toThrow();
+
+    expect(() =>
+      assertSystemOnlyMachODependencies(
+        "/app/libpdfium.dylib",
+        "/app/libpdfium.dylib:\n\t./libpdfium.dylib (compatibility version 1.0.0)\n\t/opt/homebrew/lib/libexample.dylib (compatibility version 1.0.0)",
+      ),
+    ).toThrow(
+      "Non-system runtime dependencies for /app/libpdfium.dylib: /opt/homebrew/lib/libexample.dylib.",
+    );
+  });
+});
+
+describe("Windows runtime dependency verification", () => {
+  it("accepts system libraries and Windows API sets", () => {
+    expect(() =>
+      assertSystemOnlyPEDependencies(
+        "Epikrise.exe",
+        "Image has the following dependencies:\n    KERNEL32.dll\n    api-ms-win-core-file-l1-2-0.dll\n    ucrtbase.dll",
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects dependencies that must be bundled", () => {
+    expect(() =>
+      assertSystemOnlyPEDependencies(
+        "pdfium.dll",
+        "Image has the following dependencies:\n    KERNEL32.dll\n    VCRUNTIME140.dll",
+      ),
+    ).toThrow("Non-system runtime dependencies for pdfium.dll: vcruntime140.dll.");
+  });
+
+  it("rejects dependency output that cannot be parsed", () => {
+    expect(() =>
+      assertSystemOnlyPEDependencies("Epikrise.exe", "No dependency table found"),
+    ).toThrow("Could not find PE runtime dependencies for Epikrise.exe.");
+  });
+
+  it.each([
+    ["Linux", "x86_64-unknown-linux-gnu", "ldd"],
+    ["macOS", "x86_64-apple-darwin", "otool"],
+    ["Windows", "x86_64-pc-windows-msvc", "dumpbin"],
+  ])("reports a missing %s inspection tool", async (_platform, target, tool) => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-missing-inspection-tool-"),
+    );
+
+    try {
+      await expect(
+        execFile(
+          process.execPath,
+          [runtimeDependenciesScriptPath, target, "fixture.bin"],
+          {
+            env: {
+              ...process.env,
+              PATH: directory,
+            },
+          },
+        ),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          `Could not inspect runtime dependencies for fixture.bin: spawn ${tool} ENOENT`,
+        ),
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("CalVer release versions", () => {
   it("increments the patch within the current month", () => {
@@ -711,10 +993,18 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toMatch(/^\s+(push|pull_request):/m);
     expect(workflow).toContain("contents: read");
-    expect(workflow).toContain("vars.EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED");
+    expect(workflow).toContain("ref: ${{ inputs.expected_sha }}");
+    expect(workflow).toContain("EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}");
+    expect(workflow).toContain(
+      'pnpm tauri build --target "$TARGET" --bundles "${bundles[@]}" --no-sign',
+    );
+    expect(workflow).not.toContain("pnpm exec tauri build");
     expect(workflow).toContain(
       "src-tauri/target/host-$host_target/$TARGET/release/bundle",
     );
+    expect(workflow).toContain("windows-2025");
+    expect(workflow).toContain("windows-11-vs2026-arm");
+    expect(workflow).toContain("build-native-windows.cmd");
     expect(workflow).not.toContain("~/.cache/epikrise/windows\n");
     expect(workflow).toContain("actions/upload-artifact@v7");
     expect(workflow).toContain("${{ runner.arch }}");
@@ -723,6 +1013,123 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("macos-15-intel");
     expect(workflow).toContain("macos-15");
     for (const target of desktopTargets) expect(workflow).toContain(target);
+    const windowsBuildStep = workflow.indexOf("- name: Build Windows installer");
+    const verifyOcrStep = workflow.indexOf("- name: Verify staged OCR architectures");
+    expect(windowsBuildStep).toBeGreaterThanOrEqual(0);
+    expect(verifyOcrStep).toBeGreaterThan(windowsBuildStep);
+    expect(workflow).toContain("x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)");
+  });
+
+  it("checks Visual Studio paths outside parenthesized CMD blocks", async () => {
+    const buildScript = await readFile(
+      path.join(repoRoot, "scripts/build-native-windows.cmd"),
+      "utf8",
+    );
+    expect(buildScript).toContain('if exist "%vswhere%" goto vswhere_found');
+    expect(buildScript).toContain(
+      'set "vs_component=Microsoft.VisualStudio.Component.VC.Tools.x86.x64"',
+    );
+    expect(buildScript).toContain(
+      'set "vs_component=Microsoft.VisualStudio.Component.VC.Tools.ARM64"',
+    );
+    expect(buildScript).toContain(
+      '"%vswhere%" -latest -products * -requires %vs_component% -property installationPath',
+    );
+    expect(buildScript).toContain('if exist "%vcvarsall%" goto vcvarsall_found');
+    expect(buildScript).not.toContain('set "EPIKRISE_RUNNER_ARCH=');
+    expect(buildScript).toContain(
+      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" link.exe 2>nul | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\link.exe"',
+    );
+    expect(buildScript).toContain(
+      'set "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=%EPIKRISE_MSVC_LINK_EXE%"',
+    );
+    expect(buildScript).toContain(
+      'set "vs_cmake_bin=%VSINSTALLDIR%\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin"',
+    );
+    expect(buildScript).toContain('set "PATH=%vs_cmake_bin%;%PATH%"');
+    expect(buildScript).toContain("where.exe cmake.exe >nul 2>&1");
+    expect(buildScript).toContain(
+      'set "INCLUDE=%msvc_toolset_dir%\\include;%INCLUDE%"',
+    );
+    expect(buildScript).toContain(
+      'set "LIB=%msvc_toolset_dir%\\lib\\%windows_arch%;%LIB%"',
+    );
+    expect(buildScript).toContain('where.exe clang.exe > "%clang_file%" 2>nul');
+    expect(buildScript).toContain(
+      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\Llvm" clang.exe > "%clang_file%" 2>nul',
+    );
+    expect(buildScript).toContain("Clang is required to build ring for Windows ARM64.");
+    expect(buildScript).toContain(
+      'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" cl.exe 2>nul | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\cl.exe"',
+    );
+    expect(buildScript).toContain('set /p "EPIKRISE_MSVC_CL_EXE="<"%msvc_cl_file%"');
+    expect(buildScript).toContain("if defined EPIKRISE_MSVC_CL_EXE goto msvc_cl_found");
+    expect(buildScript).toContain('set "MSYS2_ENV_CONV_EXCL=INCLUDE=;LIB=;LIBPATH="');
+    expect(buildScript).toContain('node scripts\\git-bash.mjs > "%git_bash_output%"');
+    expect(buildScript).toContain(
+      'call "%EPIKRISE_GIT_BASH_EXE%" scripts/build-native-windows.sh "%windows_arch%" "%build_mode%"',
+    );
+    expect(buildScript).toContain('set "EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED=1"');
+    expect(buildScript).toContain('if /I "%build_mode%"=="tauri" goto tauri_launcher');
+    expect(buildScript).toContain("node scripts\\tauri.mjs --run-with-msvc-env");
+    expect(buildScript).not.toContain("call bash scripts/build-native-windows.sh");
+    expect(buildScript).not.toMatch(/if\s+not exist\s+"%(?:vswhere|vcvarsall)%"\s*\(/i);
+
+    const tauriScript = await readFile(path.join(repoRoot, "scripts/tauri.sh"), "utf8");
+    expect(tauriScript).toContain("native_guard_args=(--native-only --tauri-cli)");
+    expect(tauriScript).toContain("native_guard_args=(--native-only --tauri-build)");
+    expect(tauriScript).toContain("native_guard_args=(--native-only --tauri-dev)");
+    expect(tauriScript.match(/\$\{native_guard_args\[@\]\}/g)).toHaveLength(2);
+
+    const ocrBuildScript = await readFile(
+      path.join(repoRoot, "scripts/build-native-windows-ocr.sh"),
+      "utf8",
+    );
+    expect(ocrBuildScript).toContain('msvc_include_dir="$msvc_toolset_dir/include"');
+    expect(ocrBuildScript).toContain('"$msvc_include_dir/vcruntime.h"');
+    expect(ocrBuildScript).toContain(
+      'INCLUDE="$msvc_include_dir_windows${INCLUDE:+;$INCLUDE}"',
+    );
+    expect(ocrBuildScript).toContain('-DCMAKE_C_COMPILER="$msvc_cl_cmake"');
+    expect(ocrBuildScript).toContain('-DCMAKE_CXX_COMPILER="$msvc_cl_cmake"');
+  });
+
+  it("uses a lower-memory release profile for native Windows diagnostic builds", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-windows-diagnostic-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const buildLog = path.join(directory, "build.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "pnpm"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$CARGO_PROFILE_RELEASE_CODEGEN_UNITS" "$CARGO_PROFILE_RELEASE_LTO" "$CARGO_PROFILE_RELEASE_OPT_LEVEL" "$*" > "$BUILD_LOG"\n',
+      );
+
+      await execFile(
+        "bash",
+        ["scripts/build-native-windows.sh", "arm64", "diagnostic"],
+        {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            BUILD_LOG: buildLog,
+          },
+        },
+      );
+
+      expect((await readFile(buildLog, "utf8")).trimEnd().split(/\r?\n/)).toEqual([
+        "16",
+        "false",
+        "2",
+        "tauri build --target aarch64-pc-windows-msvc",
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 
@@ -909,6 +1316,9 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain("--clobber");
     expect(releaseWorkflow).toContain("epikrise-signed-release-commit:");
     expect(releaseWorkflow).toContain("Verify staged OCR architectures");
+    expect(releaseWorkflow).toContain(
+      "x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)",
+    );
     expect(releaseWorkflow).toMatch(
       /Verify staged OCR architectures[\s\S]*Stage and verify updater packages/,
     );
@@ -1314,6 +1724,1022 @@ async function writeExecutable(filePath: string, contents: string) {
   await chmod(filePath, 0o755);
 }
 
+async function writeMockUname(
+  binDir: string,
+  hostTriple: string,
+  archOverride?: string,
+) {
+  const system = hostTriple.endsWith("-apple-darwin")
+    ? "Darwin"
+    : hostTriple.endsWith("-windows-msvc")
+      ? "MINGW64_NT"
+      : "Linux";
+  const architecture =
+    archOverride ?? (hostTriple.startsWith("aarch64-") ? "aarch64" : "x86_64");
+  await writeExecutable(
+    path.join(binDir, "uname"),
+    [
+      "#!/usr/bin/env bash",
+      `if [[ "$1" == "-s" ]]; then printf '%s\\n' '${system}'; else printf '%s\\n' '${architecture}'; fi`,
+      "",
+    ].join("\n"),
+  );
+  if (system === "Linux") {
+    await writeExecutable(
+      path.join(binDir, "node"),
+      [
+        "#!/usr/bin/env bash",
+        'if [[ "$1" == */verify-linux-host-architecture.mjs ]]; then',
+        "  printf '%s\\n' \"$3\"",
+        "else",
+        `  exec ${JSON.stringify(process.execPath)} "$@"`,
+        "fi",
+        "",
+      ].join("\n"),
+    );
+  }
+}
+
+describe("native Cargo host target guard", () => {
+  const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
+  const tauriScriptPath = path.join(repoRoot, "scripts/tauri.sh");
+
+  it("initializes MSVC for regular Windows-shell Tauri invocations without losing arguments", () => {
+    const args = ["build", "--target", "aarch64-pc-windows-msvc", "--config", "a & b"];
+    const gitBashPath = "C:\\Program Files\\Git\\bin\\bash.exe";
+    const env: NodeJS.ProcessEnv = { ...process.env, ComSpec: "cmd.exe" };
+    delete env.EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED;
+    delete env.VSCMD_ARG_HOST_ARCH;
+    delete env.VSCMD_ARG_TGT_ARCH;
+    const invocations: {
+      command: string;
+      args: string[];
+      options: {
+        env?: NodeJS.ProcessEnv;
+        windowsVerbatimArguments?: boolean;
+      };
+    }[] = [];
+
+    const status = runTauri(args, {
+      platform: "win32",
+      env,
+      resolveGitBash: () => gitBashPath,
+      spawn: (command, spawnArgs, options) => {
+        invocations.push({ command, args: spawnArgs, options });
+        if (command === "powershell.exe") {
+          return { status: 0, stdout: "Arm64\r\n" };
+        }
+        return { status: 0 };
+      },
+    });
+
+    expect(status).toBe(0);
+    expect(invocations).toHaveLength(2);
+    expect(invocations[0]).toMatchObject({
+      command: "powershell.exe",
+      args: expect.arrayContaining([
+        "[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture",
+      ]),
+    });
+    expect(invocations[1].command).toBe("cmd.exe");
+    expect(invocations[1].args).toEqual([
+      "/d",
+      "/s",
+      "/c",
+      `call "${path.join(repoRoot, "scripts/build-native-windows.cmd")}" arm64 tauri`,
+    ]);
+    expect(invocations[1].options.env?.EPIKRISE_TAURI_ARGS_JSON).toBe(
+      JSON.stringify(args),
+    );
+    expect(invocations[1].options.windowsVerbatimArguments).toBe(true);
+    expect(invocations[1].options.env?.VSCMD_ARG_HOST_ARCH).toBeUndefined();
+  });
+
+  it("reuses the initialized MSVC environment for nested Tauri commands", () => {
+    const args = ["build", "--target", "x86_64-pc-windows-msvc"];
+    const gitBashPath = "C:\\Program Files\\Git\\bin\\bash.exe";
+    const env = {
+      ...process.env,
+      EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED: "1",
+      EPIKRISE_TAURI_ARGS_JSON: '["outer"]',
+    };
+    let invocation:
+      | {
+          command: string;
+          args: string[];
+          options: { env?: NodeJS.ProcessEnv };
+        }
+      | undefined;
+
+    const status = runTauri(args, {
+      platform: "win32",
+      env,
+      resolveGitBash: () => gitBashPath,
+      spawn: (command, spawnArgs, options) => {
+        invocation = { command, args: spawnArgs, options };
+        return { status: 0 };
+      },
+    });
+
+    expect(status).toBe(0);
+    expect(invocation).toMatchObject({
+      command: gitBashPath,
+      args: [tauriScriptPath, ...args],
+    });
+    expect(invocation?.options.env?.EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED).toBe(
+      undefined,
+    );
+    expect(invocation?.options.env?.EPIKRISE_TAURI_ARGS_JSON).toBeUndefined();
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "preserves Windows Tauri argument boundaries through the environment trampoline",
+    async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-args-"));
+      const fakeBashPath = path.join(directory, "fake-bash");
+      const argumentsPath = path.join(directory, "arguments.bin");
+      const args = ["build", "--config", "one & two", "--features", "a|b"];
+
+      try {
+        await writeExecutable(
+          fakeBashPath,
+          '#!/usr/bin/env bash\nprintf "%s\\0" "$@" > "$TAURI_ARGS_LOG"\n',
+        );
+
+        await execFile(
+          process.execPath,
+          [path.join(repoRoot, "scripts/tauri.mjs"), "--run-with-msvc-env"],
+          {
+            env: {
+              ...process.env,
+              EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED: "1",
+              EPIKRISE_TAURI_ARGS_JSON: JSON.stringify(args),
+              EPIKRISE_GIT_BASH_EXE: fakeBashPath,
+              TAURI_ARGS_LOG: argumentsPath,
+            },
+          },
+        );
+
+        const forwardedArguments = (await readFile(argumentsPath, "utf8"))
+          .split("\0")
+          .slice(0, -1);
+        expect(forwardedArguments).toEqual([tauriScriptPath, ...args]);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("rejects a mismatched target before OCR downloads", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-target-"));
+    const binDir = path.join(directory, "bin");
+    const tessdataDir = path.join(directory, "tessdata");
+    const curlLog = path.join(directory, "curl.log");
+
+    try {
+      await mkdir(binDir);
+      await mkdir(tessdataDir);
+      const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+      const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+      expect(host).toBeDefined();
+      const mismatchedTarget = host!.startsWith("x86_64-")
+        ? host!.replace("x86_64-", "aarch64-")
+        : host!.replace("aarch64-", "x86_64-");
+
+      await writeFile(path.join(tessdataDir, "deu.traineddata"), "deu", "utf8");
+      await writeFile(path.join(tessdataDir, "eng.traineddata"), "eng", "utf8");
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+      );
+      await writeMockUname(binDir, host!);
+      await writeExecutable(
+        path.join(binDir, "tesseract"),
+        '#!/usr/bin/env bash\nprintf \'List of available languages in "%s":\\n\' "$TESSDATA_DIR"\n',
+      );
+      await writeExecutable(
+        path.join(binDir, "curl"),
+        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+      );
+
+      await expect(
+        execFile("bash", [tauriScriptPath, "--target", mismatchedTarget], {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            TESSDATA_DIR: tessdataDir,
+            CURL_LOG: curlLog,
+            EPIKRISE_OCR_RESOURCE_DIR: path.join(directory, "resources"),
+            EPIKRISE_OCR_BINARY_DIR: path.join(directory, "binaries"),
+            EPIKRISE_NATIVE_OCR_CACHE: path.join(directory, "cache"),
+          },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("does not match native host"),
+      });
+      await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["project Cargo config", ["build"], "project-config"],
+    [
+      "forwarded Cargo --config override",
+      ["build", "--", "--config", 'build.target = "__CROSS_TARGET__"'],
+      "cli-override",
+    ],
+    [
+      "forwarded Cargo --target-dir",
+      ["build", "--", "--target-dir", "custom-target"],
+      "target-dir",
+    ],
+    [
+      "forwarded Cargo --target-dir equals override",
+      ["build", "--", "--target-dir=custom-target"],
+      "target-dir",
+    ],
+  ])(
+    "rejects a cross-target from %s before OCR preparation",
+    async (_description, args, configSource) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-tauri-cargo-config-"),
+      );
+      const binDir = path.join(directory, "bin");
+      const cargoHome = path.join(directory, "cargo-home");
+      const curlLog = path.join(directory, "curl.log");
+
+      try {
+        await mkdir(binDir);
+        await mkdir(cargoHome);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        const mismatchedTarget = host!.startsWith("aarch64-")
+          ? host!.replace("aarch64-", "x86_64-")
+          : host!.replace("x86_64-", "aarch64-");
+        if (configSource === "project-config") {
+          await mkdir(path.join(directory, ".cargo"));
+          await writeFile(
+            path.join(directory, ".cargo/config.toml"),
+            `[build]\ntarget = "${mismatchedTarget}"\n`,
+          );
+        }
+
+        const scenarioArgs = args.map((argument) =>
+          argument.replace("__CROSS_TARGET__", mismatchedTarget),
+        );
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+        );
+
+        await expect(
+          execFile("bash", [tauriScriptPath, ...scenarioArgs], {
+            cwd: directory,
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+              CARGO_HOME: cargoHome,
+              CURL_LOG: curlLog,
+              EPIKRISE_OCR_RESOURCE_DIR: path.join(directory, "resources"),
+              EPIKRISE_OCR_BINARY_DIR: path.join(directory, "binaries"),
+            },
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining(
+            configSource === "target-dir"
+              ? "Cargo --target-dir is not allowed for native Tauri builds"
+              : "does not match native host",
+          ),
+        });
+        await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    ["split after the subcommand", ["build", "--runner", "cargo-xwin"]],
+    ["equals form after the subcommand", ["build", "--runner=cargo-xwin"]],
+    ["split before the subcommand", ["--runner", "cargo-xwin", "build"]],
+    ["equals form before the subcommand", ["--runner=cargo-xwin", "build"]],
+    ["short split after build", ["build", "-r", "cargo-xwin"]],
+    ["short equals after build", ["build", "-r=cargo-xwin"]],
+    ["short attached after build", ["build", "-rcargo-xwin"]],
+    ["clustered short attached after build", ["build", "-vrcargo-xwin"]],
+    ["clustered short split after build", ["build", "-vr", "cargo-xwin"]],
+    ["debug before clustered runner", ["build", "-drcargo-xwin"]],
+    ["split runner after debug", ["build", "-dr", "cargo-xwin"]],
+    ["split in dev", ["dev", "--runner", "cargo-xwin"]],
+    ["equals form in dev", ["dev", "--runner=cargo-xwin"]],
+    ["short split in dev", ["dev", "-r", "cargo-xwin"]],
+    ["short equals in dev", ["dev", "-r=cargo-xwin"]],
+    ["short attached in dev", ["dev", "-rcargo-xwin"]],
+    ["short split before dev", ["-r", "cargo-xwin", "dev"]],
+  ])(
+    "rejects a cross-compilation runner in native builds (%s) before OCR downloads",
+    async (_description, args) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-tauri-cross-runner-"),
+      );
+      const binDir = path.join(directory, "bin");
+      const curlLog = path.join(directory, "curl.log");
+
+      try {
+        await mkdir(binDir);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+        );
+
+        await expect(
+          execFile("bash", [tauriScriptPath, ...args], {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+              CURL_LOG: curlLog,
+              EPIKRISE_OCR_RESOURCE_DIR: path.join(directory, "resources"),
+              EPIKRISE_OCR_BINARY_DIR: path.join(directory, "binaries"),
+            },
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining(
+            "Custom Tauri runner cargo-xwin is not allowed for native-only builds",
+          ),
+        });
+        await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    { command: "build", appArgs: [] },
+    { command: "dev", appArgs: [] },
+    { command: "dev", appArgs: ["--", "--help"] },
+  ])(
+    "rejects a mismatched $command runner target before OCR downloads",
+    async ({ command, appArgs }) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-tauri-runner-target-"),
+      );
+      const binDir = path.join(directory, "bin");
+      const curlLog = path.join(directory, "curl.log");
+
+      try {
+        await mkdir(binDir);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        const mismatchedTarget = host!.startsWith("x86_64-")
+          ? host!.replace("x86_64-", "aarch64-")
+          : host!.replace("aarch64-", "x86_64-");
+
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+        );
+
+        await expect(
+          execFile(
+            "bash",
+            [tauriScriptPath, command, "--", "--target", mismatchedTarget, ...appArgs],
+            {
+              cwd: repoRoot,
+              env: {
+                ...process.env,
+                PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+                CURL_LOG: curlLog,
+                EPIKRISE_OCR_RESOURCE_DIR: path.join(directory, "resources"),
+                EPIKRISE_OCR_BINARY_DIR: path.join(directory, "binaries"),
+              },
+            },
+          ),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("does not match native host"),
+        });
+        await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("ignores application targets after tauri dev's second separator", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-tauri-dev-app-args-"),
+    );
+    const binDir = path.join(directory, "bin");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeMockUname(binDir, "x86_64-unknown-linux-gnu");
+
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "--tauri-dev",
+          "--validate-only",
+          "tauri",
+          "dev",
+          "--",
+          "--",
+          "--target",
+          "aarch64-unknown-linux-gnu",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          },
+        },
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves Cargo arguments after the first Tauri dev separator", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-tauri-dev-cargo-args-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+      const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+      expect(host).toBeDefined();
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+      );
+      await writeMockUname(binDir, host!);
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" > "$CARGO_LOG"\n',
+      );
+
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "--tauri-dev",
+          "cargo",
+          "dev",
+          "--",
+          "--features",
+          "forwarded-feature",
+          "--",
+          "--app-argument",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            CARGO_LOG: cargoLog,
+          },
+        },
+      );
+
+      await expect(readFile(cargoLog, "utf8")).resolves.toBe(
+        "dev -- --features forwarded-feature -- --app-argument\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps signing credentials out of OCR preparation", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-signing-env-"));
+    const binDir = path.join(directory, "bin");
+    const ocrLog = path.join(directory, "ocr.log");
+    const tauriLog = path.join(directory, "tauri.log");
+
+    try {
+      await mkdir(binDir);
+      const { stdout: bashPath } = await execFile("bash", ["-c", "command -v bash"]);
+      await writeExecutable(
+        path.join(binDir, "bash"),
+        `#!/bin/sh
+script="$1"
+shift
+case "$script" in
+  */scripts/tauri-command.sh)
+    printf 'dev'
+    ;;
+  */scripts/with-cargo-host-target.sh)
+    case " $* " in
+      *" --validate-only "*) exit 0 ;;
+    esac
+    printf '%s|%s\\n' "\${TAURI_SIGNING_PRIVATE_KEY-unset}" "\${TAURI_SIGNING_PRIVATE_KEY_PASSWORD-unset}" > "$TAURI_LOG"
+    ;;
+  */scripts/prepare-ocr.sh)
+    printf '%s|%s\\n' "\${TAURI_SIGNING_PRIVATE_KEY-unset}" "\${TAURI_SIGNING_PRIVATE_KEY_PASSWORD-unset}" > "$OCR_LOG"
+    ;;
+  *)
+    printf 'Unexpected Bash invocation: %s\\n' "$script" >&2
+    exit 1
+    ;;
+esac
+`,
+      );
+
+      await execFile(bashPath.trim(), [tauriScriptPath, "dev"], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          OCR_LOG: ocrLog,
+          TAURI_LOG: tauriLog,
+          TAURI_SIGNING_PRIVATE_KEY: "test-signing-key",
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "test-signing-password",
+        },
+      });
+
+      expect(await readFile(ocrLog, "utf8")).toBe("unset|unset\n");
+      expect(await readFile(tauriLog, "utf8")).toBe(
+        "test-signing-key|test-signing-password\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["bundle", ["tauri", "bundle", "--config", "src-tauri/tauri.conf.json"]],
+    [
+      "build help",
+      ["tauri", "build", "--config", "src-tauri/tauri.conf.json", "--help"],
+    ],
+  ])(
+    "validates Tauri %s configuration without parsing it as Cargo TOML",
+    async (_name, args) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-config-"));
+      const binDir = path.join(directory, "bin");
+
+      try {
+        await mkdir(binDir);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+
+        await execFile(
+          "bash",
+          [wrapperPath, "--native-only", "--tauri-cli", "--validate-only", ...args],
+          {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            },
+          },
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    ["long runner option", ["tauri", "--runner", "cargo", "build"]],
+    ["clustered short runner", ["tauri", "-vrcargo", "build"]],
+    ["split clustered short runner", ["tauri", "-vr", "cargo", "build"]],
+  ])(
+    "allows the default Cargo runner for a native Tauri build (%s)",
+    async (_name, args) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-native-cargo-runner-"),
+      );
+      const binDir = path.join(directory, "bin");
+
+      try {
+        await mkdir(binDir);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+
+        await execFile(
+          "bash",
+          [wrapperPath, "--native-only", "--tauri-build", "--validate-only", ...args],
+          {
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            },
+          },
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    ["build", "--tauri-build"],
+    ["dev", "--tauri-dev"],
+  ])(
+    "forces Cargo runner over a Tauri configuration-defined %s runner",
+    async (command, nativeMode) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-native-cargo-runner-config-"),
+      );
+      const binDir = path.join(directory, "bin");
+      const cargoHome = path.join(directory, "cargo-home");
+      const argsLog = path.join(directory, "tauri-arguments.log");
+      const tauriConfig = '{"build":{"runner":"cargo-xwin"}}';
+
+      try {
+        await mkdir(binDir);
+        await mkdir(cargoHome);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+        await writeExecutable(
+          path.join(binDir, "tauri"),
+          '#!/usr/bin/env bash\nprintf "%s\\0" "$@" > "$ARGS_LOG"\n',
+        );
+
+        await execFile(
+          "bash",
+          [
+            wrapperPath,
+            "--native-only",
+            nativeMode,
+            "tauri",
+            command,
+            "--config",
+            tauriConfig,
+          ],
+          {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+              CARGO_HOME: cargoHome,
+              ARGS_LOG: argsLog,
+            },
+          },
+        );
+
+        const forwardedArguments = (await readFile(argsLog, "utf8"))
+          .split("\0")
+          .slice(0, -1);
+        expect(forwardedArguments).toContain(tauriConfig);
+        expect(forwardedArguments.slice(-2)).toEqual(["--runner", "cargo"]);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("forwards a matching native target to Cargo", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
+      );
+      await writeMockUname(binDir, "x86_64-unknown-linux-gnu");
+
+      await execFile(
+        "bash",
+        [
+          wrapperPath,
+          "--native-only",
+          "cargo",
+          "--target",
+          "x86_64-unknown-linux-gnu",
+          "check",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            CARGO_LOG: cargoLog,
+          },
+        },
+      );
+
+      expect(await readFile(cargoLog, "utf8")).toBe(
+        "--target x86_64-unknown-linux-gnu check\n",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["an explicit target", ["--target", "aarch64-unknown-linux-gnu"], undefined],
+    ["CARGO_BUILD_TARGET", [], "aarch64-unknown-linux-gnu"],
+  ])("rejects %s before invoking Cargo", async (_description, args, buildTarget) => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeMockUname(binDir, "x86_64-unknown-linux-gnu");
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CARGO_LOG"\n',
+      );
+
+      await expect(
+        execFile("bash", [wrapperPath, "--native-only", "cargo", ...args], {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            CARGO_LOG: cargoLog,
+            ...(buildTarget ? { CARGO_BUILD_TARGET: buildTarget } : {}),
+          },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("does not match native host"),
+      });
+      await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("native Cargo host architecture guard", () => {
+  const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
+
+  it("rejects an x64 toolchain on a native ARM64 Windows machine", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-os-arch-"));
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-pc-windows-msvc\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "powershell.exe"),
+        "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CARGO_LOG"\n',
+      );
+
+      await expect(
+        execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            PROCESSOR_ARCHITECTURE: "AMD64",
+            PROCESSOR_ARCHITEW6432: "ARM64",
+            EPIKRISE_RUNNER_ARCH: "ARM64",
+            VSCMD_ARG_HOST_ARCH: "x64",
+            CARGO_LOG: cargoLog,
+          },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          "does not match detected physical host windows/aarch64",
+        ),
+      });
+      await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a native ARM64 Windows host despite an emulated x64 process", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-arm64-"));
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: aarch64-pc-windows-msvc\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "powershell.exe"),
+        "#!/usr/bin/env bash\nprintf 'Arm64\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
+      );
+
+      await execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          PROCESSOR_ARCHITECTURE: "AMD64",
+          PROCESSOR_ARCHITEW6432: "AMD64",
+          RUNNER_ARCH: "",
+          CARGO_LOG: cargoLog,
+        },
+      });
+
+      expect(await readFile(cargoLog, "utf8")).toBe("check\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("prefers the MSVC host architecture over an emulated PowerShell report", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-windows-arm64-msvc-host-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: aarch64-pc-windows-msvc\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "powershell.exe"),
+        "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
+      );
+
+      await execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          PROCESSOR_ARCHITECTURE: "AMD64",
+          PROCESSOR_ARCHITEW6432: "AMD64",
+          VSCMD_ARG_HOST_ARCH: "arm64",
+          VSCMD_ARG_TGT_ARCH: "arm64",
+          EPIKRISE_RUNNER_ARCH: "",
+          RUNNER_ARCH: "",
+          CARGO_LOG: cargoLog,
+        },
+      });
+
+      expect(await readFile(cargoLog, "utf8")).toBe("check\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to PROCESSOR_ARCHITECTURE when PowerShell reports no OS architecture", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-windows-arm64-fallback-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: aarch64-pc-windows-msvc\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "powershell.exe"),
+        "#!/usr/bin/env bash\nexit 0\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
+      );
+
+      await execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          PROCESSOR_ARCHITECTURE: "ARM64",
+          PROCESSOR_ARCHITEW6432: "",
+          RUNNER_ARCH: "",
+          CARGO_LOG: cargoLog,
+        },
+      });
+
+      expect(await readFile(cargoLog, "utf8")).toBe("check\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a Rust host triple that differs from physical architecture", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-physical-host-"));
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeMockUname(binDir, "x86_64-unknown-linux-gnu", "aarch64");
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CARGO_LOG"\n',
+      );
+
+      await expect(
+        execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            PROCESSOR_ARCHITEW6432: "",
+            PROCESSOR_ARCHITECTURE: "",
+            CARGO_LOG: cargoLog,
+          },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("does not match detected physical host"),
+      });
+      await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
 async function createWindowsOcrFixture(
   directory: string,
   expectedChecksum: string,
@@ -1324,6 +2750,8 @@ async function createWindowsOcrFixture(
     partialReportedParent?: boolean;
     packageName?: string;
     packageMetadataAvailable?: boolean;
+    installTesseract?: boolean;
+    targetTriple?: string;
   } = {},
 ) {
   const {
@@ -1333,6 +2761,8 @@ async function createWindowsOcrFixture(
     partialReportedParent = false,
     packageName = "tesseract-ocr-deu",
     packageMetadataAvailable = true,
+    installTesseract = true,
+    targetTriple = windowsOcrTargets[0].target,
   } = options;
   const binDir = path.join(directory, "bin");
   const tessdataRoot = path.join(directory, "tessdata");
@@ -1350,6 +2780,9 @@ async function createWindowsOcrFixture(
   const curlLog = path.join(directory, "curl.log");
   const dpkgLog = path.join(directory, "dpkg.log");
   const tarLog = path.join(directory, "tar.log");
+  const tesseractLog = path.join(directory, "tesseract.log");
+  const pdfiumFixturePath = path.join(directory, "pdfium.fixture");
+  const tesseractFixturePath = path.join(directory, "tesseract.fixture");
   const builderPath = path.join(directory, "build-ocr.sh");
   await Promise.all([
     mkdir(binDir, { recursive: true }),
@@ -1357,13 +2790,22 @@ async function createWindowsOcrFixture(
   ]);
   await writeFile(path.join(tessdataDir, "deu.traineddata"), "deu", "utf8");
   await writeFile(path.join(tessdataDir, "eng.traineddata"), "eng", "utf8");
+  await writeFile(pdfiumFixturePath, createBinaryHeader(targetTriple));
+  await writeFile(tesseractFixturePath, createBinaryHeader(targetTriple));
   if (partialReportedParent) {
     await writeFile(path.join(tessdataRoot, "deu.traineddata"), "parent-deu", "utf8");
   }
-  await writeExecutable(
-    path.join(binDir, "tesseract"),
-    '#!/usr/bin/env bash\nprintf \'Tesseract wrapper: List of available languages in "%s":\\n\' "$TESSDATA_DIR"\n',
-  );
+  if (installTesseract) {
+    await writeExecutable(
+      path.join(binDir, "tesseract"),
+      '#!/usr/bin/env bash\nprintf \'Tesseract wrapper: List of available languages in "%s":\\n\' "$TESSDATA_DIR"\n',
+    );
+  } else {
+    await writeExecutable(
+      path.join(binDir, "tesseract"),
+      '#!/usr/bin/env bash\nprintf "called\\n" >> "$TESSERACT_LOG"\nexit 127\n',
+    );
+  }
   if (reportInvalidTessdataPath) {
     await writeExecutable(
       path.join(binDir, "dpkg-query"),
@@ -1404,7 +2846,7 @@ async function createWindowsOcrFixture(
       '  if [[ "$1" == "-C" ]]; then destination="$2"; shift 2; else member="$1"; shift; fi',
       "done",
       'mkdir -p "$destination/$(dirname "$member")"',
-      'printf "fake pdfium dll" > "$destination/$member"',
+      'cp "$PDFIUM_FIXTURE_PATH" "$destination/$member"',
       'printf "%s" "$member" > "$TAR_LOG"',
       "",
     ].join("\n"),
@@ -1424,7 +2866,7 @@ async function createWindowsOcrFixture(
     [
       "#!/usr/bin/env bash",
       'mkdir -p "$EPIKRISE_OCR_BINARY_DIR"',
-      'printf "fake tesseract exe" > "$EPIKRISE_OCR_BINARY_DIR/tesseract-$1.exe"',
+      'cp "$TESSERACT_FIXTURE_PATH" "$EPIKRISE_OCR_BINARY_DIR/tesseract-$1.exe"',
       "",
     ].join("\n"),
   );
@@ -1438,6 +2880,8 @@ async function createWindowsOcrFixture(
     resourceDir,
     binaryDir,
     tarLog,
+    pdfiumFixturePath,
+    tesseractFixturePath,
     tessdataDir,
     environment: {
       ...process.env,
@@ -1451,6 +2895,9 @@ async function createWindowsOcrFixture(
       CURL_LOG: curlLog,
       DPKG_LOG: dpkgLog,
       TAR_LOG: tarLog,
+      PDFIUM_FIXTURE_PATH: pdfiumFixturePath,
+      TESSERACT_FIXTURE_PATH: tesseractFixturePath,
+      TESSERACT_LOG: tesseractLog,
       EPIKRISE_OCR_RESOURCE_DIR: resourceDir,
       EPIKRISE_OCR_BINARY_DIR: binaryDir,
       EPIKRISE_WINDOWS_OCR_CACHE: cacheRoot,
@@ -1599,16 +3046,23 @@ if (process.platform !== "win32") {
       it(`stages the matching PDFium and Tesseract for ${targetCase.target}`, async () => {
         const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-"));
         try {
-          const fixture = await createWindowsOcrFixture(directory, targetCase.checksum);
+          const fixture = await createWindowsOcrFixture(
+            directory,
+            targetCase.checksum,
+            {
+              targetTriple: targetCase.target,
+            },
+          );
           await execFile("bash", [prepareScript, "--target", targetCase.target], {
             cwd: repoRoot,
             env: fixture.environment,
           });
 
           expect(await readFile(fixture.tarLog, "utf8")).toBe("bin/pdfium.dll");
+
           expect(
-            await readFile(path.join(fixture.resourceDir, "pdfium/pdfium.dll"), "utf8"),
-          ).toBe("fake pdfium dll");
+            await readFile(path.join(fixture.resourceDir, "pdfium/pdfium.dll")),
+          ).toEqual(await readFile(fixture.pdfiumFixturePath));
           expect(
             await readFile(
               path.join(fixture.resourceDir, "tessdata/deu.traineddata"),
@@ -1624,9 +3078,8 @@ if (process.platform !== "win32") {
           expect(
             await readFile(
               path.join(fixture.binaryDir, `tesseract-${targetCase.target}.exe`),
-              "utf8",
             ),
-          ).toBe("fake tesseract exe");
+          ).toEqual(await readFile(fixture.tesseractFixturePath));
           expect(await readFile(fixture.curlLog, "utf8")).toContain(targetCase.archive);
           expect(
             await readFile(
@@ -1644,6 +3097,233 @@ if (process.platform !== "win32") {
         }
       });
     }
+
+    it("rejects PDFium with the wrong architecture before building Tesseract", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-pdfium-arch-"));
+      try {
+        const fixture = await createWindowsOcrFixture(
+          directory,
+          windowsOcrTargets[1].checksum,
+        );
+        await expect(
+          execFile("bash", [prepareScript, "--target", windowsOcrTargets[1].target], {
+            cwd: repoRoot,
+            env: fixture.environment,
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("expects PE arm64; found PE x86_64"),
+        });
+        await expect(
+          readFile(
+            path.join(fixture.binaryDir, "tesseract-aarch64-pc-windows-msvc.exe"),
+          ),
+        ).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("uses explicit language data without invoking Tesseract", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise ocr tessdata "));
+      try {
+        const fixture = await createWindowsOcrFixture(
+          directory,
+          windowsOcrTargets[0].checksum,
+          { installTesseract: false },
+        );
+        const windowsTessdataPath = "C:\\Clinical Data\\tessdata";
+        await writeExecutable(
+          path.join(fixture.binDir, "cygpath"),
+          '#!/usr/bin/env bash\nprintf "%s\\n" "$TESSDATA_POSIX_PATH"\n',
+        );
+        await execFile(
+          "bash",
+          [prepareScript, "--target", windowsOcrTargets[0].target],
+          {
+            cwd: repoRoot,
+            env: {
+              ...fixture.environment,
+              EPIKRISE_TESSDATA_DIR: windowsTessdataPath,
+              TESSDATA_POSIX_PATH: fixture.tessdataDir,
+            },
+          },
+        );
+
+        expect(
+          await readFile(
+            path.join(fixture.resourceDir, "tessdata/deu.traineddata"),
+            "utf8",
+          ),
+        ).toBe("deu");
+        expect(
+          await readFile(
+            path.join(fixture.resourceDir, "tessdata/eng.traineddata"),
+            "utf8",
+          ),
+        ).toBe("eng");
+        await expect(
+          readFile(path.join(directory, "tesseract.log"), "utf8"),
+        ).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("selects the native MSVC builder for a matching Windows host", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-native-win-"));
+      try {
+        const fixture = await createWindowsOcrFixture(
+          directory,
+          windowsOcrTargets[0].checksum,
+        );
+        const nativeBuilderPath = path.join(directory, "build-native-ocr.sh");
+        const nativeBuilderLog = path.join(directory, "native-builder.log");
+        await writeExecutable(
+          path.join(fixture.binDir, "rustc"),
+          "#!/usr/bin/env bash\nprintf 'host: x86_64-pc-windows-msvc\\n'\n",
+        );
+        await writeExecutable(
+          nativeBuilderPath,
+          [
+            "#!/usr/bin/env bash",
+            'printf "%s\\n" "$1" > "$NATIVE_BUILDER_LOG"',
+            'mkdir -p "$EPIKRISE_OCR_BINARY_DIR"',
+            'cp "$TESSERACT_FIXTURE_PATH" "$EPIKRISE_OCR_BINARY_DIR/tesseract-$1.exe"',
+            "",
+          ].join("\n"),
+        );
+
+        await execFile(
+          "bash",
+          [prepareScript, "--target", windowsOcrTargets[0].target],
+          {
+            cwd: repoRoot,
+            env: {
+              ...fixture.environment,
+              EPIKRISE_NATIVE_WINDOWS_OCR_BUILDER: nativeBuilderPath,
+              NATIVE_BUILDER_LOG: nativeBuilderLog,
+            },
+          },
+        );
+
+        expect(await readFile(nativeBuilderLog, "utf8")).toBe(
+          "x86_64-pc-windows-msvc\n",
+        );
+        expect(
+          await readFile(
+            path.join(fixture.binaryDir, "tesseract-x86_64-pc-windows-msvc.exe"),
+          ),
+        ).toEqual(await readFile(fixture.tesseractFixturePath));
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("rejects a non-Windows host before downloading native MSVC dependencies", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-msvc-host-"));
+      const binDir = path.join(directory, "bin");
+      const curlLog = path.join(directory, "curl.log");
+      try {
+        await mkdir(binDir);
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+        );
+
+        await expect(
+          execFile(
+            "bash",
+            [
+              path.join(repoRoot, "scripts/build-native-windows-ocr.sh"),
+              windowsOcrTargets[0].target,
+            ],
+            {
+              env: {
+                ...process.env,
+                PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+                CURL_LOG: curlLog,
+                EPIKRISE_NATIVE_WINDOWS_OCR_CACHE: path.join(directory, "cache"),
+              },
+            },
+          ),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("require a physical Windows host"),
+        });
+        await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("separates native MSVC caches by toolset version and target", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-msvc-cache-"));
+      const binDir = path.join(directory, "bin");
+      const cacheRoot = path.join(directory, "cache");
+      const curlLog = path.join(directory, "curl.log");
+      const target = "x86_64-pc-windows-msvc";
+      try {
+        await mkdir(binDir);
+        await writeExecutable(
+          path.join(binDir, "uname"),
+          "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+        );
+        await writeExecutable(
+          path.join(binDir, "powershell.exe"),
+          "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
+        );
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${target}\\n'\n`,
+        );
+        for (const tool of ["cmake", "ninja", "cl", "dumpbin", "tar", "rg"]) {
+          await writeExecutable(
+            path.join(binDir, tool),
+            "#!/usr/bin/env bash\nexit 0\n",
+          );
+        }
+        await writeExecutable(
+          path.join(binDir, "cygpath"),
+          '#!/usr/bin/env bash\nprintf "%s\\n" "$2"\n',
+        );
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+        );
+
+        await expect(
+          execFile(
+            "bash",
+            [path.join(repoRoot, "scripts/build-native-windows-ocr.sh"), target],
+            {
+              env: {
+                ...process.env,
+                PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+                VSCMD_ARG_TGT_ARCH: "x64",
+                VSCMD_ARG_HOST_ARCH: "x64",
+                VCToolsVersion: "14.44.35207",
+                CURL_LOG: curlLog,
+                EPIKRISE_NATIVE_WINDOWS_OCR_CACHE: cacheRoot,
+              },
+            },
+          ),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("SHA-256 mismatch for zlib-1.3.1.tar.gz."),
+        });
+
+        expect(
+          await readdir(path.join(cacheRoot, "build", "msvc-14.44.35207-x64", target)),
+        ).toEqual([]);
+        expect(
+          await readdir(
+            path.join(cacheRoot, "install", "msvc-14.44.35207-x64", target),
+          ),
+        ).toEqual([]);
+        await expect(readdir(path.join(cacheRoot, "build", target))).rejects.toThrow();
+        expect(await readFile(curlLog, "utf8")).toBe("called\n");
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
 
     it("resolves prefixed language-list output in a reported tessdata subdirectory", async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-prefix-"));
@@ -1780,7 +3460,7 @@ if (process.platform !== "win32") {
           ),
         ).rejects.toMatchObject({
           stderr: expect.stringContaining(
-            "Tesseract must have both deu and eng language data installed.",
+            "Tesseract language data must include both deu and eng traineddata files.",
           ),
         });
         expect(await readFile(fixture.dpkgLog, "utf8")).toBe(
