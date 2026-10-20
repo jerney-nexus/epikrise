@@ -157,17 +157,18 @@ function configTargetsFromOverrides(args, cwd) {
 /**
  * @param {string[]} args
  * @param {number} index
+ * @param {boolean} allowDebugFlag
  */
-function parseShortTarget(args, index) {
+function parseShortTarget(args, index, allowDebugFlag) {
   const option = args[index];
   const cluster = option.slice(1);
   const targetIndex = cluster.indexOf("t");
   if (targetIndex < 0) return undefined;
   for (const shortOption of cluster.slice(0, targetIndex)) {
-    if (shortOption === "v") continue;
+    if (shortOption === "v" || (allowDebugFlag && shortOption === "d")) continue;
     if ("cFfjprZ".includes(shortOption)) return undefined;
     throw new Error(
-      `Unsupported short-option cluster containing target shorthand: ${option}. Use -t or -vt.`,
+      `Unsupported short-option cluster containing target shorthand: ${option}. Use -t, -vt, -dt, or -dvt.`,
     );
   }
 
@@ -210,9 +211,12 @@ function skipShortOptionValue(args, index, parseConfig) {
 
 /**
  * @param {string[]} args
- * @param {{ parseConfig: boolean, stopAtSeparator: boolean }} options
+ * @param {{ parseConfig: boolean, stopAtSeparator: boolean, allowDebugFlag?: boolean }} options
  */
-function collectTargets(args, { parseConfig, stopAtSeparator }) {
+function collectTargets(
+  args,
+  { parseConfig, stopAtSeparator, allowDebugFlag = false },
+) {
   const targets = [];
   const configs = [];
   for (let index = 0; index < args.length; index += 1) {
@@ -252,7 +256,7 @@ function collectTargets(args, { parseConfig, stopAtSeparator }) {
         index += consumed;
         continue;
       }
-      const parsed = parseShortTarget(args, index);
+      const parsed = parseShortTarget(args, index, allowDebugFlag);
       if (parsed) {
         targets.push(parsed.target);
         index += parsed.consumed;
@@ -291,6 +295,7 @@ export function resolveNativeCargoTargets(
     const tauriOptions = collectTargets(tauriArgs, {
       parseConfig: false,
       stopAtSeparator: false,
+      allowDebugFlag: true,
     });
     const runnerOptions = collectTargets(runnerArgs, {
       parseConfig: true,

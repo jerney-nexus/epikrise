@@ -2267,6 +2267,69 @@ esac
     },
   );
 
+  it.each([
+    ["build", "--tauri-build"],
+    ["dev", "--tauri-dev"],
+  ])(
+    "forces Cargo runner over a Tauri configuration-defined %s runner",
+    async (command, nativeMode) => {
+      const directory = await mkdtemp(
+        path.join(tmpdir(), "epikrise-native-cargo-runner-config-"),
+      );
+      const binDir = path.join(directory, "bin");
+      const cargoHome = path.join(directory, "cargo-home");
+      const argsLog = path.join(directory, "tauri-arguments.log");
+      const tauriConfig = '{"build":{"runner":"cargo-xwin"}}';
+
+      try {
+        await mkdir(binDir);
+        await mkdir(cargoHome);
+        const { stdout: rustcInfo } = await execFile("rustc", ["-vV"]);
+        const host = rustcInfo.match(/^host: (.+)$/m)?.[1];
+        expect(host).toBeDefined();
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
+        );
+        await writeMockUname(binDir, host!);
+        await writeExecutable(
+          path.join(binDir, "tauri"),
+          '#!/usr/bin/env bash\nprintf "%s\\0" "$@" > "$ARGS_LOG"\n',
+        );
+
+        await execFile(
+          "bash",
+          [
+            wrapperPath,
+            "--native-only",
+            nativeMode,
+            "tauri",
+            command,
+            "--config",
+            tauriConfig,
+          ],
+          {
+            cwd: repoRoot,
+            env: {
+              ...process.env,
+              PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+              CARGO_HOME: cargoHome,
+              ARGS_LOG: argsLog,
+            },
+          },
+        );
+
+        const forwardedArguments = (await readFile(argsLog, "utf8"))
+          .split("\0")
+          .slice(0, -1);
+        expect(forwardedArguments).toContain(tauriConfig);
+        expect(forwardedArguments.slice(-2)).toEqual(["--runner", "cargo"]);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("forwards a matching native target to Cargo", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-native-target-"));
     const binDir = path.join(directory, "bin");

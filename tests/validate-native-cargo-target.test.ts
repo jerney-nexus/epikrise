@@ -389,6 +389,18 @@ describe("native Cargo target validation", () => {
   });
 
   it.each([
+    ["split target", ["tauri", "build", "-dt", hostTriple]],
+    ["attached target", ["tauri", "build", `-dvt${hostTriple}`]],
+  ])("accepts a native target in a debug cluster (%s)", (_form, args) => {
+    expect(
+      validateNativeCargoTarget(hostTriple, args, {
+        tauriBuild: true,
+        env: { CARGO_HOME: path.join(tmpdir(), "epikrise-empty-cargo-home") },
+      }),
+    ).toEqual([hostTriple]);
+  });
+
+  it.each([
     ["split", ["tauri", "build", "--", "--target-dir", "custom-target"]],
     ["equals", ["tauri", "build", "--", "--target-dir=custom-target"]],
   ])("rejects a forwarded Cargo target directory override (%s)", (_form, args) => {

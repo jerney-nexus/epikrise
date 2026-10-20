@@ -76,6 +76,22 @@ describe("Tauri build output path", () => {
       "x86_64-unknown-linux-gnu/",
     ],
     [
+      "debug cluster with split target",
+      "x86_64-unknown-linux-gnu",
+      ["-dt", "x86_64-unknown-linux-gnu"],
+      undefined,
+      "debug",
+      "x86_64-unknown-linux-gnu/",
+    ],
+    [
+      "debug cluster with attached target",
+      "x86_64-unknown-linux-gnu",
+      ["-dvtx86_64-unknown-linux-gnu"],
+      undefined,
+      "debug",
+      "x86_64-unknown-linux-gnu/",
+    ],
+    [
       "clustered feature value containing target shorthand",
       "x86_64-unknown-linux-gnu",
       ["-vfdirect-release-updater"],
