@@ -123,4 +123,10 @@ build`/`dev` commands initialize MSVC from regular shells. Linux native-host
 - Spaced the active-template picker away from configuration and allowed the
   template editor to clone reactive Svelte state safely.
 
+### Fixed
+
+- Windows ARM64 now lists stored provider credentials correctly, enabling
+  connection checks, model-list refresh, and report drafting. These flows were
+  validated in a native Windows ARM64 app run.
+
 [Unreleased]: https://github.com/jerney-nexus/epikrise/compare/HEAD
