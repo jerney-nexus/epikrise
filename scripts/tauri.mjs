@@ -262,10 +262,20 @@ export function runTauri(
 
   const childEnv = { ...env };
   if (platform === "linux" && env.DBUS_SESSION_BUS_ADDRESS?.startsWith("autolaunch:")) {
-    const sessionBusAddress = resolveSessionBusAddress(env);
+    let sessionBusAddress;
+    let discoveryFailed = false;
+    try {
+      sessionBusAddress = resolveSessionBusAddress(env);
+    } catch (error) {
+      const details = error instanceof Error ? error.message : String(error);
+      discoveryFailed = true;
+      console.warn(
+        `Could not resolve the desktop D-Bus session address: ${details}. Credential listing may fail in the launched app.`,
+      );
+    }
     if (sessionBusAddress) {
       childEnv.DBUS_SESSION_BUS_ADDRESS = sessionBusAddress;
-    } else {
+    } else if (!discoveryFailed) {
       console.warn(
         "Could not resolve the desktop D-Bus session address; credential listing may fail in the launched app.",
       );

@@ -16,7 +16,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   assertStoreVersionAdvances,
   createReleasedChangelog,
@@ -1820,6 +1820,38 @@ describe("native Cargo host target guard", () => {
     expect(status).toBe(0);
     expect(childEnv?.DBUS_SESSION_BUS_ADDRESS).toBe(address);
     expect(env.DBUS_SESSION_BUS_ADDRESS).toBe("autolaunch:");
+  });
+
+  it("continues launching when D-Bus session discovery fails", () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+      DISPLAY: ":1.0",
+    };
+    let childEnv: NodeJS.ProcessEnv | undefined;
+
+    try {
+      const status = runTauri(["build"], {
+        platform: "linux",
+        env,
+        resolveLinuxSessionBusAddress: () => {
+          throw new Error("permission denied");
+        },
+        spawn: (_command, _args, options) => {
+          childEnv = options.env;
+          return { status: 0 };
+        },
+      });
+
+      expect(status).toBe(0);
+      expect(childEnv?.DBUS_SESSION_BUS_ADDRESS).toBe("autolaunch:");
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining("permission denied"),
+      );
+    } finally {
+      warning.mockRestore();
+    }
   });
 
   it("initializes MSVC for regular Windows-shell Tauri invocations without losing arguments", () => {
