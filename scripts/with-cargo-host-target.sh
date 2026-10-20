@@ -171,7 +171,7 @@ if [[ "$native_only" == true ]]; then
                   fi
                   break
                   ;;
-                v)
+                d|v)
                   ;;
                 c|f|t)
                   break
