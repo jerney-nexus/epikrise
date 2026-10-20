@@ -2614,6 +2614,52 @@ describe("native Cargo host architecture guard", () => {
     }
   });
 
+  it("prefers the MSVC host architecture over an emulated PowerShell report", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-windows-arm64-msvc-host-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const cargoLog = path.join(directory, "cargo.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: aarch64-pc-windows-msvc\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "uname"),
+        "#!/usr/bin/env bash\nprintf 'MINGW64_NT\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "powershell.exe"),
+        "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "cargo"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
+      );
+
+      await execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          PROCESSOR_ARCHITECTURE: "AMD64",
+          PROCESSOR_ARCHITEW6432: "AMD64",
+          VSCMD_ARG_HOST_ARCH: "arm64",
+          VSCMD_ARG_TGT_ARCH: "arm64",
+          EPIKRISE_RUNNER_ARCH: "",
+          RUNNER_ARCH: "",
+          CARGO_LOG: cargoLog,
+        },
+      });
+
+      expect(await readFile(cargoLog, "utf8")).toBe("check\n");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("falls back to PROCESSOR_ARCHITECTURE when PowerShell reports no OS architecture", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "epikrise-windows-arm64-fallback-"),
