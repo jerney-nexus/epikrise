@@ -1198,7 +1198,9 @@ fn ocr_pdf_pages(
         &pdfium_path,
         &tessdata_dir,
         temp_directory,
-        |image_path, tessdata_dir| run_tesseract(app, image_path, tessdata_dir),
+        |image_path, tessdata_dir| {
+            run_tesseract(app, image_path, tessdata_dir).map_err(map_pdf_tesseract_error)
+        },
     )
 }
 
@@ -1232,13 +1234,27 @@ fn ocr_image_bytes(
     run_tesseract(app, temp_file.0.path(), &tessdata_dir).map_err(map_image_tesseract_error)
 }
 
-fn map_image_tesseract_error(error: epikrise_ingest::IngestError) -> epikrise_ingest::IngestError {
+#[derive(Debug, PartialEq, Eq)]
+enum TesseractError {
+    Unavailable,
+    ProcessFailed,
+    InvalidUtf8,
+}
+
+fn map_image_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestError {
     match error {
-        epikrise_ingest::IngestError::PdfOcrUnavailable => {
-            epikrise_ingest::IngestError::ImageOcrUnavailable
+        TesseractError::Unavailable => epikrise_ingest::IngestError::ImageOcrUnavailable,
+        TesseractError::ProcessFailed => epikrise_ingest::IngestError::ImageOcrFailed,
+        TesseractError::InvalidUtf8 => epikrise_ingest::IngestError::InvalidUtf8,
+    }
+}
+
+fn map_pdf_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestError {
+    match error {
+        TesseractError::Unavailable => epikrise_ingest::IngestError::PdfOcrUnavailable,
+        TesseractError::ProcessFailed | TesseractError::InvalidUtf8 => {
+            epikrise_ingest::IngestError::PdfOcrFailed
         }
-        epikrise_ingest::IngestError::PdfOcrFailed => epikrise_ingest::IngestError::ImageOcrFailed,
-        error => error,
     }
 }
 
@@ -1246,11 +1262,11 @@ fn run_tesseract(
     app: &AppHandle,
     image_path: &Path,
     tessdata_dir: &Path,
-) -> Result<String, epikrise_ingest::IngestError> {
+) -> Result<String, TesseractError> {
     let command = app
         .shell()
         .sidecar("tesseract")
-        .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+        .map_err(|_| TesseractError::Unavailable)?;
     let args: [OsString; 6] = [
         image_path.as_os_str().to_owned(),
         "stdout".into(),
@@ -1261,11 +1277,11 @@ fn run_tesseract(
     ];
     let output = std::process::Command::from(command.args(args))
         .output()
-        .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+        .map_err(|_| TesseractError::Unavailable)?;
     if !output.status.success() {
-        return Err(epikrise_ingest::IngestError::PdfOcrFailed);
+        return Err(TesseractError::ProcessFailed);
     }
-    String::from_utf8(output.stdout).map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)
+    String::from_utf8(output.stdout).map_err(|_| TesseractError::InvalidUtf8)
 }
 
 fn ocr_pdf_pages_with<F>(
@@ -1480,10 +1496,11 @@ pub fn run() -> Result<(), tauri::Error> {
 mod tests {
     use super::{
         MAX_PDF_VISION_PAGES, OcrTempSession, TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile,
-        commit_case_generation, load_template_library_from_paths, map_image_tesseract_error,
-        ocr_pdf_pages_with, parse_template_library, prepare_case_generation,
-        render_pdf_pages_for_vision, validate_template_changes, validate_template_creation,
-        validate_template_deletion, wipe_directory_contents,
+        TesseractError, commit_case_generation, load_template_library_from_paths,
+        map_image_tesseract_error, map_pdf_tesseract_error, ocr_pdf_pages_with,
+        parse_template_library, prepare_case_generation, render_pdf_pages_for_vision,
+        validate_template_changes, validate_template_creation, validate_template_deletion,
+        wipe_directory_contents,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
@@ -1502,20 +1519,32 @@ mod tests {
     };
 
     #[test]
-    fn image_ocr_runtime_errors_are_reported_as_unavailable() {
+    fn image_tesseract_errors_are_classified_without_exposing_output() {
         use epikrise_ingest::IngestError;
 
         assert_eq!(
-            map_image_tesseract_error(IngestError::PdfOcrUnavailable),
+            map_image_tesseract_error(TesseractError::Unavailable),
             IngestError::ImageOcrUnavailable
         );
         assert_eq!(
-            map_image_tesseract_error(IngestError::PdfOcrFailed),
+            map_image_tesseract_error(TesseractError::ProcessFailed),
             IngestError::ImageOcrFailed
         );
         assert_eq!(
-            map_image_tesseract_error(IngestError::InvalidImage),
-            IngestError::InvalidImage
+            map_image_tesseract_error(TesseractError::InvalidUtf8),
+            IngestError::InvalidUtf8
+        );
+        assert_eq!(
+            map_pdf_tesseract_error(TesseractError::Unavailable),
+            IngestError::PdfOcrUnavailable
+        );
+        assert_eq!(
+            map_pdf_tesseract_error(TesseractError::ProcessFailed),
+            IngestError::PdfOcrFailed
+        );
+        assert_eq!(
+            map_pdf_tesseract_error(TesseractError::InvalidUtf8),
+            IngestError::PdfOcrFailed
         );
     }
 
