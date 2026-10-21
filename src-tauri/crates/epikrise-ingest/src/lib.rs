@@ -96,7 +96,7 @@ pub enum IngestError {
     #[error("image OCR runtime is unavailable")]
     ImageOcrUnavailable,
     #[error("image OCR process failed")]
-    ImageOcrFailed,
+    ImageOcrFailed { exit_code: Option<i32> },
 }
 
 pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError> {

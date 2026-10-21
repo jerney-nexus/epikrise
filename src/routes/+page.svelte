@@ -547,6 +547,13 @@
   }
 
   function formatIngestError(error: IngestError): string {
+    if (error.key === "image_ocr_failed") {
+      const exitCode = error.exit_code ?? "unknown";
+      return t("input-extraction-failed", {
+        error: `image OCR failed (exit code ${exitCode})`,
+      });
+    }
+
     const messages: Partial<Record<IngestError["key"], string>> = {
       unsafe_url: "This URL resolves to a private or reserved network address.",
       invalid_url: "Enter an HTTP or HTTPS URL without embedded credentials.",
