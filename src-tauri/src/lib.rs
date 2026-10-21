@@ -833,7 +833,8 @@ fn extract_image(
         Ok(block) => Ok(block),
         Err(
             error @ (epikrise_ingest::IngestError::ImageOcrUnavailable
-            | epikrise_ingest::IngestError::ImageOcrFailed),
+            | epikrise_ingest::IngestError::ImageOcrFailed
+            | epikrise_ingest::IngestError::NoTextExtracted),
         ) if vision_enabled => {
             epikrise_ingest::extract_image_for_vision(file_name, &bytes).or(Err(error))
         }
@@ -1235,10 +1236,10 @@ fn ocr_image_bytes(
 
 fn map_image_tesseract_error(error: epikrise_ingest::IngestError) -> epikrise_ingest::IngestError {
     match error {
-        epikrise_ingest::IngestError::PdfOcrUnavailable
-        | epikrise_ingest::IngestError::PdfOcrFailed => {
+        epikrise_ingest::IngestError::PdfOcrUnavailable => {
             epikrise_ingest::IngestError::ImageOcrUnavailable
         }
+        epikrise_ingest::IngestError::PdfOcrFailed => epikrise_ingest::IngestError::ImageOcrFailed,
         error => error,
     }
 }
@@ -1530,7 +1531,7 @@ mod tests {
         );
         assert_eq!(
             map_image_tesseract_error(IngestError::PdfOcrFailed),
-            IngestError::ImageOcrUnavailable
+            IngestError::ImageOcrFailed
         );
         assert_eq!(
             map_image_tesseract_error(IngestError::InvalidImage),

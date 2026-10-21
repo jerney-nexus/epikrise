@@ -95,7 +95,7 @@ pub enum IngestError {
     InvalidImage,
     #[error("image OCR runtime is unavailable")]
     ImageOcrUnavailable,
-    #[error("image OCR failed or returned no text")]
+    #[error("image OCR process failed")]
     ImageOcrFailed,
 }
 
@@ -280,7 +280,7 @@ where
     let (normalized, _) = normalize_image(bytes)?;
     let text = recognize(&normalized)?;
     if text.trim().is_empty() {
-        return Err(IngestError::ImageOcrFailed);
+        return Err(IngestError::NoTextExtracted);
     }
     let mut block = ExtractedBlock::new(
         uuid::Uuid::new_v4().to_string(),
@@ -793,7 +793,7 @@ mod tests {
             })
             .expect_err("empty OCR output should be rejected");
 
-        assert_eq!(error, IngestError::ImageOcrFailed);
+        assert_eq!(error, IngestError::NoTextExtracted);
     }
 
     #[test]
