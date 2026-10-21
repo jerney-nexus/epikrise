@@ -131,7 +131,7 @@ export type ImageAttachment = {
 	name: string,
 };
 
-export type IngestError = { key: "empty_input" } | { key: "invalid_utf8" } | { key: "unsupported_binary"; mime: string } | { key: "unsupported_control_characters" } | { key: "pdf_extraction_failed" } | { key: "no_text_extracted" } | { key: "pdf_ocr_required"; pages: number[] } | { key: "pdf_ocr_unavailable" } | { key: "pdf_ocr_failed" } | { key: "pdf_vision_too_many_pages" } | { key: "pdf_vision_too_large" } | { key: "invalid_docx_archive" } | { key: "missing_docx_document" } | { key: "docx_document_too_large" } | { key: "invalid_docx_xml" } | { key: "invalid_xlsx" } | { key: "no_xlsx_worksheets" } | { key: "no_xlsx_text" } | { key: "html_conversion_failed" } | { key: "no_html_text" } | { key: "invalid_rtf" } | { key: "no_rtf_text" } | { key: "invalid_url" } | { key: "unsafe_url" } | { key: "url_request_failed" } | { key: "url_response_too_large" } | { key: "too_many_url_redirects" } | { key: "unsupported_url_content" } | { key: "url_ingestion_disabled" } | { key: "image_too_large" } | { key: "unsupported_image" } | { key: "invalid_image" } | { key: "image_ocr_unavailable" } | { key: "image_ocr_failed"; exit_code: number | null };
+export type IngestError = { key: "empty_input" } | { key: "invalid_utf8" } | { key: "unsupported_binary"; mime: string } | { key: "unsupported_control_characters" } | { key: "pdf_extraction_failed" } | { key: "no_text_extracted" } | { key: "pdf_ocr_required"; pages: number[] } | { key: "pdf_ocr_unavailable" } | { key: "pdf_ocr_failed" } | { key: "pdf_vision_too_many_pages" } | { key: "pdf_vision_too_large" } | { key: "invalid_docx_archive" } | { key: "missing_docx_document" } | { key: "docx_document_too_large" } | { key: "invalid_docx_xml" } | { key: "invalid_xlsx" } | { key: "no_xlsx_worksheets" } | { key: "no_xlsx_text" } | { key: "html_conversion_failed" } | { key: "no_html_text" } | { key: "invalid_rtf" } | { key: "no_rtf_text" } | { key: "invalid_url" } | { key: "unsafe_url" } | { key: "url_request_failed" } | { key: "url_response_too_large" } | { key: "too_many_url_redirects" } | { key: "unsupported_url_content" } | { key: "url_ingestion_disabled" } | { key: "image_too_large" } | { key: "unsupported_image" } | { key: "invalid_image" } | { key: "image_ocr_unavailable" } | { key: "image_ocr_failed"; exit_code: number | null; stderr_category: OcrDiagnosticCategory };
 
 export type InputProvenance = "RawText" | ({ File: {
 	name: string,
@@ -146,6 +146,8 @@ export type ModelCapabilities = {
 	streaming: boolean,
 	max_context: number | null,
 };
+
+export type OcrDiagnosticCategory = "language_data" | "input_image" | "tiff_support_warning" | "no_stderr" | "other";
 
 export type OutputRules = {
 	forbidden_terms?: string[],

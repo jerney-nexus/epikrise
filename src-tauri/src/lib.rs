@@ -1237,16 +1237,23 @@ fn ocr_image_bytes(
 #[derive(Debug, PartialEq, Eq)]
 enum TesseractError {
     Unavailable,
-    ProcessFailed { exit_code: Option<i32> },
+    ProcessFailed {
+        exit_code: Option<i32>,
+        stderr_category: epikrise_ingest::OcrDiagnosticCategory,
+    },
     InvalidUtf8,
 }
 
 fn map_image_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestError {
     match error {
         TesseractError::Unavailable => epikrise_ingest::IngestError::ImageOcrUnavailable,
-        TesseractError::ProcessFailed { exit_code } => {
-            epikrise_ingest::IngestError::ImageOcrFailed { exit_code }
-        }
+        TesseractError::ProcessFailed {
+            exit_code,
+            stderr_category,
+        } => epikrise_ingest::IngestError::ImageOcrFailed {
+            exit_code,
+            stderr_category,
+        },
         TesseractError::InvalidUtf8 => epikrise_ingest::IngestError::InvalidUtf8,
     }
 }
@@ -1257,6 +1264,30 @@ fn map_pdf_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestErro
         TesseractError::ProcessFailed { .. } | TesseractError::InvalidUtf8 => {
             epikrise_ingest::IngestError::PdfOcrFailed
         }
+    }
+}
+
+fn classify_tesseract_stderr(stderr: &[u8]) -> epikrise_ingest::OcrDiagnosticCategory {
+    use epikrise_ingest::OcrDiagnosticCategory;
+
+    let stderr = String::from_utf8_lossy(stderr).to_ascii_lowercase();
+    if stderr.trim().is_empty() {
+        OcrDiagnosticCategory::NoStderr
+    } else if stderr.contains("error opening data file")
+        || stderr.contains("failed loading language")
+        || stderr.contains("couldn't load any languages")
+    {
+        OcrDiagnosticCategory::LanguageData
+    } else if stderr.contains("cannot read input file")
+        || stderr.contains("cannot read input image")
+        || stderr.contains("pixreadstream: unknown format")
+        || stderr.contains("pixreadmem: unknown format")
+    {
+        OcrDiagnosticCategory::InputImage
+    } else if stderr.contains("pixreadmemtiff: function not present") {
+        OcrDiagnosticCategory::TiffSupportWarning
+    } else {
+        OcrDiagnosticCategory::Other
     }
 }
 
@@ -1283,6 +1314,7 @@ fn run_tesseract(
     if !output.status.success() {
         return Err(TesseractError::ProcessFailed {
             exit_code: output.status.code(),
+            stderr_category: classify_tesseract_stderr(&output.stderr),
         });
     }
     String::from_utf8(output.stdout).map_err(|_| TesseractError::InvalidUtf8)
@@ -1500,11 +1532,11 @@ pub fn run() -> Result<(), tauri::Error> {
 mod tests {
     use super::{
         MAX_PDF_VISION_PAGES, OcrTempSession, TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile,
-        TesseractError, commit_case_generation, load_template_library_from_paths,
-        map_image_tesseract_error, map_pdf_tesseract_error, ocr_pdf_pages_with,
-        parse_template_library, prepare_case_generation, render_pdf_pages_for_vision,
-        validate_template_changes, validate_template_creation, validate_template_deletion,
-        wipe_directory_contents,
+        TesseractError, classify_tesseract_stderr, commit_case_generation,
+        load_template_library_from_paths, map_image_tesseract_error, map_pdf_tesseract_error,
+        ocr_pdf_pages_with, parse_template_library, prepare_case_generation,
+        render_pdf_pages_for_vision, validate_template_changes, validate_template_creation,
+        validate_template_deletion, wipe_directory_contents,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
@@ -1524,15 +1556,21 @@ mod tests {
 
     #[test]
     fn image_tesseract_errors_are_classified_without_exposing_output() {
-        use epikrise_ingest::IngestError;
+        use epikrise_ingest::{IngestError, OcrDiagnosticCategory};
 
         assert_eq!(
             map_image_tesseract_error(TesseractError::Unavailable),
             IngestError::ImageOcrUnavailable
         );
         assert_eq!(
-            map_image_tesseract_error(TesseractError::ProcessFailed { exit_code: Some(1) }),
-            IngestError::ImageOcrFailed { exit_code: Some(1) }
+            map_image_tesseract_error(TesseractError::ProcessFailed {
+                exit_code: Some(1),
+                stderr_category: OcrDiagnosticCategory::Other,
+            }),
+            IngestError::ImageOcrFailed {
+                exit_code: Some(1),
+                stderr_category: OcrDiagnosticCategory::Other,
+            }
         );
         assert_eq!(
             map_image_tesseract_error(TesseractError::InvalidUtf8),
@@ -1543,12 +1581,41 @@ mod tests {
             IngestError::PdfOcrUnavailable
         );
         assert_eq!(
-            map_pdf_tesseract_error(TesseractError::ProcessFailed { exit_code: Some(1) }),
+            map_pdf_tesseract_error(TesseractError::ProcessFailed {
+                exit_code: Some(1),
+                stderr_category: OcrDiagnosticCategory::Other,
+            }),
             IngestError::PdfOcrFailed
         );
         assert_eq!(
             map_pdf_tesseract_error(TesseractError::InvalidUtf8),
             IngestError::PdfOcrFailed
+        );
+    }
+
+    #[test]
+    fn classifies_tesseract_stderr_without_returning_raw_diagnostics() {
+        use epikrise_ingest::OcrDiagnosticCategory;
+
+        assert_eq!(
+            classify_tesseract_stderr(b"Error opening data file C:\\private\\deu.traineddata"),
+            OcrDiagnosticCategory::LanguageData
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b"Error, cannot read input file"),
+            OcrDiagnosticCategory::InputImage
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b"Error in pixReadMemTiff: function not present"),
+            OcrDiagnosticCategory::TiffSupportWarning
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b""),
+            OcrDiagnosticCategory::NoStderr
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b"an unclassified diagnostic"),
+            OcrDiagnosticCategory::Other
         );
     }
 

@@ -26,6 +26,16 @@ const MAX_URL_REDIRECTS: usize = 3;
 const MAX_IMAGE_INPUT_BYTES: usize = 20 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION: u32 = 8_192;
 
+#[derive(Debug, Clone, Copy, Serialize, Type, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OcrDiagnosticCategory {
+    LanguageData,
+    InputImage,
+    TiffSupportWarning,
+    NoStderr,
+    Other,
+}
+
 #[derive(Debug, Error, Serialize, Type, PartialEq, Eq)]
 #[serde(tag = "key", rename_all = "snake_case")]
 pub enum IngestError {
@@ -96,7 +106,10 @@ pub enum IngestError {
     #[error("image OCR runtime is unavailable")]
     ImageOcrUnavailable,
     #[error("image OCR process failed")]
-    ImageOcrFailed { exit_code: Option<i32> },
+    ImageOcrFailed {
+        exit_code: Option<i32>,
+        stderr_category: OcrDiagnosticCategory,
+    },
 }
 
 pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError> {
