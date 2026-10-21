@@ -125,6 +125,10 @@ build`/`dev` commands initialize MSVC from regular shells. Linux native-host
 
 ### Fixed
 
+- Linux Tauri launches now use the active desktop D-Bus session when resolving
+  autolaunched session addresses, allowing keyring credentials to be listed
+  when checking provider connections or refreshing models. Credential-list
+  failures now provide keyring and session-bus troubleshooting guidance.
 - Windows ARM64 now lists stored provider credentials correctly, enabling
   connection checks, model-list refresh, and report drafting. These flows were
   validated in a native Windows ARM64 app run.
