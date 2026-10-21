@@ -554,7 +554,6 @@
       url_ingestion_disabled: "URL ingestion is disabled by administrator policy.",
       image_ocr_unavailable:
         "Local image OCR is unavailable and vision fallback is disabled.",
-      image_ocr_failed: "Image OCR returned no text and vision fallback is disabled.",
       pdf_ocr_required: "This PDF contains scanned pages that could not be extracted.",
       pdf_vision_too_many_pages:
         "This PDF has more than 12 scanned pages. Split it or provide fewer pages.",
