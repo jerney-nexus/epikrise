@@ -84,6 +84,39 @@ if [[ "$target" != "$host_target" && "$target" != *-pc-windows-msvc ]]; then
   exit 1
 fi
 
+windows_cross_host_arch=""
+if [[ "$target" == *-pc-windows-msvc && "$target" != "$host_target" ]]; then
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ||
+        "${CI:-}" =~ ^([Tt][Rr][Uu][Ee]|1)$ ||
+        -n "${GITLAB_CI:-}${CIRCLECI:-}${JENKINS_URL:-}${BUILD_NUMBER:-}${TF_BUILD:-}${TEAMCITY_VERSION:-}${BUILDKITE:-}${DRONE:-}${CODEBUILD_BUILD_ID:-}" ]]; then
+    printf 'Windows OCR cross-compilation is for interactive human use and cannot run in CI.\n' >&2
+    exit 1
+  fi
+  if [[ "${EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD:-}" != "true" ||
+        "${EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE:-}" != "nsis" ]]; then
+    printf 'Windows OCR cross-compilation is available only through an explicitly opted-in manual NSIS build.\n' >&2
+    exit 1
+  fi
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    printf 'Windows OCR cross-compilation requires Linux x64 or ARM64.\n' >&2
+    exit 1
+  fi
+  case "$host_target" in
+    x86_64-*-linux-*|aarch64-*-linux-*) ;;
+    *)
+      printf 'Windows OCR cross-compilation requires a native Linux x64 or ARM64 Rust host; found %s.\n' \
+        "$host_target" >&2
+      exit 1
+      ;;
+  esac
+  windows_cross_host_arch="$(node "$repo_root/scripts/verify-linux-host-architecture.mjs" "$host_target" "$(uname -m)")"
+  if [[ "${EPIKRISE_WINDOWS_HOST_ARCH:-}" != "$windows_cross_host_arch" ]]; then
+    printf 'Windows OCR host architecture context does not match Linux %s.\n' \
+      "$windows_cross_host_arch" >&2
+    exit 1
+  fi
+fi
+
 tessdata_dir="${EPIKRISE_TESSDATA_DIR:-}"
 if [[ "$tessdata_dir" =~ ^[A-Za-z]:[\\/].* ]]; then
   if ! command -v cygpath >/dev/null 2>&1; then
@@ -161,10 +194,14 @@ install -m 0644 "$tessdata_dir/eng.traineddata" "$resource_dir/tessdata/eng.trai
 if [[ "$target" == *-pc-windows-msvc ]]; then
   if [[ "$target" == "$host_target" ]]; then
     builder="${EPIKRISE_NATIVE_WINDOWS_OCR_BUILDER:-$repo_root/scripts/build-native-windows-ocr.sh}"
+    EPIKRISE_OCR_BINARY_DIR="$binary_dir" bash "$builder" "$target"
   else
     builder="${EPIKRISE_WINDOWS_OCR_BUILDER:-$repo_root/scripts/build-windows-ocr.sh}"
+    EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD=true \
+      EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE=nsis \
+      EPIKRISE_WINDOWS_HOST_ARCH="$windows_cross_host_arch" \
+      EPIKRISE_OCR_BINARY_DIR="$binary_dir" bash "$builder" "$target"
   fi
-  EPIKRISE_OCR_BINARY_DIR="$binary_dir" bash "$builder" "$target"
 else
   builder="${EPIKRISE_NATIVE_OCR_BUILDER:-$repo_root/scripts/build-native-ocr.sh}"
   EPIKRISE_OCR_BINARY_DIR="$binary_dir" bash "$builder" "$target"

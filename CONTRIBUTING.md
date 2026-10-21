@@ -302,20 +302,28 @@ The interactive path is for local setup; GitHub Actions uses the separate
 pnpm windows:setup
 ```
 
-Then build one architecture or both:
+Then explicitly opt in to the manual, unsigned diagnostic NSIS cross-build in
+the current shell. Build one architecture or both:
 
 ```sh
+export EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD=true
 pnpm windows:build:x64
 pnpm windows:build:arm64
 pnpm windows:build
 ```
 
+The build scripts reject CI, unsupported hosts, release mode, MSI/MSIX, and
+other non-NSIS package selections before downloading assets or compiling.
+Generic `pnpm tauri build` stays native; signed Windows release builds also
+remain on their native Windows runner.
+
 Installers are written to
 `src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`. Each
 includes the offline WebView2 installer, adding about 127 MB. The first
-cross-build downloads and verifies LLVM-MinGW, Tesseract, its dependencies,
-and PDFium; subsequent builds use target-specific caches. Tesseract's CMake
-TIFF capability probe is given an explicit cross-build result, so no Windows
+cross-build downloads and verifies the host-matched LLVM-MinGW archive,
+Tesseract, its dependencies, and PDFium after the setup license gate;
+subsequent builds use isolated host/target caches. Tesseract's CMake TIFF
+capability probe is given an explicit cross-build result, so no Windows
 executable is run in Linux. TIFF input is not needed by the app's OCR path,
 which passes PNG images to Tesseract.
 
@@ -348,13 +356,9 @@ rejects missing jobs, wrong SHAs/versions/targets, incomplete packages, and
 manifest or SHA-256 mismatches. GitHub retains the uploaded artifacts for 14
 days.
 
-Before enabling Windows jobs, a repository administrator must review the
-license for the pinned Microsoft Windows SDK/CRT and set the repository
-**Actions variable** `EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED` to the exact string
-`true`. The workflow only passes that value to the guarded setup script; it
-does not accept the license or store the SDK/CRT in Actions caches. If the
-variable is absent or different, setup fails before those downloads. Local
-`pnpm windows:setup` remains interactive and still requires typing `ACCEPT`.
+Windows jobs in this workflow use native Windows runners; the manual Linux
+cross-build setup is not available in Actions and never accepts the SDK/CRT
+license on a user's behalf.
 
 Build artifacts are unsigned and macOS packages are not notarized. Expect
 SmartScreen/Gatekeeper warnings or installation restrictions; do not distribute
