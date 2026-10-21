@@ -1222,14 +1222,23 @@ fn ocr_image_bytes(
         .0
         .as_file_mut()
         .write_all(png)
-        .map_err(|_| epikrise_ingest::IngestError::ImageOcrFailed)?;
+        .map_err(|_| epikrise_ingest::IngestError::ImageOcrUnavailable)?;
     temp_file
         .0
         .as_file()
         .sync_all()
-        .map_err(|_| epikrise_ingest::IngestError::ImageOcrFailed)?;
-    run_tesseract(app, temp_file.0.path(), &tessdata_dir)
-        .map_err(|_| epikrise_ingest::IngestError::ImageOcrFailed)
+        .map_err(|_| epikrise_ingest::IngestError::ImageOcrUnavailable)?;
+    run_tesseract(app, temp_file.0.path(), &tessdata_dir).map_err(map_image_tesseract_error)
+}
+
+fn map_image_tesseract_error(error: epikrise_ingest::IngestError) -> epikrise_ingest::IngestError {
+    match error {
+        epikrise_ingest::IngestError::PdfOcrUnavailable
+        | epikrise_ingest::IngestError::PdfOcrFailed => {
+            epikrise_ingest::IngestError::ImageOcrUnavailable
+        }
+        error => error,
+    }
 }
 
 fn run_tesseract(
@@ -1470,10 +1479,10 @@ pub fn run() -> Result<(), tauri::Error> {
 mod tests {
     use super::{
         MAX_PDF_VISION_PAGES, OcrTempSession, TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile,
-        commit_case_generation, load_template_library_from_paths, ocr_pdf_pages_with,
-        parse_template_library, prepare_case_generation, render_pdf_pages_for_vision,
-        validate_template_changes, validate_template_creation, validate_template_deletion,
-        wipe_directory_contents,
+        commit_case_generation, load_template_library_from_paths, map_image_tesseract_error,
+        ocr_pdf_pages_with, parse_template_library, prepare_case_generation,
+        render_pdf_pages_for_vision, validate_template_changes, validate_template_creation,
+        validate_template_deletion, wipe_directory_contents,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
@@ -1490,6 +1499,24 @@ mod tests {
         process::Command,
         sync::Mutex,
     };
+
+    #[test]
+    fn image_ocr_runtime_errors_are_reported_as_unavailable() {
+        use epikrise_ingest::IngestError;
+
+        assert_eq!(
+            map_image_tesseract_error(IngestError::PdfOcrUnavailable),
+            IngestError::ImageOcrUnavailable
+        );
+        assert_eq!(
+            map_image_tesseract_error(IngestError::PdfOcrFailed),
+            IngestError::ImageOcrUnavailable
+        );
+        assert_eq!(
+            map_image_tesseract_error(IngestError::InvalidImage),
+            IngestError::InvalidImage
+        );
+    }
 
     #[derive(Default)]
     struct FakeLlmClient {
