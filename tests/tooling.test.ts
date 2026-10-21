@@ -1808,6 +1808,41 @@ describe("native Cargo host target guard", () => {
     }
   });
 
+  it("decodes percent-escaped D-Bus socket paths for validation", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-escaped-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const socketPath = "/tmp/epikrise session bus";
+    const address = "unix:path=/tmp/epikrise%20session%20bus,guid=0123456789abcdef";
+
+    try {
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='${address}'\nDBUS_SESSION_BUS_PID=123\n`,
+      );
+
+      expect(
+        resolveLinuxSessionBusAddress(
+          {
+            DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+            DISPLAY: ":1.0",
+            HOME: homeDirectory,
+          },
+          {
+            machineIdPath,
+            isSocketPath: (candidate) => candidate === socketPath,
+          },
+        ),
+      ).toBe(address);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("passes the resolved D-Bus address to the Tauri process without mutating its input", () => {
     const address = "unix:path=/tmp/epikrise-test-dbus,guid=0123456789abcdef";
     const env: NodeJS.ProcessEnv = {

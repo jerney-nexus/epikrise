@@ -102,7 +102,9 @@ export function resolveLinuxSessionBusAddress(
   );
   const address = addressMatch?.[1] ?? addressMatch?.[2] ?? addressMatch?.[3];
   const socketPath = address?.match(/^unix:path=([^,]+)/)?.[1];
-  if (!address || !socketPath || !isSocketPath(socketPath)) return undefined;
+  if (!address || !socketPath || !isSocketPath(decodeURIComponent(socketPath))) {
+    return undefined;
+  }
 
   return address;
 }
