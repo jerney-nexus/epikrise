@@ -781,6 +781,22 @@ mod tests {
     }
 
     #[test]
+    fn empty_image_ocr_output_is_reported_separately_from_runtime_failure() {
+        let mut image_bytes = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(2, 2)
+            .write_to(&mut image_bytes, image::ImageFormat::Png)
+            .expect("synthetic image should encode");
+
+        let error =
+            extract_image_with_ocr("screen.png".to_owned(), &image_bytes.into_inner(), |_| {
+                Ok(" \n\t".to_owned())
+            })
+            .expect_err("empty OCR output should be rejected");
+
+        assert_eq!(error, IngestError::ImageOcrFailed);
+    }
+
+    #[test]
     fn rejects_unsupported_image_data() {
         assert_eq!(
             extract_image_for_vision("screen.gif".to_owned(), b"not an image"),
