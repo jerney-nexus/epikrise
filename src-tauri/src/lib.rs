@@ -833,7 +833,7 @@ fn extract_image(
         Ok(block) => Ok(block),
         Err(
             error @ (epikrise_ingest::IngestError::ImageOcrUnavailable
-            | epikrise_ingest::IngestError::ImageOcrFailed
+            | epikrise_ingest::IngestError::ImageOcrFailed { .. }
             | epikrise_ingest::IngestError::NoTextExtracted),
         ) if vision_enabled => {
             epikrise_ingest::extract_image_for_vision(file_name, &bytes).or(Err(error))
@@ -1239,14 +1239,16 @@ fn ocr_image_bytes(
 #[derive(Debug, PartialEq, Eq)]
 enum TesseractError {
     Unavailable,
-    ProcessFailed,
+    ProcessFailed { exit_code: Option<i32> },
     InvalidUtf8,
 }
 
 fn map_image_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestError {
     match error {
         TesseractError::Unavailable => epikrise_ingest::IngestError::ImageOcrUnavailable,
-        TesseractError::ProcessFailed => epikrise_ingest::IngestError::ImageOcrFailed,
+        TesseractError::ProcessFailed { exit_code } => {
+            epikrise_ingest::IngestError::ImageOcrFailed { exit_code }
+        }
         TesseractError::InvalidUtf8 => epikrise_ingest::IngestError::InvalidUtf8,
     }
 }
@@ -1254,7 +1256,7 @@ fn map_image_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestEr
 fn map_pdf_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestError {
     match error {
         TesseractError::Unavailable => epikrise_ingest::IngestError::PdfOcrUnavailable,
-        TesseractError::ProcessFailed | TesseractError::InvalidUtf8 => {
+        TesseractError::ProcessFailed { .. } | TesseractError::InvalidUtf8 => {
             epikrise_ingest::IngestError::PdfOcrFailed
         }
     }
@@ -1281,7 +1283,9 @@ fn run_tesseract(
         .output()
         .map_err(|_| TesseractError::Unavailable)?;
     if !output.status.success() {
-        return Err(TesseractError::ProcessFailed);
+        return Err(TesseractError::ProcessFailed {
+            exit_code: output.status.code(),
+        });
     }
     String::from_utf8(output.stdout).map_err(|_| TesseractError::InvalidUtf8)
 }
@@ -1547,8 +1551,8 @@ mod tests {
             IngestError::ImageOcrUnavailable
         );
         assert_eq!(
-            map_image_tesseract_error(TesseractError::ProcessFailed),
-            IngestError::ImageOcrFailed
+            map_image_tesseract_error(TesseractError::ProcessFailed { exit_code: Some(1) }),
+            IngestError::ImageOcrFailed { exit_code: Some(1) }
         );
         assert_eq!(
             map_image_tesseract_error(TesseractError::InvalidUtf8),
@@ -1559,7 +1563,7 @@ mod tests {
             IngestError::PdfOcrUnavailable
         );
         assert_eq!(
-            map_pdf_tesseract_error(TesseractError::ProcessFailed),
+            map_pdf_tesseract_error(TesseractError::ProcessFailed { exit_code: Some(1) }),
             IngestError::PdfOcrFailed
         );
         assert_eq!(
