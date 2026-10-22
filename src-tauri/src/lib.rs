@@ -1336,6 +1336,35 @@ fn normalize_data_path(path: &str) -> String {
         .to_owned()
 }
 
+#[cfg(any(windows, test))]
+fn strip_windows_verbatim_prefix(path: &[u16]) -> Option<Vec<u16>> {
+    const VERBATIM_PREFIX: [u16; 4] = [92, 92, 63, 92];
+    const UNC_PREFIX: [u16; 4] = [85, 78, 67, 92];
+    let remainder = path.strip_prefix(&VERBATIM_PREFIX)?;
+    if let Some(unc_path) = remainder.strip_prefix(&UNC_PREFIX) {
+        let mut normalized = vec![92, 92];
+        normalized.extend_from_slice(unc_path);
+        Some(normalized)
+    } else {
+        Some(remainder.to_vec())
+    }
+}
+
+#[cfg(windows)]
+fn tesseract_path_arg(path: &Path) -> OsString {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    let wide_path = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    strip_windows_verbatim_prefix(&wide_path)
+        .map(|path| OsString::from_wide(&path))
+        .unwrap_or_else(|| path.as_os_str().to_owned())
+}
+
+#[cfg(not(windows))]
+fn tesseract_path_arg(path: &Path) -> OsString {
+    path.as_os_str().to_owned()
+}
+
 fn raw_ocr_stderr(stderr: &[u8], enabled: bool) -> Option<String> {
     enabled.then(|| String::from_utf8_lossy(stderr).into_owned())
 }
@@ -1350,12 +1379,12 @@ fn run_tesseract(
         .sidecar("tesseract")
         .map_err(|_| TesseractError::Unavailable)?;
     let args: [OsString; 6] = [
-        image_path.as_os_str().to_owned(),
+        tesseract_path_arg(image_path),
         "stdout".into(),
         "-l".into(),
         "deu+eng".into(),
         "--tessdata-dir".into(),
-        tessdata_dir.as_os_str().to_owned(),
+        tesseract_path_arg(tessdata_dir),
     ];
     let output = std::process::Command::from(command.args(args))
         .output()
@@ -1601,8 +1630,8 @@ mod tests {
         load_template_library_from_paths, map_image_tesseract_error, map_pdf_tesseract_error,
         ocr_pdf_pages_with, parse_template_library, prepare_case_generation, raw_ocr_stderr,
         render_pdf_pages_for_vision, stderr_reports_expected_language_data_path,
-        validate_template_changes, validate_template_creation, validate_template_deletion,
-        wipe_directory_contents,
+        strip_windows_verbatim_prefix, validate_template_changes, validate_template_creation,
+        validate_template_deletion, wipe_directory_contents,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
@@ -1732,6 +1761,34 @@ mod tests {
             raw_ocr_stderr(stderr, true).as_deref(),
             Some("Error opening data file C:\\private\\deu.traineddata")
         );
+    }
+
+    #[test]
+    fn strips_verbatim_windows_prefixes_from_tesseract_paths() {
+        let drive_path = r"\\?\C:\Epikrise\resources\ocr\tessdata"
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        let normalized_drive_path = strip_windows_verbatim_prefix(&drive_path)
+            .expect("verbatim drive path should be normalized");
+        assert_eq!(
+            String::from_utf16(&normalized_drive_path).expect("path should be valid UTF-16"),
+            r"C:\Epikrise\resources\ocr\tessdata"
+        );
+
+        let unc_path = r"\\?\UNC\server\share\Epikrise\tessdata"
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        let normalized_unc_path = strip_windows_verbatim_prefix(&unc_path)
+            .expect("verbatim UNC path should be normalized");
+        assert_eq!(
+            String::from_utf16(&normalized_unc_path).expect("path should be valid UTF-16"),
+            r"\\server\share\Epikrise\tessdata"
+        );
+
+        let ordinary_path = r"C:\Epikrise\resources\ocr\tessdata"
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        assert_eq!(strip_windows_verbatim_prefix(&ordinary_path), None);
     }
 
     #[derive(Default)]
