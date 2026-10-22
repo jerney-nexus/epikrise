@@ -829,15 +829,21 @@ fn extract_image(
         ocr_image_bytes(&app, temp_session.path(), png)
     }) {
         Ok(block) => Ok(block),
-        Err(
-            error @ (epikrise_ingest::IngestError::ImageOcrUnavailable
-            | epikrise_ingest::IngestError::ImageOcrFailed { .. }
-            | epikrise_ingest::IngestError::NoTextExtracted),
-        ) if vision_enabled => {
+        Err(error) if vision_enabled && should_fallback_to_vision(&error) => {
             epikrise_ingest::extract_image_for_vision(file_name, &bytes).or(Err(error))
         }
         Err(error) => Err(error),
     }
+}
+
+fn should_fallback_to_vision(error: &epikrise_ingest::IngestError) -> bool {
+    matches!(
+        error,
+        epikrise_ingest::IngestError::ImageOcrUnavailable
+            | epikrise_ingest::IngestError::ImageOcrFailed { .. }
+            | epikrise_ingest::IngestError::InvalidUtf8
+            | epikrise_ingest::IngestError::NoTextExtracted
+    )
 }
 
 #[tauri::command]
@@ -1625,6 +1631,28 @@ mod tests {
             map_pdf_tesseract_error(TesseractError::InvalidUtf8),
             IngestError::PdfOcrFailed
         );
+    }
+
+    #[test]
+    fn invalid_ocr_output_is_eligible_for_vision_fallback() {
+        use epikrise_ingest::IngestError;
+
+        assert!(super::should_fallback_to_vision(&IngestError::InvalidUtf8));
+        assert!(super::should_fallback_to_vision(
+            &IngestError::ImageOcrUnavailable
+        ));
+        assert!(super::should_fallback_to_vision(
+            &IngestError::ImageOcrFailed {
+                exit_code: Some(1),
+                stderr_category: epikrise_ingest::OcrDiagnosticCategory::Other,
+            }
+        ));
+        assert!(super::should_fallback_to_vision(
+            &IngestError::NoTextExtracted
+        ));
+        assert!(!super::should_fallback_to_vision(
+            &IngestError::InvalidImage
+        ));
     }
 
     #[test]
