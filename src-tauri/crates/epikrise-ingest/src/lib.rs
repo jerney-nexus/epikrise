@@ -113,10 +113,6 @@ pub enum IngestError {
     ImageOcrFailed {
         exit_code: Option<i32>,
         stderr_category: OcrDiagnosticCategory,
-        required_language_data_present: bool,
-        required_language_data_openable: bool,
-        stderr_reports_expected_language_data_path: bool,
-        stderr_details: Option<String>,
     },
 }
 

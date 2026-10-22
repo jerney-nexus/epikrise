@@ -549,16 +549,8 @@
   function formatIngestError(error: IngestError): string {
     if (error.key === "image_ocr_failed") {
       const exitCode = error.exit_code ?? "unknown";
-      const languageDataStatus =
-        error.stderr_category.startsWith("language_") ||
-        error.stderr_category === "no_languages_loaded"
-          ? `; deu/eng files present: ${error.required_language_data_present}; openable: ${error.required_language_data_openable}; reported data path matches expected: ${error.stderr_reports_expected_language_data_path}`
-          : "";
-      const stderrDetails = error.stderr_details
-        ? `\n\nTesseract stderr:\n${error.stderr_details}`
-        : "";
       return t("input-extraction-failed", {
-        error: `image OCR failed (exit code ${exitCode}; stderr category: ${error.stderr_category}${languageDataStatus})${stderrDetails}`,
+        error: `image OCR failed (exit code ${exitCode}; stderr category: ${error.stderr_category})`,
       });
     }
 
