@@ -1245,6 +1245,7 @@ enum TesseractError {
         required_language_data_present: bool,
         required_language_data_openable: bool,
         stderr_reports_expected_language_data_path: bool,
+        stderr_details: Option<String>,
     },
     InvalidUtf8,
 }
@@ -1258,12 +1259,14 @@ fn map_image_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestEr
             required_language_data_present,
             required_language_data_openable,
             stderr_reports_expected_language_data_path,
+            stderr_details,
         } => epikrise_ingest::IngestError::ImageOcrFailed {
             exit_code,
             stderr_category,
             required_language_data_present,
             required_language_data_openable,
             stderr_reports_expected_language_data_path,
+            stderr_details,
         },
         TesseractError::InvalidUtf8 => epikrise_ingest::IngestError::InvalidUtf8,
     }
@@ -1335,6 +1338,10 @@ fn normalize_data_path(path: &str) -> String {
         .to_owned()
 }
 
+fn raw_ocr_stderr(stderr: &[u8], enabled: bool) -> Option<String> {
+    enabled.then(|| String::from_utf8_lossy(stderr).into_owned())
+}
+
 fn run_tesseract(
     app: &AppHandle,
     image_path: &Path,
@@ -1370,6 +1377,10 @@ fn run_tesseract(
             stderr_reports_expected_language_data_path: stderr_reports_expected_language_data_path(
                 &output.stderr,
                 tessdata_dir,
+            ),
+            stderr_details: raw_ocr_stderr(
+                &output.stderr,
+                std::env::var("EPIKRISE_DEBUG_OCR_STDERR").is_ok_and(|value| value == "1"),
             ),
         });
     }
@@ -1608,7 +1619,7 @@ mod tests {
         MAX_PDF_VISION_PAGES, OcrTempSession, TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile,
         TesseractError, classify_tesseract_stderr, commit_case_generation,
         load_template_library_from_paths, map_image_tesseract_error, map_pdf_tesseract_error,
-        ocr_pdf_pages_with, parse_template_library, prepare_case_generation,
+        ocr_pdf_pages_with, parse_template_library, prepare_case_generation, raw_ocr_stderr,
         render_pdf_pages_for_vision, stderr_reports_expected_language_data_path,
         validate_template_changes, validate_template_creation, validate_template_deletion,
         wipe_directory_contents,
@@ -1644,6 +1655,7 @@ mod tests {
                 required_language_data_present: true,
                 required_language_data_openable: true,
                 stderr_reports_expected_language_data_path: false,
+                stderr_details: None,
             }),
             IngestError::ImageOcrFailed {
                 exit_code: Some(1),
@@ -1651,6 +1663,7 @@ mod tests {
                 required_language_data_present: true,
                 required_language_data_openable: true,
                 stderr_reports_expected_language_data_path: false,
+                stderr_details: None,
             }
         );
         assert_eq!(
@@ -1668,6 +1681,7 @@ mod tests {
                 required_language_data_present: true,
                 required_language_data_openable: true,
                 stderr_reports_expected_language_data_path: false,
+                stderr_details: None,
             }),
             IngestError::PdfOcrFailed
         );
@@ -1726,6 +1740,17 @@ mod tests {
         assert_eq!(
             classify_tesseract_stderr(b"an unclassified diagnostic"),
             OcrDiagnosticCategory::Other
+        );
+    }
+
+    #[test]
+    fn raw_ocr_stderr_is_only_included_when_explicitly_enabled() {
+        let stderr = b"Error opening data file C:\\private\\deu.traineddata";
+
+        assert_eq!(raw_ocr_stderr(stderr, false), None);
+        assert_eq!(
+            raw_ocr_stderr(stderr, true).as_deref(),
+            Some("Error opening data file C:\\private\\deu.traineddata")
         );
     }
 
