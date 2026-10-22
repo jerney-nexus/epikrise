@@ -1242,6 +1242,7 @@ enum TesseractError {
         stderr_category: epikrise_ingest::OcrDiagnosticCategory,
         required_language_data_present: bool,
         required_language_data_openable: bool,
+        stderr_mentions_expected_language_data_path: bool,
     },
     InvalidUtf8,
 }
@@ -1254,11 +1255,13 @@ fn map_image_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestEr
             stderr_category,
             required_language_data_present,
             required_language_data_openable,
+            stderr_mentions_expected_language_data_path,
         } => epikrise_ingest::IngestError::ImageOcrFailed {
             exit_code,
             stderr_category,
             required_language_data_present,
             required_language_data_openable,
+            stderr_mentions_expected_language_data_path,
         },
         TesseractError::InvalidUtf8 => epikrise_ingest::IngestError::InvalidUtf8,
     }
@@ -1302,6 +1305,23 @@ fn classify_tesseract_stderr(stderr: &[u8]) -> epikrise_ingest::OcrDiagnosticCat
     }
 }
 
+fn stderr_mentions_expected_language_data_path(stderr: &[u8], tessdata_dir: &Path) -> bool {
+    let stderr = String::from_utf8_lossy(stderr)
+        .replace('/', "\\")
+        .to_ascii_lowercase();
+    ["deu", "eng"].iter().any(|language| {
+        let expected_path = tessdata_dir
+            .join(format!("{language}.traineddata"))
+            .to_string_lossy()
+            .replace('/', "\\")
+            .to_ascii_lowercase();
+        let expected_path = expected_path
+            .strip_prefix(r"\\?\")
+            .unwrap_or(&expected_path);
+        stderr.contains(expected_path)
+    })
+}
+
 fn run_tesseract(
     app: &AppHandle,
     image_path: &Path,
@@ -1334,6 +1354,8 @@ fn run_tesseract(
             required_language_data_openable: ["deu", "eng"].iter().all(|language| {
                 std::fs::File::open(tessdata_dir.join(format!("{language}.traineddata"))).is_ok()
             }),
+            stderr_mentions_expected_language_data_path:
+                stderr_mentions_expected_language_data_path(&output.stderr, tessdata_dir),
         });
     }
     String::from_utf8(output.stdout).map_err(|_| TesseractError::InvalidUtf8)
@@ -1554,8 +1576,9 @@ mod tests {
         TesseractError, classify_tesseract_stderr, commit_case_generation,
         load_template_library_from_paths, map_image_tesseract_error, map_pdf_tesseract_error,
         ocr_pdf_pages_with, parse_template_library, prepare_case_generation,
-        render_pdf_pages_for_vision, validate_template_changes, validate_template_creation,
-        validate_template_deletion, wipe_directory_contents,
+        render_pdf_pages_for_vision, stderr_mentions_expected_language_data_path,
+        validate_template_changes, validate_template_creation, validate_template_deletion,
+        wipe_directory_contents,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
@@ -1587,12 +1610,14 @@ mod tests {
                 stderr_category: OcrDiagnosticCategory::Other,
                 required_language_data_present: true,
                 required_language_data_openable: true,
+                stderr_mentions_expected_language_data_path: false,
             }),
             IngestError::ImageOcrFailed {
                 exit_code: Some(1),
                 stderr_category: OcrDiagnosticCategory::Other,
                 required_language_data_present: true,
                 required_language_data_openable: true,
+                stderr_mentions_expected_language_data_path: false,
             }
         );
         assert_eq!(
@@ -1609,6 +1634,7 @@ mod tests {
                 stderr_category: OcrDiagnosticCategory::Other,
                 required_language_data_present: true,
                 required_language_data_openable: true,
+                stderr_mentions_expected_language_data_path: false,
             }),
             IngestError::PdfOcrFailed
         );
@@ -1640,6 +1666,14 @@ mod tests {
             ),
             OcrDiagnosticCategory::LanguageEngineComponentsMissing
         );
+        assert!(stderr_mentions_expected_language_data_path(
+            b"Error opening data file C:\\app\\resources\\ocr\\tessdata\\deu.traineddata",
+            Path::new(r"C:\app\resources\ocr\tessdata"),
+        ));
+        assert!(!stderr_mentions_expected_language_data_path(
+            b"Error opening data file C:\\elsewhere\\eng.traineddata",
+            Path::new(r"C:\app\resources\ocr\tessdata"),
+        ));
         assert_eq!(
             classify_tesseract_stderr(b"Error, cannot read input file"),
             OcrDiagnosticCategory::InputImage

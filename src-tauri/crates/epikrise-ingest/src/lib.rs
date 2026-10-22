@@ -115,6 +115,7 @@ pub enum IngestError {
         stderr_category: OcrDiagnosticCategory,
         required_language_data_present: bool,
         required_language_data_openable: bool,
+        stderr_mentions_expected_language_data_path: bool,
     },
 }
 
