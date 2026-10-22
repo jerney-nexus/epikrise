@@ -147,7 +147,7 @@ export type ModelCapabilities = {
 	max_context: number | null,
 };
 
-export type OcrDiagnosticCategory = "language_data" | "language_data_file" | "language_load" | "no_languages_loaded" | "input_image" | "tiff_support_warning" | "no_stderr" | "other";
+export type OcrDiagnosticCategory = "language_data" | "language_data_file" | "language_load" | "no_languages_loaded" | "language_engine_components_missing" | "input_image" | "tiff_support_warning" | "no_stderr" | "other";
 
 export type OutputRules = {
 	forbidden_terms?: string[],

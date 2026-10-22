@@ -33,6 +33,7 @@ pub enum OcrDiagnosticCategory {
     LanguageDataFile,
     LanguageLoad,
     NoLanguagesLoaded,
+    LanguageEngineComponentsMissing,
     InputImage,
     TiffSupportWarning,
     NoStderr,
