@@ -547,14 +547,25 @@
   }
 
   function formatIngestError(error: IngestError): string {
+    if (error.key === "image_ocr_failed") {
+      const exitCode =
+        error.exit_code === null ? t("unknown-exit-code") : String(error.exit_code);
+      return t("input-extraction-failed", {
+        error: t("image-ocr-failed", {
+          exitCode,
+          category: error.stderr_category,
+        }),
+      });
+    }
+
     const messages: Partial<Record<IngestError["key"], string>> = {
       unsafe_url: "This URL resolves to a private or reserved network address.",
       invalid_url: "Enter an HTTP or HTTPS URL without embedded credentials.",
       url_response_too_large: "The URL response exceeds the 5 MB limit.",
       url_ingestion_disabled: "URL ingestion is disabled by administrator policy.",
+      no_text_extracted: "No text could be extracted from the input.",
       image_ocr_unavailable:
         "Local image OCR is unavailable and vision fallback is disabled.",
-      image_ocr_failed: "Image OCR returned no text and vision fallback is disabled.",
       pdf_ocr_required: "This PDF contains scanned pages that could not be extracted.",
       pdf_vision_too_many_pages:
         "This PDF has more than 12 scanned pages. Split it or provide fewer pages.",
@@ -5055,6 +5066,7 @@
     color: #236e5d;
     font-size: 11px;
     overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
 
   .ingest-message.error {
