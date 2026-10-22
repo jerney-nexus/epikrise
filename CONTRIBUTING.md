@@ -190,11 +190,6 @@ The data is stored under your local application data directory, not in the
 repository. Keep using the same PowerShell session so the environment variable
 and user-local pnpm shim remain available during the build.
 
-For local OCR troubleshooting, set `$env:EPIKRISE_DEBUG_OCR_STDERR = '1'`
-before launching the app to include Tesseract's raw stderr in image OCR errors.
-It is off by default and is not persisted or logged. Stderr may contain
-machine-local paths; use synthetic test images and sanitize it before sharing.
-
 Run **one** build command, matching the Windows host.
 
 On Windows ARM64:
