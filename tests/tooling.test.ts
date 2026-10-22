@@ -760,7 +760,11 @@ describe("Windows setup noninteractive behavior", () => {
   );
 
   it.each([
-    ["CI", { CI: "true" }],
+    ["CI=true", { CI: "true" }],
+    ["CI=1", { CI: "1" }],
+    ["CI=yes", { CI: "yes" }],
+    ["CI=YES", { CI: "YES" }],
+    ["CI=On", { CI: "On" }],
     ["GitHub Actions", { GITHUB_ACTIONS: "true" }],
     ["GitLab CI", { GITLAB_CI: "true" }],
   ])("rejects %s even when SDK approval is supplied", async (_name, ciEnvironment) => {
@@ -815,7 +819,11 @@ describe("manual Linux NSIS cross-build guards", () => {
       { EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "" },
       "EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD=true",
     ],
-    ["CI", { CI: "true" }, "cannot run in CI"],
+    ["CI=true", { CI: "true" }, "cannot run in CI"],
+    ["CI=1", { CI: "1" }, "cannot run in CI"],
+    ["CI=yes", { CI: "yes" }, "cannot run in CI"],
+    ["CI=YES", { CI: "YES" }, "cannot run in CI"],
+    ["CI=On", { CI: "On" }, "cannot run in CI"],
     ["GitHub Actions", { GITHUB_ACTIONS: "true" }, "cannot run in CI"],
     ["GitLab CI", { GITLAB_CI: "true" }, "cannot run in CI"],
     ["release mode", {}, "diagnostic NSIS packages only"],
@@ -1002,6 +1010,62 @@ describe("Linux Windows OCR cross-build toolchain", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it.each(["yes", "YES", "On", "tRuE", "1"])(
+    "rejects CI=%s in the direct cross-builder before downloads",
+    async (ciValue) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-ocr-ci-"));
+      const scriptsDir = path.join(directory, "scripts");
+      const binDir = path.join(directory, "bin");
+      const curlLog = path.join(directory, "curl.log");
+      const scriptPath = path.join(scriptsDir, "build-windows-ocr.sh");
+
+      try {
+        await Promise.all([
+          mkdir(scriptsDir, { recursive: true }),
+          mkdir(binDir, { recursive: true }),
+        ]);
+        await writeFile(
+          scriptPath,
+          await readFile(
+            path.join(repoRootForTests(), "scripts/build-windows-ocr.sh"),
+            "utf8",
+          ),
+          "utf8",
+        );
+        await writeMockUname(binDir, "x86_64-unknown-linux-gnu");
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+        );
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\n',
+        );
+
+        const environment = clearCiEnvironment({
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+          CURL_LOG: curlLog,
+          EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "true",
+          EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE: "nsis",
+          EPIKRISE_WINDOWS_HOST_ARCH: "x86_64",
+        });
+        environment.CI = ciValue;
+        await expect(
+          execFile("bash", [scriptPath, "x86_64-pc-windows-msvc"], {
+            cwd: directory,
+            env: environment,
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("cannot run in CI"),
+        });
+        await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("six-target desktop build tooling", () => {
@@ -3482,6 +3546,37 @@ if (process.platform !== "win32") {
         await rm(directory, { recursive: true, force: true });
       }
     });
+
+    it.each(["yes", "YES", "On", "tRuE", "1"])(
+      "rejects CI=%s from direct OCR preparation before downloads",
+      async (ciValue) => {
+        const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-ci-"));
+        try {
+          const fixture = await createWindowsOcrFixture(
+            directory,
+            windowsOcrTargets[0].checksum,
+          );
+          await expect(
+            execFile("bash", [prepareScript, "--target", windowsOcrTargets[0].target], {
+              cwd: repoRoot,
+              env: {
+                ...fixture.environment,
+                CI: ciValue,
+                EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "true",
+                EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE: "nsis",
+                EPIKRISE_WINDOWS_HOST_ARCH: "x86_64",
+              },
+            }),
+          ).rejects.toMatchObject({
+            stderr: expect.stringContaining("cannot run in CI"),
+          });
+          await expect(readFile(fixture.curlLog, "utf8")).rejects.toThrow();
+          await expect(readFile(fixture.builderContextLog, "utf8")).rejects.toThrow();
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      },
+    );
 
     for (const targetCase of windowsOcrTargets) {
       it(`stages the matching PDFium and Tesseract for ${targetCase.target}`, async () => {
