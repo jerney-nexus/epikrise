@@ -332,6 +332,11 @@ installation without WebView2, launch, OCR with German and English synthetic
 images, clipboard and credentials, and uninstall on native Windows x64 and
 ARM64 systems.
 
+For uninstall testing, use **Settings > Apps > Installed apps > Epikrise >
+Uninstall**. The NSIS setup executable's same-version maintenance page runs the
+uninstaller and then continues into setup when its Uninstall option is chosen;
+that upstream behavior is not a completed uninstall flow.
+
 ## Cross-platform Actions builds
 
 The manual **Desktop builds** workflow produces six target-specific

@@ -233,6 +233,12 @@ license gate. Native install, launch, and uninstall have been confirmed on
 Windows ARM64; live Windows x64 testing is deferred. See
 [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
 
+To uninstall an installed Windows build, use **Settings > Apps > Installed
+apps > Epikrise > Uninstall**. The NSIS setup executable's same-version
+maintenance page currently runs the uninstaller and then continues into setup,
+so do not select its Uninstall option when you intend to remove the app and
+close the installer.
+
 ### Cross-platform Actions builds
 
 `pnpm build:all` dispatches the manual **Desktop builds** GitHub Actions
