@@ -1285,6 +1285,8 @@ fn classify_tesseract_stderr(stderr: &[u8]) -> epikrise_ingest::OcrDiagnosticCat
         OcrDiagnosticCategory::LanguageLoad
     } else if stderr.contains("couldn't load any languages") {
         OcrDiagnosticCategory::NoLanguagesLoaded
+    } else if stderr.contains("engine requested") && stderr.contains("components are not present") {
+        OcrDiagnosticCategory::LanguageEngineComponentsMissing
     } else if stderr.contains("traineddata") {
         OcrDiagnosticCategory::LanguageData
     } else if stderr.contains("cannot read input file")
@@ -1631,6 +1633,12 @@ mod tests {
         assert_eq!(
             classify_tesseract_stderr(b"Couldn't load any languages!"),
             OcrDiagnosticCategory::NoLanguagesLoaded
+        );
+        assert_eq!(
+            classify_tesseract_stderr(
+                b"Error: Tesseract (legacy) engine requested, but components are not present in C:\\private\\deu.traineddata!!"
+            ),
+            OcrDiagnosticCategory::LanguageEngineComponentsMissing
         );
         assert_eq!(
             classify_tesseract_stderr(b"Error, cannot read input file"),
