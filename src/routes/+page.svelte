@@ -563,6 +563,7 @@
       invalid_url: "Enter an HTTP or HTTPS URL without embedded credentials.",
       url_response_too_large: "The URL response exceeds the 5 MB limit.",
       url_ingestion_disabled: "URL ingestion is disabled by administrator policy.",
+      no_text_extracted: "No text could be extracted from the input.",
       image_ocr_unavailable:
         "Local image OCR is unavailable and vision fallback is disabled.",
       pdf_ocr_required: "This PDF contains scanned pages that could not be extracted.",
