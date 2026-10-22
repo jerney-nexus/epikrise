@@ -87,7 +87,7 @@ fi
 windows_cross_host_arch=""
 if [[ "$target" == *-pc-windows-msvc && "$target" != "$host_target" ]]; then
   if [[ "${GITHUB_ACTIONS:-}" == "true" ||
-        "${CI:-}" =~ ^([Tt][Rr][Uu][Ee]|1)$ ||
+        "${CI:-}" =~ ^([Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn]|1)$ ||
         -n "${GITLAB_CI:-}${CIRCLECI:-}${JENKINS_URL:-}${BUILD_NUMBER:-}${TF_BUILD:-}${TEAMCITY_VERSION:-}${BUILDKITE:-}${DRONE:-}${CODEBUILD_BUILD_ID:-}" ]]; then
     printf 'Windows OCR cross-compilation is for interactive human use and cannot run in CI.\n' >&2
     exit 1

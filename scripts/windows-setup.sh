@@ -9,7 +9,7 @@ cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/epikrise/windows"
 license_marker="$cache_root/sdk-license-accepted-$visual_studio_version-$sdk_version-$crt_version"
 
 if [[ "${GITHUB_ACTIONS:-}" == "true" ||
-      "${CI:-}" =~ ^([Tt][Rr][Uu][Ee]|1)$ ||
+      "${CI:-}" =~ ^([Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn]|1)$ ||
       -n "${GITLAB_CI:-}${CIRCLECI:-}${JENKINS_URL:-}${BUILD_NUMBER:-}${TF_BUILD:-}${TEAMCITY_VERSION:-}${BUILDKITE:-}${DRONE:-}${CODEBUILD_BUILD_ID:-}" ]]; then
   printf 'Windows cross-build setup is for interactive human use and cannot run in CI.\n' >&2
   exit 1
