@@ -173,23 +173,38 @@ for full prerequisites, the x64 command, verification, and troubleshooting.
 
 #### Dev Container cross-build
 
-From the ARM64 Linux dev container, run `pnpm windows:setup` once and review
-the Microsoft SDK/CRT license when prompted. Then build one architecture or both
-sequentially:
+From a native Linux x64 or ARM64 dev container (not under CI or CPU
+emulation), run `pnpm windows:setup` interactively. Review the Microsoft
+SDK/CRT license and type `ACCEPT` at the prompt; setup will not download the
+SDK/CRT or install `cargo-xwin` without that human acceptance. The setup path
+rejects CI, including GitHub Actions.
+
+Then explicitly opt in for the current shell and build diagnostic NSIS
+installers:
 
 ```sh
+export EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD=true
 pnpm windows:build:x64
 pnpm windows:build:arm64
 pnpm windows:build
 ```
 
+This exception is limited to unsigned diagnostic NSIS builds. Release builds,
+MSI/MSIX, other package selections, generic `pnpm tauri build`, and Actions
+cross-builds are not supported; normal and release builds remain native.
 The installers are written under
 `src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`.
 They include local OCR resources and the offline WebView2 installer. Initial
-tool and asset downloads require network access. Native install, launch, and
-uninstall have been confirmed on Windows ARM64; live Windows x64 testing is
-deferred. See
+tool and asset downloads require network access after the opt-in and setup
+license gate. Native install, launch, and uninstall have been confirmed on
+Windows ARM64; live Windows x64 testing is deferred. See
 [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
+
+To uninstall an installed Windows build, use **Settings > Apps > Installed
+apps > Epikrise > Uninstall**. The NSIS setup executable's same-version
+maintenance page currently runs the uninstaller and then continues into setup,
+so do not select its Uninstall option when you intend to remove the app and
+close the installer.
 
 ### Cross-platform Actions builds
 
@@ -208,12 +223,8 @@ completeness and SHA-256 values. Verified manifests and packages are written to
 `.artifacts/desktop-builds/<request-id>/`; partial, stale or modified artifacts
 are rejected. Each artifact expires after 14 days.
 
-Windows jobs require repository variable
-`EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED` to equal `true`. An administrator must
-review the pinned Microsoft SDK/CRT license before setting it; the workflow
-does not set or infer approval. Missing or invalid approval stops the Windows
-setup before any SDK/CRT download. Local `pnpm windows:setup` continues to use
-interactive acceptance. The CI builds are unsigned and unnotarized: Windows
+Windows jobs use native Windows runners; the human-only Linux cross-build setup
+is rejected in CI. The CI builds are unsigned and unnotarized: Windows
 SmartScreen and macOS Gatekeeper may warn or block installation. This workflow
 does not publish releases or use the separate direct-release updater
 configuration. A successful package build is not a substitute for native

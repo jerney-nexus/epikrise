@@ -75,8 +75,9 @@ Choose the build path that matches where you are working:
 
 - **Native Windows build:** builds only for the current Windows host
   architecture. Use this to verify a Windows build without the Dev Container.
-- **Dev Container cross-build:** builds Windows x64 and ARM64 installers from
-  the ARM64 Linux Dev Container. This is not a native Windows build.
+- **Manual Linux cross-build:** builds diagnostic Windows x64 and ARM64 NSIS
+  installers from a native x64 or ARM64 Linux Dev Container. This is not a
+  native Windows build and is not available in CI or under CPU emulation.
 
 #### Native build from Windows
 
@@ -239,32 +240,41 @@ toolset or its C++ headers are missing or inconsistent. Use Visual Studio
 Installer to add or repair the C++ build tools and Windows SDK for the host
 architecture, open a new PowerShell window, and rerun the native wrapper.
 
-#### Cross-build from the ARM64 Linux Dev Container
+#### Manual cross-build from Linux x64 or ARM64
 
-Use this path when building from the documented ARM64 Linux Dev Container. It
-requires LLVM, CMake, Ninja, NSIS, `cargo-xwin`, and Tauri's NSIS Restart
-Manager include. Run the setup interactively once; it displays the Microsoft
-SDK/CRT license link and downloads the pinned Windows SDK package `10.0.26100`
-and Visual C++ toolset component `14.44.17.14` only after you type `ACCEPT`:
+Use this path only from a native Linux x64 or ARM64 Dev Container. It requires
+LLVM, CMake, Ninja, NSIS, `cargo-xwin`, and Tauri's NSIS Restart Manager
+include. Do not use CPU emulation or CI/GitHub Actions. Run setup in an
+interactive terminal; it displays the Microsoft SDK/CRT license link and
+downloads the pinned Windows SDK package `10.0.26100` and Visual C++ toolset
+component `14.44.17.14` only after you review the license and type `ACCEPT`:
 
 ```sh
 pnpm windows:setup
 ```
 
-Then build one architecture or both:
+Then explicitly opt in to the manual, unsigned diagnostic NSIS cross-build in
+the current shell. Build one architecture or both:
 
 ```sh
+export EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD=true
 pnpm windows:build:x64
 pnpm windows:build:arm64
 pnpm windows:build
 ```
 
+The build scripts reject CI, unsupported hosts, release mode, MSI/MSIX, and
+other non-NSIS package selections before downloading assets or compiling.
+Generic `pnpm tauri build` stays native; signed Windows release builds also
+remain on their native Windows runner.
+
 Installers are written to
 `src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`. Each
 includes the offline WebView2 installer, adding about 127 MB. The first
-cross-build downloads and verifies LLVM-MinGW, Tesseract, its dependencies,
-and PDFium; subsequent builds use target-specific caches. Tesseract's CMake
-TIFF capability probe is given an explicit cross-build result, so no Windows
+cross-build downloads and verifies the host-matched LLVM-MinGW archive,
+Tesseract, its dependencies, and PDFium after the setup license gate;
+subsequent builds use isolated host/target caches. Tesseract's CMake TIFF
+capability probe is given an explicit cross-build result, so no Windows
 executable is run in Linux. TIFF input is not needed by the app's OCR path,
 which passes PNG images to Tesseract.
 
@@ -272,6 +282,11 @@ Cross-build success does not replace runtime acceptance testing. Test
 installation without WebView2, launch, OCR with German and English synthetic
 images, clipboard and credentials, and uninstall on native Windows x64 and
 ARM64 systems.
+
+For uninstall testing, use **Settings > Apps > Installed apps > Epikrise >
+Uninstall**. The NSIS setup executable's same-version maintenance page runs the
+uninstaller and then continues into setup when its Uninstall option is chosen;
+that upstream behavior is not a completed uninstall flow.
 
 ## Cross-platform Actions builds
 
@@ -297,13 +312,9 @@ rejects missing jobs, wrong SHAs/versions/targets, incomplete packages, and
 manifest or SHA-256 mismatches. GitHub retains the uploaded artifacts for 14
 days.
 
-Before enabling Windows jobs, a repository administrator must review the
-license for the pinned Microsoft Windows SDK/CRT and set the repository
-**Actions variable** `EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED` to the exact string
-`true`. The workflow only passes that value to the guarded setup script; it
-does not accept the license or store the SDK/CRT in Actions caches. If the
-variable is absent or different, setup fails before those downloads. Local
-`pnpm windows:setup` remains interactive and still requires typing `ACCEPT`.
+Windows jobs in this workflow use native Windows runners; the manual Linux
+cross-build setup is not available in Actions and never accepts the SDK/CRT
+license on a user's behalf.
 
 Build artifacts are unsigned and macOS packages are not notarized. Expect
 SmartScreen/Gatekeeper warnings or installation restrictions; do not distribute

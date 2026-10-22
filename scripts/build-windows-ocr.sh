@@ -2,8 +2,34 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "aarch64" ]]; then
-  printf 'Windows OCR cross-compilation requires the Linux ARM64 dev container.\n' >&2
+if [[ "${GITHUB_ACTIONS:-}" == "true" ||
+      "${CI:-}" =~ ^([Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn]|1)$ ||
+      -n "${GITLAB_CI:-}${CIRCLECI:-}${JENKINS_URL:-}${BUILD_NUMBER:-}${TF_BUILD:-}${TEAMCITY_VERSION:-}${BUILDKITE:-}${DRONE:-}${CODEBUILD_BUILD_ID:-}" ]]; then
+  printf 'Windows OCR cross-compilation is for interactive human use and cannot run in CI.\n' >&2
+  exit 1
+fi
+if [[ "${EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD:-}" != "true" ||
+      "${EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE:-}" != "nsis" ]]; then
+  printf 'Windows OCR cross-compilation is available only through an explicitly opted-in manual NSIS build.\n' >&2
+  exit 1
+fi
+if [[ "$(uname -s)" != "Linux" ]]; then
+  printf 'Windows OCR cross-compilation requires Linux x64 or ARM64.\n' >&2
+  exit 1
+fi
+
+host_triple="$(rustc -vV | sed -n 's/^host: //p')"
+case "$host_triple" in
+  x86_64-*-linux-*|aarch64-*-linux-*) ;;
+  *)
+    printf 'Windows OCR cross-compilation requires a native Linux x64 or ARM64 Rust host; found %s.\n' \
+      "${host_triple:-unknown}" >&2
+    exit 1
+    ;;
+esac
+host_arch="$(node "$repo_root/scripts/verify-linux-host-architecture.mjs" "$host_triple" "$(uname -m)")"
+if [[ "${EPIKRISE_WINDOWS_HOST_ARCH:-}" != "$host_arch" ]]; then
+  printf 'Windows OCR host architecture context does not match Linux %s.\n' "$host_arch" >&2
   exit 1
 fi
 
@@ -24,16 +50,25 @@ case "$target" in
 esac
 
 cache_root="${EPIKRISE_WINDOWS_OCR_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/epikrise/windows-ocr}"
+host_cache_root="$cache_root/host-$host_arch"
 binary_dir="${EPIKRISE_OCR_BINARY_DIR:-$repo_root/src-tauri/binaries}"
-download_dir="$cache_root/downloads"
-source_dir="$cache_root/sources"
-build_dir="$cache_root/build/$target"
-prefix="$cache_root/install/$target"
+download_dir="$host_cache_root/downloads"
+source_dir="$host_cache_root/sources"
+build_dir="$host_cache_root/build/$target"
+prefix="$host_cache_root/install/$target"
 mkdir -p "$download_dir" "$source_dir" "$build_dir" "$prefix"
 
 llvm_version="20260922"
-llvm_archive="llvm-mingw-$llvm_version-ucrt-ubuntu-22.04-aarch64.tar.xz"
-llvm_sha256="07d21263c56bfe9a713db6fdb3f7434bf4c121a005e40397d3b4c0170fb06769"
+case "$host_arch" in
+x86_64)
+  llvm_archive="llvm-mingw-$llvm_version-ucrt-ubuntu-22.04-x86_64.tar.xz"
+  llvm_sha256="bb7bb7654b33d5aa8712acb837c963b2e0c56352560c76105270a3268c665c21"
+  ;;
+aarch64)
+  llvm_archive="llvm-mingw-$llvm_version-ucrt-ubuntu-22.04-aarch64.tar.xz"
+  llvm_sha256="07d21263c56bfe9a713db6fdb3f7434bf4c121a005e40397d3b4c0170fb06769"
+  ;;
+esac
 llvm_url="https://github.com/mstorsjo/llvm-mingw/releases/download/$llvm_version/$llvm_archive"
 zlib_archive="zlib-1.3.1.tar.gz"
 zlib_sha256="9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
@@ -76,7 +111,7 @@ extract_source() {
 }
 
 llvm_archive_path="$(download_verified "$llvm_url" "$llvm_archive" "$llvm_sha256")"
-llvm_root="$cache_root/toolchains/llvm-mingw-$llvm_version"
+llvm_root="$host_cache_root/toolchains/llvm-mingw-$llvm_version"
 llvm_bin="$llvm_root/bin"
 if [[ ! -x "$llvm_bin/$mingw_target-clang++" ]]; then
   mkdir -p "$llvm_root"
