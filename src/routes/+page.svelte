@@ -549,8 +549,12 @@
   function formatIngestError(error: IngestError): string {
     if (error.key === "image_ocr_failed") {
       const exitCode = error.exit_code ?? "unknown";
+      const languageDataStatus =
+        error.stderr_category === "language_data"
+          ? `; deu/eng files present: ${error.required_language_data_present}`
+          : "";
       return t("input-extraction-failed", {
-        error: `image OCR failed (exit code ${exitCode}; stderr category: ${error.stderr_category})`,
+        error: `image OCR failed (exit code ${exitCode}; stderr category: ${error.stderr_category}${languageDataStatus})`,
       });
     }
 

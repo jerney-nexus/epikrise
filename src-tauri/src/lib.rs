@@ -1240,6 +1240,7 @@ enum TesseractError {
     ProcessFailed {
         exit_code: Option<i32>,
         stderr_category: epikrise_ingest::OcrDiagnosticCategory,
+        required_language_data_present: bool,
     },
     InvalidUtf8,
 }
@@ -1250,9 +1251,11 @@ fn map_image_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestEr
         TesseractError::ProcessFailed {
             exit_code,
             stderr_category,
+            required_language_data_present,
         } => epikrise_ingest::IngestError::ImageOcrFailed {
             exit_code,
             stderr_category,
+            required_language_data_present,
         },
         TesseractError::InvalidUtf8 => epikrise_ingest::IngestError::InvalidUtf8,
     }
@@ -1315,6 +1318,11 @@ fn run_tesseract(
         return Err(TesseractError::ProcessFailed {
             exit_code: output.status.code(),
             stderr_category: classify_tesseract_stderr(&output.stderr),
+            required_language_data_present: ["deu", "eng"].iter().all(|language| {
+                tessdata_dir
+                    .join(format!("{language}.traineddata"))
+                    .is_file()
+            }),
         });
     }
     String::from_utf8(output.stdout).map_err(|_| TesseractError::InvalidUtf8)
@@ -1566,10 +1574,12 @@ mod tests {
             map_image_tesseract_error(TesseractError::ProcessFailed {
                 exit_code: Some(1),
                 stderr_category: OcrDiagnosticCategory::Other,
+                required_language_data_present: true,
             }),
             IngestError::ImageOcrFailed {
                 exit_code: Some(1),
                 stderr_category: OcrDiagnosticCategory::Other,
+                required_language_data_present: true,
             }
         );
         assert_eq!(
@@ -1584,6 +1594,7 @@ mod tests {
             map_pdf_tesseract_error(TesseractError::ProcessFailed {
                 exit_code: Some(1),
                 stderr_category: OcrDiagnosticCategory::Other,
+                required_language_data_present: true,
             }),
             IngestError::PdfOcrFailed
         );
