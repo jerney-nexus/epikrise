@@ -127,6 +127,9 @@ build`/`dev` commands initialize MSVC from regular shells. Linux native-host
 
 ### Fixed
 
+- Windows image OCR now opens the image and tessdata paths correctly in native
+  and Linux cross-built apps. Invalid OCR output can also use vision fallback
+  when enabled.
 - Linux Tauri launches now use the active desktop D-Bus session when resolving
   autolaunched session addresses, allowing keyring credentials to be listed
   when checking provider connections or refreshing models. Credential-list

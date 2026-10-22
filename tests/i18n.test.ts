@@ -135,8 +135,10 @@ describe("Fluent localization", () => {
       (match) => match[1],
     );
     const args = {
+      category: "language_data_file",
       count: 2,
       error: "sample error",
+      exitCode: 1,
       label: "sample label",
       line: 1,
       name: "sample.txt",
