@@ -552,7 +552,7 @@
       const languageDataStatus =
         error.stderr_category.startsWith("language_") ||
         error.stderr_category === "no_languages_loaded"
-          ? `; deu/eng files present: ${error.required_language_data_present}; openable: ${error.required_language_data_openable}; expected data path reported: ${error.stderr_mentions_expected_language_data_path}`
+          ? `; deu/eng files present: ${error.required_language_data_present}; openable: ${error.required_language_data_openable}; reported data path matches expected: ${error.stderr_reports_expected_language_data_path}`
           : "";
       return t("input-extraction-failed", {
         error: `image OCR failed (exit code ${exitCode}; stderr category: ${error.stderr_category}${languageDataStatus})`,
