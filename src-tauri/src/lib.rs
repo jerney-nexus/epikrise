@@ -1241,6 +1241,7 @@ enum TesseractError {
         exit_code: Option<i32>,
         stderr_category: epikrise_ingest::OcrDiagnosticCategory,
         required_language_data_present: bool,
+        required_language_data_openable: bool,
     },
     InvalidUtf8,
 }
@@ -1252,10 +1253,12 @@ fn map_image_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestEr
             exit_code,
             stderr_category,
             required_language_data_present,
+            required_language_data_openable,
         } => epikrise_ingest::IngestError::ImageOcrFailed {
             exit_code,
             stderr_category,
             required_language_data_present,
+            required_language_data_openable,
         },
         TesseractError::InvalidUtf8 => epikrise_ingest::IngestError::InvalidUtf8,
     }
@@ -1276,10 +1279,13 @@ fn classify_tesseract_stderr(stderr: &[u8]) -> epikrise_ingest::OcrDiagnosticCat
     let stderr = String::from_utf8_lossy(stderr).to_ascii_lowercase();
     if stderr.trim().is_empty() {
         OcrDiagnosticCategory::NoStderr
-    } else if stderr.contains("error opening data file")
-        || stderr.contains("failed loading language")
-        || stderr.contains("couldn't load any languages")
-    {
+    } else if stderr.contains("error opening data file") {
+        OcrDiagnosticCategory::LanguageDataFile
+    } else if stderr.contains("failed loading language") {
+        OcrDiagnosticCategory::LanguageLoad
+    } else if stderr.contains("couldn't load any languages") {
+        OcrDiagnosticCategory::NoLanguagesLoaded
+    } else if stderr.contains("traineddata") {
         OcrDiagnosticCategory::LanguageData
     } else if stderr.contains("cannot read input file")
         || stderr.contains("cannot read input image")
@@ -1322,6 +1328,9 @@ fn run_tesseract(
                 tessdata_dir
                     .join(format!("{language}.traineddata"))
                     .is_file()
+            }),
+            required_language_data_openable: ["deu", "eng"].iter().all(|language| {
+                std::fs::File::open(tessdata_dir.join(format!("{language}.traineddata"))).is_ok()
             }),
         });
     }
@@ -1575,11 +1584,13 @@ mod tests {
                 exit_code: Some(1),
                 stderr_category: OcrDiagnosticCategory::Other,
                 required_language_data_present: true,
+                required_language_data_openable: true,
             }),
             IngestError::ImageOcrFailed {
                 exit_code: Some(1),
                 stderr_category: OcrDiagnosticCategory::Other,
                 required_language_data_present: true,
+                required_language_data_openable: true,
             }
         );
         assert_eq!(
@@ -1595,6 +1606,7 @@ mod tests {
                 exit_code: Some(1),
                 stderr_category: OcrDiagnosticCategory::Other,
                 required_language_data_present: true,
+                required_language_data_openable: true,
             }),
             IngestError::PdfOcrFailed
         );
@@ -1610,7 +1622,15 @@ mod tests {
 
         assert_eq!(
             classify_tesseract_stderr(b"Error opening data file C:\\private\\deu.traineddata"),
-            OcrDiagnosticCategory::LanguageData
+            OcrDiagnosticCategory::LanguageDataFile
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b"Failed loading language 'deu'"),
+            OcrDiagnosticCategory::LanguageLoad
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b"Couldn't load any languages!"),
+            OcrDiagnosticCategory::NoLanguagesLoaded
         );
         assert_eq!(
             classify_tesseract_stderr(b"Error, cannot read input file"),

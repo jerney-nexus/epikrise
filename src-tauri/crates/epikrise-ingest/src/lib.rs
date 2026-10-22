@@ -30,6 +30,9 @@ const MAX_IMAGE_DIMENSION: u32 = 8_192;
 #[serde(rename_all = "snake_case")]
 pub enum OcrDiagnosticCategory {
     LanguageData,
+    LanguageDataFile,
+    LanguageLoad,
+    NoLanguagesLoaded,
     InputImage,
     TiffSupportWarning,
     NoStderr,
@@ -110,6 +113,7 @@ pub enum IngestError {
         exit_code: Option<i32>,
         stderr_category: OcrDiagnosticCategory,
         required_language_data_present: bool,
+        required_language_data_openable: bool,
     },
 }
 
