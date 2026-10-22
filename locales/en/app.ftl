@@ -176,6 +176,7 @@ ui-this-pdf-contains-scanned-pages-that-could-not-be-extracted = This PDF contai
 ui-this-pdf-has-more-than-12-scanned-pages-split-it-or-provide-fewer-pages = This PDF has more than 12 scanned pages. Split it or provide fewer pages.
 ui-the-scanned-pages-exceed-the-20-mb-vision-limit = The scanned pages exceed the 20 MB vision limit.
 ui-input-extraction-failed = Input extraction failed: { $error }.
+ui-no-text-could-be-extracted-from-the-input = No text could be extracted from the input.
 ui-added-image-for-provider-vision-analysis = Added image for provider vision analysis
 ui-input-extracted-and-added = Input extracted and added
 ui-clipboard = Clipboard

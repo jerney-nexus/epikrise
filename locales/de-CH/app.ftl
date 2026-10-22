@@ -176,6 +176,7 @@ ui-this-pdf-contains-scanned-pages-that-could-not-be-extracted = Dieses PDF enth
 ui-this-pdf-has-more-than-12-scanned-pages-split-it-or-provide-fewer-pages = Dieses PDF hat mehr als 12 gescannte Seiten. Teile es auf oder verwende weniger Seiten.
 ui-the-scanned-pages-exceed-the-20-mb-vision-limit = Die gescannten Seiten überschreiten das 20-MB-Limit für die Bildanalyse.
 ui-input-extraction-failed = Eingabe konnte nicht ausgelesen werden: { $error }.
+ui-no-text-could-be-extracted-from-the-input = Aus der Eingabe konnte kein Text ausgelesen werden.
 ui-added-image-for-provider-vision-analysis = Bild für die visuelle Analyse durch das Modell hinzugefügt
 ui-input-extracted-and-added = Eingabe ausgelesen und hinzugefügt
 ui-clipboard = Zwischenablage
