@@ -17,6 +17,10 @@ on:
         required: false
         default: false
         type: boolean
+      previous_store_version:
+        description: Previous published Store version (for downgrade prevention)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -191,6 +195,40 @@ jobs:
               node scripts/verify-binary-architecture.mjs "$TARGET" src-tauri/resources/ocr/pdfium/pdfium.dll
               ;;
           esac
+
+      - name: Create unsigned Store MSIX
+        if: matrix.platform == 'windows'
+        env:
+          WINDOWS_ARCH: ${{ matrix.windows_arch }}
+          TARGET: ${{ matrix.target }}
+          PREVIOUS_STORE_VERSION: ${{ inputs.previous_store_version }}
+        shell: pwsh
+        run: |
+          $hostLine = (rustc -vV | Select-String '^host: ').Line
+          if (-not $hostLine) {
+            throw "Unable to determine the native Rust host target."
+          }
+          $hostTarget = $hostLine -replace '^host: ', ''
+          $buildDirectory = "src-tauri/target/host-$hostTarget/$env:TARGET/release"
+          $arguments = @{
+            Architecture = $env:WINDOWS_ARCH
+            Target = $env:TARGET
+            BuildDirectory = $buildDirectory
+            OutputDirectory = "artifact-staging/store-msix"
+          }
+          if ($env:PREVIOUS_STORE_VERSION) {
+            $arguments.PreviousStoreVersion = $env:PREVIOUS_STORE_VERSION
+          }
+          ./scripts/package-store-msix.ps1 @arguments
+
+      - uses: actions/upload-artifact@v7
+        if: matrix.platform == 'windows'
+        with:
+          name: epikrise-store-msix-${{ matrix.windows_arch }}
+          path: artifact-staging/store-msix/*.msix
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
 
       - name: Stage packages and manifest
         shell: bash

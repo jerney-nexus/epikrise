@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+  <Identity
+    Name="JerneyNexus.Epikrise"
+    Publisher="CN=902B70F1-3B51-4D25-9253-8C079B1E0AFD"
+    Version="{{VERSION}}"
+    ProcessorArchitecture="{{ARCHITECTURE}}" />
+  <Properties>
+    <DisplayName>Epikrise</DisplayName>
+    <PublisherDisplayName>Jerney Nexus</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily
+      Name="Windows.Desktop"
+      MinVersion="10.0.19041.0"
+      MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Applications>
+    <Application
+      Id="Epikrise"
+      Executable="epikrise.exe"
+      EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Epikrise"
+        Description="Local-only assistant for anonymized clinical material"
+        BackgroundColor="#FFFFFF"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
