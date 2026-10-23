@@ -175,11 +175,7 @@ async function validateLayout(layoutDirectory, architecture, version, target) {
   const xml = await readFile(manifestPath, "utf8");
   validateManifest(xml, architecture, version);
 
-  const expectedFiles = [
-    ...payloadFiles,
-    `tesseract-${target}.exe`,
-    "AppxManifest.xml",
-  ];
+  const expectedFiles = [...payloadFiles, "tesseract.exe", "AppxManifest.xml"];
   for (const relativePath of expectedFiles) {
     await assertRegularFile(path.join(layoutDirectory, relativePath), "payload file");
   }
@@ -199,7 +195,7 @@ async function validateLayout(layoutDirectory, architecture, version, target) {
 
   for (const executable of [
     "epikrise.exe",
-    `tesseract-${target}.exe`,
+    "tesseract.exe",
     "resources/ocr/pdfium/pdfium.dll",
   ]) {
     await verifyBinaryArchitecture(target, path.join(layoutDirectory, executable));
@@ -233,7 +229,7 @@ export async function prepareStoreMsixLayout({
     [path.join(buildDirectory, "epikrise.exe"), "epikrise.exe"],
     [
       path.join(repoRoot, "src-tauri", "binaries", `tesseract-${target}.exe`),
-      `tesseract-${target}.exe`,
+      "tesseract.exe",
     ],
     [
       path.join(repoRoot, "src-tauri", "resources", "ocr", "pdfium", "pdfium.dll"),
@@ -309,11 +305,7 @@ export async function prepareStoreMsixLayout({
   await writeFile(path.join(stageDirectory, "AppxManifest.xml"), manifest, "utf8");
 
   const actualFiles = (await listFiles(stageDirectory)).sort();
-  const expectedFiles = [
-    ...payloadFiles,
-    `tesseract-${target}.exe`,
-    "AppxManifest.xml",
-  ].sort();
+  const expectedFiles = [...payloadFiles, "tesseract.exe", "AppxManifest.xml"].sort();
   assert(
     JSON.stringify(actualFiles) === JSON.stringify(expectedFiles),
     "MSIX staging layout contains missing or unexpected files.",

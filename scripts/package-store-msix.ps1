@@ -108,7 +108,8 @@ try {
 
   $identity = $manifestDocument.SelectSingleNode("//*[local-name()='Identity']")
   if (
-    $identity.Name -ne "Identity" -or
+    -not $identity -or
+    $identity.LocalName -ne "Identity" -or
     $identity.GetAttribute("Name") -ne "JerneyNexus.Epikrise" -or
     $identity.GetAttribute("Publisher") -ne "CN=902B70F1-3B51-4D25-9253-8C079B1E0AFD" -or
     $identity.GetAttribute("Version") -ne $packageVersion -or
@@ -146,10 +147,11 @@ try {
   }
 
   New-Item -ItemType Directory -Path $resolvedOutputDirectory -Force | Out-Null
-  $packagePath = Join-Path $resolvedOutputDirectory "Epikrise_$($packageVersion)_$Architecture.msix"
-  if (Test-Path -LiteralPath $packagePath) {
-    throw "Refusing to overwrite existing Store package: $packagePath."
+  $candidatePackagePath = Join-Path $resolvedOutputDirectory "Epikrise_$($packageVersion)_$Architecture.msix"
+  if (Test-Path -LiteralPath $candidatePackagePath) {
+    throw "Refusing to overwrite existing Store package: $candidatePackagePath."
   }
+  $packagePath = $candidatePackagePath
 
   & $makeAppx pack /d $stageDirectory /p $packagePath
   if ($LASTEXITCODE -ne 0) {
