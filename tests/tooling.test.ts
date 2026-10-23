@@ -51,6 +51,10 @@ import {
   assertSystemOnlyMachODependencies,
   assertSystemOnlyPEDependencies,
 } from "../scripts/verify-runtime-dependencies.mjs";
+import {
+  prepareStoreMsixLayout,
+  verifyStoreMsixLayout,
+} from "../scripts/store-msix.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -180,6 +184,224 @@ describe("binary architecture verification", () => {
       ).resolves.toBeUndefined();
     } finally {
       await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Store MSIX layout validation", () => {
+  async function createFixture(
+    version = "2026.10.0",
+    target = "x86_64-pc-windows-msvc",
+  ) {
+    const root = await mkdtemp(path.join(tmpdir(), "epikrise-store-msix-"));
+    const buildDirectory = path.join(root, "build");
+    const stageDirectory = path.join(root, "stage");
+    const tauriDirectory = path.join(root, "src-tauri");
+    await mkdir(buildDirectory);
+    await mkdir(path.join(tauriDirectory, "msix"), { recursive: true });
+    await mkdir(path.join(tauriDirectory, "binaries"), { recursive: true });
+    await mkdir(path.join(tauriDirectory, "icons"), { recursive: true });
+    await mkdir(path.join(tauriDirectory, "resources/ocr/pdfium"), {
+      recursive: true,
+    });
+    await mkdir(path.join(tauriDirectory, "resources/ocr/tessdata"), {
+      recursive: true,
+    });
+    await writeFile(path.join(root, "package.json"), JSON.stringify({ version }));
+    await writeFile(
+      path.join(tauriDirectory, "msix/AppxManifest.xml"),
+      await readFile(path.join(repoRoot, "src-tauri/msix/AppxManifest.xml")),
+    );
+    await writeFile(
+      path.join(buildDirectory, "epikrise.exe"),
+      createBinaryHeader(target),
+    );
+    await writeFile(
+      path.join(tauriDirectory, `binaries/tesseract-${target}.exe`),
+      createBinaryHeader(target),
+    );
+    await writeFile(
+      path.join(tauriDirectory, "resources/ocr/pdfium/pdfium.dll"),
+      createBinaryHeader(target),
+    );
+    await writeFile(
+      path.join(tauriDirectory, "resources/ocr/tessdata/deu.traineddata"),
+      "German OCR fixture",
+    );
+    await writeFile(
+      path.join(tauriDirectory, "resources/ocr/tessdata/eng.traineddata"),
+      "English OCR fixture",
+    );
+    for (const asset of [
+      "StoreLogo.png",
+      "Square150x150Logo.png",
+      "Square44x44Logo.png",
+    ]) {
+      await writeFile(path.join(tauriDirectory, "icons", asset), "PNG fixture");
+    }
+    return {
+      root,
+      target,
+      buildDirectory,
+      stageDirectory,
+      repoRoot: root,
+      async cleanup() {
+        await rm(root, { recursive: true, force: true });
+      },
+    };
+  }
+
+  it("stages a complete x64 payload with the reserved identity and derived version", async () => {
+    const fixture = await createFixture();
+    try {
+      const result = await prepareStoreMsixLayout({
+        ...fixture,
+        architecture: "x64",
+      });
+      expect(result.version).toBe("2026.10.0.0");
+      await expect(
+        verifyStoreMsixLayout({
+          layoutDirectory: fixture.stageDirectory,
+          architecture: "x64",
+          target: fixture.target,
+          version: result.version,
+        }),
+      ).resolves.toBeUndefined();
+      expect(
+        await readFile(path.join(fixture.stageDirectory, "AppxManifest.xml"), "utf8"),
+      ).toContain('Name="JerneyNexus.Epikrise"');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("stages an ARM64 payload with an ARM64 manifest identity", async () => {
+    const fixture = await createFixture("2026.10.0", "aarch64-pc-windows-msvc");
+    try {
+      const result = await prepareStoreMsixLayout({
+        ...fixture,
+        architecture: "arm64",
+      });
+      const manifest = await readFile(
+        path.join(fixture.stageDirectory, "AppxManifest.xml"),
+        "utf8",
+      );
+      expect(manifest).toContain('ProcessorArchitecture="arm64"');
+      await expect(
+        verifyStoreMsixLayout({
+          layoutDirectory: fixture.stageDirectory,
+          architecture: "arm64",
+          target: fixture.target,
+          version: result.version,
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("rejects a missing OCR language resource", async () => {
+    const fixture = await createFixture();
+    try {
+      await rm(
+        path.join(fixture.repoRoot, "src-tauri/resources/ocr/tessdata/eng.traineddata"),
+      );
+      await expect(
+        prepareStoreMsixLayout({ ...fixture, architecture: "x64" }),
+      ).rejects.toThrow("Required MSIX source resource is missing");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("rejects a PE binary for the wrong architecture", async () => {
+    const fixture = await createFixture();
+    try {
+      await writeFile(
+        path.join(fixture.buildDirectory, "epikrise.exe"),
+        createBinaryHeader("aarch64-pc-windows-msvc"),
+      );
+      await expect(
+        prepareStoreMsixLayout({ ...fixture, architecture: "x64" }),
+      ).rejects.toThrow("expects PE x86_64; found PE arm64");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("rejects an MSIX version component outside the supported range", async () => {
+    const fixture = await createFixture("2026.10.65536");
+    try {
+      await expect(
+        prepareStoreMsixLayout({ ...fixture, architecture: "x64" }),
+      ).rejects.toThrow("65535");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("rejects a manifest whose logo reference is not in the staged payload", async () => {
+    const fixture = await createFixture();
+    try {
+      const manifestPath = path.join(
+        fixture.repoRoot,
+        "src-tauri/msix/AppxManifest.xml",
+      );
+      const manifest = await readFile(manifestPath, "utf8");
+      await writeFile(
+        manifestPath,
+        manifest.replace("Assets\\Square44x44Logo.png", "Assets\\MissingLogo.png"),
+      );
+      await expect(
+        prepareStoreMsixLayout({ ...fixture, architecture: "x64" }),
+      ).rejects.toThrow("MSIX manifest references an unexpected asset");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it.each([
+    [
+      "missing Resources element",
+      (manifest: string) =>
+        manifest.replace(
+          '  <Resources>\n    <Resource Language="en-US" />\n  </Resources>\n',
+          "",
+        ),
+    ],
+    [
+      "a language not used by the manifest strings",
+      (manifest: string) => manifest.replace('Language="en-US"', 'Language="fr-FR"'),
+    ],
+  ])("rejects MSIX manifests with %s", async (_label, updateManifest) => {
+    const fixture = await createFixture();
+    try {
+      const manifestPath = path.join(
+        fixture.repoRoot,
+        "src-tauri/msix/AppxManifest.xml",
+      );
+      const manifest = await readFile(manifestPath, "utf8");
+      await writeFile(manifestPath, updateManifest(manifest));
+      await expect(
+        prepareStoreMsixLayout({ ...fixture, architecture: "x64" }),
+      ).rejects.toThrow("MSIX manifest must declare an en-US package resource");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("rejects a package version that does not advance the previous Store version", async () => {
+    const fixture = await createFixture();
+    try {
+      await expect(
+        prepareStoreMsixLayout({
+          ...fixture,
+          architecture: "x64",
+          previousStoreVersion: "2026.10.0.0",
+        }),
+      ).rejects.toThrow("must be greater");
+    } finally {
+      await fixture.cleanup();
     }
   });
 });

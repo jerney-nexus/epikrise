@@ -316,6 +316,20 @@ Windows jobs in this workflow use native Windows runners; the manual Linux
 cross-build setup is not available in Actions and never accepts the SDK/CRT
 license on a user's behalf.
 
+Each native Windows job also uploads an unsigned, architecture-specific MSIX
+artifact separately from its NSIS installer. These MSIX files are for manual
+Partner Center submission only: they use the reserved Store identity, are
+versioned as `year.month.patch.0`, and are not the local installation path.
+When dispatching the workflow directly, provide `previous_store_version` if a
+prior Store submission exists so the build rejects a non-advancing version.
+Microsoft signs submitted Store packages and manages Store updates; this
+project does not upload, publish, or configure Store updates automatically.
+The Store package does not include the WebView2 Evergreen Runtime, which must
+be available on the Windows device. Continue using the NSIS `.exe` for local
+installation; it includes the offline WebView2 installer and remains separate
+from the Store package and Store update model. Store certification and manual
+Partner Center validation have not been performed.
+
 Build artifacts are unsigned and macOS packages are not notarized. Expect
 SmartScreen/Gatekeeper warnings or installation restrictions; do not distribute
 them into a clinical environment as trusted installers. The workflow does not

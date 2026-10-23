@@ -9,6 +9,11 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Added
 
+- Native Windows x64 and ARM64 desktop builds now produce separate unsigned
+  MSIX artifacts for manual Partner Center submission, with the reserved Store
+  identity, validated architecture-specific OCR payloads, and bounded
+  CalVer-derived package versions. NSIS remains the local installer; Store
+  signing and updates remain managed by Microsoft.
 - Native-host Tauri builds verify the bundled app executable and OCR dependencies
   across Linux, macOS, and Windows. Windows x64/ARM64 desktop and signed-release
   workflows compile on matching native runners, and generic Windows `pnpm tauri
