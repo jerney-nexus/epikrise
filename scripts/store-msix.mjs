@@ -147,6 +147,16 @@ function validateManifest(xml, architecture, version) {
     "MSIX manifest publisher display name does not match.",
   );
 
+  const resources = /<Resources\b[^>]*>([\s\S]*?)<\/Resources>/s.exec(xml);
+  const resourceLanguages = Array.from(
+    (resources?.[1] ?? "").matchAll(/<Resource\b[^>]*\bLanguage="([^"]+)"[^>]*\/?>/g),
+    (match) => match[1],
+  );
+  assert(
+    resourceLanguages.includes("en-US"),
+    "MSIX manifest must declare an en-US package resource.",
+  );
+
   const application = manifestElement(xml, "Application");
   assert(
     manifestAttribute(application, "Executable") === "epikrise.exe",

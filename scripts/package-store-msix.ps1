@@ -117,6 +117,11 @@ try {
   ) {
     throw "MSIX manifest identity, version, or architecture is invalid."
   }
+  $resourceNodes = $manifestDocument.SelectNodes("//*[local-name()='Resources']/*[local-name()='Resource']")
+  $resourceLanguages = @($resourceNodes | ForEach-Object { $_.GetAttribute("Language") })
+  if ($resourceLanguages -notcontains "en-US") {
+    throw "MSIX manifest must declare an en-US package resource."
+  }
   $application = $manifestDocument.SelectSingleNode("//*[local-name()='Application']")
   if (
     $application.GetAttribute("Executable") -ne "epikrise.exe" -or

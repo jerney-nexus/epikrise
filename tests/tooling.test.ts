@@ -360,6 +360,36 @@ describe("Store MSIX layout validation", () => {
     }
   });
 
+  it.each([
+    [
+      "missing Resources element",
+      (manifest: string) =>
+        manifest.replace(
+          '  <Resources>\n    <Resource Language="en-US" />\n  </Resources>\n',
+          "",
+        ),
+    ],
+    [
+      "a language not used by the manifest strings",
+      (manifest: string) => manifest.replace('Language="en-US"', 'Language="fr-FR"'),
+    ],
+  ])("rejects MSIX manifests with %s", async (_label, updateManifest) => {
+    const fixture = await createFixture();
+    try {
+      const manifestPath = path.join(
+        fixture.repoRoot,
+        "src-tauri/msix/AppxManifest.xml",
+      );
+      const manifest = await readFile(manifestPath, "utf8");
+      await writeFile(manifestPath, updateManifest(manifest));
+      await expect(
+        prepareStoreMsixLayout({ ...fixture, architecture: "x64" }),
+      ).rejects.toThrow("MSIX manifest must declare an en-US package resource");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("rejects a package version that does not advance the previous Store version", async () => {
     const fixture = await createFixture();
     try {
