@@ -431,6 +431,13 @@ fn prepare_request(
         .build()
         .map_err(map_genai_error)?;
     let model_for_request = match profile.adapter {
+        ProviderAdapter::Gemini
+            if profile.model.starts_with("gemini_ix::")
+                || profile.model.starts_with("gemini_interactions::") =>
+        {
+            profile.model.clone()
+        }
+        ProviderAdapter::Gemini => format!("gemini_ix::{}", profile.model),
         ProviderAdapter::Groq if !profile.model.starts_with("groq::") => {
             format!("groq::{}", profile.model)
         }
@@ -705,7 +712,7 @@ mod tests {
             (
                 ProviderAdapter::Gemini,
                 "gemini-3.5-flash",
-                "gemini-3.5-flash",
+                "gemini_ix::gemini-3.5-flash",
                 genai::adapter::AdapterKind::GeminiIx,
                 "https://generativelanguage.googleapis.com/v1beta/",
                 Some(false),
@@ -876,6 +883,7 @@ mod tests {
         );
         let payload: serde_json::Value =
             serde_json::from_slice(&body).expect("request payload should be JSON");
+        assert_eq!(payload["model"], "gemini-3.5-flash");
         assert_eq!(payload["store"], false);
         assert_eq!(payload["stream"], false);
     }
