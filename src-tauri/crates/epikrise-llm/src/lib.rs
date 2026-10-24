@@ -397,14 +397,30 @@ fn prepare_request(
     }
 
     let adapter = genai_adapter(&profile.adapter, &profile.model);
+    let model_for_request = match profile.adapter {
+        ProviderAdapter::Gemini
+            if profile.model.starts_with("gemini_ix::")
+                || profile.model.starts_with("gemini_interactions::") =>
+        {
+            profile.model.clone()
+        }
+        ProviderAdapter::Gemini => format!("gemini_ix::{}", profile.model),
+        ProviderAdapter::Groq if !profile.model.starts_with("groq::") => {
+            format!("groq::{}", profile.model)
+        }
+        ProviderAdapter::OpenRouter if !profile.model.starts_with("open_router::") => {
+            format!("open_router::{}", profile.model)
+        }
+        _ => profile.model.clone(),
+    };
     let endpoint = profile
         .endpoint
         .as_deref()
         .map(validate_endpoint)
         .transpose()?;
-    let model_name = profile.model.clone();
+    let target_model_name = model_for_request.clone();
     let target_resolver = move |mut target: ServiceTarget| {
-        target.model = ModelIden::new(adapter, model_name.clone());
+        target.model = ModelIden::new(adapter, target_model_name.clone());
         if let Some(endpoint) = endpoint.as_ref() {
             target.endpoint = Endpoint::from_owned(endpoint.clone());
         }
@@ -430,22 +446,6 @@ fn prepare_request(
         .with_auth_resolver_fn(auth_resolver)
         .build()
         .map_err(map_genai_error)?;
-    let model_for_request = match profile.adapter {
-        ProviderAdapter::Gemini
-            if profile.model.starts_with("gemini_ix::")
-                || profile.model.starts_with("gemini_interactions::") =>
-        {
-            profile.model.clone()
-        }
-        ProviderAdapter::Gemini => format!("gemini_ix::{}", profile.model),
-        ProviderAdapter::Groq if !profile.model.starts_with("groq::") => {
-            format!("groq::{}", profile.model)
-        }
-        ProviderAdapter::OpenRouter if !profile.model.starts_with("open_router::") => {
-            format!("open_router::{}", profile.model)
-        }
-        _ => profile.model.clone(),
-    };
 
     let system_prompt = messages
         .iter()
