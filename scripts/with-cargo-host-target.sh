@@ -32,6 +32,11 @@ if [[ "${1:-}" == "--validate-only" ]]; then
   shift
 fi
 
+if [[ -n "${EPIKRISE_NATIVE_BUILD_TARGET:-}" && "$native_only" != true ]]; then
+  printf 'Actions native build metadata requires --native-only validation.\n' >&2
+  exit 1
+fi
+
 host_triple="$(rustc -vV | sed -n 's/^host: //p')"
 
 if [[ -z "$host_triple" ]]; then
@@ -105,6 +110,17 @@ if [[ "$native_only" == true ]]; then
     printf 'Rust host triple %s does not match detected physical host %s/%s.\n' \
       "$host_triple" "$physical_os_family" "$physical_arch" >&2
     exit 1
+  fi
+
+  if [[ -n "${EPIKRISE_NATIVE_BUILD_TARGET:-}" ]]; then
+    node "$repo_root/scripts/verify-native-build-environment.mjs" \
+      "${EPIKRISE_RUNNER_OS:-}" \
+      "${EPIKRISE_RUNNER_ARCH:-}" \
+      "$physical_os_family" \
+      "$physical_arch" \
+      "$host_triple" \
+      "$EPIKRISE_NATIVE_BUILD_TARGET" \
+      "${EPIKRISE_BUILD_MODE:-}"
   fi
 
   target_validation_mode="cargo"
