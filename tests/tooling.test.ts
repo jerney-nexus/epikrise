@@ -2721,7 +2721,8 @@ describe("native Cargo host target guard", () => {
     expect(invocations[0]).toMatchObject({
       command: "powershell.exe",
       args: expect.arrayContaining([
-        "[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture",
+        "-File",
+        path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
       ]),
     });
     expect(invocations[1].command).toBe("cmd.exe");
@@ -3448,6 +3449,17 @@ esac
 
 describe("native Cargo host architecture guard", () => {
   const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
+
+  it("queries Windows native architecture rather than the emulated process architecture", async () => {
+    const script = await readFile(
+      path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
+      "utf8",
+    );
+
+    expect(script).toContain('EntryPoint = "GetNativeSystemInfo"');
+    expect(script).toContain('9 { Write-Output "X64" }');
+    expect(script).toContain('12 { Write-Output "Arm64" }');
+  });
 
   it("rejects an x64 toolchain on a native ARM64 Windows machine", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-os-arch-"));

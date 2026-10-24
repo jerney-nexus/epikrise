@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 windows_os_arch=""
 if ! windows_os_arch="$(
   powershell.exe -NoLogo -NoProfile -NonInteractive \
-    -Command '[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture' \
+    -File "$repo_root/scripts/detect-windows-os-architecture.ps1" \
     2>/dev/null
 )"; then
   windows_os_arch=""
