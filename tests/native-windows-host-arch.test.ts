@@ -218,7 +218,7 @@ describe("native Windows MSVC host architecture", () => {
       await expect(
         readdir(path.join(cacheRoot, "build", `msvc-${toolset}`, target)),
       ).rejects.toThrow();
-      expect(await readFile(curlLog, "utf8")).toBe("called\n");
+      expect(await readFile(curlLog, "utf8")).toBe("called\ncalled\n");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
