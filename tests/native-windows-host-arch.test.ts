@@ -72,7 +72,7 @@ describe("native Windows MSVC host architecture", () => {
     }
   });
 
-  it("rejects an emulated x64 toolchain on a physical ARM64 Windows host before cache creation", async () => {
+  it("uses physical Windows architecture instead of Actions runner metadata", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "epikrise-msvc-physical-arm64-"),
     );
@@ -105,7 +105,7 @@ describe("native Windows MSVC host architecture", () => {
           env: {
             ...process.env,
             PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-            EPIKRISE_RUNNER_ARCH: "ARM64",
+            EPIKRISE_RUNNER_ARCH: "X64",
             VSCMD_ARG_TGT_ARCH: "x64",
             VSCMD_ARG_HOST_ARCH: "x64",
             CURL_LOG: curlLog,

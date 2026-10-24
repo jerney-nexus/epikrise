@@ -125,6 +125,8 @@ jobs:
     env:
       TARGET: ${{ matrix.target }}
       PLATFORM: ${{ matrix.platform }}
+      EPIKRISE_NATIVE_BUILD_TARGET: ${{ matrix.target }}
+      EPIKRISE_BUILD_MODE: signed-release
 
     steps:
       - uses: actions/checkout@v7
@@ -153,6 +155,13 @@ jobs:
       - name: Install source tooling
         run: pnpm install --frozen-lockfile
 
+      - name: Verify native build host and target
+        env:
+          EPIKRISE_RUNNER_OS: ${{ runner.os }}
+          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
+        shell: bash
+        run: bash scripts/with-cargo-host-target.sh --native-only --validate-only
+
       - name: Prepare normalized release workspace
         shell: bash
         run: |
@@ -171,7 +180,7 @@ jobs:
             ~/.cache/epikrise/native-ocr
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-signed-release-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh', 'scripts/verify-native-build-environment.mjs') }}
 
       - name: Cache Windows OCR sources and toolchain
         if: matrix.platform == 'windows'
@@ -181,7 +190,7 @@ jobs:
             ~/.cache/epikrise/windows-ocr-native-msvc
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-signed-release-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
 
       - name: Install release workspace dependencies
         working-directory: ${{ runner.temp }}/epikrise-release
@@ -249,7 +258,7 @@ jobs:
             saved_appimage="$RUNNER_TEMP/$TARGET-appimage"
             TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
               TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
-              bash scripts/with-cargo-host-target.sh \
+              bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
                 pnpm exec tauri build \
                   --target "$TARGET" \
                   --config src-tauri/tauri.release.conf.json \
@@ -258,7 +267,7 @@ jobs:
                   --ci \
                   --no-sign
             cp -a "$bundle_root/appimage" "$saved_appimage"
-            bash scripts/with-cargo-host-target.sh \
+            bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
               pnpm exec tauri build \
                 --target "$TARGET" \
                 --config '{"build":{"beforeBuildCommand":null,"features":[]}}' \
@@ -271,7 +280,7 @@ jobs:
             read -r -a bundles <<< "$BUNDLE_TARGETS"
             TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
               TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
-              bash scripts/with-cargo-host-target.sh \
+              bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
                 pnpm exec tauri build \
                   --target "$TARGET" \
                   --config src-tauri/tauri.release.conf.json \
@@ -287,6 +296,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          app_binary="$(bash scripts/tauri-build-output.sh "$TARGET" --target "$TARGET")"
+          test -s "$app_binary"
+          node scripts/verify-binary-architecture.mjs "$TARGET" "$app_binary"
           case "$TARGET" in
             x86_64-unknown-linux-gnu)
               readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'Advanced Micro Devices X86-64'
@@ -309,6 +321,20 @@ jobs:
               node scripts/verify-binary-architecture.mjs "$TARGET" src-tauri/resources/ocr/pdfium/pdfium.dll
               ;;
           esac
+          if [[ "$PLATFORM" != 'windows' ]]; then
+            case "$PLATFORM" in
+              linux)
+                pdfium="src-tauri/resources/ocr/pdfium/libpdfium.so"
+                tesseract="src-tauri/binaries/tesseract-$TARGET"
+                ;;
+              macos)
+                pdfium="src-tauri/resources/ocr/pdfium/libpdfium.dylib"
+                tesseract="src-tauri/binaries/tesseract-$TARGET"
+                ;;
+            esac
+            node scripts/verify-runtime-dependencies.mjs \
+              "$TARGET" "$pdfium" "$tesseract" "$app_binary"
+          fi
 
       - name: Stage and verify updater packages
         working-directory: ${{ runner.temp }}/epikrise-release
@@ -322,7 +348,11 @@ jobs:
             --stage-root "release-staging/$TARGET" \
             --commit "$GITHUB_SHA" \
             --resource-root src-tauri/resources/ocr \
-            --binary-root src-tauri/binaries
+            --binary-root src-tauri/binaries \
+            --runner-os "$RUNNER_OS" \
+            --runner-arch "$RUNNER_ARCH" \
+            --rust-host "$host_target" \
+            --build-mode "$EPIKRISE_BUILD_MODE"
 
       - uses: actions/upload-artifact@v7
         with:

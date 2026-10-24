@@ -158,8 +158,8 @@ function detectWindowsArchitecture(spawn) {
       "-NoLogo",
       "-NoProfile",
       "-NonInteractive",
-      "-Command",
-      "[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture",
+      "-File",
+      path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
     ],
     { encoding: "utf8", windowsHide: true },
   );

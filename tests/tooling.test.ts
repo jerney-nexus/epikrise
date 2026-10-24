@@ -95,6 +95,25 @@ function createBinaryHeader(target: string) {
   return binary;
 }
 
+function nativeBuildEvidence(
+  target: string,
+  buildMode: "diagnostic" | "signed-release" = "diagnostic",
+) {
+  const runnerOS = target.includes("unknown-linux")
+    ? "Linux"
+    : target.includes("apple-darwin")
+      ? "macOS"
+      : "Windows";
+  const runnerArch = target.startsWith("aarch64-") ? "ARM64" : "X64";
+  return {
+    runnerOS,
+    runnerArch,
+    rustHost: target,
+    target,
+    buildMode,
+  };
+}
+
 describe("binary architecture verification", () => {
   it.each([
     "x86_64-unknown-linux-gnu",
@@ -1384,13 +1403,23 @@ describe("six-target desktop build tooling", () => {
         requestId,
         bundleRoot,
         stageRoot,
+        packageFamily: "desktop",
+        nativeBuild: nativeBuildEvidence(target),
       });
 
       expect(manifest).toMatchObject({
-        schema_version: 1,
+        schema_version: 2,
         request_id: requestId,
         commit,
         target,
+        package_family: "desktop",
+        native_build: {
+          runner_os: "Linux",
+          runner_arch: "X64",
+          rust_host: target,
+          target,
+          build_mode: "diagnostic",
+        },
         signed: false,
       });
       expect(manifest.files).toHaveLength(3);
@@ -1401,6 +1430,45 @@ describe("six-target desktop build tooling", () => {
           )
           .sort(),
       );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("stages Store MSIX separately with target-bound integrity evidence", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-store-msix-stage-"));
+    const bundleRoot = path.join(directory, "msix");
+    const stageRoot = path.join(directory, "stage");
+    const target = "aarch64-pc-windows-msvc";
+
+    try {
+      await mkdir(bundleRoot, { recursive: true });
+      await writeFile(path.join(bundleRoot, "epikrise-arm64.msix"), "unsigned-msix");
+      const manifest = await stagePackages({
+        target,
+        commit,
+        requestId,
+        bundleRoot,
+        stageRoot,
+        packageFamily: "store-msix",
+        nativeBuild: nativeBuildEvidence(target),
+      });
+
+      expect(manifest).toMatchObject({
+        package_family: "store-msix",
+        target,
+        native_build: {
+          runner_arch: "ARM64",
+          rust_host: target,
+          target,
+        },
+        files: [
+          {
+            path: "files/epikrise-arm64.msix",
+            sha256: createHash("sha256").update("unsigned-msix").digest("hex"),
+          },
+        ],
+      });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -1437,15 +1505,58 @@ describe("six-target desktop build tooling", () => {
         await writeFile(
           path.join(targetDirectory, "manifest.json"),
           JSON.stringify({
-            schema_version: 1,
+            schema_version: 2,
             request_id: requestId,
             commit,
             target,
+            package_family: "desktop",
+            native_build: {
+              runner_os: nativeBuildEvidence(target).runnerOS,
+              runner_arch: nativeBuildEvidence(target).runnerArch,
+              rust_host: target,
+              target,
+              build_mode: "diagnostic",
+            },
             version,
             signed: false,
             files,
           }),
         );
+
+        if (target.endsWith("-pc-windows-msvc")) {
+          const storeDirectory = path.join(directory, `${target}-store-msix`);
+          const storeFilesDirectory = path.join(storeDirectory, "files");
+          const contents = `synthetic ${target} msix`;
+          const fileName = `${target}.msix`;
+          await mkdir(storeFilesDirectory, { recursive: true });
+          await writeFile(path.join(storeFilesDirectory, fileName), contents);
+          await writeFile(
+            path.join(storeDirectory, "manifest.json"),
+            JSON.stringify({
+              schema_version: 2,
+              request_id: requestId,
+              commit,
+              target,
+              package_family: "store-msix",
+              native_build: {
+                runner_os: "Windows",
+                runner_arch: target.startsWith("aarch64-") ? "ARM64" : "X64",
+                rust_host: target,
+                target,
+                build_mode: "diagnostic",
+              },
+              version,
+              signed: false,
+              files: [
+                {
+                  path: `files/${fileName}`,
+                  size_bytes: Buffer.byteLength(contents),
+                  sha256: createHash("sha256").update(contents).digest("hex"),
+                },
+              ],
+            }),
+          );
+        }
       }
 
       const expected = { requestId, commit, version };
@@ -1502,6 +1613,42 @@ describe("six-target desktop build tooling", () => {
       await expect(verifyArtifactSet(directory, expected)).rejects.toThrow(
         "not declared in its manifest",
       );
+      await rm(path.join(directory, desktopTargets[0], "files", "extra.txt"));
+
+      const storeDirectory = path.join(directory, "x86_64-pc-windows-msvc-store-msix");
+      const storeManifestPath = path.join(storeDirectory, "manifest.json");
+      const storeManifest = JSON.parse(await readFile(storeManifestPath, "utf8"));
+      const storePackagePath = path.join(
+        storeDirectory,
+        "files",
+        "x86_64-pc-windows-msvc.msix",
+      );
+      const storeContents = "synthetic x86_64-pc-windows-msvc msix";
+      await writeFile(
+        storePackagePath,
+        storeContents.replace("synthetic", "tamperedd"),
+      );
+      await expect(verifyArtifactSet(directory, expected)).rejects.toThrow(
+        "SHA-256 verification failed",
+      );
+      await writeFile(storePackagePath, storeContents);
+
+      await writeFile(
+        storeManifestPath,
+        JSON.stringify({
+          ...storeManifest,
+          target: "aarch64-pc-windows-msvc",
+        }),
+      );
+      await expect(verifyArtifactSet(directory, expected)).rejects.toThrow(
+        "Artifact target does not match its download slot",
+      );
+      await writeFile(storeManifestPath, JSON.stringify(storeManifest));
+
+      await rm(path.join(directory, "x86_64-pc-windows-msvc-store-msix"), {
+        recursive: true,
+      });
+      await expect(verifyArtifactSet(directory, expected)).rejects.toThrow();
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -1517,6 +1664,9 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("contents: read");
     expect(workflow).toContain("ref: ${{ inputs.expected_sha }}");
     expect(workflow).toContain("EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}");
+    expect(workflow).toContain("EPIKRISE_RUNNER_OS: ${{ runner.os }}");
+    expect(workflow).toContain("EPIKRISE_NATIVE_BUILD_TARGET: ${{ matrix.target }}");
+    expect(workflow).toContain("EPIKRISE_BUILD_MODE: diagnostic");
     expect(workflow).toContain(
       'pnpm tauri build --target "$TARGET" --bundles "${bundles[@]}" --no-sign',
     );
@@ -1535,11 +1685,39 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("macos-15-intel");
     expect(workflow).toContain("macos-15");
     for (const target of desktopTargets) expect(workflow).toContain(target);
+    const rustToolchainStep = workflow.indexOf("uses: dtolnay/rust-toolchain@stable");
+    const nativeGuardStep = workflow.indexOf(
+      "- name: Verify native build host and target",
+    );
+    const cacheStep = workflow.indexOf("- name: Cache native OCR and Cargo inputs");
+    const dependencyInstallStep = workflow.indexOf("- name: Install dependencies");
+    const nativeDependencySetupStep = workflow.indexOf(
+      "- name: Install Linux build dependencies",
+    );
+    expect(nativeGuardStep).toBeGreaterThan(rustToolchainStep);
+    expect(nativeGuardStep).toBeGreaterThan(cacheStep);
+    expect(nativeGuardStep).toBeGreaterThan(dependencyInstallStep);
+    expect(nativeGuardStep).toBeLessThan(nativeDependencySetupStep);
+    expect(workflow).not.toContain("cargo-xwin");
+    expect(workflow).not.toContain("EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD");
     const windowsBuildStep = workflow.indexOf("- name: Build Windows installer");
     const verifyOcrStep = workflow.indexOf("- name: Verify staged OCR architectures");
     expect(windowsBuildStep).toBeGreaterThanOrEqual(0);
     expect(verifyOcrStep).toBeGreaterThan(windowsBuildStep);
+    expect(workflow).toContain("scripts/tauri-build-output.sh");
+    expect(workflow).toContain("verify-binary-architecture.mjs");
     expect(workflow).toContain("x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)");
+    expect(workflow).toContain("--package-family desktop");
+    expect(workflow).toContain("--package-family store-msix");
+    expect(workflow).toContain("Stage Store MSIX with integrity manifest");
+    expect(workflow).toContain("artifact-staging/store-msix-artifact/");
+    expect(workflow).toContain("epikrise-store-msix-${{ matrix.windows_arch }}");
+    expect(workflow).toContain('--runner-os "$RUNNER_OS"');
+    expect(workflow).toContain('--runner-arch "$RUNNER_ARCH"');
+    expect(workflow).toContain('--rust-host "$host_target"');
+    expect(workflow).toMatch(
+      /Create unsigned Store MSIX[\s\S]*Stage Store MSIX with integrity manifest[\s\S]*epikrise-store-msix-/,
+    );
   });
 
   it("checks Visual Studio paths outside parenthesized CMD blocks", async () => {
@@ -1792,6 +1970,28 @@ describe("signed release artifacts", () => {
 
     expect(releaseWorkflow).toContain('      - "v*"');
     expect(releaseWorkflow).toContain("ref: ${{ github.sha }}");
+    expect(releaseWorkflow).toContain("EPIKRISE_RUNNER_OS: ${{ runner.os }}");
+    expect(releaseWorkflow).toContain("EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}");
+    expect(releaseWorkflow).toContain(
+      "EPIKRISE_NATIVE_BUILD_TARGET: ${{ matrix.target }}",
+    );
+    expect(releaseWorkflow).toContain("EPIKRISE_BUILD_MODE: signed-release");
+    const rustToolchainStep = releaseWorkflow.indexOf(
+      "uses: dtolnay/rust-toolchain@stable",
+    );
+    const nativeGuardStep = releaseWorkflow.indexOf(
+      "- name: Verify native build host and target",
+    );
+    const sourceInstallStep = releaseWorkflow.indexOf("- name: Install source tooling");
+    const workspaceSetupStep = releaseWorkflow.indexOf(
+      "- name: Prepare normalized release workspace",
+    );
+    expect(nativeGuardStep).toBeGreaterThan(rustToolchainStep);
+    expect(nativeGuardStep).toBeGreaterThan(sourceInstallStep);
+    expect(nativeGuardStep).toBeLessThan(workspaceSetupStep);
+    expect(releaseWorkflow).toContain("--native-only --tauri-build");
+    expect(releaseWorkflow).not.toContain("cargo-xwin");
+    expect(releaseWorkflow).not.toContain("EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD");
     expect(releaseWorkflow).toMatch(
       /build:\s+needs:\s+- validate\s+- verify-ui\s+- verify-rust\s+- verify-playwright\s+- verify-security\s+- verify-quality/,
     );
@@ -1838,6 +2038,11 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain("--clobber");
     expect(releaseWorkflow).toContain("epikrise-signed-release-commit:");
     expect(releaseWorkflow).toContain("Verify staged OCR architectures");
+    expect(releaseWorkflow).toContain("scripts/tauri-build-output.sh");
+    expect(releaseWorkflow).toContain("verify-runtime-dependencies.mjs");
+    expect(releaseWorkflow).toContain('--runner-os "$RUNNER_OS"');
+    expect(releaseWorkflow).toContain('--runner-arch "$RUNNER_ARCH"');
+    expect(releaseWorkflow).toContain('--rust-host "$host_target"');
     expect(releaseWorkflow).toContain(
       "x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)",
     );
@@ -1899,6 +2104,7 @@ describe("signed release artifacts", () => {
           version: "2026.09.4",
           resourceRoot,
           binaryRoot,
+          nativeBuild: nativeBuildEvidence(target, "signed-release"),
         });
       }
 
@@ -1941,20 +2147,25 @@ describe("signed release artifacts", () => {
       });
       expect(Object.keys(manifest.platforms)).toHaveLength(6);
       expect(verifiedSignatures).toHaveLength(6);
-      const linuxIntegrity = JSON.parse(
-        await readFile(
-          path.join(
-            artifactsRoot,
-            `release-${releaseTargets[0]}`,
-            `${releaseTargets[0]}-manifest.json`,
-          ),
-          "utf8",
-        ),
+      const linuxIntegrityPath = path.join(
+        artifactsRoot,
+        `release-${releaseTargets[0]}`,
+        `${releaseTargets[0]}-manifest.json`,
       );
+      const linuxIntegrityContents = await readFile(linuxIntegrityPath, "utf8");
+      const linuxIntegrity = JSON.parse(linuxIntegrityContents);
       expect(linuxIntegrity).toMatchObject({
+        schema_version: 2,
         target: releaseTargets[0],
         architecture: "x86_64",
         architecture_verified: true,
+        native_build: {
+          runner_os: "Linux",
+          runner_arch: "X64",
+          rust_host: releaseTargets[0],
+          target: releaseTargets[0],
+          build_mode: "signed-release",
+        },
         commit: releaseCommit,
         version: "2026.09.4",
       });
@@ -1962,6 +2173,28 @@ describe("signed release artifacts", () => {
         targetSuffixes[releaseTargets[0]].length,
       );
       expect(linuxIntegrity.resources).toHaveLength(4);
+      await writeFile(
+        linuxIntegrityPath,
+        JSON.stringify({
+          ...linuxIntegrity,
+          native_build: {
+            ...linuxIntegrity.native_build,
+            runner_arch: "ARM64",
+          },
+        }),
+      );
+      await expect(
+        createLatestManifest({
+          tag: "v2026.09.4",
+          packageVersion: "2026.09.4",
+          repository: "owner/repo",
+          artifactsRoot,
+          commit: releaseCommit,
+          pubDate,
+          signatureVerifier: async () => {},
+        }),
+      ).rejects.toThrow("Actions runner architecture ARM64 does not match target");
+      await writeFile(linuxIntegrityPath, linuxIntegrityContents);
 
       const latestPath = path.join(directory, "latest.json");
       const uploadedRoot = path.join(directory, "uploaded");
@@ -2110,6 +2343,7 @@ describe("signed release artifacts", () => {
           version: "2026.09.4",
           resourceRoot: path.join(directory, "resources", "ocr"),
           binaryRoot: path.join(directory, "binaries"),
+          nativeBuild: nativeBuildEvidence(releaseTargets[0], "signed-release"),
         }),
       ).rejects.toThrow(".AppImage.sig");
     } finally {
@@ -2487,7 +2721,8 @@ describe("native Cargo host target guard", () => {
     expect(invocations[0]).toMatchObject({
       command: "powershell.exe",
       args: expect.arrayContaining([
-        "[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture",
+        "-File",
+        path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
       ]),
     });
     expect(invocations[1].command).toBe("cmd.exe");
@@ -3215,6 +3450,17 @@ esac
 describe("native Cargo host architecture guard", () => {
   const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
 
+  it("queries Windows native architecture rather than the emulated process architecture", async () => {
+    const script = await readFile(
+      path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
+      "utf8",
+    );
+
+    expect(script).toContain("IsWow64Process2");
+    expect(script).toContain('0x8664 { Write-Output "X64" }');
+    expect(script).toContain('0xAA64 { Write-Output "Arm64" }');
+  });
+
   it("rejects an x64 toolchain on a native ARM64 Windows machine", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-os-arch-"));
     const binDir = path.join(directory, "bin");
@@ -3232,7 +3478,7 @@ describe("native Cargo host architecture guard", () => {
       );
       await writeExecutable(
         path.join(binDir, "powershell.exe"),
-        "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
+        "#!/usr/bin/env bash\nprintf 'Arm64\\n'\n",
       );
       await writeExecutable(
         path.join(binDir, "cargo"),
@@ -3303,7 +3549,7 @@ describe("native Cargo host architecture guard", () => {
     }
   });
 
-  it("prefers the MSVC host architecture over an emulated PowerShell report", async () => {
+  it("rejects an ARM64 toolchain when PowerShell reports physical x64", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "epikrise-windows-arm64-msvc-host-"),
     );
@@ -3329,27 +3575,32 @@ describe("native Cargo host architecture guard", () => {
         '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
       );
 
-      await execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
-        env: {
-          ...process.env,
-          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-          PROCESSOR_ARCHITECTURE: "AMD64",
-          PROCESSOR_ARCHITEW6432: "AMD64",
-          VSCMD_ARG_HOST_ARCH: "arm64",
-          VSCMD_ARG_TGT_ARCH: "arm64",
-          EPIKRISE_RUNNER_ARCH: "",
-          RUNNER_ARCH: "",
-          CARGO_LOG: cargoLog,
-        },
+      await expect(
+        execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            PROCESSOR_ARCHITECTURE: "AMD64",
+            PROCESSOR_ARCHITEW6432: "AMD64",
+            VSCMD_ARG_HOST_ARCH: "arm64",
+            VSCMD_ARG_TGT_ARCH: "arm64",
+            EPIKRISE_RUNNER_ARCH: "",
+            RUNNER_ARCH: "",
+            CARGO_LOG: cargoLog,
+          },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          "does not match detected physical host windows/x86_64",
+        ),
       });
-
-      expect(await readFile(cargoLog, "utf8")).toBe("check\n");
+      await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
 
-  it("falls back to PROCESSOR_ARCHITECTURE when PowerShell reports no OS architecture", async () => {
+  it("fails closed when PowerShell cannot report physical Windows architecture", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "epikrise-windows-arm64-fallback-"),
     );
@@ -3375,18 +3626,23 @@ describe("native Cargo host architecture guard", () => {
         '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
       );
 
-      await execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
-        env: {
-          ...process.env,
-          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-          PROCESSOR_ARCHITECTURE: "ARM64",
-          PROCESSOR_ARCHITEW6432: "",
-          RUNNER_ARCH: "",
-          CARGO_LOG: cargoLog,
-        },
+      await expect(
+        execFile("bash", [wrapperPath, "--native-only", "cargo", "check"], {
+          env: {
+            ...process.env,
+            PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            PROCESSOR_ARCHITECTURE: "ARM64",
+            PROCESSOR_ARCHITEW6432: "",
+            RUNNER_ARCH: "",
+            CARGO_LOG: cargoLog,
+          },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining(
+          "Could not determine physical Windows OS architecture",
+        ),
       });
-
-      expect(await readFile(cargoLog, "utf8")).toBe("check\n");
+      await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -4048,7 +4304,7 @@ if (process.platform !== "win32") {
         );
         await writeExecutable(
           path.join(binDir, "curl"),
-          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nwhile [[ $# -gt 0 ]]; do if [[ "$1" == "-o" ]]; then shift; printf "invalid archive" > "$1"; exit 0; fi; shift; done\nexit 2\n',
         );
 
         await expect(
@@ -4080,7 +4336,7 @@ if (process.platform !== "win32") {
           ),
         ).toEqual([]);
         await expect(readdir(path.join(cacheRoot, "build", target))).rejects.toThrow();
-        expect(await readFile(curlLog, "utf8")).toBe("called\n");
+        expect(await readFile(curlLog, "utf8")).toBe("called\ncalled\n");
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
