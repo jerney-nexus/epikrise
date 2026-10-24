@@ -888,6 +888,136 @@ mod tests {
         assert_eq!(payload["stream"], false);
     }
 
+    #[tokio::test]
+    async fn gemini_stream_uses_interactions_sse_without_remote_storage() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        struct TestCredentials;
+
+        impl super::CredentialStore for TestCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(Some("synthetic-test-key".to_owned()))
+            }
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("mock endpoint should bind");
+        let address = listener
+            .local_addr()
+            .expect("mock endpoint should be addressable");
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener
+                .accept()
+                .expect("stream request should reach mock endpoint");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .expect("mock stream should accept a read timeout");
+            let mut reader = BufReader::new(stream);
+            let mut request_line = String::new();
+            reader
+                .read_line(&mut request_line)
+                .expect("request line should be readable");
+
+            let mut content_length = None;
+            loop {
+                let mut line = String::new();
+                reader
+                    .read_line(&mut line)
+                    .expect("request headers should be readable");
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some((name, value)) = line.split_once(':')
+                    && name.eq_ignore_ascii_case("content-length")
+                {
+                    content_length = value.trim().parse::<usize>().ok();
+                }
+            }
+
+            let mut body = vec![0; content_length.expect("request should include a body length")];
+            reader
+                .read_exact(&mut body)
+                .expect("request body should be readable");
+            let response_body = concat!(
+                "event: interaction.created\n",
+                "data: {\"interaction\":{\"id\":\"test-id\"},\"event_type\":\"interaction.created\"}\n\n",
+                "event: step.delta\n",
+                "data: {\"index\":0,\"delta\":{\"type\":\"text\",\"text\":\"Gemini \"},\"event_type\":\"step.delta\"}\n\n",
+                "event: step.delta\n",
+                "data: {\"index\":0,\"delta\":{\"type\":\"text\",\"text\":\"stream\"},\"event_type\":\"step.delta\"}\n\n",
+                "event: interaction.completed\n",
+                "data: {\"interaction\":{\"id\":\"\",\"status\":\"completed\"},\"event_type\":\"interaction.completed\"}\n\n",
+                "event: done\n",
+                "data: [DONE]\n\n",
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body,
+            );
+            reader
+                .get_mut()
+                .write_all(response.as_bytes())
+                .expect("mock SSE response should be writable");
+            (request_line, body)
+        });
+
+        let client = GenaiLlmClient::new(Arc::new(TestCredentials));
+        let profile = ProviderProfile {
+            id: "gemini-test".to_owned(),
+            display_name: "Gemini test".to_owned(),
+            adapter: ProviderAdapter::Gemini,
+            model: "gemini-3.5-flash".to_owned(),
+            endpoint: Some(format!("http://{address}/v1beta/")),
+            auth: AuthSource::Keychain {
+                credential_id: "test".to_owned(),
+            },
+            capabilities: ModelCapabilities {
+                vision: false,
+                streaming: true,
+                max_context: None,
+            },
+            generation: GenerationParams {
+                temperature: None,
+                max_tokens: Some(16),
+                reasoning_effort: None,
+            },
+        };
+        let messages = [ChatMessage {
+            role: MessageRole::User,
+            content: "Reply with OK.".to_owned(),
+            images: Vec::new(),
+        }];
+        let mut deltas = Vec::new();
+
+        let result = {
+            let mut on_delta = |delta| deltas.push(delta);
+            client
+                .stream(
+                    &profile,
+                    &messages,
+                    tokio_util::sync::CancellationToken::new(),
+                    &mut on_delta,
+                )
+                .await
+        };
+
+        assert_eq!(result, Ok("Gemini stream".to_owned()));
+        assert_eq!(deltas, ["Gemini ", "stream"]);
+
+        let (request_line, body) = server.join().expect("mock endpoint should complete");
+        assert_eq!(
+            request_line.trim_end(),
+            "POST /v1beta/interactions HTTP/1.1"
+        );
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("request payload should be JSON");
+        assert_eq!(payload["model"], "gemini-3.5-flash");
+        assert_eq!(payload["store"], false);
+        assert_eq!(payload["stream"], true);
+    }
+
     #[test]
     fn http_statuses_are_classified_as_provider_errors() {
         assert_eq!(map_http_status(401), LlmError::Authentication);
