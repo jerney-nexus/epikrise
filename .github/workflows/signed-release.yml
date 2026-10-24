@@ -152,15 +152,15 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install source tooling
+        run: pnpm install --frozen-lockfile
+
       - name: Verify native build host and target
         env:
           EPIKRISE_RUNNER_OS: ${{ runner.os }}
           EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
         shell: bash
         run: bash scripts/with-cargo-host-target.sh --native-only --validate-only
-
-      - name: Install source tooling
-        run: pnpm install --frozen-lockfile
 
       - name: Prepare normalized release workspace
         shell: bash

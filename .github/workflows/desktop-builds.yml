@@ -100,13 +100,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Verify native build host and target
-        env:
-          EPIKRISE_RUNNER_OS: ${{ runner.os }}
-          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
-        shell: bash
-        run: bash scripts/with-cargo-host-target.sh --native-only --validate-only
-
       - name: Cache native OCR and Cargo inputs
         if: matrix.platform != 'windows'
         uses: actions/cache@v6
@@ -127,6 +120,16 @@ jobs:
             ~/.cargo/git
           key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-diagnostic-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify native build host and target
+        env:
+          EPIKRISE_RUNNER_OS: ${{ runner.os }}
+          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
+        shell: bash
+        run: bash scripts/with-cargo-host-target.sh --native-only --validate-only
+
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
         run: |
@@ -144,9 +147,6 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: ./scripts/setup-native-windows-runner.ps1
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Prepare target OCR resources
         if: matrix.platform != 'windows'
