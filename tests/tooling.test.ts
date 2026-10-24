@@ -3070,7 +3070,8 @@ describe("native Cargo host target guard", () => {
     expect(invocations[0]).toMatchObject({
       command: "powershell.exe",
       args: expect.arrayContaining([
-        "[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture",
+        "-File",
+        path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
       ]),
     });
     expect(invocations[1].command).toBe("cmd.exe");
@@ -3836,6 +3837,17 @@ esac
 describe("native Cargo host architecture guard", () => {
   const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
 
+  it("queries Windows native architecture rather than the emulated process architecture", async () => {
+    const script = await readFile(
+      path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
+      "utf8",
+    );
+
+    expect(script).toContain('EntryPoint = "GetNativeSystemInfo"');
+    expect(script).toContain('9 { Write-Output "X64" }');
+    expect(script).toContain('12 { Write-Output "Arm64" }');
+  });
+
   it("rejects an x64 toolchain on a native ARM64 Windows machine", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-os-arch-"));
     const binDir = path.join(directory, "bin");
@@ -3924,7 +3936,7 @@ describe("native Cargo host architecture guard", () => {
     }
   });
 
-  it("detects the physical ARM64 host when PowerShell reports emulated x64", async () => {
+  it("uses native PowerShell architecture instead of x64 process and MSVC hosts", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "epikrise-windows-arm64-msvc-host-"),
     );
@@ -3943,7 +3955,7 @@ describe("native Cargo host architecture guard", () => {
       );
       await writeExecutable(
         path.join(binDir, "powershell.exe"),
-        "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
+        "#!/usr/bin/env bash\nprintf 'Arm64\\n'\n",
       );
       await writeExecutable(
         path.join(binDir, "cargo"),
@@ -3955,7 +3967,7 @@ describe("native Cargo host architecture guard", () => {
           ...process.env,
           PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
           PROCESSOR_ARCHITECTURE: "AMD64",
-          PROCESSOR_ARCHITEW6432: "ARM64",
+          PROCESSOR_ARCHITEW6432: "AMD64",
           VSCMD_ARG_HOST_ARCH: "x64",
           VSCMD_ARG_TGT_ARCH: "arm64",
           EPIKRISE_RUNNER_ARCH: "",

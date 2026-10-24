@@ -231,9 +231,7 @@ function runTauriWithGitBash(
  * @param {NodeJS.ProcessEnv} env
  */
 function detectWindowsArchitecture(spawn, env) {
-  let architecture = (env.EPIKRISE_RUNNER_ARCH || env.PROCESSOR_ARCHITEW6432 || "")
-    .trim()
-    .toLowerCase();
+  let architecture = (env.PROCESSOR_ARCHITEW6432 || "").trim().toLowerCase();
 
   if (!architecture) {
     const result = spawn(
@@ -242,23 +240,21 @@ function detectWindowsArchitecture(spawn, env) {
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",
-        "-Command",
-        "[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture",
+        "-File",
+        path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
       ],
       { encoding: "utf8", windowsHide: true },
     );
-    if (!result.error && result.status === 0) {
-      architecture =
-        typeof result.stdout === "string"
-          ? result.stdout.trim().toLowerCase()
-          : result.stdout?.toString("utf8").trim().toLowerCase() || "";
+    if (result.error || result.status !== 0) {
+      console.error(
+        `Could not determine the Windows host architecture${result.error ? `: ${result.error.message}` : "."}`,
+      );
+      return undefined;
     }
-  }
-
-  if (!architecture) {
-    architecture = (env.RUNNER_ARCH || env.PROCESSOR_ARCHITECTURE || "")
-      .trim()
-      .toLowerCase();
+    architecture =
+      typeof result.stdout === "string"
+        ? result.stdout.trim().toLowerCase()
+        : result.stdout?.toString("utf8").trim().toLowerCase() || "";
   }
   if (!architecture) {
     console.error("Could not determine the Windows host architecture.");
@@ -272,9 +268,7 @@ function detectWindowsArchitecture(spawn, env) {
     case "arm64":
       return "arm64";
     default:
-      console.error(
-        `Unsupported Windows host architecture reported by PowerShell: ${architecture || "no output"}.`,
-      );
+      console.error(`Unsupported Windows host architecture: ${architecture}.`);
       return undefined;
   }
 }
