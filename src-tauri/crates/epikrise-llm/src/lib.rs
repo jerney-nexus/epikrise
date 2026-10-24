@@ -483,6 +483,9 @@ fn prepare_request(
             }
         }
     }
+    if profile.adapter == ProviderAdapter::Gemini {
+        request = request.with_store(false);
+    }
 
     let mut options = ChatOptions::default();
     if let Some(temperature) = profile.generation.temperature {
@@ -705,6 +708,7 @@ mod tests {
                 "gemini-3.5-flash",
                 genai::adapter::AdapterKind::GeminiIx,
                 "https://generativelanguage.googleapis.com/v1beta/",
+                Some(false),
             ),
             (
                 ProviderAdapter::Groq,
@@ -712,6 +716,7 @@ mod tests {
                 "groq::llama-3.3-70b-versatile",
                 genai::adapter::AdapterKind::Groq,
                 "https://api.groq.com/openai/v1/",
+                None,
             ),
             (
                 ProviderAdapter::OpenRouter,
@@ -719,10 +724,18 @@ mod tests {
                 "open_router::openai/gpt-4o",
                 genai::adapter::AdapterKind::OpenRouter,
                 "https://openrouter.ai/api/v1/",
+                None,
             ),
         ];
 
-        for (adapter, model_name, expected_model, expected_adapter, expected_endpoint) in test_cases
+        for (
+            adapter,
+            model_name,
+            expected_model,
+            expected_adapter,
+            expected_endpoint,
+            expected_store,
+        ) in test_cases
         {
             let profile = ProviderProfile {
                 id: "provider".to_owned(),
@@ -742,7 +755,7 @@ mod tests {
                     reasoning_effort: None,
                 },
             };
-            let (client, model, _, _) = prepare_request(
+            let (client, model, request, _) = prepare_request(
                 &credentials,
                 &profile,
                 &[ChatMessage {
@@ -754,6 +767,7 @@ mod tests {
             .expect("provider request should be prepared");
 
             assert_eq!(model, expected_model);
+            assert_eq!(request.store, expected_store);
             let target = client
                 .resolve_service_target(model.as_str())
                 .await
