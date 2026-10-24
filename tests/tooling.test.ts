@@ -3456,9 +3456,9 @@ describe("native Cargo host architecture guard", () => {
       "utf8",
     );
 
-    expect(script).toContain('EntryPoint = "GetNativeSystemInfo"');
-    expect(script).toContain('9 { Write-Output "X64" }');
-    expect(script).toContain('12 { Write-Output "Arm64" }');
+    expect(script).toContain("IsWow64Process2");
+    expect(script).toContain('0x8664 { Write-Output "X64" }');
+    expect(script).toContain('0xAA64 { Write-Output "Arm64" }');
   });
 
   it("rejects an x64 toolchain on a native ARM64 Windows machine", async () => {

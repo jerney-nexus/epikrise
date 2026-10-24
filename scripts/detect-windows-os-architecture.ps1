@@ -5,39 +5,39 @@ using System.Runtime.InteropServices;
 
 public static class NativeWindowsArchitecture
 {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct SystemInfo
-    {
-        public ushort ProcessorArchitecture;
-        public ushort Reserved;
-        public uint PageSize;
-        public System.IntPtr MinimumApplicationAddress;
-        public System.IntPtr MaximumApplicationAddress;
-        public System.IntPtr ActiveProcessorMask;
-        public uint NumberOfProcessors;
-        public uint ProcessorType;
-        public uint AllocationGranularity;
-        public ushort ProcessorLevel;
-        public ushort ProcessorRevision;
-    }
+    [DllImport("kernel32.dll")]
+    private static extern System.IntPtr GetCurrentProcess();
 
-    [DllImport("kernel32.dll", EntryPoint = "GetNativeSystemInfo")]
-    private static extern void GetNativeSystemInfoNative(out SystemInfo systemInfo);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWow64Process2(
+        System.IntPtr process,
+        out ushort processMachine,
+        out ushort nativeMachine);
 
-    public static SystemInfo GetNativeSystemInfo()
+    public static ushort GetNativeMachine()
     {
-        SystemInfo systemInfo;
-        GetNativeSystemInfoNative(out systemInfo);
-        return systemInfo;
+        ushort processMachine;
+        ushort nativeMachine;
+        if (!IsWow64Process2(
+            GetCurrentProcess(),
+            out processMachine,
+            out nativeMachine))
+        {
+            throw new System.ComponentModel.Win32Exception(
+                Marshal.GetLastWin32Error());
+        }
+
+        return nativeMachine == 0 ? processMachine : nativeMachine;
     }
 }
 "@
 
-$systemInfo = [NativeWindowsArchitecture]::GetNativeSystemInfo()
-switch ($systemInfo.ProcessorArchitecture) {
-    9 { Write-Output "X64" }
-    12 { Write-Output "Arm64" }
+$nativeMachine = [NativeWindowsArchitecture]::GetNativeMachine()
+switch ($nativeMachine) {
+    0x8664 { Write-Output "X64" }
+    0xAA64 { Write-Output "Arm64" }
     default {
-        throw "Unsupported native Windows processor architecture: $($systemInfo.ProcessorArchitecture)."
+        throw "Unsupported native Windows machine type: 0x$($nativeMachine.ToString('X4'))."
     }
 }
