@@ -48,7 +48,7 @@ epikrise-core = { path = "crates/epikrise-core" }
 epikrise-ingest = { path = "crates/epikrise-ingest" }
 epikrise-llm = { path = "crates/epikrise-llm" }
 futures-util = "0.3"
-genai = "0.6.1"
+genai = "0.7.1"
 infer = "0.19"
 html2text = "0.17"
 image = { version = "0.25", default-features = false, features = [
