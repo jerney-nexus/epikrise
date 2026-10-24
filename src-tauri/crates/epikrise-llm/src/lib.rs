@@ -404,7 +404,13 @@ fn prepare_request(
         {
             profile.model.clone()
         }
-        ProviderAdapter::Gemini => format!("gemini_ix::{}", profile.model),
+        ProviderAdapter::Gemini => {
+            let model = profile
+                .model
+                .strip_prefix("gemini::")
+                .unwrap_or(&profile.model);
+            format!("gemini_ix::{model}")
+        }
         ProviderAdapter::Groq if !profile.model.starts_with("groq::") => {
             format!("groq::{}", profile.model)
         }
@@ -849,7 +855,7 @@ mod tests {
             id: "gemini-test".to_owned(),
             display_name: "Gemini test".to_owned(),
             adapter: ProviderAdapter::Gemini,
-            model: "gemini-3.5-flash".to_owned(),
+            model: "gemini::gemini-2.5-flash".to_owned(),
             endpoint: Some(format!("http://{address}/v1beta/")),
             auth: AuthSource::Keychain {
                 credential_id: "test".to_owned(),
@@ -883,7 +889,7 @@ mod tests {
         );
         let payload: serde_json::Value =
             serde_json::from_slice(&body).expect("request payload should be JSON");
-        assert_eq!(payload["model"], "gemini-3.5-flash");
+        assert_eq!(payload["model"], "gemini-2.5-flash");
         assert_eq!(payload["store"], false);
         assert_eq!(payload["stream"], false);
     }
