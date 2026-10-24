@@ -114,8 +114,8 @@ if [[ "$native_only" == true ]]; then
 
   if [[ -n "${EPIKRISE_NATIVE_BUILD_TARGET:-}" ]]; then
     node "$repo_root/scripts/verify-native-build-environment.mjs" \
-      "${EPIKRISE_RUNNER_OS:-}" \
-      "${EPIKRISE_RUNNER_ARCH:-}" \
+      "${EPIKRISE_RUNNER_OS:-${RUNNER_OS:-}}" \
+      "${EPIKRISE_RUNNER_ARCH:-${RUNNER_ARCH:-}}" \
       "$physical_os_family" \
       "$physical_arch" \
       "$host_triple" \
