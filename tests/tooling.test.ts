@@ -1517,6 +1517,9 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("contents: read");
     expect(workflow).toContain("ref: ${{ inputs.expected_sha }}");
     expect(workflow).toContain("EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}");
+    expect(workflow).toContain("EPIKRISE_RUNNER_OS: ${{ runner.os }}");
+    expect(workflow).toContain("EPIKRISE_NATIVE_BUILD_TARGET: ${{ matrix.target }}");
+    expect(workflow).toContain("EPIKRISE_BUILD_MODE: diagnostic");
     expect(workflow).toContain(
       'pnpm tauri build --target "$TARGET" --bundles "${bundles[@]}" --no-sign',
     );
@@ -1535,10 +1538,21 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("macos-15-intel");
     expect(workflow).toContain("macos-15");
     for (const target of desktopTargets) expect(workflow).toContain(target);
+    const rustToolchainStep = workflow.indexOf("uses: dtolnay/rust-toolchain@stable");
+    const nativeGuardStep = workflow.indexOf(
+      "- name: Verify native build host and target",
+    );
+    const cacheStep = workflow.indexOf("- name: Cache native OCR and Cargo inputs");
+    expect(nativeGuardStep).toBeGreaterThan(rustToolchainStep);
+    expect(nativeGuardStep).toBeLessThan(cacheStep);
+    expect(workflow).not.toContain("cargo-xwin");
+    expect(workflow).not.toContain("EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD");
     const windowsBuildStep = workflow.indexOf("- name: Build Windows installer");
     const verifyOcrStep = workflow.indexOf("- name: Verify staged OCR architectures");
     expect(windowsBuildStep).toBeGreaterThanOrEqual(0);
     expect(verifyOcrStep).toBeGreaterThan(windowsBuildStep);
+    expect(workflow).toContain("scripts/tauri-build-output.sh");
+    expect(workflow).toContain("verify-binary-architecture.mjs");
     expect(workflow).toContain("x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)");
   });
 
@@ -1792,6 +1806,24 @@ describe("signed release artifacts", () => {
 
     expect(releaseWorkflow).toContain('      - "v*"');
     expect(releaseWorkflow).toContain("ref: ${{ github.sha }}");
+    expect(releaseWorkflow).toContain("EPIKRISE_RUNNER_OS: ${{ runner.os }}");
+    expect(releaseWorkflow).toContain("EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}");
+    expect(releaseWorkflow).toContain(
+      "EPIKRISE_NATIVE_BUILD_TARGET: ${{ matrix.target }}",
+    );
+    expect(releaseWorkflow).toContain("EPIKRISE_BUILD_MODE: signed-release");
+    const rustToolchainStep = releaseWorkflow.indexOf(
+      "uses: dtolnay/rust-toolchain@stable",
+    );
+    const nativeGuardStep = releaseWorkflow.indexOf(
+      "- name: Verify native build host and target",
+    );
+    const sourceInstallStep = releaseWorkflow.indexOf("- name: Install source tooling");
+    expect(nativeGuardStep).toBeGreaterThan(rustToolchainStep);
+    expect(nativeGuardStep).toBeLessThan(sourceInstallStep);
+    expect(releaseWorkflow).toContain("--native-only --tauri-build");
+    expect(releaseWorkflow).not.toContain("cargo-xwin");
+    expect(releaseWorkflow).not.toContain("EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD");
     expect(releaseWorkflow).toMatch(
       /build:\s+needs:\s+- validate\s+- verify-ui\s+- verify-rust\s+- verify-playwright\s+- verify-security\s+- verify-quality/,
     );
@@ -1838,6 +1870,8 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toContain("--clobber");
     expect(releaseWorkflow).toContain("epikrise-signed-release-commit:");
     expect(releaseWorkflow).toContain("Verify staged OCR architectures");
+    expect(releaseWorkflow).toContain("scripts/tauri-build-output.sh");
+    expect(releaseWorkflow).toContain("verify-runtime-dependencies.mjs");
     expect(releaseWorkflow).toContain(
       "x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)",
     );
