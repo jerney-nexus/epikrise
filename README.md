@@ -297,8 +297,9 @@ installation and runtime acceptance testing on each target. Validation evidence 
   macOS Apple Silicon. Windows ARM64 provider flows were also reported; a
   Linux x64 AppImage launch was tested separately. Live runtime testing on
   Windows x64, macOS Intel, and Linux ARM64 remains unverified. Synthetic
-  German/English OCR, PDFium runtime loading, credentials, and clipboard
-  acceptance remain open where not explicitly reported.
+  German/English OCR, PDFium runtime loading, credentials, clipboard, and
+  isolated offline WebView2 readiness acceptance remain open where not
+  explicitly reported.
 - The successful matrix predates the Windows PowerShell execution-policy
   follow-up on commit `ecb65eb3b600d460ba07a48336f4fd6ff281d6be`. That
   follow-up has not had a six-target native matrix run; the earlier run is not
