@@ -1789,8 +1789,14 @@ describe("six-target desktop build tooling", () => {
       "- name: Verify native build host and target",
     );
     const cacheStep = workflow.indexOf("- name: Cache native OCR and Cargo inputs");
+    const dependencyInstallStep = workflow.indexOf("- name: Install dependencies");
+    const nativeDependencySetupStep = workflow.indexOf(
+      "- name: Install Linux build dependencies",
+    );
     expect(nativeGuardStep).toBeGreaterThan(rustToolchainStep);
-    expect(nativeGuardStep).toBeLessThan(cacheStep);
+    expect(nativeGuardStep).toBeGreaterThan(cacheStep);
+    expect(nativeGuardStep).toBeGreaterThan(dependencyInstallStep);
+    expect(nativeGuardStep).toBeLessThan(nativeDependencySetupStep);
     expect(workflow).not.toContain("cargo-xwin");
     expect(workflow).not.toContain("EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD");
     const windowsBuildStep = workflow.indexOf("- name: Build Windows installer");
@@ -2086,8 +2092,12 @@ describe("signed release artifacts", () => {
       "- name: Verify native build host and target",
     );
     const sourceInstallStep = releaseWorkflow.indexOf("- name: Install source tooling");
+    const workspaceSetupStep = releaseWorkflow.indexOf(
+      "- name: Prepare normalized release workspace",
+    );
     expect(nativeGuardStep).toBeGreaterThan(rustToolchainStep);
-    expect(nativeGuardStep).toBeLessThan(sourceInstallStep);
+    expect(nativeGuardStep).toBeGreaterThan(sourceInstallStep);
+    expect(nativeGuardStep).toBeLessThan(workspaceSetupStep);
     expect(releaseWorkflow).toContain("--native-only --tauri-build");
     expect(releaseWorkflow).not.toContain("cargo-xwin");
     expect(releaseWorkflow).not.toContain("EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD");
