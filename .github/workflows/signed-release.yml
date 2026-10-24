@@ -348,7 +348,11 @@ jobs:
             --stage-root "release-staging/$TARGET" \
             --commit "$GITHUB_SHA" \
             --resource-root src-tauri/resources/ocr \
-            --binary-root src-tauri/binaries
+            --binary-root src-tauri/binaries \
+            --runner-os "$RUNNER_OS" \
+            --runner-arch "$RUNNER_ARCH" \
+            --rust-host "$host_target" \
+            --build-mode "$EPIKRISE_BUILD_MODE"
 
       - uses: actions/upload-artifact@v7
         with:

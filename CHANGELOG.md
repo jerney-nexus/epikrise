@@ -26,6 +26,9 @@ build`/`dev` commands initialize MSVC from regular shells. Linux native-host
   builds workflow passed; native install, launch, and uninstall were confirmed
   on Windows ARM64 and macOS Apple Silicon. Live testing on the other platform
   targets is deferred.
+- `pnpm build:all` now downloads and verifies Windows NSIS and Store MSIX as
+  separate package families. Artifact manifests bind each package to its
+  request, commit, version, native runner, Rust target, and SHA-256.
 - Localized in-app help for the workflow, settings, case-data handling, and
   privacy boundaries.
 - Templates can format ISO `YYYY-MM-DD` values with the MiniJinja expression

@@ -16,12 +16,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { deriveReleaseVersions } from "./prepare-release.mjs";
+import { assertNativeBuildMetadata } from "./verify-native-build-environment.mjs";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const execFile = promisify(execFileCallback);
 
 /** @typedef {{ path: string, size_bytes: number, sha256: string }} FileEvidence */
-/** @typedef {{ schema_version: number, target: string, architecture: string, architecture_verified: boolean, commit: string, version: string, assets: FileEvidence[], resources: FileEvidence[] }} ReleaseIntegrityManifest */
+/** @typedef {{ runnerOS: string, runnerArch: string, rustHost: string, target: string, buildMode: string }} NativeBuildInput */
+/** @typedef {{ runner_os: string, runner_arch: string, rust_host: string, target: string, build_mode: string }} NativeBuildEvidence */
+/** @typedef {{ schema_version: number, target: string, architecture: string, architecture_verified: boolean, native_build: NativeBuildEvidence, commit: string, version: string, assets: FileEvidence[], resources: FileEvidence[] }} ReleaseIntegrityManifest */
 
 export const releaseTargets = /** @type {const} */ ([
   "x86_64-unknown-linux-gnu",
@@ -186,7 +189,7 @@ export function assertRecoverableReleaseDraft(release, tag, commit) {
 }
 
 /**
- * @param {{ target: string, bundleRoot: string, stageRoot: string, commit: string, version: string, resourceRoot: string, binaryRoot: string }} options
+ * @param {{ target: string, bundleRoot: string, stageRoot: string, commit: string, version: string, resourceRoot: string, binaryRoot: string, nativeBuild: NativeBuildInput }} options
  * @returns {Promise<string[]>}
  */
 export async function stageReleaseArtifacts({
@@ -197,9 +200,19 @@ export async function stageReleaseArtifacts({
   version,
   resourceRoot,
   binaryRoot,
+  nativeBuild,
 }) {
   const config = targetConfig[/** @type {keyof typeof targetConfig} */ (target)];
   assert(config, `Unsupported release target: ${target}.`);
+  const buildEvidence = assertNativeBuildMetadata(nativeBuild);
+  assert(
+    buildEvidence.target === target,
+    "Native build evidence target does not match.",
+  );
+  assert(
+    buildEvidence.build_mode === "signed-release",
+    "Signed updater artifacts require signed-release native build evidence.",
+  );
   assert(/^[0-9a-f]{40}$/.test(commit), "Release commit must be a full Git SHA.");
   assert(
     /^[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$/.test(version),
@@ -270,10 +283,11 @@ export async function stageReleaseArtifacts({
   );
   const architecture = target.startsWith("aarch64-") ? "arm64" : "x86_64";
   const integrityManifest = {
-    schema_version: 1,
+    schema_version: 2,
     target,
     architecture,
     architecture_verified: true,
+    native_build: buildEvidence,
     commit,
     version,
     assets: assetFiles,
@@ -336,7 +350,7 @@ export async function createLatestManifest({
       await readFile(path.join(targetDirectory, integrityName), "utf8"),
     );
     assert(
-      integrity.schema_version === 1,
+      integrity.schema_version === 2,
       "Unsupported release integrity manifest schema.",
     );
     assert(
@@ -347,6 +361,22 @@ export async function createLatestManifest({
       integrity.architecture_verified === true,
       `Architecture was not verified for ${target}.`,
     );
+    assert(
+      typeof integrity.native_build === "object" && integrity.native_build !== null,
+      `Native build evidence is missing for ${target}.`,
+    );
+    assert(
+      integrity.native_build.target === target &&
+        integrity.native_build.build_mode === "signed-release",
+      `Native build evidence does not match ${target}.`,
+    );
+    assertNativeBuildMetadata({
+      runnerOS: integrity.native_build.runner_os,
+      runnerArch: integrity.native_build.runner_arch,
+      rustHost: integrity.native_build.rust_host,
+      target: integrity.native_build.target,
+      buildMode: integrity.native_build.build_mode,
+    });
     assert(
       integrity.commit === (commit ?? integrity.commit),
       `Integrity commit does not match ${target}.`,
@@ -579,6 +609,13 @@ async function main() {
       version: packageJson.version,
       resourceRoot: options["resource-root"],
       binaryRoot: options["binary-root"],
+      nativeBuild: {
+        runnerOS: options["runner-os"],
+        runnerArch: options["runner-arch"],
+        rustHost: options["rust-host"],
+        target: options.target,
+        buildMode: options["build-mode"],
+      },
     });
     return;
   }
