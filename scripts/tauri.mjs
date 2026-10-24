@@ -240,6 +240,8 @@ function detectWindowsArchitecture(spawn, env) {
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
         "-File",
         path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
       ],

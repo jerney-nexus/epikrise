@@ -3070,6 +3070,8 @@ describe("native Cargo host target guard", () => {
     expect(invocations[0]).toMatchObject({
       command: "powershell.exe",
       args: expect.arrayContaining([
+        "-ExecutionPolicy",
+        "Bypass",
         "-File",
         path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
       ]),
@@ -3842,10 +3844,15 @@ describe("native Cargo host architecture guard", () => {
       path.join(repoRoot, "scripts/detect-windows-os-architecture.ps1"),
       "utf8",
     );
+    const wrapper = await readFile(
+      path.join(repoRoot, "scripts/detect-windows-os-architecture.sh"),
+      "utf8",
+    );
 
     expect(script).toContain("IsWow64Process2");
     expect(script).toContain('0x8664 { Write-Output "X64" }');
     expect(script).toContain('0xAA64 { Write-Output "Arm64" }');
+    expect(wrapper).toContain("-ExecutionPolicy Bypass");
   });
 
   it("rejects an x64 toolchain on a native ARM64 Windows machine", async () => {

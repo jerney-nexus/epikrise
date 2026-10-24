@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 windows_os_arch=""
 if ! windows_os_arch="$(
   powershell.exe -NoLogo -NoProfile -NonInteractive \
+    -ExecutionPolicy Bypass \
     -File "$repo_root/scripts/detect-windows-os-architecture.ps1" \
     2>/dev/null
 )"; then
