@@ -4737,7 +4737,7 @@ if (process.platform !== "win32") {
         );
         await writeExecutable(
           path.join(binDir, "curl"),
-          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nexit 1\n',
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\nwhile [[ $# -gt 0 ]]; do if [[ "$1" == "-o" ]]; then shift; printf "invalid archive" > "$1"; exit 0; fi; shift; done\nexit 2\n',
         );
 
         await expect(
@@ -4769,7 +4769,7 @@ if (process.platform !== "win32") {
           ),
         ).toEqual([]);
         await expect(readdir(path.join(cacheRoot, "build", target))).rejects.toThrow();
-        expect(await readFile(curlLog, "utf8")).toBe("called\n");
+        expect(await readFile(curlLog, "utf8")).toBe("called\ncalled\n");
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
