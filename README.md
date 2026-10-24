@@ -239,6 +239,11 @@ maintenance page currently runs the uninstaller and then continues into setup,
 so do not select its Uninstall option when you intend to remove the app and
 close the installer.
 
+Local `pnpm tauri build` compiles Epikrise and OCR for the physical host OS and
+architecture; native host/target mismatches fail closed. The only cross-build
+exception is an explicit human Linux x64/ARM64 Windows NSIS build. GitHub
+Actions and release builds never cross-compile.
+
 ### Cross-platform Actions builds
 
 `pnpm build:all` dispatches the manual **Desktop builds** GitHub Actions
@@ -273,11 +278,31 @@ is rejected in CI. The CI builds are unsigned and unnotarized: Windows
 SmartScreen and macOS Gatekeeper may warn or block installation. This workflow
 does not publish releases or use the separate direct-release updater
 configuration. A successful package build is not a substitute for native
-installation and runtime acceptance testing on each target. The six-target
-Actions build passed, and native install, launch, and uninstall were confirmed
-on Windows ARM64 and macOS Apple Silicon. Live testing on Windows x64, macOS
-Intel, and Linux x64/ARM64 is deferred; synthetic OCR and other per-target
-runtime checks remain outstanding.
+installation and runtime acceptance testing on each target. Validation evidence as of 2026-10-24:
+
+- `pnpm build:all` succeeded in
+  [Actions run 40110573454](https://github.com/jerney-nexus/epikrise/actions/runs/40110573454)
+  for commit `66a76e720ea32308d6721580a5b37b2af4a9a1aa`, version `2026.10.0`,
+  and request `1764b6f2-7f78-40db-8472-cb1f621b55ef`. All six native jobs
+  succeeded, and the downloader verified package completeness,
+  request/commit/version/target manifests, and SHA-256 hashes for both Windows
+  package families.
+- Both MSIX archives were checked for ZIP integrity, the reserved
+  `JerneyNexus.Epikrise` identity, publisher, version `2026.10.0.0`, target
+  architecture, and app, Tesseract, PDFium, and German/English language
+  payloads. Packaged PE binaries matched their x64 or ARM64 target. This does
+  not establish Windows App Certification Kit results or Partner Center
+  acceptance; no Store submission or certification has been performed.
+- Users reported native install, launch, and uninstall on Windows ARM64 and
+  macOS Apple Silicon. Windows ARM64 provider flows were also reported; a
+  Linux x64 AppImage launch was tested separately. Live runtime testing on
+  Windows x64, macOS Intel, and Linux ARM64 remains unverified. Synthetic
+  German/English OCR, PDFium runtime loading, credentials, and clipboard
+  acceptance remain open where not explicitly reported.
+- The successful matrix predates the Windows PowerShell execution-policy
+  follow-up on commit `ecb65eb3b600d460ba07a48336f4fd6ff281d6be`. That
+  follow-up has not had a six-target native matrix run; the earlier run is not
+  evidence for that later change.
 
 The MSIX artifact uses the reserved `JerneyNexus.Epikrise` Store identity and
 the `year.month.patch.0` package version. It is an unsigned Store-upload
