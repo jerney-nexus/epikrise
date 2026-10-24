@@ -231,11 +231,28 @@ jobs:
           }
           ./scripts/package-store-msix.ps1 @arguments
 
+      - name: Stage Store MSIX with integrity manifest
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          node scripts/desktop-builds.mjs stage \
+            --target "$TARGET" \
+            --package-family store-msix \
+            --bundle-root artifact-staging/store-msix \
+            --stage-root artifact-staging/store-msix-artifact \
+            --commit "$EXPECTED_SHA" \
+            --request-id "$REQUEST_ID" \
+            --runner-os "$RUNNER_OS" \
+            --runner-arch "$RUNNER_ARCH" \
+            --rust-host "$host_target" \
+            --build-mode "$EPIKRISE_BUILD_MODE"
+
       - uses: actions/upload-artifact@v7
         if: matrix.platform == 'windows'
         with:
           name: epikrise-store-msix-${{ matrix.windows_arch }}
-          path: artifact-staging/store-msix/*.msix
+          path: artifact-staging/store-msix-artifact/
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -246,8 +263,13 @@ jobs:
           host_target="$(rustc -vV | sed -n 's/^host: //p')"
           node scripts/desktop-builds.mjs stage \
             --target "$TARGET" \
+            --package-family desktop \
             --commit "$EXPECTED_SHA" \
             --request-id "$REQUEST_ID" \
+            --runner-os "$RUNNER_OS" \
+            --runner-arch "$RUNNER_ARCH" \
+            --rust-host "$host_target" \
+            --build-mode "$EPIKRISE_BUILD_MODE" \
             --bundle-root "src-tauri/target/host-$host_target/$TARGET/release/bundle" \
             --stage-root "$ARTIFACT_STAGE"
 

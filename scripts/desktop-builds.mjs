@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { assertNativeBuildMetadata } from "./verify-native-build-environment.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -31,8 +32,11 @@ export const desktopTargets = /** @type {const} */ ([
 /** @typedef {(typeof desktopTargets)[number]} DesktopTarget */
 /** @typedef {{ databaseId: number, displayTitle: string, headSha: string, event: string }} WorkflowRun */
 /** @typedef {{ name: string, conclusion: string | null }} WorkflowJob */
-/** @typedef {{ schema_version: number, request_id: string, commit: string, target: DesktopTarget, version: string, signed: false, files: Array<{ path: string, size_bytes: number, sha256: string }> }} ArtifactManifest */
-/** @typedef {{ requestId: string, commit: string, version: string, target: DesktopTarget }} ArtifactExpectation */
+/** @typedef {"desktop" | "store-msix"} PackageFamily */
+/** @typedef {{ runnerOS: string, runnerArch: string, rustHost: string, target: string, buildMode: string }} NativeBuildInput */
+/** @typedef {{ runner_os: string, runner_arch: string, rust_host: string, target: string, build_mode: string }} NativeBuildEvidence */
+/** @typedef {{ schema_version: number, request_id: string, commit: string, target: DesktopTarget, package_family: PackageFamily, native_build: NativeBuildEvidence, version: string, signed: false, files: Array<{ path: string, size_bytes: number, sha256: string }> }} ArtifactManifest */
+/** @typedef {{ requestId: string, commit: string, version: string, target: DesktopTarget, packageFamily: PackageFamily }} ArtifactExpectation */
 
 const expectedSuffixes = {
   "x86_64-unknown-linux-gnu": [".deb", ".rpm", ".AppImage"],
@@ -42,6 +46,18 @@ const expectedSuffixes = {
   "x86_64-pc-windows-msvc": [".exe"],
   "aarch64-pc-windows-msvc": [".exe"],
 };
+const storeMsixTargets = new Set(["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]);
+
+/**
+ * @param {DesktopTarget} target
+ * @param {PackageFamily} packageFamily
+ */
+function packageSuffixes(target, packageFamily) {
+  if (packageFamily === "store-msix") {
+    return storeMsixTargets.has(target) ? [".msix"] : [];
+  }
+  return packageFamily === "desktop" ? expectedSuffixes[target] : [];
+}
 
 /** @param {unknown} condition @param {string} message */
 function assert(condition, message) {
@@ -141,20 +157,34 @@ async function collectFiles(directory) {
  * @param {DesktopTarget} target
  * @param {string} commit
  * @param {string} requestId
+ * @param {PackageFamily} packageFamily
+ * @param {NativeBuildEvidence} nativeBuild
  * @returns {Promise<ArtifactManifest>}
  */
-async function buildManifest(stageRoot, target, commit, requestId) {
+async function buildManifest(
+  stageRoot,
+  target,
+  commit,
+  requestId,
+  packageFamily,
+  nativeBuild,
+) {
   assert(desktopTargets.includes(target), `Unsupported desktop target: ${target}.`);
   assert(/^[0-9a-f]{40}$/.test(commit), "Commit must be a full Git SHA.");
   assert(/^[0-9a-f-]{36}$/.test(requestId), "Request ID must be a UUID.");
 
   const filesDirectory = path.join(stageRoot, "files");
   const stagedPaths = await collectFiles(filesDirectory);
-  const suffixes = expectedSuffixes[target];
+  const suffixes = packageSuffixes(target, packageFamily);
+  assert(
+    suffixes.length > 0,
+    `Unsupported ${packageFamily} package target: ${target}.`,
+  );
   for (const suffix of suffixes) {
+    const matches = stagedPaths.filter((filePath) => filePath.endsWith(suffix));
     assert(
-      stagedPaths.some((filePath) => filePath.endsWith(suffix)),
-      `No ${suffix} package was staged for ${target}.`,
+      matches.length === 1,
+      `Expected exactly one ${suffix} package for ${target}, found ${matches.length}.`,
     );
   }
   const packageFiles = [];
@@ -176,29 +206,37 @@ async function buildManifest(stageRoot, target, commit, requestId) {
     await readFile(path.join(repoRoot, "package.json"), "utf8"),
   );
   return {
-    schema_version: 1,
+    schema_version: 2,
     request_id: requestId,
     commit,
     target,
+    package_family: packageFamily,
+    native_build: nativeBuild,
     version: packageJson.version,
     signed: false,
     files: packageFiles,
   };
 }
 
-/** @param {string} bundleRoot @param {DesktopTarget} target */
-async function findPackages(bundleRoot, target) {
-  const bundleDirectory = target.endsWith("-pc-windows-msvc")
-    ? path.join(bundleRoot, "nsis")
-    : bundleRoot;
+/** @param {string} bundleRoot @param {DesktopTarget} target @param {PackageFamily} packageFamily */
+async function findPackages(bundleRoot, target, packageFamily) {
+  const suffixes = packageSuffixes(target, packageFamily);
+  assert(
+    suffixes.length > 0,
+    `Unsupported ${packageFamily} package target: ${target}.`,
+  );
+  const bundleDirectory =
+    packageFamily === "desktop" && target.endsWith("-pc-windows-msvc")
+      ? path.join(bundleRoot, "nsis")
+      : bundleRoot;
   const paths = await collectFiles(bundleDirectory);
   return paths.filter((filePath) =>
-    expectedSuffixes[target].some((suffix) => filePath.endsWith(suffix)),
+    suffixes.some((suffix) => filePath.endsWith(suffix)),
   );
 }
 
 /**
- * @param {{ target: DesktopTarget, commit: string, requestId: string, bundleRoot: string, stageRoot: string }} options
+ * @param {{ target: DesktopTarget, commit: string, requestId: string, bundleRoot: string, stageRoot: string, packageFamily: PackageFamily, nativeBuild: NativeBuildInput }} options
  * @returns {Promise<ArtifactManifest>}
  */
 export async function stagePackages({
@@ -207,8 +245,15 @@ export async function stagePackages({
   requestId,
   bundleRoot,
   stageRoot,
+  packageFamily,
+  nativeBuild,
 }) {
   assert(desktopTargets.includes(target), `Unsupported desktop target: ${target}.`);
+  const buildEvidence = assertNativeBuildMetadata(nativeBuild);
+  assert(
+    packageFamily === "desktop" || packageFamily === "store-msix",
+    `Unsupported desktop package family: ${packageFamily}.`,
+  );
   try {
     await lstat(stageRoot);
     throw new Error(`Artifact staging directory already exists: ${stageRoot}.`);
@@ -216,7 +261,7 @@ export async function stagePackages({
     if (!isNotFoundError(error)) throw error;
   }
 
-  const packages = await findPackages(bundleRoot, target);
+  const packages = await findPackages(bundleRoot, target, packageFamily);
   const filesDirectory = path.join(stageRoot, "files");
   await mkdir(filesDirectory, { recursive: true });
   const basenames = new Set();
@@ -226,7 +271,14 @@ export async function stagePackages({
     basenames.add(basename);
     await cp(packagePath, path.join(filesDirectory, basename));
   }
-  const manifest = await buildManifest(stageRoot, target, commit, requestId);
+  const manifest = await buildManifest(
+    stageRoot,
+    target,
+    commit,
+    requestId,
+    packageFamily,
+    buildEvidence,
+  );
   await writeFile(
     path.join(stageRoot, "manifest.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
@@ -245,7 +297,7 @@ async function verifyArtifactDirectory(directory, expected) {
   const manifest = JSON.parse(
     await readFile(path.join(directory, "manifest.json"), "utf8"),
   );
-  assert(manifest.schema_version === 1, "Unsupported artifact manifest schema.");
+  assert(manifest.schema_version === 2, "Unsupported artifact manifest schema.");
   assert(
     manifest.request_id === expected.requestId,
     "Artifact request ID does not match.",
@@ -254,13 +306,29 @@ async function verifyArtifactDirectory(directory, expected) {
   assert(manifest.version === expected.version, "Artifact version does not match.");
   assert(manifest.signed === false, "Unexpected signed artifact status.");
   assert(
-    expectedSuffixes[expected.target],
-    `Unsupported artifact target: ${expected.target}.`,
+    manifest.package_family === expected.packageFamily,
+    "Artifact package family does not match its download slot.",
   );
   assert(
     manifest.target === expected.target,
     "Artifact target does not match its download slot.",
   );
+  assert(
+    typeof manifest.native_build === "object" && manifest.native_build !== null,
+    "Native build evidence is missing.",
+  );
+  assert(
+    manifest.native_build.target === expected.target &&
+      manifest.native_build.build_mode === "diagnostic",
+    "Native build evidence does not match the diagnostic target.",
+  );
+  assertNativeBuildMetadata({
+    runnerOS: manifest.native_build.runner_os,
+    runnerArch: manifest.native_build.runner_arch,
+    rustHost: manifest.native_build.rust_host,
+    target: manifest.native_build.target,
+    buildMode: manifest.native_build.build_mode,
+  });
   assert(
     Array.isArray(manifest.files) && manifest.files.length > 0,
     "Artifact manifest has no files.",
@@ -300,10 +368,18 @@ async function verifyArtifactDirectory(directory, expected) {
     );
   }
 
-  for (const suffix of expectedSuffixes[expected.target]) {
+  const suffixes = packageSuffixes(expected.target, expected.packageFamily);
+  assert(
+    suffixes.length > 0,
+    `Unsupported ${expected.packageFamily} package target: ${expected.target}.`,
+  );
+  for (const suffix of suffixes) {
+    const matches = manifest.files.filter((file) => file.path.endsWith(suffix));
     assert(
-      manifest.files.some((file) => file.path.endsWith(suffix)),
-      `Artifact is missing the required ${suffix} package.`,
+      matches.length === 1,
+      matches.length === 0
+        ? `Artifact is missing the required ${suffix} package.`
+        : `Artifact contains multiple ${suffix} packages.`,
     );
   }
   const actualPaths = new Set(
@@ -332,8 +408,16 @@ export async function verifyArtifactSet(root, expected) {
       await verifyArtifactDirectory(path.join(root, target), {
         ...expected,
         target,
+        packageFamily: "desktop",
       }),
     );
+    if (storeMsixTargets.has(target)) {
+      await verifyArtifactDirectory(path.join(root, `${target}-store-msix`), {
+        ...expected,
+        target,
+        packageFamily: "store-msix",
+      });
+    }
   }
   return manifests;
 }
@@ -508,6 +592,20 @@ async function dispatchAndDownload() {
         "--dir",
         destination,
       ]);
+      if (storeMsixTargets.has(target)) {
+        const storeDestination = path.join(temporaryRoot, `${target}-store-msix`);
+        const architecture = target.startsWith("aarch64-") ? "arm64" : "x64";
+        await mkdir(storeDestination, { recursive: true });
+        await run("gh", [
+          "run",
+          "download",
+          String(selectedRun.databaseId),
+          "--name",
+          `epikrise-store-msix-${architecture}`,
+          "--dir",
+          storeDestination,
+        ]);
+      }
     }
     const packageJson = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
@@ -532,7 +630,9 @@ async function dispatchAndDownload() {
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
-  console.log(`Verified all six architecture-specific bundles: ${outputRoot}`);
+  console.log(
+    `Verified all six targets and both Windows package families: ${outputRoot}`,
+  );
 }
 
 /** @param {string[]} args @returns {Record<string, string>} */
@@ -559,6 +659,14 @@ async function main() {
       requestId: options["request-id"],
       bundleRoot: options["bundle-root"],
       stageRoot: options["stage-root"],
+      packageFamily: /** @type {PackageFamily} */ (options["package-family"]),
+      nativeBuild: {
+        runnerOS: options["runner-os"],
+        runnerArch: options["runner-arch"],
+        rustHost: options["rust-host"],
+        target: options.target,
+        buildMode: options["build-mode"],
+      },
     });
     return;
   }

@@ -10,6 +10,12 @@ const targetSpecifications = {
   "aarch64-pc-windows-msvc": { os: "windows", architecture: "aarch64" },
 };
 
+/** @param {string} target @returns {target is keyof typeof targetSpecifications} */
+function isSupportedTarget(target) {
+  return Object.hasOwn(targetSpecifications, target);
+}
+
+/** @param {string} value */
 function normalizeOS(value) {
   switch (value.toLowerCase()) {
     case "linux":
@@ -24,6 +30,7 @@ function normalizeOS(value) {
   }
 }
 
+/** @param {string} value */
 function normalizeArchitecture(value) {
   switch (value.toLowerCase()) {
     case "x64":
@@ -43,8 +50,10 @@ function normalizeArchitecture(value) {
  */
 export function assertNativeBuildMetadata(evidence) {
   const { runnerOS, runnerArch, rustHost, target, buildMode } = evidence;
+  if (!isSupportedTarget(target)) {
+    throw new Error(`Unsupported native build target: ${target}.`);
+  }
   const specification = targetSpecifications[target];
-  if (!specification) throw new Error(`Unsupported native build target: ${target}.`);
   if (normalizeOS(runnerOS) !== specification.os) {
     throw new Error(`Actions runner OS ${runnerOS} does not match target ${target}.`);
   }
@@ -74,6 +83,9 @@ export function assertNativeBuildMetadata(evidence) {
  */
 export function verifyNativeBuildEnvironment(evidence) {
   const metadata = assertNativeBuildMetadata(evidence);
+  if (!isSupportedTarget(evidence.target)) {
+    throw new Error(`Unsupported native build target: ${evidence.target}.`);
+  }
   const specification = targetSpecifications[evidence.target];
   if (normalizeOS(evidence.physicalOS) !== specification.os) {
     throw new Error(

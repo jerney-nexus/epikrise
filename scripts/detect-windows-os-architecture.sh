@@ -14,10 +14,7 @@ fi
 windows_os_arch="${windows_os_arch//$'\r'/}"
 windows_os_arch="${windows_os_arch//$'\n'/}"
 if [[ -z "$windows_os_arch" ]]; then
-  windows_os_arch="${PROCESSOR_ARCHITECTURE:-}"
-fi
-if [[ -z "$windows_os_arch" ]]; then
-  printf 'Could not determine physical Windows OS architecture using PowerShell or environment variables.\n' >&2
+  printf 'Could not determine physical Windows OS architecture using PowerShell or PROCESSOR_ARCHITEW6432.\n' >&2
   exit 1
 fi
 

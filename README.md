@@ -254,9 +254,12 @@ The command requires a clean worktree, the current branch or tag pushed to
 `origin` at exactly `HEAD`, the GitHub CLI authenticated with Actions dispatch
 and artifact-read permissions, and network access to GitHub Actions. It waits
 for all six jobs, then verifies the request ID, commit, version, target, package
-completeness and SHA-256 values. Verified manifests and packages are written to
-`.artifacts/desktop-builds/<request-id>/`; partial, stale or modified artifacts
-are rejected. Each artifact expires after 14 days.
+completeness and SHA-256 values. Windows NSIS and Store MSIX artifacts are
+downloaded and verified as separate package families, with manifests binding
+each package to its runner architecture and Rust target. Verified manifests and
+packages are written to `.artifacts/desktop-builds/<request-id>/`; partial,
+stale, wrong-target or modified artifacts are rejected. Each artifact expires
+after 14 days.
 
 Windows jobs use native Windows runners; the human-only Linux cross-build setup
 is rejected in CI. The CI builds are unsigned and unnotarized: Windows

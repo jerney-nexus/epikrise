@@ -358,8 +358,10 @@ container and Actions runners need network access. Six isolated jobs can run in
 parallel. Completed outputs and their manifests are downloaded to
 `.artifacts/desktop-builds/<request-id>/`, which is Git-ignored; the command
 rejects missing jobs, wrong SHAs/versions/targets, incomplete packages, and
-manifest or SHA-256 mismatches. GitHub retains the uploaded artifacts for 14
-days.
+manifest or SHA-256 mismatches. Windows NSIS and Store MSIX packages are
+downloaded and verified separately; their manifests bind the request, commit,
+version, runner architecture, and Rust target. GitHub retains the uploaded
+artifacts for 14 days.
 
 Windows jobs in this workflow use native Windows runners; the manual Linux
 cross-build setup is not available in Actions and never accepts the SDK/CRT
