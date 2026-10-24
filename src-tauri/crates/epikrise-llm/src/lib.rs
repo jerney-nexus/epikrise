@@ -309,7 +309,7 @@ impl GenaiLlmClient {
                 .ok_or(LlmError::Authentication)?,
         };
         let provider_config = ProviderConfig::from((endpoint, Some(auth)));
-        let client = genai::Client::builder().build();
+        let client = genai::Client::builder().build().map_err(map_genai_error)?;
         let mut models = client
             .all_model_names(adapter, provider_config)
             .await
@@ -359,7 +359,7 @@ fn genai_adapter(adapter: &ProviderAdapter, model: &str) -> genai::adapter::Adap
         ProviderAdapter::OpenAi => GenaiAdapter::OpenAI,
         ProviderAdapter::OpenAiCompatible => GenaiAdapter::OpenAI,
         ProviderAdapter::Anthropic => GenaiAdapter::Anthropic,
-        ProviderAdapter::Gemini => GenaiAdapter::Gemini,
+        ProviderAdapter::Gemini => GenaiAdapter::GeminiIx,
         ProviderAdapter::Ollama => GenaiAdapter::Ollama,
         ProviderAdapter::OpenRouter => GenaiAdapter::OpenRouter,
         ProviderAdapter::Xai => GenaiAdapter::Xai,
@@ -428,7 +428,8 @@ fn prepare_request(
     let client = Client::builder()
         .with_service_target_resolver_fn(target_resolver)
         .with_auth_resolver_fn(auth_resolver)
-        .build();
+        .build()
+        .map_err(map_genai_error)?;
     let model_for_request = match profile.adapter {
         ProviderAdapter::Groq if !profile.model.starts_with("groq::") => {
             format!("groq::{}", profile.model)
@@ -492,7 +493,7 @@ fn prepare_request(
     }
     if let Some(reasoning_effort) = profile.generation.reasoning_effort {
         let reasoning_effort = match reasoning_effort {
-            ReasoningEffort::None => genai::chat::ReasoningEffort::None,
+            ReasoningEffort::None => genai::chat::ReasoningEffort::Zero,
             ReasoningEffort::Minimal => genai::chat::ReasoningEffort::Minimal,
             ReasoningEffort::Low => genai::chat::ReasoningEffort::Low,
             ReasoningEffort::Medium => genai::chat::ReasoningEffort::Medium,
@@ -680,6 +681,10 @@ mod tests {
             genai_adapter(&ProviderAdapter::Groq, "llama-3.3-70b-versatile"),
             AdapterKind::Groq
         );
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::Gemini, "gemini-3.5-flash"),
+            AdapterKind::GeminiIx
+        );
     }
 
     #[tokio::test]
@@ -694,6 +699,13 @@ mod tests {
 
         let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
         let test_cases = [
+            (
+                ProviderAdapter::Gemini,
+                "gemini-3.5-flash",
+                "gemini-3.5-flash",
+                genai::adapter::AdapterKind::GeminiIx,
+                "https://generativelanguage.googleapis.com/v1beta/",
+            ),
             (
                 ProviderAdapter::Groq,
                 "llama-3.3-70b-versatile",
@@ -886,7 +898,7 @@ mod tests {
             }
         }
 
-        let profile = ProviderProfile {
+        let mut profile = ProviderProfile {
             id: "test".to_owned(),
             display_name: "Test".to_owned(),
             adapter: ProviderAdapter::OpenAi,
@@ -918,6 +930,14 @@ mod tests {
         assert!(matches!(
             options.reasoning_effort,
             Some(genai::chat::ReasoningEffort::High)
+        ));
+
+        profile.generation.reasoning_effort = Some(ReasoningEffort::None);
+        let (_, _, _, options) = prepare_request(&credentials, &profile, &messages)
+            .expect("provider request should be prepared");
+        assert!(matches!(
+            options.reasoning_effort,
+            Some(genai::chat::ReasoningEffort::Zero)
         ));
     }
 
