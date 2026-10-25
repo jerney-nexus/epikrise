@@ -103,6 +103,24 @@ describe("Fluent localization", () => {
     expect(translate(pseudoLocale, "Provider")).toMatch(/^［.*］$/);
   });
 
+  it("localizes native menu labels and fallback status in every locale", () => {
+    expect(translate("en", "Settings")).toBe("Settings");
+    expect(translate("de-CH", "Settings")).toBe("Einstellungen");
+    expect(translate(pseudoLocale, "Settings")).toMatch(/^［.*］$/);
+    expect(
+      translate(
+        "en",
+        "Native Settings and Help menus are unavailable. Use the in-app buttons.",
+      ),
+    ).toContain("Use the in-app buttons");
+    expect(
+      translate(
+        "de-CH",
+        "Native Settings and Help menus are unavailable. Use the in-app buttons.",
+      ),
+    ).toContain("Schaltflächen in der App");
+  });
+
   it("pseudo-localizes every UI message and finds no untranslated markup text", async () => {
     const source = await readFile(
       new URL("../src/routes/+page.svelte", import.meta.url),

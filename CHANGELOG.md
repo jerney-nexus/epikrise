@@ -11,6 +11,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 - RTF ingestion now decodes declared Windows code pages and Unicode surrogate
   pairs, including emoji.
+- Native desktop Settings and Help menus on macOS, Windows, and Linux open the
+  existing localized dialogs and retain the in-app buttons as a fallback.
 - Gemini profiles now use the Gemini Interactions API through `genai` 0.7.1,
   retaining existing provider credentials, request settings, streaming, and
   cancellation behavior.

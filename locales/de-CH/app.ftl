@@ -326,6 +326,7 @@ ui-help-add-source = Text, Dateien, Bilder oder eine URL hinzufügen. Extrahiert
 ui-help-choose-template = Eine Vorlage auswählen und ihre Felder vor der Erstellung ausfüllen.
 ui-help-review-draft = Den Entwurf und Warnungen der Ausgabekontrolle prüfen. Den aktuellen Entwurf bestätigen, bevor er ins klinische System kopiert wird.
 ui-settings = Einstellungen
+ui-native-settings-and-help-menus-are-unavailable-use-the-in-app-buttons = Die nativen Menüs «Einstellungen» und «Hilfe» sind nicht verfügbar. Verwenden Sie die Schaltflächen in der App.
 ui-help-settings-details = In den Anbietereinstellungen Endpunkt und Zugangsdaten wählen; Modelleinstellungen steuern Ausgabe und Bildeingabe; Vorlageneinstellungen verwalten Vorlagen; allgemeine Einstellungen umfassen Sprache und Updates.
 ui-data-handling = Datenverarbeitung
 ui-help-case-memory = Falldaten und Entwürfe bleiben im Arbeitsspeicher und werden nicht als Verlauf gespeichert. OCR kann vorübergehend Bilddateien in einem privaten temporären Verzeichnis speichern; die Dateien werden vor dem Entfernen überschrieben, doch Betriebssystem oder Laufzeitumgebung können Kopien behalten. Eine forensische Löschung ist daher nicht garantiert. Fall verwerfen oder App schliessen, um den Fallzustand zu löschen.

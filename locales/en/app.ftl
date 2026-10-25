@@ -326,6 +326,7 @@ ui-help-add-source = Add text, files, images, or a URL. Review extracted materia
 ui-help-choose-template = Choose a template and set its fields before generating.
 ui-help-review-draft = Review the draft and output-check warnings. Acknowledge the current draft before copying it to your clinical system.
 ui-settings = Settings
+ui-native-settings-and-help-menus-are-unavailable-use-the-in-app-buttons = Native Settings and Help menus are unavailable. Use the in-app buttons.
 ui-help-settings-details = Provider settings choose the endpoint and credential; model settings control output and image options; template settings manage templates; general settings include language and update preferences.
 ui-data-handling = Data handling
 ui-help-case-memory = Case material and drafts are held in memory, not saved as history. OCR may write temporary image files to a private temporary directory; they are overwritten before removal, but the OS/runtime may retain copies, so forensic erasure cannot be guaranteed. Discard the case or close the app to clear the case state.
