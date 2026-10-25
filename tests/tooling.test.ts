@@ -2952,7 +2952,7 @@ describe("Tauri localization contract", () => {
 
       expect(returnType, functionMatch![1]).toMatch(/^Result</);
       expect(returnType, functionMatch![1]).toMatch(
-        /,\s*(?:TemplateError|LlmError|epikrise_ingest::IngestError)>$/,
+        /,\s*(?:TemplateError|LlmError|NativeMenuError|epikrise_ingest::IngestError)>$/,
       );
     }
 
@@ -2973,6 +2973,11 @@ describe("Tauri localization contract", () => {
         "src-tauri/crates/epikrise-llm/src/lib.rs",
         'tag = "key", rename_all = "snake_case"',
         "LlmError",
+      ],
+      [
+        "src-tauri/src/lib.rs",
+        'tag = "key", rename_all = "snake_case"',
+        "NativeMenuError",
       ],
     ] as const;
 

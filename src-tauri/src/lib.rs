@@ -30,6 +30,8 @@ use sha2::{Digest, Sha256};
 mod linux_session_bus;
 mod policy;
 use policy::{LoadedPolicy, PolicyState, PolicyStatus, egress_key};
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod native_menu;
 mod updater;
 mod windows_updater_features;
 use updater::{
@@ -41,6 +43,111 @@ static PDFIUM: OnceLock<Result<Pdfium, ()>> = OnceLock::new();
 const MAX_PDF_VISION_PAGES: usize = 12;
 const MAX_PDF_VISION_BYTES: usize = 20 * 1024 * 1024;
 const TEMPLATE_LIBRARY_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum NativeMenuAction {
+    Help,
+    GeneralSettings,
+    ProviderSettings,
+    ModelSettings,
+    TemplateSettings,
+}
+
+impl NativeMenuAction {
+    const ALL: [Self; 5] = [
+        Self::Help,
+        Self::GeneralSettings,
+        Self::ProviderSettings,
+        Self::ModelSettings,
+        Self::TemplateSettings,
+    ];
+
+    const fn id(self) -> &'static str {
+        match self {
+            Self::Help => "native-help",
+            Self::GeneralSettings => "native-settings-general",
+            Self::ProviderSettings => "native-settings-provider",
+            Self::ModelSettings => "native-settings-model",
+            Self::TemplateSettings => "native-settings-template",
+        }
+    }
+
+    fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|action| action.id() == id)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeMenuRequest {
+    action: NativeMenuAction,
+}
+
+impl Event for NativeMenuRequest {
+    const NAME: &'static str = "native-menu://request";
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeMenuStatus {
+    available: bool,
+}
+
+impl Event for NativeMenuStatus {
+    const NAME: &'static str = "native-menu://status";
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeMenuLabels {
+    settings_menu: String,
+    help_menu: String,
+    help_action: String,
+    general_settings_action: String,
+    provider_settings_action: String,
+    model_settings_action: String,
+    template_settings_action: String,
+}
+
+impl NativeMenuLabels {
+    fn english() -> Self {
+        Self {
+            settings_menu: "Settings".to_owned(),
+            help_menu: "Help".to_owned(),
+            help_action: "Help".to_owned(),
+            general_settings_action: "General settings".to_owned(),
+            provider_settings_action: "Provider settings".to_owned(),
+            model_settings_action: "Model settings".to_owned(),
+            template_settings_action: "Template settings".to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "key", rename_all = "snake_case")]
+pub enum NativeMenuError {
+    Unavailable,
+}
+
+#[tauri::command]
+#[specta::specta]
+fn sync_native_menu(
+    app: AppHandle,
+    labels: NativeMenuLabels,
+    ready: bool,
+) -> Result<(), NativeMenuError> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        native_menu::sync(&app.state::<native_menu::NativeMenuState>(), labels, ready)
+            .map_err(|_| NativeMenuError::Unavailable)
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let _ = (app, labels, ready);
+        Err(NativeMenuError::Unavailable)
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1541,13 +1648,16 @@ pub fn run() -> Result<(), tauri::Error> {
             check_for_update,
             get_update_settings,
             install_update,
-            set_update_enabled
+            set_update_enabled,
+            sync_native_menu
         ])
         .events(collect_events![
             GenerationDelta,
             GenerationDone,
             GenerationError,
-            UpdateProgress
+            UpdateProgress,
+            NativeMenuRequest,
+            NativeMenuStatus
         ]);
 
     let app_builder = tauri::Builder::default()
@@ -1576,6 +1686,13 @@ pub fn run() -> Result<(), tauri::Error> {
         .setup(move |app| {
             app.manage(UpdaterState::load(app.handle()));
             builder.mount_events(app);
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                app.manage(native_menu::install(app.handle())?);
+                app.handle().on_menu_event(|app, event| {
+                    native_menu::dispatch(app, event.id().as_ref());
+                });
+            }
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
                 window.open_devtools();
