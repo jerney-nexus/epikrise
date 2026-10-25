@@ -13,6 +13,7 @@ const GENERAL_SETTINGS_ID: &str = "native-settings-general";
 const PROVIDER_SETTINGS_ID: &str = "native-settings-provider";
 const MODEL_SETTINGS_ID: &str = "native-settings-model";
 const TEMPLATE_SETTINGS_ID: &str = "native-settings-template";
+#[cfg(not(target_os = "macos"))]
 const SETTINGS_SUBMENU_ID: &str = "native-settings-menu";
 
 #[derive(Default)]
