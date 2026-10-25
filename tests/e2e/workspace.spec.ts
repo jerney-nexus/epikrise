@@ -3,6 +3,10 @@ import type { Page } from "@playwright/test";
 import type { PolicyStatus } from "../../src/bindings";
 
 const onboardingTest = test.extend({ seedTemplates: false });
+const browserTest = test.extend({ tauriRuntime: false });
+const nativeMenuListenerFailureTest = test.extend({
+  failNativeMenuListener: true,
+});
 const restrictedPolicy: PolicyStatus = {
   active: true,
   localOnly: true,
@@ -54,6 +58,153 @@ const creationAllowedOnboardingTest = test.extend({
     allowTemplateCreation: true,
     allowTemplateDeletion: false,
   },
+});
+
+async function emitNativeMenuAction(page: Page, action: string) {
+  await page.evaluate((nativeAction) => {
+    window.__EPIKRISE_TEST__?.emit("native-menu://request", {
+      action: nativeAction,
+    });
+  }, action);
+}
+
+async function waitForNativeMenu(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__EPIKRISE_TEST__?.commands.some(
+          ({ command, args }) => command === "sync_native_menu" && args.ready === true,
+        ),
+      ),
+    )
+    .toBe(true);
+}
+
+test("native menu actions open each existing dialog and switch without stacking", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  const destinations = [
+    ["help", "Using Epikrise"],
+    ["generalSettings", "General settings"],
+    ["providerSettings", "Provider settings"],
+    ["modelSettings", "Model settings"],
+    ["templateSettings", "Template settings"],
+  ] as const;
+
+  for (const [action, name] of destinations) {
+    await emitNativeMenuAction(page, action);
+    const dialog = page.getByRole("dialog", { name });
+    await expect(dialog).toBeVisible();
+    await expect(page.locator("dialog[open]")).toHaveCount(1);
+    await emitNativeMenuAction(page, action);
+    await expect(page.locator("dialog[open]")).toHaveCount(1);
+  }
+  await expect(page.getByRole("dialog", { name: "Template settings" })).toBeVisible();
+});
+
+test("native menu navigation leaves protected credential entry untouched", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  await page.getByRole("button", { name: "Provider settings" }).click();
+  await page.getByRole("button", { name: "Add provider credential" }).click();
+
+  const credentialDialog = page.getByRole("dialog", {
+    name: "Add provider credential",
+  });
+  const secret = page.getByLabel("API key");
+  await secret.fill("synthetic-only-secret");
+  await emitNativeMenuAction(page, "help");
+
+  await expect(credentialDialog).toBeVisible();
+  await expect(secret).toHaveValue("synthetic-only-secret");
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toHaveCount(0);
+});
+
+test("native menu navigation leaves template editing and its draft untouched", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  await page.getByRole("button", { name: "Template settings" }).click();
+  await page.getByRole("button", { name: "Edit template" }).click();
+
+  const editor = page.locator("dialog.template-editor-dialog");
+  const name = page.getByLabel("Template name");
+  await name.fill("Synthetic draft in progress");
+  await emitNativeMenuAction(page, "help");
+
+  await expect(editor).toBeVisible();
+  await expect(name).toHaveValue("Synthetic draft in progress");
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toHaveCount(0);
+});
+
+browserTest(
+  "browser mode retains in-app settings without native menu calls",
+  async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "General settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Help" })).toBeVisible();
+    await page.getByRole("button", { name: "General settings" }).click();
+    await expect(page.getByRole("dialog", { name: "General settings" })).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        window.__EPIKRISE_TEST__?.commands.some(
+          ({ command }) => command === "sync_native_menu",
+        ),
+      ),
+    ).toBe(false);
+  },
+);
+
+nativeMenuListenerFailureTest(
+  "native menu listener failure keeps in-app buttons usable",
+  async ({ page }) => {
+    await page.goto("/");
+    await expect(
+      page.getByText(
+        "Native Settings and Help menus are unavailable. Use the in-app buttons.",
+      ),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "General settings" }).click();
+    await expect(page.getByRole("dialog", { name: "General settings" })).toBeVisible();
+  },
+);
+
+test("native menu labels follow locale changes and failures show a fallback", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  await page.getByRole("button", { name: "General settings" }).click();
+  await page.locator("#interface-language").selectOption("de-CH");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const sync = window.__EPIKRISE_TEST__?.commands
+          .filter(({ command }) => command === "sync_native_menu")
+          .at(-1);
+        const labels = sync?.args.labels as
+          { settingsMenu?: string; helpAction?: string } | undefined;
+        return [labels?.settingsMenu, labels?.helpAction];
+      }),
+    )
+    .toEqual(["Einstellungen", "Hilfe"]);
+
+  await page.evaluate(() => {
+    if (window.__EPIKRISE_TEST__) {
+      window.__EPIKRISE_TEST__.failNextNativeMenuSync = true;
+    }
+  });
+  await page.locator("#interface-language").selectOption("en");
+  await expect(
+    page.getByText(
+      "Native Settings and Help menus are unavailable. Use the in-app buttons.",
+    ),
+  ).toBeVisible();
 });
 
 test("requires updater opt-in and explicit install confirmation", async ({ page }) => {
