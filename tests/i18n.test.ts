@@ -108,6 +108,23 @@ describe("Fluent localization", () => {
     expect(translate("de-CH", "Settings")).toBe("Einstellungen");
     expect(translate(pseudoLocale, "Settings")).toMatch(/^［.*］$/);
     expect(translate(pseudoLocale, "Undo")).toMatch(/^［.*］$/);
+    for (const label of [
+      "Paste and Match Style",
+      "Delete",
+      "Show All",
+      "Bring All to Front",
+      "Actual Size",
+      "Zoom In",
+      "Zoom Out",
+      "Start Speaking",
+      "Stop Speaking",
+      "Start Dictation…",
+      "Emoji & Symbols",
+    ]) {
+      expect(translate("en", label), label).toBe(label);
+      expect(translate("de-CH", label), label).not.toBe(label);
+      expect(translate(pseudoLocale, label), label).toMatch(/^［.+］$/);
+    }
     expect(
       translate(
         "en",

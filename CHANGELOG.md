@@ -15,6 +15,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   existing localized dialogs and retain the in-app buttons as a fallback.
 - Native menu titles and standard action labels now follow the selected English,
   de-CH, or pseudo locale.
+- Additional predefined macOS menu actions use the selected locale when present,
+  without assuming system-managed menu items have fixed positions.
 - Gemini profiles now use the Gemini Interactions API through `genai` 0.7.1,
   retaining existing provider credentials, request settings, streaming, and
   cancellation behavior.
