@@ -107,6 +107,7 @@ describe("Fluent localization", () => {
     expect(translate("en", "Settings")).toBe("Settings");
     expect(translate("de-CH", "Settings")).toBe("Einstellungen");
     expect(translate(pseudoLocale, "Settings")).toMatch(/^［.*］$/);
+    expect(translate(pseudoLocale, "Undo")).toMatch(/^［.*］$/);
     expect(
       translate(
         "en",
@@ -119,6 +120,17 @@ describe("Fluent localization", () => {
         "Native Settings and Help menus are unavailable. Use the in-app buttons.",
       ),
     ).toContain("Schaltflächen in der App");
+    const removeBidiIsolates = (value: string) =>
+      value.replaceAll(/[\u2068\u2069]/g, "");
+    expect(
+      removeBidiIsolates(translate("en", "About { $app }", { app: "Epikrise" })),
+    ).toBe("About Epikrise");
+    expect(
+      removeBidiIsolates(translate("de-CH", "Hide { $app }", { app: "Epikrise" })),
+    ).toBe("Epikrise ausblenden");
+    expect(
+      removeBidiIsolates(translate("de-CH", "Quit { $app }", { app: "Epikrise" })),
+    ).toBe("Epikrise beenden");
   });
 
   it("pseudo-localizes every UI message and finds no untranslated markup text", async () => {

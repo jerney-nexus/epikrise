@@ -2,7 +2,10 @@ use std::sync::Mutex;
 
 use tauri::{
     AppHandle, EventTarget, Manager, Wry,
-    menu::{HELP_SUBMENU_ID, Menu, MenuItem, MenuItemKind, Submenu},
+    menu::{
+        HELP_SUBMENU_ID, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu,
+        WINDOW_SUBMENU_ID,
+    },
 };
 use tauri_specta::Event;
 
@@ -25,16 +28,254 @@ struct NativeMenuItems {
     provider_settings: MenuItem<Wry>,
     model_settings: MenuItem<Wry>,
     template_settings: MenuItem<Wry>,
-    help_menu: Submenu<Wry>,
-    #[cfg(not(target_os = "macos"))]
-    settings_menu: Submenu<Wry>,
+    localized_submenus: Vec<(Submenu<Wry>, NativeMenuTitle)>,
+    localized_predefined: Vec<(PredefinedMenuItem<Wry>, NativeMenuLabel)>,
+}
+
+#[derive(Clone, Copy)]
+enum NativeMenuTitle {
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    )))]
+    File,
+    Edit,
     #[cfg(target_os = "macos")]
-    application_menu: Submenu<Wry>,
+    View,
+    Window,
+    Help,
+    #[cfg(not(target_os = "macos"))]
+    Settings,
+}
+
+impl NativeMenuTitle {
+    fn text(self, labels: &NativeMenuLabels) -> &str {
+        match self {
+            #[cfg(not(any(
+                target_os = "linux",
+                target_os = "dragonfly",
+                target_os = "freebsd",
+                target_os = "netbsd",
+                target_os = "openbsd"
+            )))]
+            Self::File => &labels.file_menu,
+            Self::Edit => &labels.edit_menu,
+            #[cfg(target_os = "macos")]
+            Self::View => &labels.view_menu,
+            Self::Window => &labels.window_menu,
+            Self::Help => &labels.help_menu,
+            #[cfg(not(target_os = "macos"))]
+            Self::Settings => &labels.settings_menu,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum NativeMenuLabel {
+    #[cfg(not(target_os = "macos"))]
+    About,
+    #[cfg(target_os = "macos")]
+    AboutApp,
+    #[cfg(target_os = "macos")]
+    Services,
+    #[cfg(target_os = "macos")]
+    HideApp,
+    #[cfg(target_os = "macos")]
+    HideOthers,
+    #[cfg(target_os = "macos")]
+    QuitApp,
+    #[cfg(target_os = "windows")]
+    Close,
+    #[cfg(not(target_os = "windows"))]
+    CloseWindow,
+    #[cfg(target_os = "windows")]
+    Exit,
+    Undo,
+    Redo,
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+    #[cfg(target_os = "macos")]
+    Fullscreen,
+    Minimize,
+    #[cfg(not(target_os = "macos"))]
+    Maximize,
+    #[cfg(target_os = "macos")]
+    Zoom,
+}
+
+impl NativeMenuLabel {
+    fn text(self, labels: &NativeMenuLabels) -> &str {
+        match self {
+            #[cfg(not(target_os = "macos"))]
+            Self::About => &labels.about_action,
+            #[cfg(target_os = "macos")]
+            Self::AboutApp => &labels.about_app_action,
+            #[cfg(target_os = "macos")]
+            Self::Services => &labels.services_action,
+            #[cfg(target_os = "macos")]
+            Self::HideApp => &labels.hide_app_action,
+            #[cfg(target_os = "macos")]
+            Self::HideOthers => &labels.hide_others_action,
+            #[cfg(target_os = "macos")]
+            Self::QuitApp => &labels.quit_app_action,
+            #[cfg(target_os = "windows")]
+            Self::Close => &labels.close_action,
+            #[cfg(not(target_os = "windows"))]
+            Self::CloseWindow => &labels.close_window_action,
+            #[cfg(target_os = "windows")]
+            Self::Exit => &labels.exit_action,
+            Self::Undo => &labels.undo_action,
+            Self::Redo => &labels.redo_action,
+            Self::Cut => &labels.cut_action,
+            Self::Copy => &labels.copy_action,
+            Self::Paste => &labels.paste_action,
+            Self::SelectAll => &labels.select_all_action,
+            #[cfg(target_os = "macos")]
+            Self::Fullscreen => &labels.fullscreen_action,
+            Self::Minimize => &labels.minimize_action,
+            #[cfg(not(target_os = "macos"))]
+            Self::Maximize => &labels.maximize_action,
+            #[cfg(target_os = "macos")]
+            Self::Zoom => &labels.zoom_action,
+        }
+    }
 }
 
 pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
     let menu = Menu::default(app)?;
     let labels = NativeMenuLabels::english();
+    let edit_menu = find_submenu(&menu, "Edit")?;
+    let window_menu = find_submenu_by_id(&menu, WINDOW_SUBMENU_ID)?;
+    let help_menu = find_submenu_by_id(&menu, HELP_SUBMENU_ID)?;
+    let mut localized_submenus = vec![
+        (edit_menu.clone(), NativeMenuTitle::Edit),
+        (window_menu.clone(), NativeMenuTitle::Window),
+        (help_menu.clone(), NativeMenuTitle::Help),
+    ];
+    let mut localized_predefined = Vec::new();
+
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    )))]
+    {
+        let file_menu = find_submenu(&menu, "File")?;
+        localized_submenus.push((file_menu.clone(), NativeMenuTitle::File));
+        #[cfg(target_os = "macos")]
+        push_predefined(
+            &mut localized_predefined,
+            &file_menu,
+            0,
+            NativeMenuLabel::CloseWindow,
+        )?;
+        #[cfg(target_os = "windows")]
+        push_predefined(
+            &mut localized_predefined,
+            &file_menu,
+            0,
+            NativeMenuLabel::Close,
+        )?;
+        #[cfg(target_os = "windows")]
+        push_predefined(
+            &mut localized_predefined,
+            &file_menu,
+            1,
+            NativeMenuLabel::Exit,
+        )?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let view_menu = find_submenu(&menu, "View")?;
+        localized_submenus.push((view_menu.clone(), NativeMenuTitle::View));
+        push_predefined(
+            &mut localized_predefined,
+            &view_menu,
+            0,
+            NativeMenuLabel::Fullscreen,
+        )?;
+        let Some(MenuItemKind::Submenu(application_menu)) = menu.items()?.into_iter().next() else {
+            return Err(setup_error("default macOS application menu is unavailable"));
+        };
+        for (index, label) in [
+            (0, NativeMenuLabel::AboutApp),
+            (2, NativeMenuLabel::Services),
+            (4, NativeMenuLabel::HideApp),
+            (5, NativeMenuLabel::HideOthers),
+            (7, NativeMenuLabel::QuitApp),
+        ] {
+            push_predefined(&mut localized_predefined, &application_menu, index, label)?;
+        }
+    }
+
+    // Keep these positions aligned with the predefined items in Tauri's default menus.
+    for (index, label) in [
+        (0, NativeMenuLabel::Undo),
+        (1, NativeMenuLabel::Redo),
+        (3, NativeMenuLabel::Cut),
+        (4, NativeMenuLabel::Copy),
+        (5, NativeMenuLabel::Paste),
+        (6, NativeMenuLabel::SelectAll),
+    ] {
+        push_predefined(&mut localized_predefined, &edit_menu, index, label)?;
+    }
+    push_predefined(
+        &mut localized_predefined,
+        &window_menu,
+        0,
+        NativeMenuLabel::Minimize,
+    )?;
+    #[cfg(target_os = "macos")]
+    push_predefined(
+        &mut localized_predefined,
+        &window_menu,
+        1,
+        NativeMenuLabel::Zoom,
+    )?;
+    #[cfg(not(target_os = "macos"))]
+    push_predefined(
+        &mut localized_predefined,
+        &window_menu,
+        1,
+        NativeMenuLabel::Maximize,
+    )?;
+    #[cfg(target_os = "macos")]
+    push_predefined(
+        &mut localized_predefined,
+        &window_menu,
+        3,
+        NativeMenuLabel::CloseWindow,
+    )?;
+    #[cfg(target_os = "windows")]
+    push_predefined(
+        &mut localized_predefined,
+        &window_menu,
+        2,
+        NativeMenuLabel::Close,
+    )?;
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    push_predefined(
+        &mut localized_predefined,
+        &window_menu,
+        2,
+        NativeMenuLabel::CloseWindow,
+    )?;
+    #[cfg(not(target_os = "macos"))]
+    push_predefined(
+        &mut localized_predefined,
+        &help_menu,
+        0,
+        NativeMenuLabel::About,
+    )?;
+
     let help = menu_item(app, HELP_ID, &labels.help_action, help_accelerator())?;
     let general_settings = menu_item(
         app,
@@ -57,7 +298,7 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
     )?;
 
     #[cfg(target_os = "macos")]
-    let application_menu = {
+    {
         let Some(MenuItemKind::Submenu(application_menu)) = menu.items()?.into_iter().next() else {
             let error: Box<dyn std::error::Error> = Box::new(std::io::Error::other(
                 "default macOS application menu is unavailable",
@@ -68,11 +309,10 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
         application_menu.insert(&model_settings, 2)?;
         application_menu.insert(&provider_settings, 2)?;
         application_menu.insert(&general_settings, 2)?;
-        application_menu
-    };
+    }
 
     #[cfg(not(target_os = "macos"))]
-    let settings_menu = {
+    {
         let settings_menu = Submenu::with_id_and_items(
             app,
             SETTINGS_SUBMENU_ID,
@@ -86,14 +326,9 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
             ],
         )?;
         menu.append(&settings_menu)?;
-        settings_menu
-    };
+        localized_submenus.push((settings_menu.clone(), NativeMenuTitle::Settings));
+    }
 
-    let Some(MenuItemKind::Submenu(help_menu)) = menu.get(HELP_SUBMENU_ID) else {
-        let error: Box<dyn std::error::Error> =
-            Box::new(std::io::Error::other("default Help menu is unavailable"));
-        return Err(tauri::Error::Setup(error.into()));
-    };
     help_menu.append(&help)?;
     for item in [
         &help,
@@ -113,11 +348,8 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
         provider_settings,
         model_settings,
         template_settings,
-        help_menu,
-        #[cfg(not(target_os = "macos"))]
-        settings_menu,
-        #[cfg(target_os = "macos")]
-        application_menu,
+        localized_submenus,
+        localized_predefined,
     }))))
 }
 
@@ -133,6 +365,16 @@ pub(crate) fn sync(
     let Some(items) = guard.as_ref() else {
         return Err("Native menu could not be synchronized".to_owned());
     };
+
+    for (submenu, title) in &items.localized_submenus {
+        submenu
+            .set_text(escaped_label(title.text(&labels)))
+            .map_err(|_| "Native menu could not be synchronized".to_owned())?;
+    }
+    for (item, label) in &items.localized_predefined {
+        item.set_text(escaped_label(label.text(&labels)))
+            .map_err(|_| "Native menu could not be synchronized".to_owned())?;
+    }
 
     items
         .help
@@ -157,16 +399,6 @@ pub(crate) fn sync(
                 .template_settings
                 .set_text(escaped_label(&labels.template_settings_action))
         })
-        .and_then(|()| items.help_menu.set_text(escaped_label(&labels.help_menu)))
-        .map_err(|_| "Native menu could not be synchronized".to_owned())?;
-
-    #[cfg(target_os = "macos")]
-    let _ = &items.application_menu;
-
-    #[cfg(not(target_os = "macos"))]
-    items
-        .settings_menu
-        .set_text(escaped_label(&labels.settings_menu))
         .map_err(|_| "Native menu could not be synchronized".to_owned())?;
 
     for item in [
@@ -179,6 +411,43 @@ pub(crate) fn sync(
         item.set_enabled(ready)
             .map_err(|_| "Native menu could not be synchronized".to_owned())?;
     }
+    Ok(())
+}
+
+fn setup_error(message: &'static str) -> tauri::Error {
+    let error: Box<dyn std::error::Error> = Box::new(std::io::Error::other(message));
+    tauri::Error::Setup(error.into())
+}
+
+fn find_submenu(menu: &Menu<Wry>, default_title: &str) -> tauri::Result<Submenu<Wry>> {
+    for item in menu.items()? {
+        if let MenuItemKind::Submenu(submenu) = item
+            && submenu.text()? == default_title
+        {
+            return Ok(submenu);
+        }
+    }
+    Err(setup_error("a default native submenu is unavailable"))
+}
+
+fn find_submenu_by_id(menu: &Menu<Wry>, id: &str) -> tauri::Result<Submenu<Wry>> {
+    match menu.get(id) {
+        Some(MenuItemKind::Submenu(submenu)) => Ok(submenu),
+        _ => Err(setup_error("a default native submenu is unavailable")),
+    }
+}
+
+fn push_predefined(
+    labels: &mut Vec<(PredefinedMenuItem<Wry>, NativeMenuLabel)>,
+    submenu: &Submenu<Wry>,
+    index: usize,
+    label: NativeMenuLabel,
+) -> tauri::Result<()> {
+    let items = submenu.items()?;
+    let Some(MenuItemKind::Predefined(item)) = items.get(index) else {
+        return Err(setup_error("a default native menu action is unavailable"));
+    };
+    labels.push((item.clone(), label));
     Ok(())
 }
 

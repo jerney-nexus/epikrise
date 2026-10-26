@@ -222,9 +222,33 @@
 
   function labelsForNativeMenu(locale: string) {
     const t = (source: string) => translate(locale, source);
+    const appName = "Epikrise";
     return {
+      fileMenu: t("File"),
+      editMenu: t("Edit"),
+      viewMenu: t("View"),
+      windowMenu: t("Window"),
       settingsMenu: t("Settings"),
       helpMenu: t("Help"),
+      aboutAction: t("About"),
+      aboutAppAction: translate(locale, "About { $app }", { app: appName }),
+      servicesAction: t("Services"),
+      hideAppAction: translate(locale, "Hide { $app }", { app: appName }),
+      hideOthersAction: t("Hide Others"),
+      quitAppAction: translate(locale, "Quit { $app }", { app: appName }),
+      closeAction: t("Close"),
+      closeWindowAction: t("Close Window"),
+      exitAction: t("Exit"),
+      undoAction: t("Undo"),
+      redoAction: t("Redo"),
+      cutAction: t("Cut"),
+      copyAction: t("Copy"),
+      pasteAction: t("Paste"),
+      selectAllAction: t("Select All"),
+      fullscreenAction: t("Toggle Full Screen"),
+      minimizeAction: t("Minimize"),
+      maximizeAction: t("Maximize"),
+      zoomAction: t("Zoom"),
       helpAction: t("Help"),
       generalSettingsAction: t("General settings"),
       providerSettingsAction: t("Provider settings"),

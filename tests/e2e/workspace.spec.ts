@@ -187,12 +187,47 @@ test("native menu labels follow locale changes and failures show a fallback", as
         const sync = window.__EPIKRISE_TEST__?.commands
           .filter(({ command }) => command === "sync_native_menu")
           .at(-1);
-        const labels = sync?.args.labels as
-          { settingsMenu?: string; helpAction?: string } | undefined;
-        return [labels?.settingsMenu, labels?.helpAction];
+        const labels = sync?.args.labels as Record<string, unknown> | undefined;
+        return labels
+          ? Object.fromEntries(
+              Object.entries(labels).map(([key, value]) => [
+                key,
+                typeof value === "string"
+                  ? value.replaceAll(/[\u2068\u2069]/g, "")
+                  : value,
+              ]),
+            )
+          : undefined;
       }),
     )
-    .toEqual(["Einstellungen", "Hilfe"]);
+    .toMatchObject({
+      fileMenu: "Datei",
+      editMenu: "Bearbeiten",
+      viewMenu: "Darstellung",
+      windowMenu: "Fenster",
+      settingsMenu: "Einstellungen",
+      helpMenu: "Hilfe",
+      aboutAction: "Über",
+      aboutAppAction: "Über Epikrise",
+      servicesAction: "Dienste",
+      hideAppAction: "Epikrise ausblenden",
+      hideOthersAction: "Andere ausblenden",
+      quitAppAction: "Epikrise beenden",
+      closeAction: "Schliessen",
+      closeWindowAction: "Fenster schliessen",
+      exitAction: "Beenden",
+      undoAction: "Rückgängig",
+      redoAction: "Wiederholen",
+      cutAction: "Ausschneiden",
+      copyAction: "Kopieren",
+      pasteAction: "Einsetzen",
+      selectAllAction: "Alles auswählen",
+      fullscreenAction: "Vollbild ein/aus",
+      minimizeAction: "Minimieren",
+      maximizeAction: "Maximieren",
+      zoomAction: "Zoomen",
+      helpAction: "Hilfe",
+    });
 
   await page.evaluate(() => {
     if (window.__EPIKRISE_TEST__) {
