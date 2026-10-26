@@ -13,6 +13,7 @@ type FixtureOptions = {
   policy: PolicyStatus;
   tauriRuntime: boolean;
   failNativeMenuListener: boolean;
+  delayNativeMenuListener: boolean;
 };
 
 type FixtureSetup = {
@@ -23,6 +24,7 @@ type FixtureSetup = {
   policy: PolicyStatus;
   tauriRuntime: boolean;
   failNativeMenuListener: boolean;
+  delayNativeMenuListener: boolean;
 };
 
 type InvokeArguments = Record<string, unknown>;
@@ -35,6 +37,7 @@ type BrowserFixture = {
   failNextReviewAck: boolean;
   failNextNativeMenuSync: boolean;
   failNativeMenuListener: boolean;
+  releaseNativeMenuListenerRegistration: () => void;
   failHtmlClipboard: boolean;
   templateExportCancelled: boolean;
   emit: (event: string, payload: unknown) => void;
@@ -111,11 +114,16 @@ function installTauriFixture({
   policy,
   tauriRuntime,
   failNativeMenuListener,
+  delayNativeMenuListener,
 }: FixtureSetup) {
   const callbacks = new Map<number, (payload: unknown) => void>();
   const listeners = new Map<string, Map<number, number>>();
   const authorizedCases = new Set<string>();
   const credentials = new Map<string, CredentialSummary>();
+  let releaseNativeMenuListenerGate: (() => void) | undefined;
+  const nativeMenuListenerGate = new Promise<void>((resolve) => {
+    releaseNativeMenuListenerGate = resolve;
+  });
   let nextCallbackId = 1;
   let nextListenerId = 1;
   let updaterEnabled = false;
@@ -127,6 +135,9 @@ function installTauriFixture({
     failNextReviewAck: false,
     failNextNativeMenuSync: false,
     failNativeMenuListener,
+    releaseNativeMenuListenerRegistration: () => {
+      releaseNativeMenuListenerGate?.();
+    },
     failHtmlClipboard: false,
     templateExportCancelled: false,
     emit(event, payload) {
@@ -301,6 +312,9 @@ function installTauriFixture({
             fixture.failNativeMenuListener = false;
             throw new Error("Synthetic native menu listener failure");
           }
+          if (event.startsWith("native-menu://") && delayNativeMenuListener) {
+            await nativeMenuListenerGate;
+          }
           const callbackId = Number(args.handler);
           const eventId = nextListenerId++;
           const eventListeners = listeners.get(event) ?? new Map<number, number>();
@@ -334,6 +348,7 @@ export const test = base.extend<FixtureOptions>({
   policy: [syntheticPolicy, { option: true }],
   tauriRuntime: [true, { option: true }],
   failNativeMenuListener: [false, { option: true }],
+  delayNativeMenuListener: [false, { option: true }],
   page: async (
     {
       page,
@@ -343,6 +358,7 @@ export const test = base.extend<FixtureOptions>({
       policy,
       tauriRuntime,
       failNativeMenuListener,
+      delayNativeMenuListener,
     },
     use,
   ) => {
@@ -356,6 +372,7 @@ export const test = base.extend<FixtureOptions>({
       policy,
       tauriRuntime,
       failNativeMenuListener,
+      delayNativeMenuListener,
     });
     await page.route("**/*", async (route) => {
       const requestUrl = new URL(route.request().url());

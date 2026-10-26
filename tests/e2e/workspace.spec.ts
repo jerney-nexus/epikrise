@@ -7,6 +7,9 @@ const browserTest = test.extend({ tauriRuntime: false });
 const nativeMenuListenerFailureTest = test.extend({
   failNativeMenuListener: true,
 });
+const delayedNativeMenuListenerTest = test.extend({
+  delayNativeMenuListener: true,
+});
 const restrictedPolicy: PolicyStatus = {
   active: true,
   localOnly: true,
@@ -247,6 +250,35 @@ test("native menu labels follow locale changes and failures show a fallback", as
     ),
   ).toBeVisible();
 });
+
+delayedNativeMenuListenerTest(
+  "native menu registration uses the current locale after delayed listeners",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "General settings" }).click();
+    await page.locator("#interface-language").selectOption("de-CH");
+    await page.evaluate(() => {
+      const fixture = window.__EPIKRISE_TEST__;
+      if (!fixture) throw new Error("Tauri test fixture was not installed");
+      fixture.releaseNativeMenuListenerRegistration();
+    });
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const readySync = window.__EPIKRISE_TEST__?.commands
+            .filter(
+              ({ command, args }) =>
+                command === "sync_native_menu" && args.ready === true,
+            )
+            .at(-1);
+          const labels = readySync?.args.labels as Record<string, unknown> | undefined;
+          return labels?.fileMenu;
+        }),
+      )
+      .toBe("Datei");
+  },
+);
 
 test("requires updater opt-in and explicit install confirmation", async ({ page }) => {
   await page.goto("/");

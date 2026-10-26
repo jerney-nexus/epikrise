@@ -1735,14 +1735,14 @@
       const failed = results.some((result) => result.status === "rejected");
       if (menuDisposed || failed) {
         listeners.forEach((stop) => stop());
-        void syncNativeMenu(locale, false).then(() => {
+        void syncNativeMenu(uiLocale, false).then(() => {
           if (!menuDisposed) nativeMenuUnavailable = true;
         });
         return;
       }
       unlistenMenu = listeners;
       nativeMenuListenerReady = true;
-      void syncNativeMenu(locale, true).then(() => {
+      void syncNativeMenu(uiLocale, true).then(() => {
         if (menuDisposed) {
           nativeMenuListenerReady = false;
           void syncNativeMenu(uiLocale, false);
