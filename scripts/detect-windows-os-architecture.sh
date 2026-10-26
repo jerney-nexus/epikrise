@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-windows_os_arch="${EPIKRISE_RUNNER_ARCH:-${VSCMD_ARG_HOST_ARCH:-}}"
+windows_os_arch="${EPIKRISE_RUNNER_ARCH:-${PROCESSOR_ARCHITEW6432:-}}"
 if [[ -z "$windows_os_arch" ]]; then
   if ! windows_os_arch="$(
     powershell.exe -NoLogo -NoProfile -NonInteractive \
@@ -15,7 +15,7 @@ fi
 windows_os_arch="${windows_os_arch//$'\r'/}"
 windows_os_arch="${windows_os_arch//$'\n'/}"
 if [[ -z "$windows_os_arch" ]]; then
-  windows_os_arch="${RUNNER_ARCH:-${PROCESSOR_ARCHITEW6432:-${PROCESSOR_ARCHITECTURE:-}}}"
+  windows_os_arch="${RUNNER_ARCH:-${PROCESSOR_ARCHITECTURE:-}}"
 fi
 if [[ -z "$windows_os_arch" ]]; then
   printf 'Could not determine native Windows OS architecture using PowerShell or environment variables.\n' >&2

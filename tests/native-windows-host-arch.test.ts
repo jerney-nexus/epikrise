@@ -105,7 +105,9 @@ describe("native Windows MSVC host architecture", () => {
           env: {
             ...process.env,
             PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-            EPIKRISE_RUNNER_ARCH: "ARM64",
+            EPIKRISE_RUNNER_ARCH: "",
+            PROCESSOR_ARCHITECTURE: "AMD64",
+            PROCESSOR_ARCHITEW6432: "ARM64",
             VSCMD_ARG_TGT_ARCH: "x64",
             VSCMD_ARG_HOST_ARCH: "x64",
             CURL_LOG: curlLog,

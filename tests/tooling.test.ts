@@ -2543,7 +2543,7 @@ describe("native Cargo host architecture guard", () => {
       );
       await writeExecutable(
         path.join(binDir, "powershell.exe"),
-        "#!/usr/bin/env bash\nprintf 'X64\\n'\n",
+        "#!/usr/bin/env bash\nprintf 'Arm64\\n'\n",
       );
       await writeExecutable(
         path.join(binDir, "cargo"),
@@ -2555,9 +2555,9 @@ describe("native Cargo host architecture guard", () => {
           env: {
             ...process.env,
             PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+            EPIKRISE_RUNNER_ARCH: "",
             PROCESSOR_ARCHITECTURE: "AMD64",
             PROCESSOR_ARCHITEW6432: "ARM64",
-            EPIKRISE_RUNNER_ARCH: "ARM64",
             VSCMD_ARG_HOST_ARCH: "x64",
             CARGO_LOG: cargoLog,
           },
@@ -2602,7 +2602,7 @@ describe("native Cargo host architecture guard", () => {
           ...process.env,
           PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
           PROCESSOR_ARCHITECTURE: "AMD64",
-          PROCESSOR_ARCHITEW6432: "AMD64",
+          PROCESSOR_ARCHITEW6432: "ARM64",
           RUNNER_ARCH: "",
           CARGO_LOG: cargoLog,
         },
@@ -2614,7 +2614,7 @@ describe("native Cargo host architecture guard", () => {
     }
   });
 
-  it("prefers the MSVC host architecture over an emulated PowerShell report", async () => {
+  it("detects the physical ARM64 host when PowerShell reports emulated x64", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "epikrise-windows-arm64-msvc-host-"),
     );
@@ -2645,8 +2645,8 @@ describe("native Cargo host architecture guard", () => {
           ...process.env,
           PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
           PROCESSOR_ARCHITECTURE: "AMD64",
-          PROCESSOR_ARCHITEW6432: "AMD64",
-          VSCMD_ARG_HOST_ARCH: "arm64",
+          PROCESSOR_ARCHITEW6432: "ARM64",
+          VSCMD_ARG_HOST_ARCH: "x64",
           VSCMD_ARG_TGT_ARCH: "arm64",
           EPIKRISE_RUNNER_ARCH: "",
           RUNNER_ARCH: "",
