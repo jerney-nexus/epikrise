@@ -131,4 +131,20 @@ build`/`dev` commands initialize MSVC from regular shells. Linux native-host
 - Spaced the active-template picker away from configuration and allowed the
   template editor to clone reactive Svelte state safely.
 
+### Fixed
+
+- Updated vulnerable frontend dependencies to patched releases, including
+  DOMPurify, markdown-it, Vite, happy-dom, undici, and Vitest; standardized
+  the project, container, and CI on pnpm 12.15.0.
+- Windows image OCR now opens the image and tessdata paths correctly in native
+  and Linux cross-built apps. Invalid OCR output can also use vision fallback
+  when enabled.
+- Linux Tauri launches now use the active desktop D-Bus session when resolving
+  autolaunched session addresses, allowing keyring credentials to be listed
+  when checking provider connections or refreshing models. Credential-list
+  failures now provide keyring and session-bus troubleshooting guidance.
+- Windows ARM64 now lists stored provider credentials correctly, enabling
+  connection checks, model-list refresh, and report drafting. These flows were
+  validated in a native Windows ARM64 app run.
+
 [Unreleased]: https://github.com/jerney-nexus/epikrise/compare/HEAD

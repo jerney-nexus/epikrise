@@ -15,7 +15,7 @@
     "ghcr.io/devcontainers/features/desktop-lite:1": {},
     "ghcr.io/devcontainers/features/copilot-cli:1": {},
     "ghcr.io/devcontainers-extra/features/pnpm:2": {
-      "version": "12.10.1"
+      "version": "12.15.0"
     },
     "ghcr.io/devcontainers-extra/features/cmake:1": {},
     "ghcr.io/devcontainers-extra/features/curl-apt-get:1": {},
