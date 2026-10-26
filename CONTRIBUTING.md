@@ -522,20 +522,20 @@ formatted output`) and keep each commit focused on one change. User-visible
 changes get an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
 
 To prepare a release, run the **Release preparation** workflow from the GitHub
-Actions tab. Enter a `YYYY.MM.PATCH` version or leave it blank to select the
+Actions tab. Enter a `YYYY.M.MICRO` version or leave it blank to select the
 next CalVer version. The workflow updates npm, Cargo, and Tauri metadata,
 generates release notes, and opens a pull request for review.
 
 ### Release and update readiness
 
-Keep the padded `YYYY.MM.PATCH` release identity unchanged. If Cargo, Tauri, an
-installer, or updater protocol requires another representation, derive it only
-for that build or package input; do not migrate committed versions or release
-tags. The six-target Desktop builds workflow remains an unsigned diagnostic
-contract and does not publish releases.
+Release identities use unpadded `YYYY.M.MICRO`. If Cargo, Tauri, an installer,
+or updater protocol requires another representation, derive it only for that
+build or package input. Existing published versions and tags remain immutable.
+The six-target Desktop builds workflow remains an unsigned diagnostic contract
+and does not publish releases.
 
 The default Tauri configuration leaves updater support disabled. The separate
-**Signed updater release** workflow runs when a padded `vYYYY.MM.PATCH` tag is
+**Signed updater release** workflow runs when a `vYYYY.M.MICRO` tag is
 pushed: it builds target-specific signed bundles, stages the expected assets
 and signatures, generates `latest.json`, and publishes a GitHub release. It
 uses the public key configured in `src-tauri/tauri.release.conf.json` and

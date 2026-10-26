@@ -242,7 +242,7 @@
     {
       "id": "releaseVersion",
       "type": "promptString",
-      "description": "CalVer YYYY.MM.PATCH; leave blank to select the next version",
+      "description": "CalVer YYYY.M.MICRO; leave blank to select the next version",
       "default": ""
     }
   ]

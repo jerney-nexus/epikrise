@@ -462,8 +462,8 @@ export async function stageStoreReleaseAssets({
   requestId,
 }) {
   assert(
-    /^v\d{4}\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$/.test(tag),
-    "Store submission assets require a padded CalVer release tag.",
+    /^v\d{4}\.([1-9]|1[0-2])\.(0|[1-9]\d*)$/.test(tag),
+    "Store submission assets require an unpadded CalVer release tag.",
   );
   assert(/^[0-9a-f]{40}$/.test(commit), "Release commit is invalid.");
   const version = tag.slice(1);
@@ -532,8 +532,8 @@ export async function stageStoreReleaseAssets({
  */
 export async function verifyStoreReleaseAssets(root, expected) {
   assert(
-    /^v\d{4}\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$/.test(expected.tag),
-    "Store submission assets require a padded CalVer release tag.",
+    /^v\d{4}\.([1-9]|1[0-2])\.(0|[1-9]\d*)$/.test(expected.tag),
+    "Store submission assets require an unpadded CalVer release tag.",
   );
   assert(/^[0-9a-f]{40}$/.test(expected.commit), "Release commit is invalid.");
   const version = expected.tag.slice(1);
