@@ -130,6 +130,7 @@ RUN install -d -o vscode -g vscode -m 0700 \
     /home/vscode/.local/share/ssh \
   && install -d -o vscode -g vscode -m 0755 \
     /home/vscode/.vscode-server \
+  && install -d -o vscode -g vscode -m 0700 \
     /home/vscode/.vscode-server/data
 
 USER vscode
