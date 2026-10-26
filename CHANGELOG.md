@@ -17,6 +17,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   de-CH, or pseudo locale.
 - Additional predefined macOS menu actions use the selected locale when present,
   without assuming system-managed menu items have fixed positions.
+- The macOS app bundle now advertises English and Swiss German localizations,
+  allowing AppKit-generated menu items to follow the macOS language.
 - Gemini profiles now use the Gemini Interactions API through `genai` 0.7.1,
   retaining existing provider credentials, request settings, streaming, and
   cancellation behavior.
