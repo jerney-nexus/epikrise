@@ -64,7 +64,7 @@ keyring = { version = "3.6.3", default-features = false, features = [
 keyring-search = "1"
 minijinja = { version = "2", features = ["fuel"] }
 quick-xml = "0.42"
-rtf-parser-tt = "0.5"
+rtf-parser-tt = "0.6"
 pdf-extract = "0.12"
 pdfium-render = { version = "0.9", default-features = false, features = [
     "pdfium_latest",
