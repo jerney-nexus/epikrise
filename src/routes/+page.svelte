@@ -223,6 +223,13 @@
   function labelsForNativeMenu(locale: string) {
     const t = (source: string) => translate(locale, source);
     const appName = "Epikrise";
+    // This consonant-only token survives pseudo-localization until the brand is restored.
+    const appNamePlaceholder = "x7q9z";
+    const appLabel = (source: string) =>
+      translate(locale, source, { app: appNamePlaceholder }).replaceAll(
+        appNamePlaceholder,
+        appName,
+      );
     return {
       fileMenu: t("File"),
       editMenu: t("Edit"),
@@ -231,11 +238,11 @@
       settingsMenu: t("Settings"),
       helpMenu: t("Help"),
       aboutAction: t("About"),
-      aboutAppAction: translate(locale, "About { $app }", { app: appName }),
+      aboutAppAction: appLabel("About { $app }"),
       servicesAction: t("Services"),
-      hideAppAction: translate(locale, "Hide { $app }", { app: appName }),
+      hideAppAction: appLabel("Hide { $app }"),
       hideOthersAction: t("Hide Others"),
-      quitAppAction: translate(locale, "Quit { $app }", { app: appName }),
+      quitAppAction: appLabel("Quit { $app }"),
       closeAction: t("Close"),
       closeWindowAction: t("Close Window"),
       exitAction: t("Exit"),

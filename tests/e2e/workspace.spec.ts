@@ -318,6 +318,34 @@ test("native menu labels follow locale changes and failures show a fallback", as
       helpAction: "Hilfe",
     });
 
+  await page.locator("#interface-language").selectOption("qps-ploc");
+  await expect(page.locator("#interface-language")).toHaveValue("qps-ploc");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const sync = window.__EPIKRISE_TEST__?.commands
+          .filter(({ command }) => command === "sync_native_menu")
+          .at(-1);
+        const labels = sync?.args.labels as Record<string, unknown> | undefined;
+        return labels
+          ? Object.fromEntries(
+              Object.entries(labels).map(([key, value]) => [
+                key,
+                typeof value === "string"
+                  ? value.replaceAll(/[\u2068\u2069]/g, "")
+                  : value,
+              ]),
+            )
+          : undefined;
+      }),
+    )
+    .toMatchObject({
+      aboutAppAction: "［Aaboouut Epikrise］",
+      hideAppAction: "［Hiidee Epikrise］",
+      quitAppAction: "［Quuiit Epikrise］",
+    });
+
   await page.evaluate(() => {
     if (window.__EPIKRISE_TEST__) {
       window.__EPIKRISE_TEST__.failNextNativeMenuSync = true;
