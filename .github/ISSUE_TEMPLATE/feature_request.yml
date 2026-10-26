@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an improvement to Epikrise
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include patient data, clinical text, credentials, API keys, or other sensitive information. Describe workflows with synthetic, non-sensitive examples only.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the user need or limitation, not sensitive case details.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+      description: Describe the outcome or behavior you are proposing.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any workarounds or alternative approaches you have considered.
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add non-sensitive context that helps explain the request.
+    validations:
+      required: false
