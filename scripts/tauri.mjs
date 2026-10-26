@@ -15,7 +15,8 @@ const windowsArgumentsVariable = "EPIKRISE_TAURI_ARGS_JSON";
  *   homeDirectory?: string,
  *   machineIdPath?: string,
  *   readFile?: (filePath: string) => string,
- *   isSocketPath?: (filePath: string) => boolean
+ *   isSocketPath?: (filePath: string) => boolean,
+ *   isAbstractSocketName?: (socketName: string) => boolean
  * }} LinuxSessionBusDependencies
  */
 
@@ -65,6 +66,19 @@ function isUnixSocket(filePath) {
   }
 }
 
+/** @param {string} socketName
+ * @param {(filePath: string) => string} readFile
+ */
+function isUnixAbstractSocket(socketName, readFile) {
+  const sockets = readOptionalFile("/proc/net/unix", readFile);
+  if (!sockets) return false;
+
+  return sockets.split("\n").some((line) => {
+    const entry = line.match(/^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(.*)$/);
+    return entry?.[1] === `@${socketName}`;
+  });
+}
+
 /**
  * Resolve D-Bus autolaunch placeholders using the address recorded by dbus-launch.
  *
@@ -78,6 +92,7 @@ export function resolveLinuxSessionBusAddress(
     machineIdPath = "/etc/machine-id",
     readFile = (filePath) => readFileSync(filePath, "utf8"),
     isSocketPath = isUnixSocket,
+    isAbstractSocketName = (socketName) => isUnixAbstractSocket(socketName, readFile),
   } = {},
 ) {
   if (!env.DBUS_SESSION_BUS_ADDRESS?.startsWith("autolaunch:")) return undefined;
@@ -101,10 +116,22 @@ export function resolveLinuxSessionBusAddress(
     /^DBUS_SESSION_BUS_ADDRESS=(?:"([^"]+)"|'([^']+)'|([^\r\n]+))$/m,
   );
   const address = addressMatch?.[1] ?? addressMatch?.[2] ?? addressMatch?.[3];
-  const socketPath = address?.match(/^unix:path=([^,]+)/)?.[1];
-  if (!address || !socketPath || !isSocketPath(decodeURIComponent(socketPath))) {
-    return undefined;
+  const socketMatch = address?.match(/^unix:(path|abstract)=([^,]+)/);
+  if (!address || !socketMatch) return undefined;
+
+  let socketName;
+  try {
+    socketName = decodeURIComponent(socketMatch[2]);
+  } catch (error) {
+    if (error instanceof URIError) return undefined;
+    throw error;
   }
+
+  const isLiveSocket =
+    socketMatch[1] === "path"
+      ? isSocketPath(socketName)
+      : isAbstractSocketName(socketName);
+  if (!isLiveSocket) return undefined;
 
   return address;
 }

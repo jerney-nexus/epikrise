@@ -11,6 +11,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -1835,6 +1836,45 @@ describe("native Cargo host target guard", () => {
           {
             machineIdPath,
             isSocketPath: (candidate) => candidate === socketPath,
+          },
+        ),
+      ).toBe(address);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves live abstract Unix sockets from the D-Bus session record", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-abstract-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const socketName = "/tmp/epikrise abstract session bus";
+    const address =
+      "unix:abstract=/tmp/epikrise%20abstract%20session%20bus,guid=0123456789abcdef";
+
+    try {
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='${address}'\nDBUS_SESSION_BUS_PID=123\n`,
+      );
+
+      expect(
+        resolveLinuxSessionBusAddress(
+          {
+            DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+            DISPLAY: ":1.0",
+            HOME: homeDirectory,
+          },
+          {
+            machineIdPath,
+            readFile: (filePath) =>
+              filePath === "/proc/net/unix"
+                ? `Num RefCount Protocol Flags Type St Inode Path\n0000000000000000: 00000002 00000000 00010000 0001 01 1234 @${socketName}\n`
+                : readFileSync(filePath, "utf8"),
           },
         ),
       ).toBe(address);
