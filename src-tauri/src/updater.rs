@@ -270,7 +270,7 @@ fn release_version_from_protocol(version: &str) -> Result<String, UpdaterError> 
     let patch = patch
         .parse::<u32>()
         .map_err(|_| UpdaterError::UpdateFailed)?;
-    if !(2000..=2255).contains(&year) || !(1..=12).contains(&month) || patch > 65535 {
+    if year < 2000 || !(1..=12).contains(&month) || patch > 65535 {
         return Err(UpdaterError::UpdateFailed);
     }
     Ok(format!("{year}.{month:02}.{patch}"))
@@ -287,14 +287,6 @@ fn release_target() -> Result<&'static str, UpdaterError> {
             (
                 cfg!(feature = "updater-windows-aarch64-nsis"),
                 "updater-windows-aarch64-nsis",
-            ),
-            (
-                cfg!(feature = "updater-windows-x86_64-msi"),
-                "updater-windows-x86_64-msi",
-            ),
-            (
-                cfg!(feature = "updater-windows-aarch64-msi"),
-                "updater-windows-aarch64-msi",
             ),
         ]
         .into_iter()

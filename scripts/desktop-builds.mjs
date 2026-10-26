@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { assertBuildProvenance, createBuildProvenance } from "./build-provenance.mjs";
 import { assertNativeBuildMetadata } from "./verify-native-build-environment.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -35,7 +36,8 @@ export const desktopTargets = /** @type {const} */ ([
 /** @typedef {"desktop" | "store-msix"} PackageFamily */
 /** @typedef {{ runnerOS: string, runnerArch: string, rustHost: string, target: string, buildMode: string }} NativeBuildInput */
 /** @typedef {{ runner_os: string, runner_arch: string, rust_host: string, target: string, build_mode: string }} NativeBuildEvidence */
-/** @typedef {{ schema_version: number, request_id: string, commit: string, target: DesktopTarget, package_family: PackageFamily, native_build: NativeBuildEvidence, version: string, signed: false, files: Array<{ path: string, size_bytes: number, sha256: string }> }} ArtifactManifest */
+/** @typedef {{ source: { commit: string, archive_sha256: string }, cache: { key: string, restored: boolean }, tool_versions: Record<string, string> }} BuildProvenance */
+/** @typedef {{ schema_version: number, request_id: string, commit: string, target: DesktopTarget, package_family: PackageFamily, native_build: NativeBuildEvidence, source: { commit: string, archive_sha256: string }, cache: { key: string, restored: boolean }, tool_versions: Record<string, string>, version: string, signed: false, files: Array<{ path: string, size_bytes: number, sha256: string }> }} ArtifactManifest */
 /** @typedef {{ requestId: string, commit: string, version: string, target: DesktopTarget, packageFamily: PackageFamily }} ArtifactExpectation */
 
 const expectedSuffixes = {
@@ -159,6 +161,7 @@ async function collectFiles(directory) {
  * @param {string} requestId
  * @param {PackageFamily} packageFamily
  * @param {NativeBuildEvidence} nativeBuild
+ * @param {BuildProvenance} buildProvenance
  * @returns {Promise<ArtifactManifest>}
  */
 async function buildManifest(
@@ -168,6 +171,7 @@ async function buildManifest(
   requestId,
   packageFamily,
   nativeBuild,
+  buildProvenance,
 ) {
   assert(desktopTargets.includes(target), `Unsupported desktop target: ${target}.`);
   assert(/^[0-9a-f]{40}$/.test(commit), "Commit must be a full Git SHA.");
@@ -206,12 +210,13 @@ async function buildManifest(
     await readFile(path.join(repoRoot, "package.json"), "utf8"),
   );
   return {
-    schema_version: 2,
+    schema_version: 3,
     request_id: requestId,
     commit,
     target,
     package_family: packageFamily,
     native_build: nativeBuild,
+    ...buildProvenance,
     version: packageJson.version,
     signed: false,
     files: packageFiles,
@@ -236,7 +241,7 @@ async function findPackages(bundleRoot, target, packageFamily) {
 }
 
 /**
- * @param {{ target: DesktopTarget, commit: string, requestId: string, bundleRoot: string, stageRoot: string, packageFamily: PackageFamily, nativeBuild: NativeBuildInput }} options
+ * @param {{ target: DesktopTarget, commit: string, requestId: string, bundleRoot: string, stageRoot: string, packageFamily: PackageFamily, nativeBuild: NativeBuildInput, sourceArchiveSha256: string, cacheKey: string, cacheRestored: boolean }} options
  * @returns {Promise<ArtifactManifest>}
  */
 export async function stagePackages({
@@ -247,9 +252,18 @@ export async function stagePackages({
   stageRoot,
   packageFamily,
   nativeBuild,
+  sourceArchiveSha256,
+  cacheKey,
+  cacheRestored,
 }) {
   assert(desktopTargets.includes(target), `Unsupported desktop target: ${target}.`);
   const buildEvidence = assertNativeBuildMetadata(nativeBuild);
+  const buildProvenance = await createBuildProvenance({
+    commit,
+    sourceArchiveSha256,
+    cacheKey,
+    cacheRestored,
+  });
   assert(
     packageFamily === "desktop" || packageFamily === "store-msix",
     `Unsupported desktop package family: ${packageFamily}.`,
@@ -278,6 +292,7 @@ export async function stagePackages({
     requestId,
     packageFamily,
     buildEvidence,
+    buildProvenance,
   );
   await writeFile(
     path.join(stageRoot, "manifest.json"),
@@ -297,7 +312,7 @@ async function verifyArtifactDirectory(directory, expected) {
   const manifest = JSON.parse(
     await readFile(path.join(directory, "manifest.json"), "utf8"),
   );
-  assert(manifest.schema_version === 2, "Unsupported artifact manifest schema.");
+  assert(manifest.schema_version === 3, "Unsupported artifact manifest schema.");
   assert(
     manifest.request_id === expected.requestId,
     "Artifact request ID does not match.",
@@ -329,6 +344,7 @@ async function verifyArtifactDirectory(directory, expected) {
     target: manifest.native_build.target,
     buildMode: manifest.native_build.build_mode,
   });
+  assertBuildProvenance(manifest, manifest.commit);
   assert(
     Array.isArray(manifest.files) && manifest.files.length > 0,
     "Artifact manifest has no files.",
@@ -653,6 +669,10 @@ async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (command === "stage") {
     const options = parseOptions(args);
+    assert(
+      options["cache-restored"] === "true" || options["cache-restored"] === "false",
+      "Cache restore status must be true or false.",
+    );
     await stagePackages({
       target: /** @type {DesktopTarget} */ (options.target),
       commit: options.commit,
@@ -667,6 +687,9 @@ async function main() {
         target: options.target,
         buildMode: options["build-mode"],
       },
+      sourceArchiveSha256: options["source-archive-sha256"],
+      cacheKey: options["cache-key"],
+      cacheRestored: options["cache-restored"] === "true",
     });
     return;
   }

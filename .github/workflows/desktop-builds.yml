@@ -81,10 +81,17 @@ jobs:
       - name: Verify requested commit
         shell: bash
         run: |
+          set -euo pipefail
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]]
           [[ "$GITHUB_SHA" == "$EXPECTED_SHA" ]]
           [[ "$REQUEST_ID" =~ ^[0-9a-f-]{36}$ ]]
+          archive_file="$RUNNER_TEMP/epikrise-source.tar"
+          git archive "$EXPECTED_SHA" > "$archive_file"
+          source_archive_sha256="$(node --input-type=module -e \
+            'import { createHash } from "node:crypto"; import { readFileSync } from "node:fs"; process.stdout.write(createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"));' \
+            "$archive_file")"
+          printf 'EPIKRISE_SOURCE_ARCHIVE_SHA256=%s\n' "$source_archive_sha256" >> "$GITHUB_ENV"
 
       - uses: pnpm/setup@v2
         with:
@@ -101,6 +108,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache native OCR and Cargo inputs
+        id: native-ocr-cache
         if: matrix.platform != 'windows'
         uses: actions/cache@v6
         with:
@@ -111,6 +119,7 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-diagnostic-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh', 'scripts/verify-native-build-environment.mjs') }}
 
       - name: Cache Windows OCR sources and toolchain
+        id: windows-ocr-cache
         if: matrix.platform == 'windows'
         uses: actions/cache@v6
         with:
@@ -119,6 +128,25 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
           key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-diagnostic-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
+
+      - name: Capture cache restore details
+        env:
+          NATIVE_CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-diagnostic-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh', 'scripts/verify-native-build-environment.mjs') }}
+          WINDOWS_CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-diagnostic-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
+          NATIVE_CACHE_HIT: ${{ steps.native-ocr-cache.outputs.cache-hit }}
+          WINDOWS_CACHE_HIT: ${{ steps.windows-ocr-cache.outputs.cache-hit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$PLATFORM" == 'windows' ]]; then
+            cache_key="$WINDOWS_CACHE_KEY"
+            cache_restored="${WINDOWS_CACHE_HIT:-false}"
+          else
+            cache_key="$NATIVE_CACHE_KEY"
+            cache_restored="${NATIVE_CACHE_HIT:-false}"
+          fi
+          printf 'EPIKRISE_CACHE_KEY=%s\n' "$cache_key" >> "$GITHUB_ENV"
+          printf 'EPIKRISE_CACHE_RESTORED=%s\n' "$cache_restored" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -246,7 +274,10 @@ jobs:
             --runner-os "$RUNNER_OS" \
             --runner-arch "$RUNNER_ARCH" \
             --rust-host "$host_target" \
-            --build-mode "$EPIKRISE_BUILD_MODE"
+            --build-mode "$EPIKRISE_BUILD_MODE" \
+            --source-archive-sha256 "$EPIKRISE_SOURCE_ARCHIVE_SHA256" \
+            --cache-key "$EPIKRISE_CACHE_KEY" \
+            --cache-restored "$EPIKRISE_CACHE_RESTORED"
 
       - uses: actions/upload-artifact@v7
         if: matrix.platform == 'windows'
@@ -270,6 +301,9 @@ jobs:
             --runner-arch "$RUNNER_ARCH" \
             --rust-host "$host_target" \
             --build-mode "$EPIKRISE_BUILD_MODE" \
+            --source-archive-sha256 "$EPIKRISE_SOURCE_ARCHIVE_SHA256" \
+            --cache-key "$EPIKRISE_CACHE_KEY" \
+            --cache-restored "$EPIKRISE_CACHE_RESTORED" \
             --bundle-root "src-tauri/target/host-$host_target/$TARGET/release/bundle" \
             --stage-root "$ARTIFACT_STAGE"
 
