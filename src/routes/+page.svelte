@@ -311,10 +311,10 @@
       if (!target.open) return;
       const focusTarget =
         target.querySelector<HTMLElement>(
-          'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])',
+          'input:not([disabled]):not([type="hidden"]):not([aria-hidden="true"]), select:not([disabled]), textarea:not([disabled])',
         ) ??
         target.querySelector<HTMLElement>(
-          'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+          'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"]):not([aria-hidden="true"])',
         );
       focusTarget?.focus();
     });
@@ -329,6 +329,12 @@
   }
 
   function handleNativeMenuAction(action: NativeMenuAction) {
+    if (
+      (providerSettingsDialog?.open && credentialRemovalPending) ||
+      (templateSettingsDialog?.open && templateDeletionPending)
+    ) {
+      return;
+    }
     const target = {
       help: helpDialog,
       generalSettings: generalSettingsDialog,
@@ -1163,7 +1169,11 @@
         topDialog.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ),
-      ).filter((element) => element.getClientRects().length > 0);
+      ).filter(
+        (element) =>
+          element.getClientRects().length > 0 &&
+          element.getAttribute("aria-hidden") !== "true",
+      );
       const first = focusable[0];
       const last = focusable.at(-1);
       if (!first || !last) return;

@@ -4,6 +4,7 @@ import type { PolicyStatus } from "../../src/bindings";
 
 const onboardingTest = test.extend({ seedTemplates: false });
 const browserTest = test.extend({ tauriRuntime: false });
+const emptyTemplateTest = test.extend({ seedTemplates: false });
 const nativeMenuListenerFailureTest = test.extend({
   failNativeMenuListener: true,
 });
@@ -144,6 +145,74 @@ test("native menu navigation leaves template editing and its draft untouched", a
   await expect(name).toHaveValue("Synthetic draft in progress");
   await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toHaveCount(0);
 });
+
+test("native menu navigation leaves credential removal confirmation untouched", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  await page.getByRole("button", { name: "Provider settings" }).click();
+  await page.getByRole("button", { name: "Add provider credential" }).click();
+  const addCredentialDialog = page.getByRole("dialog", {
+    name: "Add provider credential",
+  });
+  await addCredentialDialog.getByLabel("Credential label").fill("Work key");
+  await addCredentialDialog.getByLabel("API key").fill("synthetic-secret");
+  await addCredentialDialog
+    .getByRole("button", { name: "Add credential", exact: true })
+    .click();
+
+  await page.getByRole("button", { name: "Remove provider credential" }).click();
+  const confirmation = page.getByRole("group", {
+    name: "Confirm credential removal",
+  });
+  await expect(confirmation).toBeVisible();
+  await emitNativeMenuAction(page, "help");
+
+  await expect(confirmation).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toHaveCount(0);
+  await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await emitNativeMenuAction(page, "help");
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toBeVisible();
+});
+
+test("native menu navigation leaves template deletion confirmation untouched", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  await page.getByRole("button", { name: "Template settings" }).click();
+  await page.getByRole("button", { name: "Delete active template" }).click();
+  const confirmation = page.getByRole("group", {
+    name: "Confirm template deletion",
+  });
+  await expect(confirmation).toBeVisible();
+  await emitNativeMenuAction(page, "help");
+
+  await expect(confirmation).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toHaveCount(0);
+  await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await emitNativeMenuAction(page, "help");
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toBeVisible();
+});
+
+emptyTemplateTest(
+  "template settings initial focus skips the aria-hidden file input",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Template settings", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Template settings" });
+    await expect(dialog).toBeVisible();
+
+    const hiddenFileInput = dialog.locator("#template-file");
+    await expect(hiddenFileInput).toHaveAttribute("aria-hidden", "true");
+    await expect(hiddenFileInput).not.toBeFocused();
+    await expect(dialog.locator(":focus")).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  },
+);
 
 browserTest(
   "browser mode retains in-app settings without native menu calls",
