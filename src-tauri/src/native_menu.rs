@@ -304,6 +304,23 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
                 &template_settings,
             ],
         )?;
+        #[cfg(target_os = "windows")]
+        {
+            let mut help_position = None;
+            for (position, item) in menu.items()?.into_iter().enumerate() {
+                if let MenuItemKind::Submenu(submenu) = item
+                    && submenu.text()? == "Help"
+                {
+                    help_position = Some(position);
+                    break;
+                }
+            }
+            let Some(help_position) = help_position else {
+                return Err(setup_error("default Help menu is unavailable"));
+            };
+            menu.insert(&settings_menu, help_position)?;
+        }
+        #[cfg(not(target_os = "windows"))]
         menu.append(&settings_menu)?;
         localized_submenus.push((settings_menu.clone(), NativeMenuTitle::Settings));
     }
