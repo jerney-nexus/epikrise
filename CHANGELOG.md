@@ -141,6 +141,10 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 - Windows image OCR now opens the image and tessdata paths correctly in native
   and Linux cross-built apps. Invalid OCR output can also use vision fallback
   when enabled.
+- Linux desktop launches now resolve the active D-Bus session before listing
+  keyring credentials, including when session-bus socket paths contain escaped
+  characters. Credential-list failures provide keyring and session-bus
+  troubleshooting guidance.
 - Windows ARM64 now lists stored provider credentials correctly, enabling
   connection checks, model-list refresh, and report drafting. These flows were
   validated in a native Windows ARM64 app run.
