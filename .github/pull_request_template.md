@@ -6,6 +6,8 @@
 
 <!-- Link an issue, or write "None". -->
 
+- [ ] Completed all acceptance criteria from the linked issues.
+
 ## Validation
 
 <!-- List relevant checks and their outcomes, plus any manual testing. Note any applicable checks you did not run and why. See CONTRIBUTING.md for the repository's quality gates. -->
