@@ -14,23 +14,6 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 - Gemini profiles now use the Gemini Interactions API through `genai` 0.7.1,
   retaining existing provider credentials, request settings, streaming, and
   cancellation behavior.
-- Native Windows x64 and ARM64 desktop builds now produce separate unsigned
-  MSIX artifacts for manual Partner Center submission, with the reserved Store
-  identity, validated architecture-specific OCR payloads, and bounded
-  CalVer-derived package versions. NSIS remains the local installer; Store
-  signing and updates remain managed by Microsoft.
-- Native-host Tauri builds verify the bundled app executable and OCR dependencies
-  across Linux, macOS, and Windows. Windows x64/ARM64 desktop and signed-release
-  workflows compile on matching native runners, and generic Windows `pnpm tauri
-build`/`dev` commands initialize MSVC from regular shells. Linux native-host
-  checks reject architecture mismatches under QEMU user-mode emulation,
-  cross-target Cargo configuration (including forwarded `--config` overrides),
-  and custom Tauri runners in native build/dev commands. Clustered short target
-  options are validated and reflected in build-output verification. Local
-  PowerShell setup and troubleshooting are documented. The six-target Desktop
-  builds workflow passed; native install, launch, and uninstall were confirmed
-  on Windows ARM64 and macOS Apple Silicon. Live testing on the other platform
-  targets is deferred.
 - Localized in-app help for the workflow, settings, case-data handling, and
   privacy boundaries.
 - Templates can format ISO `YYYY-MM-DD` values with the MiniJinja expression
@@ -141,10 +124,6 @@ build`/`dev` commands initialize MSVC from regular shells. Linux native-host
 - Windows image OCR now opens the image and tessdata paths correctly in native
   and Linux cross-built apps. Invalid OCR output can also use vision fallback
   when enabled.
-- Linux Tauri launches now use the active desktop D-Bus session when resolving
-  autolaunched session addresses, allowing keyring credentials to be listed
-  when checking provider connections or refreshing models. Credential-list
-  failures now provide keyring and session-bus troubleshooting guidance.
 - Windows ARM64 now lists stored provider credentials correctly, enabling
   connection checks, model-list refresh, and report drafting. These flows were
   validated in a native Windows ARM64 app run.

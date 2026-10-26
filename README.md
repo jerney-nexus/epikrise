@@ -106,78 +106,20 @@ This creates AppImage, Debian (`.deb`), and RPM packages under
 
 ### Windows Installers
 
-#### Native Windows build
+#### Local Windows build
 
-Use a normal PowerShell window at the repository root. The wrapper initializes
-Visual Studio itself, so a Developer shell is not required. Windows x64 builds
-x64; Windows ARM64 builds ARM64. Cross-target builds are not supported by this
-native command.
-
-Prerequisites are Node.js 22, Corepack/pnpm `12.15.0`, Rust for the native
-Windows architecture, Visual Studio's **Desktop development with C++**
-workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`,
-`curl`, `tar`, and `grep` on `PATH`. On ARM64, include native ARM64 C++ tools.
-If CMake remains missing after installing **C++ CMake tools for Windows** in
-Visual Studio Installer, install it with
-`winget install --id Kitware.CMake --exact --source winget`. Install missing
-Ninja separately with
-`winget install --id Ninja-build.Ninja --exact --source winget`. See the
-[Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
-and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact
-steps.
-Provide Tesseract's German and English language data either through an
-installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder
-containing `deu.traineddata` and `eng.traineddata`.
-
-From the repository root:
-
-```powershell
-$pnpmShimDir = Join-Path $env:LOCALAPPDATA 'Epikrise\corepack'
-New-Item -ItemType Directory -Path $pnpmShimDir -Force | Out-Null
-corepack.cmd enable --install-directory $pnpmShimDir pnpm
-$env:Path = "$pnpmShimDir;$env:Path"
-
-node --version
-pnpm.cmd --version
-rustc -vV
-pnpm.cmd install --frozen-lockfile
-$env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
-Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'deu.traineddata')
-Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'eng.traineddata')
-```
-
-If Corepack cannot write under `C:\Program Files`, this user-local shim keeps
-pnpm in your profile and avoids changing PowerShell's execution policy. The
-version commands should report Node 22 and pnpm 12.15.0. Both `Test-Path`
-commands must print `True`; if not, see the language-data setup in
-[Contributing](CONTRIBUTING.md#native-build-from-windows). Run one build
-command matching the host architecture.
-
-Windows ARM64:
-
-```powershell
-.\scripts\build-native-windows.cmd arm64 diagnostic
-```
-
-Windows x64:
-
-```powershell
-.\scripts\build-native-windows.cmd x64 diagnostic
-```
-
-The command produces an unsigned diagnostic installer under
-`src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The first build
-needs network access to download and verify OCR sources and PDFium. See
-[Contributing: native Windows build](CONTRIBUTING.md#native-build-from-windows)
-for full prerequisites, the x64 command, verification, and troubleshooting.
+Native Windows installer builds are not currently supported by the repository
+scripts. The bundled Tesseract OCR sidecar is cross-compiled on Linux ARM64, so
+use the Dev Container instructions below.
 
 #### Dev Container cross-build
 
-From a native Linux x64 or ARM64 dev container (not under CI or CPU
-emulation), run `pnpm windows:setup` interactively. Review the Microsoft
-SDK/CRT license and type `ACCEPT` at the prompt; setup will not download the
-SDK/CRT or install `cargo-xwin` without that human acceptance. The setup path
-rejects CI, including GitHub Actions.
+From the native Linux ARM64 Dev Container (not Linux x64 or CPU emulation), run
+`pnpm windows:setup` interactively. The setup script installs `cargo-xwin` if
+needed, then prompts you to review the Microsoft SDK/CRT license. Typing
+`ACCEPT` gates downloading the pinned SDK/CRT; it is not required to install
+`cargo-xwin`. The manual setup path is for local interactive use, not CI; the
+approved CI setup path is described below.
 
 Then explicitly opt in for the current shell and build diagnostic NSIS
 installers:
@@ -200,8 +142,10 @@ required. See [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
 workflow for the current pushed commit from either an ARM64 or x64 dev
 container. It builds Linux ARM64/x64 (`.deb`, `.rpm`, AppImage), macOS
 ARM64/x64 (`.dmg`), and Windows ARM64/x64 (NSIS `.exe` with offline WebView2)
-in six isolated jobs. The workflow must be enabled on GitHub, and the commit
-must contain the workflow. It never commits or pushes changes.
+in six isolated jobs. Windows jobs run on Linux ARM64 with `cargo-xwin`, so
+they are cross-builds rather than native Windows builds. The workflow must be
+enabled on GitHub, and the commit must contain the workflow. It never commits
+or pushes changes.
 
 The command requires a clean worktree, the current branch or tag pushed to
 `origin` at exactly `HEAD`, the GitHub CLI authenticated with Actions dispatch
