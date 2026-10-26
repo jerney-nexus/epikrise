@@ -35,7 +35,9 @@ import {
   desktopTargets,
   selectMatchingRun,
   stagePackages,
+  stageStoreReleaseAssets,
   verifyArtifactSet,
+  verifyStoreReleaseAssets,
 } from "../scripts/desktop-builds.mjs";
 import {
   assertRecoverableReleaseDraft,
@@ -1609,6 +1611,113 @@ describe("six-target desktop build tooling", () => {
     }
   });
 
+  it("stages and verifies standalone Store release assets for both architectures", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-store-release-assets-"),
+    );
+    const version = JSON.parse(
+      await readFile(path.join(repoRoot, "package.json"), "utf8"),
+    ).version;
+    const targets = [
+      {
+        architecture: "x64",
+        target: "x86_64-pc-windows-msvc",
+        content: "unsigned-x64-msix",
+      },
+      {
+        architecture: "arm64",
+        target: "aarch64-pc-windows-msvc",
+        content: "unsigned-arm64-msix",
+      },
+    ] as const;
+    const artifactRoots = {
+      x64: path.join(directory, "epikrise-store-msix-x64"),
+      arm64: path.join(directory, "epikrise-store-msix-arm64"),
+    };
+    const outputRoot = path.join(directory, "release-assets");
+
+    try {
+      for (const target of targets) {
+        const bundleRoot = path.join(directory, `${target.architecture}-bundle`);
+        await mkdir(bundleRoot, { recursive: true });
+        await writeFile(
+          path.join(bundleRoot, `Epikrise_${version}.0_${target.architecture}.msix`),
+          target.content,
+        );
+        await stagePackages({
+          target: target.target,
+          commit,
+          requestId,
+          bundleRoot,
+          stageRoot: artifactRoots[target.architecture],
+          packageFamily: "store-msix",
+          nativeBuild: nativeBuildEvidence(target.target),
+          sourceArchiveSha256: "b".repeat(64),
+          cacheKey: `synthetic-${commit}`,
+          cacheRestored: false,
+        });
+      }
+
+      await stageStoreReleaseAssets({
+        x64Root: artifactRoots.x64,
+        arm64Root: artifactRoots.arm64,
+        outputRoot,
+        tag: `v${version}`,
+        commit,
+        requestId,
+      });
+      await expect(readdir(outputRoot)).resolves.toEqual(
+        expect.arrayContaining([
+          `Epikrise_${version}.0_x64.msix`,
+          `Epikrise_${version}.0_x64.msix.manifest.json`,
+          `Epikrise_${version}.0_arm64.msix`,
+          `Epikrise_${version}.0_arm64.msix.manifest.json`,
+        ]),
+      );
+
+      const manifest = JSON.parse(
+        await readFile(
+          path.join(outputRoot, `Epikrise_${version}.0_x64.msix.manifest.json`),
+          "utf8",
+        ),
+      );
+      expect(manifest).toMatchObject({
+        tag: `v${version}`,
+        commit,
+        architecture: "x64",
+        package: {
+          file: `Epikrise_${version}.0_x64.msix`,
+          sha256: createHash("sha256").update("unsigned-x64-msix").digest("hex"),
+        },
+        artifact_manifest: {
+          package_family: "store-msix",
+          files: [{ path: `Epikrise_${version}.0_x64.msix` }],
+        },
+      });
+      await expect(
+        verifyStoreReleaseAssets(outputRoot, {
+          tag: `v${version}`,
+          commit,
+          requestId,
+        }),
+      ).resolves.toBeUndefined();
+
+      await writeFile(
+        path.join(outputRoot, `Epikrise_${version}.0_x64.msix`),
+        "tampered-x64-msix",
+      );
+      await expect(
+        verifyStoreReleaseAssets(outputRoot, {
+          tag: `v${version}`,
+          commit,
+          requestId,
+        }),
+      ).rejects.toThrow("SHA-256 verification failed");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects missing, stale, tampered, and unmanifested downloads", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-desktop-download-"));
     const version = JSON.parse(
@@ -2266,6 +2375,32 @@ describe("signed release artifacts", () => {
     expect(diagnosticWorkflow).toContain("contents: read");
     expect(diagnosticWorkflow).not.toContain("TAURI_SIGNING_PRIVATE_KEY");
     expect(diagnosticWorkflow).not.toContain("gh release create");
+  });
+
+  it("builds and attaches Store packages after successful tagged updater releases", async () => {
+    const workflow = await readFile(
+      path.join(repoRoot, ".github/workflows/store-submission.yml"),
+      "utf8",
+    );
+
+    expect(workflow).toContain("workflow_run:");
+    expect(workflow).toContain("- Signed updater release");
+    expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(workflow).toContain(
+      "startsWith(github.event.workflow_run.head_branch, 'v')",
+    );
+    expect(workflow).toContain("windows-2025");
+    expect(workflow).toContain("windows-11-vs2026-arm");
+    expect(workflow).toContain("x86_64-pc-windows-msvc");
+    expect(workflow).toContain("aarch64-pc-windows-msvc");
+    expect(workflow).not.toContain("x86_64-unknown-linux-gnu");
+    expect(workflow).not.toContain("aarch64-unknown-linux-gnu");
+    expect(workflow).not.toContain("desktop-builds.yml");
+    expect(workflow).toContain("--package-family store-msix");
+    expect(workflow).toContain("stage-store-release");
+    expect(workflow).toContain("gh release upload");
+    expect(workflow).toContain("verify-store-release");
+    expect(workflow).toContain("release.body.includes(marker)");
   });
 
   it("stages all platform packages and builds a signed static updater manifest", async () => {

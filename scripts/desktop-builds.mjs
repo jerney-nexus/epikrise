@@ -16,6 +16,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { assertBuildProvenance, createBuildProvenance } from "./build-provenance.mjs";
+import { deriveReleaseVersions } from "./prepare-release.mjs";
 import { assertNativeBuildMetadata } from "./verify-native-build-environment.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -438,6 +439,168 @@ export async function verifyArtifactSet(root, expected) {
   return manifests;
 }
 
+const storeReleaseTargets = /** @type {const} */ ([
+  {
+    target: "x86_64-pc-windows-msvc",
+    architecture: "x64",
+  },
+  {
+    target: "aarch64-pc-windows-msvc",
+    architecture: "arm64",
+  },
+]);
+
+/**
+ * @param {{ x64Root: string, arm64Root: string, outputRoot: string, tag: string, commit: string, requestId: string }} options
+ */
+export async function stageStoreReleaseAssets({
+  x64Root,
+  arm64Root,
+  outputRoot,
+  tag,
+  commit,
+  requestId,
+}) {
+  assert(
+    /^v\d{4}\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$/.test(tag),
+    "Store submission assets require a padded CalVer release tag.",
+  );
+  assert(/^[0-9a-f]{40}$/.test(commit), "Release commit is invalid.");
+  const version = tag.slice(1);
+  const roots = { x64: x64Root, arm64: arm64Root };
+  try {
+    await lstat(outputRoot);
+    throw new Error(`Store release staging directory already exists: ${outputRoot}.`);
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
+  }
+
+  await mkdir(outputRoot, { recursive: true });
+  for (const target of storeReleaseTargets) {
+    const artifactRoot = roots[target.architecture];
+    const artifactManifest = await verifyArtifactDirectory(artifactRoot, {
+      requestId,
+      commit,
+      version,
+      target: target.target,
+      packageFamily: "store-msix",
+    });
+    assert(
+      artifactManifest.files.length === 1,
+      `Expected one Store package for ${target.architecture}.`,
+    );
+    const artifactFile = artifactManifest.files[0];
+    const packageName = path.posix.basename(artifactFile.path);
+    assert(
+      packageName.startsWith("Epikrise_") &&
+        packageName.endsWith(`_${target.architecture}.msix`),
+      `Store package name does not match ${target.architecture}: ${packageName}.`,
+    );
+
+    const sourcePath = path.join(artifactRoot, ...artifactFile.path.split("/"));
+    const outputPath = path.join(outputRoot, packageName);
+    await cp(sourcePath, outputPath, { errorOnExist: true, force: false });
+    const releaseManifest = {
+      schema_version: 1,
+      tag,
+      commit,
+      architecture: target.architecture,
+      target: target.target,
+      package: {
+        file: packageName,
+        size_bytes: artifactFile.size_bytes,
+        sha256: artifactFile.sha256,
+      },
+      artifact_manifest: {
+        ...artifactManifest,
+        files: [{ ...artifactFile, path: packageName }],
+      },
+    };
+    await writeFile(
+      path.join(outputRoot, `${packageName}.manifest.json`),
+      `${JSON.stringify(releaseManifest, null, 2)}\n`,
+      { flag: "wx" },
+    );
+  }
+
+  await verifyStoreReleaseAssets(outputRoot, { tag, commit, requestId });
+}
+
+/**
+ * @param {string} root
+ * @param {{ tag: string, commit: string, requestId: string }} expected
+ */
+export async function verifyStoreReleaseAssets(root, expected) {
+  assert(
+    /^v\d{4}\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$/.test(expected.tag),
+    "Store submission assets require a padded CalVer release tag.",
+  );
+  assert(/^[0-9a-f]{40}$/.test(expected.commit), "Release commit is invalid.");
+  const version = expected.tag.slice(1);
+  const storeVersion = deriveReleaseVersions(version).msixIdentityVersion;
+  for (const target of storeReleaseTargets) {
+    const expectedPackage = `Epikrise_${storeVersion}_${target.architecture}.msix`;
+    assert(
+      (await readdir(root)).includes(expectedPackage),
+      `Store release is missing the ${target.architecture} MSIX package ${expectedPackage}.`,
+    );
+    const manifestPath = path.join(root, `${expectedPackage}.manifest.json`);
+    const releaseManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    assert(releaseManifest.schema_version === 1, "Unsupported Store release manifest.");
+    assert(
+      releaseManifest.tag === expected.tag &&
+        releaseManifest.commit === expected.commit &&
+        releaseManifest.architecture === target.architecture &&
+        releaseManifest.target === target.target,
+      "Store release manifest does not match its release target.",
+    );
+    assert(
+      releaseManifest.package?.file === expectedPackage &&
+        /^[0-9a-f]{64}$/.test(releaseManifest.package.sha256),
+      "Store release package evidence is invalid.",
+    );
+    const packagePath = path.join(root, expectedPackage);
+    const packageMetadata = await lstat(packagePath);
+    assert(
+      packageMetadata.isFile() &&
+        !packageMetadata.isSymbolicLink() &&
+        packageMetadata.size === releaseManifest.package.size_bytes,
+      "Store release package size or file type does not match its manifest.",
+    );
+    assert(
+      (await sha256(packagePath)) === releaseManifest.package.sha256,
+      "Store release package SHA-256 verification failed.",
+    );
+
+    const artifactManifest = releaseManifest.artifact_manifest;
+    assert(
+      artifactManifest?.schema_version === 3 &&
+        artifactManifest.request_id === expected.requestId &&
+        artifactManifest.commit === expected.commit &&
+        artifactManifest.version === version &&
+        artifactManifest.target === target.target &&
+        artifactManifest.package_family === "store-msix" &&
+        artifactManifest.signed === false,
+      "Store release artifact provenance does not match the release.",
+    );
+    assert(
+      artifactManifest.files?.length === 1 &&
+        artifactManifest.files[0].path === expectedPackage &&
+        artifactManifest.files[0].size_bytes === releaseManifest.package.size_bytes &&
+        artifactManifest.files[0].sha256 === releaseManifest.package.sha256,
+      "Store release artifact integrity evidence is inconsistent.",
+    );
+    assertBuildProvenance(artifactManifest, expected.commit);
+    assertNativeBuildMetadata({
+      runnerOS: artifactManifest.native_build?.runner_os,
+      runnerArch: artifactManifest.native_build?.runner_arch,
+      rustHost: artifactManifest.native_build?.rust_host,
+      target: artifactManifest.native_build?.target,
+      buildMode: artifactManifest.native_build?.build_mode,
+    });
+  }
+}
+
 /** @param {string} command @param {string[]} args */
 async function run(command, args) {
   const { stdout } = await execFile(command, args, {
@@ -693,9 +856,30 @@ async function main() {
     });
     return;
   }
+  if (command === "stage-store-release") {
+    const options = parseOptions(args);
+    await stageStoreReleaseAssets({
+      x64Root: options["x64-root"],
+      arm64Root: options["arm64-root"],
+      outputRoot: options["output-root"],
+      tag: options.tag,
+      commit: options.commit,
+      requestId: options["request-id"],
+    });
+    return;
+  }
+  if (command === "verify-store-release") {
+    const options = parseOptions(args);
+    await verifyStoreReleaseAssets(options.root, {
+      tag: options.tag,
+      commit: options.commit,
+      requestId: options["request-id"],
+    });
+    return;
+  }
   assert(
     command === "dispatch",
-    "Usage: node scripts/desktop-builds.mjs dispatch|stage [options]",
+    "Usage: node scripts/desktop-builds.mjs dispatch|stage|stage-store-release|verify-store-release [options]",
   );
   await dispatchAndDownload();
 }

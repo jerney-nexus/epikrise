@@ -371,10 +371,14 @@ Each native Windows job also uploads an unsigned, architecture-specific MSIX
 artifact separately from its NSIS installer. These MSIX files are for manual
 Partner Center submission only: they use the reserved Store identity, are
 versioned as `year.month.patch.0`, and are not the local installation path.
-When dispatching the workflow directly, provide `previous_store_version` if a
-prior Store submission exists so the build rejects a non-advancing version.
-Microsoft signs submitted Store packages and manages Store updates; this
-project does not upload, publish, or configure Store updates automatically.
+After a successful tagged signed release, the Store submission workflow builds
+only Windows x64 and ARM64 Store variants and attaches each package and its
+SHA-256/provenance manifest as separate assets to the matching GitHub Release.
+This is independent of the six-target Desktop builds workflow. When dispatching
+Desktop builds directly, provide `previous_store_version` if a prior Store
+submission exists so the build rejects a non-advancing version. Microsoft signs
+submitted Store packages and manages Store updates; this project does not
+upload packages to Partner Center or configure Store updates automatically.
 The Store package does not include the WebView2 Evergreen Runtime, which must
 be available on the Windows device. Continue using the NSIS `.exe` for local
 installation; it includes the offline WebView2 installer and remains separate
