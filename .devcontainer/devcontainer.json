@@ -88,6 +88,6 @@
     "source=epikrise-copilot-home-${devcontainerId},target=/home/vscode/.copilot,type=volume",
     "source=epikrise-claude-home-${devcontainerId},target=/home/vscode/.claude,type=volume",
     // VS Code Agent Host indexes and per-session data; this does not migrate existing container data.
-    "source=epikrise-vscode-data-${devcontainerId},target=/home/vscode/.vscode-server/data,type=volume,volume-nocopy"
+    "source=epikrise-vscode-data-v2-${devcontainerId},target=/home/vscode/.vscode-server/data,type=volume"
   ]
 }
