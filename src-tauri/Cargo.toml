@@ -38,7 +38,7 @@ license = "MIT"
 authors = ["Pascal Jerney"]
 
 [workspace.dependencies]
-calamine = "0.36"
+calamine = "0.37"
 base64 = "0.22"
 async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
@@ -87,7 +87,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 uuid = { version = "1", features = ["v4"] }
 url = "2"
 zeroize = "1.8"
-zip = { version = "6", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
