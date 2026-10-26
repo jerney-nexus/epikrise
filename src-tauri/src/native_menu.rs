@@ -23,13 +23,13 @@ const SETTINGS_SUBMENU_ID: &str = "native-settings-menu";
 pub(crate) struct NativeMenuState(Mutex<Option<NativeMenuItems>>);
 
 struct NativeMenuItems {
-    menu: Menu<Wry>,
     help: MenuItem<Wry>,
     general_settings: MenuItem<Wry>,
     provider_settings: MenuItem<Wry>,
     model_settings: MenuItem<Wry>,
     template_settings: MenuItem<Wry>,
     localized_submenus: Vec<(Submenu<Wry>, NativeMenuTitle)>,
+    localized_predefined: Vec<(PredefinedMenuItem<Wry>, NativeMenuLabel)>,
 }
 
 #[derive(Clone, Copy)]
@@ -224,6 +224,8 @@ impl NativeMenuLabel {
 pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
     let menu = Menu::default(app)?;
     let labels = NativeMenuLabels::english();
+    let mut localized_predefined = Vec::new();
+    collect_predefined_labels(&menu, &mut localized_predefined)?;
     let edit_menu = find_submenu(&menu, "Edit")?;
     let window_menu = find_submenu_by_id(&menu, WINDOW_SUBMENU_ID)?;
     let help_menu = find_submenu_by_id(&menu, HELP_SUBMENU_ID)?;
@@ -339,13 +341,13 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
     app.set_menu(menu.clone())?;
 
     Ok(NativeMenuState(Mutex::new(Some(NativeMenuItems {
-        menu,
         help,
         general_settings,
         provider_settings,
         model_settings,
         template_settings,
         localized_submenus,
+        localized_predefined,
     }))))
 }
 
@@ -367,10 +369,7 @@ pub(crate) fn sync(
             .set_text(escaped_label(title.text(&labels)))
             .map_err(|_| "Native menu could not be synchronized".to_owned())?;
     }
-    let mut localized_predefined = Vec::new();
-    collect_predefined_labels(&items.menu, &mut localized_predefined)
-        .map_err(|_| "Native menu could not be synchronized".to_owned())?;
-    for (item, label) in &localized_predefined {
+    for (item, label) in &items.localized_predefined {
         item.set_text(escaped_label(label.text(&labels)))
             .map_err(|_| "Native menu could not be synchronized".to_owned())?;
     }
@@ -589,6 +588,7 @@ mod tests {
         for (default_text, label) in [
             ("Paste and Match Style", NativeMenuLabel::PasteAndMatchStyle),
             ("Delete", NativeMenuLabel::Delete),
+            ("Select All", NativeMenuLabel::SelectAll),
             ("Show All", NativeMenuLabel::ShowAll),
             ("Bring All to Front", NativeMenuLabel::BringAllToFront),
             ("Actual Size", NativeMenuLabel::ActualSize),
@@ -606,6 +606,25 @@ mod tests {
             );
         }
         assert_eq!(NativeMenuLabel::from_default_text("My Document"), None);
+    }
+
+    #[test]
+    fn cached_predefined_labels_survive_locale_round_trips() {
+        let cached_label = NativeMenuLabel::from_default_text("Select All").unwrap();
+        let mut labels = NativeMenuLabels::english();
+
+        labels.select_all_action = "Alles auswählen".to_owned();
+        assert_eq!(cached_label.text(&labels), "Alles auswählen");
+        assert_eq!(
+            NativeMenuLabel::from_default_text(&labels.select_all_action),
+            None
+        );
+
+        labels.select_all_action = "Select All".to_owned();
+        assert_eq!(cached_label.text(&labels), "Select All");
+
+        labels.select_all_action = "［Seelect Aall］".to_owned();
+        assert_eq!(cached_label.text(&labels), "［Seelect Aall］");
     }
 
     #[test]
