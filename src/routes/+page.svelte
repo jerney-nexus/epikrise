@@ -267,7 +267,7 @@
           ready,
         );
         if (revision === nativeMenuSyncRevision) {
-          nativeMenuUnavailable = result.status === "error";
+          nativeMenuUnavailable = result.status === "error" || !ready;
         }
       } catch {
         if (revision === nativeMenuSyncRevision) nativeMenuUnavailable = true;

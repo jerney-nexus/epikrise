@@ -164,13 +164,19 @@ nativeMenuListenerFailureTest(
   "native menu listener failure keeps in-app buttons usable",
   async ({ page }) => {
     await page.goto("/");
-    await expect(
-      page.getByText(
-        "Native Settings and Help menus are unavailable. Use the in-app buttons.",
-      ),
-    ).toBeVisible();
+    const warning = page.getByText(
+      "Native Settings and Help menus are unavailable. Use the in-app buttons.",
+    );
+    await expect(warning).toBeVisible();
     await page.getByRole("button", { name: "General settings" }).click();
     await expect(page.getByRole("dialog", { name: "General settings" })).toBeVisible();
+    await page.locator("#interface-language").selectOption("de-CH");
+    await page.keyboard.press("Escape");
+    await expect(
+      page.getByText(
+        "Die nativen Menüs «Einstellungen» und «Hilfe» sind nicht verfügbar. Verwenden Sie die Schaltflächen in der App.",
+      ),
+    ).toBeVisible();
   },
 );
 

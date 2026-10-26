@@ -525,9 +525,11 @@ fn help_accelerator() -> Option<&'static str> {
 mod tests {
     use std::collections::HashSet;
 
-    use crate::{NativeMenuAction, NativeMenuRequest};
+    use crate::{NativeMenuAction, NativeMenuLabels, NativeMenuRequest};
 
-    use super::{escaped_label, help_accelerator, settings_accelerator};
+    use super::{NativeMenuState, escaped_label, sync};
+    #[cfg(not(target_os = "macos"))]
+    use super::{help_accelerator, settings_accelerator};
 
     #[test]
     fn native_menu_action_ids_are_unique_and_stable() {
@@ -567,6 +569,18 @@ mod tests {
         assert_eq!(
             escaped_label("Research & development"),
             "Research && development"
+        );
+    }
+
+    #[test]
+    fn syncing_an_unavailable_menu_reports_an_error() {
+        assert!(
+            sync(
+                &NativeMenuState::default(),
+                NativeMenuLabels::english(),
+                false
+            )
+            .is_err()
         );
     }
 

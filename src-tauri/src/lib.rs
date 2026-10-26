@@ -1734,7 +1734,8 @@ pub fn run() -> Result<(), tauri::Error> {
             builder.mount_events(app);
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                app.manage(native_menu::install(app.handle())?);
+                let native_menu_state = native_menu::install(app.handle()).unwrap_or_default();
+                app.manage(native_menu_state);
                 app.handle().on_menu_event(|app, event| {
                     native_menu::dispatch(app, event.id().as_ref());
                 });
