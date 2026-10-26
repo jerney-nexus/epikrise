@@ -66,6 +66,9 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install source tooling
+        run: pnpm install --frozen-lockfile
+
       - name: Validate release tag and commit
         shell: bash
         run: |
@@ -74,9 +77,6 @@ jobs:
           node scripts/release-artifacts.mjs validate --tag "$RELEASE_TAG"
           [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]]
           [[ "$(git rev-parse "${RELEASE_TAG}^{commit}")" == "$RELEASE_SHA" ]]
-
-      - name: Install source tooling
-        run: pnpm install --frozen-lockfile
 
       - name: Verify native build host and target
         env:
@@ -225,9 +225,18 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.15.0
+          install: false
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: pnpm
+
+      - name: Install source tooling
+        run: pnpm install --frozen-lockfile
 
       - uses: actions/download-artifact@v8
         with:

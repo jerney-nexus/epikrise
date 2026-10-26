@@ -1702,6 +1702,42 @@ describe("six-target desktop build tooling", () => {
         }),
       ).resolves.toBeUndefined();
 
+      const manifestPath = path.join(
+        outputRoot,
+        `Epikrise_${version}.0_x64.msix.manifest.json`,
+      );
+      const originalManifest = await readFile(manifestPath, "utf8");
+      const releaseManifest = JSON.parse(originalManifest);
+      for (const nativeBuild of [
+        {
+          ...releaseManifest.artifact_manifest.native_build,
+          target: "aarch64-pc-windows-msvc",
+        },
+        {
+          ...releaseManifest.artifact_manifest.native_build,
+          build_mode: "signed-release",
+        },
+      ]) {
+        await writeFile(
+          manifestPath,
+          JSON.stringify({
+            ...releaseManifest,
+            artifact_manifest: {
+              ...releaseManifest.artifact_manifest,
+              native_build: nativeBuild,
+            },
+          }),
+        );
+        await expect(
+          verifyStoreReleaseAssets(outputRoot, {
+            tag: `v${version}`,
+            commit,
+            requestId,
+          }),
+        ).rejects.toThrow("native build evidence does not match the diagnostic target");
+      }
+      await writeFile(manifestPath, originalManifest);
+
       await writeFile(
         path.join(outputRoot, `Epikrise_${version}.0_x64.msix`),
         "tampered-x64-msix",
@@ -2401,6 +2437,23 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain("gh release upload");
     expect(workflow).toContain("verify-store-release");
     expect(workflow).toContain("release.body.includes(marker)");
+
+    const buildJob = workflow.slice(
+      workflow.indexOf("  build:"),
+      workflow.indexOf("  publish:"),
+    );
+    expect(buildJob.indexOf("- name: Install source tooling")).toBeLessThan(
+      buildJob.indexOf("- name: Validate release tag and commit"),
+    );
+
+    const publishJob = workflow.slice(workflow.indexOf("  publish:"));
+    expect(publishJob).toContain("uses: pnpm/setup@v2");
+    expect(publishJob).toContain("cache: pnpm");
+    expect(publishJob.indexOf("run: pnpm install --frozen-lockfile")).toBeLessThan(
+      publishJob.indexOf(
+        "- name: Validate release and stage downloadable Store packages",
+      ),
+    );
   });
 
   it("stages all platform packages and builds a signed static updater manifest", async () => {

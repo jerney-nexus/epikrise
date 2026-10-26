@@ -591,6 +591,11 @@ export async function verifyStoreReleaseAssets(root, expected) {
       "Store release artifact integrity evidence is inconsistent.",
     );
     assertBuildProvenance(artifactManifest, expected.commit);
+    assert(
+      artifactManifest.native_build?.target === target.target &&
+        artifactManifest.native_build?.build_mode === "diagnostic",
+      "Store release native build evidence does not match the diagnostic target.",
+    );
     assertNativeBuildMetadata({
       runnerOS: artifactManifest.native_build?.runner_os,
       runnerArch: artifactManifest.native_build?.runner_arch,
