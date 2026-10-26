@@ -86,6 +86,8 @@
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=/home/vscode/.claude-host,type=bind,readonly,bind-create-src",
     // Writable homes: Copilot CLI and Claude Code keep runtime/session state here.
     "source=epikrise-copilot-home-${devcontainerId},target=/home/vscode/.copilot,type=volume",
-    "source=epikrise-claude-home-${devcontainerId},target=/home/vscode/.claude,type=volume"
+    "source=epikrise-claude-home-${devcontainerId},target=/home/vscode/.claude,type=volume",
+    // VS Code Agent Host indexes and per-session data; this does not migrate existing container data.
+    "source=epikrise-vscode-data-${devcontainerId},target=/home/vscode/.vscode-server/data,type=volume,volume-nocopy"
   ]
 }

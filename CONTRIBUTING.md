@@ -25,6 +25,21 @@ ships Rust, Node, the Tauri Linux dependencies and a lightweight desktop
 accessible through noVNC on port `6080`, so the app window can be viewed from
 a browser.
 
+The Dev Container uses a private Docker volume for VS Code Server data so
+Agent Host session indexes and per-session data survive container rebuilds.
+This volume is specific to the dev container and is not shared with the host's
+VS Code data. It can contain prompts, tool output, attachments, extension
+state, or credentials: do not put patient data, clinical text, or secrets in
+agent chats, and protect the Docker host and its backups accordingly. A Docker
+volume is not encryption or a backup.
+
+The volume mount does not migrate data from an existing container. Before
+adding the mount to a container with sessions to keep, export important chats
+using VS Code's **Chat: Export Chat...** command, or stop VS Code Server and
+back up and explicitly migrate the old data into the named volume. Do not copy
+live session databases. Verify that sessions reopen after a rebuild before
+removing any old copy.
+
 ### Local native setup
 
 Follow the steps for your operating system, then run the common commands below.
