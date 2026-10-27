@@ -1376,6 +1376,25 @@ fn render_pdf_pages_for_vision(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<(), tauri::Error> {
+    #[cfg(target_os = "linux")]
+    match linux_session_bus::relaunch_with_resolved_address() {
+        Ok(true) => std::process::exit(0),
+        Ok(false) => {}
+        Err(error) => {
+            let message = format!(
+                "Epikrise could not restart with the desktop session-bus address.\n\n{error}\n\nCredential listing may fail."
+            );
+            let _ = rfd::MessageDialog::new()
+                .set_title("Epikrise could not start")
+                .set_description(message)
+                .set_level(rfd::MessageLevel::Error)
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+            let setup_error: Box<dyn std::error::Error> = Box::new(error);
+            return Err(tauri::Error::Setup(setup_error.into()));
+        }
+    }
+
     let policy = LoadedPolicy::load().map_err(|error| {
         let message = format!(
             "Epikrise could not start because the administrator policy file (policy.toml) could not be loaded.\n\n{error}\n\nCorrect the policy file and restart Epikrise."
@@ -1943,3 +1962,5 @@ author = "Tests"
         pdf
     }
 }
+#[cfg(target_os = "linux")]
+mod linux_session_bus;

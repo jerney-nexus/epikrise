@@ -56,27 +56,47 @@ function readOptionalFile(filePath, readFile) {
   }
 }
 
-/** @param {string} filePath */
-function isUnixSocket(filePath) {
+/**
+ * @param {string} procContents
+ * @param {string} socketName
+ */
+function hasListeningUnixSocket(procContents, socketName) {
+  return procContents.split("\n").some((line) => {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length < 8 || (Number.parseInt(fields[3], 16) & 0x00010000) === 0) {
+      return false;
+    }
+
+    const path = fields
+      .slice(7)
+      .join(" ")
+      .replace(/\\([0-7]{3})/g, (_match, octal) =>
+        String.fromCharCode(Number.parseInt(octal, 8)),
+      );
+    return path === socketName;
+  });
+}
+
+/**
+ * @param {string} socketName
+ * @param {(filePath: string) => string} readFile
+ */
+function isListeningUnixSocket(socketName, readFile) {
+  const contents = readOptionalFile("/proc/net/unix", readFile);
+  return contents ? hasListeningUnixSocket(contents, socketName) : false;
+}
+
+/**
+ * @param {string} filePath
+ * @param {(filePath: string) => string} readFile
+ */
+function isUnixSocket(filePath, readFile) {
   try {
-    return statSync(filePath).isSocket();
+    return statSync(filePath).isSocket() && isListeningUnixSocket(filePath, readFile);
   } catch (error) {
     if (isMissingFileError(error)) return false;
     throw error;
   }
-}
-
-/** @param {string} socketName
- * @param {(filePath: string) => string} readFile
- */
-function isUnixAbstractSocket(socketName, readFile) {
-  const sockets = readOptionalFile("/proc/net/unix", readFile);
-  if (!sockets) return false;
-
-  return sockets.split("\n").some((line) => {
-    const entry = line.match(/^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(.*)$/);
-    return entry?.[1] === `@${socketName}`;
-  });
 }
 
 /**
@@ -91,8 +111,7 @@ export function resolveLinuxSessionBusAddress(
     homeDirectory = env.HOME || homedir(),
     machineIdPath = "/etc/machine-id",
     readFile = (filePath) => readFileSync(filePath, "utf8"),
-    isSocketPath = isUnixSocket,
-    isAbstractSocketName = (socketName) => isUnixAbstractSocket(socketName, readFile),
+    isSocketPath = (filePath) => isUnixSocket(filePath, readFile),
   } = {},
 ) {
   if (!env.DBUS_SESSION_BUS_ADDRESS?.startsWith("autolaunch:")) return undefined;
@@ -130,7 +149,7 @@ export function resolveLinuxSessionBusAddress(
   const isLiveSocket =
     socketMatch[1] === "path"
       ? isSocketPath(socketName)
-      : isAbstractSocketName(socketName);
+      : isListeningUnixSocket(`@${socketName}`, readFile);
   if (!isLiveSocket) return undefined;
 
   return address;

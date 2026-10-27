@@ -12,6 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -1879,6 +1880,52 @@ describe("native Cargo host target guard", () => {
         ),
       ).toBe(address);
     } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not use a socket path without a listening D-Bus endpoint", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-stale-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const socketPath = path.join(directory, "session-bus");
+    const address = `unix:path=${socketPath},guid=0123456789abcdef`;
+    const server = createServer();
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(socketPath, resolve);
+      });
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='${address}'\nDBUS_SESSION_BUS_PID=123\n`,
+      );
+
+      expect(
+        resolveLinuxSessionBusAddress(
+          {
+            DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+            DISPLAY: ":1.0",
+            HOME: homeDirectory,
+          },
+          {
+            machineIdPath,
+            readFile: (filePath) =>
+              filePath === "/proc/net/unix"
+                ? `Num RefCount Protocol Flags Type St Inode Path\n0000000000000000: 00000002 00000000 00000000 0001 01 1234 ${socketPath}\n`
+                : readFileSync(filePath, "utf8"),
+          },
+        ),
+      ).toBeUndefined();
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
       await rm(directory, { recursive: true, force: true });
     }
   });
