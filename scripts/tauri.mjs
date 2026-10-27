@@ -60,30 +60,43 @@ function runTauriWithGitBash(
 
 /**
  * @param {Spawn} spawn
+ * @param {NodeJS.ProcessEnv} env
  */
-function detectWindowsArchitecture(spawn) {
-  const result = spawn(
-    "powershell.exe",
-    [
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      "[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture",
-    ],
-    { encoding: "utf8", windowsHide: true },
-  );
-  if (result.error || result.status !== 0) {
-    console.error(
-      `Could not determine the Windows host architecture${result.error ? `: ${result.error.message}` : "."}`,
+function detectWindowsArchitecture(spawn, env) {
+  let architecture = (env.EPIKRISE_RUNNER_ARCH || env.PROCESSOR_ARCHITEW6432 || "")
+    .trim()
+    .toLowerCase();
+
+  if (!architecture) {
+    const result = spawn(
+      "powershell.exe",
+      [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture",
+      ],
+      { encoding: "utf8", windowsHide: true },
     );
+    if (!result.error && result.status === 0) {
+      architecture =
+        typeof result.stdout === "string"
+          ? result.stdout.trim().toLowerCase()
+          : result.stdout?.toString("utf8").trim().toLowerCase() || "";
+    }
+  }
+
+  if (!architecture) {
+    architecture = (env.RUNNER_ARCH || env.PROCESSOR_ARCHITECTURE || "")
+      .trim()
+      .toLowerCase();
+  }
+  if (!architecture) {
+    console.error("Could not determine the Windows host architecture.");
     return undefined;
   }
 
-  const architecture =
-    typeof result.stdout === "string"
-      ? result.stdout.trim().toLowerCase()
-      : result.stdout?.toString("utf8").trim().toLowerCase();
   switch (architecture) {
     case "x64":
     case "amd64":
@@ -113,7 +126,7 @@ function runTauriWithWindowsEnvironment(
     return 1;
   }
 
-  const architecture = detectWindowsArchitecture(spawn);
+  const architecture = detectWindowsArchitecture(spawn, env);
   if (!architecture) {
     return 1;
   }

@@ -1767,7 +1767,14 @@ describe("native Cargo host target guard", () => {
   it("initializes MSVC for regular Windows-shell Tauri invocations without losing arguments", () => {
     const args = ["build", "--target", "aarch64-pc-windows-msvc", "--config", "a & b"];
     const gitBashPath = "C:\\Program Files\\Git\\bin\\bash.exe";
-    const env: NodeJS.ProcessEnv = { ...process.env, ComSpec: "cmd.exe" };
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      ComSpec: "cmd.exe",
+      EPIKRISE_RUNNER_ARCH: "",
+      PROCESSOR_ARCHITEW6432: "",
+      RUNNER_ARCH: "",
+      PROCESSOR_ARCHITECTURE: "",
+    };
     delete env.EPIKRISE_NATIVE_WINDOWS_ENV_INITIALIZED;
     delete env.VSCMD_ARG_HOST_ARCH;
     delete env.VSCMD_ARG_TGT_ARCH;
@@ -1813,6 +1820,44 @@ describe("native Cargo host target guard", () => {
     );
     expect(invocations[1].options.windowsVerbatimArguments).toBe(true);
     expect(invocations[1].options.env?.VSCMD_ARG_HOST_ARCH).toBeUndefined();
+  });
+
+  it("prefers PROCESSOR_ARCHITEW6432 over emulated PowerShell architecture", () => {
+    const args = ["build", "--target", "aarch64-pc-windows-msvc"];
+    const invocations: { command: string; args: string[] }[] = [];
+
+    const status = runTauri(args, {
+      platform: "win32",
+      env: {
+        ...process.env,
+        ComSpec: "cmd.exe",
+        EPIKRISE_RUNNER_ARCH: "",
+        PROCESSOR_ARCHITEW6432: "ARM64",
+        PROCESSOR_ARCHITECTURE: "AMD64",
+        RUNNER_ARCH: "X64",
+        VSCMD_ARG_HOST_ARCH: "x64",
+      },
+      resolveGitBash: () => "C:\\Program Files\\Git\\bin\\bash.exe",
+      spawn: (command, spawnArgs) => {
+        invocations.push({ command, args: spawnArgs });
+        if (command === "powershell.exe") {
+          return { status: 0, stdout: "X64\r\n" };
+        }
+        return { status: 0 };
+      },
+    });
+
+    expect(status).toBe(0);
+    expect(invocations).toHaveLength(1);
+    expect(invocations[0]).toMatchObject({
+      command: "cmd.exe",
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        `call "${path.join(repoRoot, "scripts/build-native-windows.cmd")}" arm64 tauri`,
+      ],
+    });
   });
 
   it("reuses the initialized MSVC environment for nested Tauri commands", () => {
