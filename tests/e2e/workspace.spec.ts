@@ -704,6 +704,33 @@ test("invalidates reviewed output after a template change", async ({ page }) => 
   await expect(review).not.toBeChecked();
 });
 
+test("restores workspace focus when template changes disable the dialog opener", async ({
+  page,
+}) => {
+  await completeSyntheticGeneration(page, "Synthetic reviewed template output.");
+  const copyButton = page.getByRole("button", { name: "Copy to medical record" });
+  await page
+    .getByRole("checkbox", {
+      name: "I have reviewed the output and take responsibility.",
+    })
+    .check();
+  await copyButton.focus();
+  await expect(copyButton).toBeFocused();
+
+  await emitNativeMenuAction(page, "templateSettings");
+  const dialog = page.getByRole("dialog", { name: "Template settings" });
+  await expect(dialog).toBeVisible();
+  await page.locator("#template-section-summary").uncheck();
+  await expect(copyButton).toBeDisabled();
+  await dialog.getByRole("button", { name: "Close template settings" }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("dialog[open]")).toHaveCount(0);
+  await expect(
+    page.getByRole("textbox", { name: "Anonymized clinical material" }),
+  ).toBeFocused();
+});
+
 test("keeps template settings open when the file picker is canceled", async ({
   page,
 }) => {

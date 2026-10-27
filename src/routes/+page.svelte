@@ -339,11 +339,22 @@
   }
 
   function restoreOrdinaryDialogFocus() {
-    if (switchableDialogs().some((dialog) => dialog.open)) return;
-    const opener = ordinaryDialogOpener;
-    ordinaryDialogOpener = null;
-    if (opener?.isConnected) opener.focus();
-    else document.querySelector<HTMLElement>(".work-area")?.focus();
+    requestAnimationFrame(() => {
+      if (switchableDialogs().some((dialog) => dialog.open)) return;
+      const opener = ordinaryDialogOpener;
+      ordinaryDialogOpener = null;
+      if (opener?.isConnected) opener.focus();
+      if (!opener?.isConnected || document.activeElement !== opener) {
+        const workspace = document.querySelector<HTMLElement>(".work-area");
+        workspace?.focus();
+        if (workspace && !workspace.contains(document.activeElement)) {
+          const target =
+            workspace.querySelector<HTMLElement>("textarea:not([disabled])") ??
+            workspace.querySelector<HTMLElement>("button:not([disabled])");
+          target?.focus();
+        }
+      }
+    });
   }
 
   function handleNativeMenuAction(action: NativeMenuAction) {
