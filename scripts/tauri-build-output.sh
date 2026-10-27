@@ -98,9 +98,14 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ "$build_profile" == "dev" ]]; then
-  build_profile="debug"
-fi
+case "$build_profile" in
+  dev|test)
+    build_profile="debug"
+    ;;
+  bench)
+    build_profile="release"
+    ;;
+esac
 
 target_dir="$repo_root/src-tauri/target/host-$host_target"
 if [[ -n "$build_target" ]]; then

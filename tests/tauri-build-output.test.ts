@@ -157,6 +157,22 @@ describe("Tauri build output path", () => {
       "",
     ],
     [
+      "forwarded test profile",
+      "x86_64-unknown-linux-gnu",
+      ["build", "--", "--profile", "test"],
+      undefined,
+      "debug",
+      "",
+    ],
+    [
+      "forwarded bench profile",
+      "x86_64-unknown-linux-gnu",
+      ["build", "--", "--profile", "bench"],
+      undefined,
+      "release",
+      "",
+    ],
+    [
       "forwarded release profile",
       "x86_64-unknown-linux-gnu",
       ["build", "--", "--profile", "release"],
