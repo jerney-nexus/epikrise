@@ -1,3 +1,4 @@
+use std::os::unix::{ffi::OsStrExt, fs::FileTypeExt};
 use std::{env, fs, io, os::unix::process::CommandExt, path::Path, process::Command};
 
 const SESSION_BUS_ADDRESS: &str = "DBUS_SESSION_BUS_ADDRESS";
@@ -66,31 +67,50 @@ fn resolve_address_from_record(record: &str) -> Option<String> {
 }
 
 fn is_listening_unix_socket(socket_type: &str, socket_name: &[u8]) -> bool {
-    let Ok(proc_contents) = fs::read_to_string("/proc/net/unix") else {
+    if socket_type == "path" {
+        let path = Path::new(std::ffi::OsStr::from_bytes(socket_name));
+        if !fs::metadata(path).is_ok_and(|metadata| metadata.file_type().is_socket()) {
+            return false;
+        }
+    }
+
+    let Ok(proc_contents) = fs::read("/proc/net/unix") else {
         return false;
     };
 
+    contains_listening_unix_socket(&proc_contents, socket_type, socket_name)
+}
+
+fn contains_listening_unix_socket(
+    proc_contents: &[u8],
+    socket_type: &str,
+    socket_name: &[u8],
+) -> bool {
     proc_contents
-        .lines()
+        .split(|byte| *byte == b'\n')
         .any(|line| matches_socket_entry(line, socket_type, socket_name))
 }
 
-fn matches_socket_entry(line: &str, socket_type: &str, socket_name: &[u8]) -> bool {
+fn matches_socket_entry(line: &[u8], socket_type: &str, socket_name: &[u8]) -> bool {
     let mut remaining = line;
     let mut flags = None;
     for column in 0..7 {
-        remaining = remaining.trim_start();
-        let Some(separator) = remaining.find(char::is_whitespace) else {
+        while remaining.first().is_some_and(u8::is_ascii_whitespace) {
+            remaining = &remaining[1..];
+        }
+        let Some(separator) = remaining.iter().position(u8::is_ascii_whitespace) else {
             return false;
         };
         let (field, rest) = remaining.split_at(separator);
         if column == 3 {
-            flags = u32::from_str_radix(field, 16).ok();
+            flags = std::str::from_utf8(field)
+                .ok()
+                .and_then(|value| u32::from_str_radix(value, 16).ok());
         }
         remaining = rest;
     }
 
-    let Some(path) = remaining.strip_prefix(' ') else {
+    let Some(path) = remaining.strip_prefix(b" ") else {
         return false;
     };
     if flags.is_none_or(|value| value & 0x0001_0000 == 0) {
@@ -98,9 +118,8 @@ fn matches_socket_entry(line: &str, socket_type: &str, socket_name: &[u8]) -> bo
     }
 
     match socket_type {
-        "path" => path.as_bytes() == socket_name,
+        "path" => path == socket_name,
         "abstract" => path
-            .as_bytes()
             .strip_prefix(b"@")
             .is_some_and(|name| name == socket_name),
         _ => false,
@@ -131,13 +150,16 @@ mod tests {
         fs,
         os::{
             linux::net::SocketAddrExt,
-            unix::net::{SocketAddr, UnixListener},
+            unix::{
+                ffi::OsStrExt,
+                net::{SocketAddr, UnixListener},
+            },
         },
     };
 
     use tempfile::tempdir;
 
-    use super::resolve_address_from_record;
+    use super::{contains_listening_unix_socket, resolve_address_from_record};
 
     #[test]
     fn resolves_a_live_socket_with_escaped_spaces_and_backslashes() {
@@ -167,6 +189,24 @@ mod tests {
     }
 
     #[test]
+    fn rejects_a_unlinked_live_socket_path() {
+        let directory = tempdir().expect("temporary directory");
+        let socket_path = directory.path().join("unlinked-bus");
+        let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
+        fs::remove_file(&socket_path).expect("unlink session bus socket");
+        let address = format!("unix:path={},guid=0123456789abcdef", socket_path.display());
+        let record = format!("DBUS_SESSION_BUS_ADDRESS='{address}'\n");
+        let proc_contents = fs::read("/proc/net/unix").expect("Unix socket table");
+
+        assert!(contains_listening_unix_socket(
+            &proc_contents,
+            "path",
+            socket_path.as_os_str().as_bytes()
+        ));
+        assert_eq!(resolve_address_from_record(&record), None);
+    }
+
+    #[test]
     fn resolves_a_live_abstract_socket() {
         let socket_name = b"epikrise-session-bus-test";
         let address = SocketAddr::from_abstract_name(socket_name).expect("abstract socket address");
@@ -177,5 +217,18 @@ mod tests {
         );
 
         assert!(resolve_address_from_record(&record).is_some());
+    }
+
+    #[test]
+    fn ignores_non_utf8_socket_paths_when_searching_the_kernel_table() {
+        let proc_contents = b"Num RefCount Protocol Flags Type St Inode Path\n\
+0000000000000001: 00000002 00000000 00010000 0001 01 1234 /tmp/unrelated-\xff\n\
+0000000000000002: 00000002 00000000 00010000 0001 01 1235 /run/dbus/session\n";
+
+        assert!(contains_listening_unix_socket(
+            proc_contents,
+            "path",
+            b"/run/dbus/session"
+        ));
     }
 }
