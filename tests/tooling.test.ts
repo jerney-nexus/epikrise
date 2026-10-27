@@ -1618,6 +1618,7 @@ describe("six-target desktop build tooling", () => {
     const version = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
     ).version;
+    const msixVersion = deriveReleaseVersions(version).msixIdentityVersion;
     const targets = [
       {
         architecture: "x64",
@@ -1641,7 +1642,7 @@ describe("six-target desktop build tooling", () => {
         const bundleRoot = path.join(directory, `${target.architecture}-bundle`);
         await mkdir(bundleRoot, { recursive: true });
         await writeFile(
-          path.join(bundleRoot, `Epikrise_${version}.0_${target.architecture}.msix`),
+          path.join(bundleRoot, `Epikrise_${msixVersion}_${target.architecture}.msix`),
           target.content,
         );
         await stagePackages({
@@ -1668,16 +1669,16 @@ describe("six-target desktop build tooling", () => {
       });
       await expect(readdir(outputRoot)).resolves.toEqual(
         expect.arrayContaining([
-          `Epikrise_${version}.0_x64.msix`,
-          `Epikrise_${version}.0_x64.msix.manifest.json`,
-          `Epikrise_${version}.0_arm64.msix`,
-          `Epikrise_${version}.0_arm64.msix.manifest.json`,
+          `Epikrise_${msixVersion}_x64.msix`,
+          `Epikrise_${msixVersion}_x64.msix.manifest.json`,
+          `Epikrise_${msixVersion}_arm64.msix`,
+          `Epikrise_${msixVersion}_arm64.msix.manifest.json`,
         ]),
       );
 
       const manifest = JSON.parse(
         await readFile(
-          path.join(outputRoot, `Epikrise_${version}.0_x64.msix.manifest.json`),
+          path.join(outputRoot, `Epikrise_${msixVersion}_x64.msix.manifest.json`),
           "utf8",
         ),
       );
@@ -1686,12 +1687,12 @@ describe("six-target desktop build tooling", () => {
         commit,
         architecture: "x64",
         package: {
-          file: `Epikrise_${version}.0_x64.msix`,
+          file: `Epikrise_${msixVersion}_x64.msix`,
           sha256: createHash("sha256").update("unsigned-x64-msix").digest("hex"),
         },
         artifact_manifest: {
           package_family: "store-msix",
-          files: [{ path: `Epikrise_${version}.0_x64.msix` }],
+          files: [{ path: `Epikrise_${msixVersion}_x64.msix` }],
         },
       });
       await expect(
@@ -1704,7 +1705,7 @@ describe("six-target desktop build tooling", () => {
 
       const manifestPath = path.join(
         outputRoot,
-        `Epikrise_${version}.0_x64.msix.manifest.json`,
+        `Epikrise_${msixVersion}_x64.msix.manifest.json`,
       );
       const originalManifest = await readFile(manifestPath, "utf8");
       const releaseManifest = JSON.parse(originalManifest);
@@ -1739,7 +1740,7 @@ describe("six-target desktop build tooling", () => {
       await writeFile(manifestPath, originalManifest);
 
       await writeFile(
-        path.join(outputRoot, `Epikrise_${version}.0_x64.msix`),
+        path.join(outputRoot, `Epikrise_${msixVersion}_x64.msix`),
         "tampered-x64-msix",
       );
       await expect(
