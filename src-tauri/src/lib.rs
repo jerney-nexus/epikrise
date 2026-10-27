@@ -26,6 +26,8 @@ use epikrise_llm::{
 };
 use sha2::{Digest, Sha256};
 
+#[cfg(target_os = "linux")]
+mod linux_session_bus;
 mod policy;
 use policy::{LoadedPolicy, PolicyState, PolicyStatus, egress_key};
 mod updater;
@@ -1961,5 +1963,3 @@ author = "Tests"
         pdf
     }
 }
-#[cfg(target_os = "linux")]
-mod linux_session_bus;
