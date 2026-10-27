@@ -1377,9 +1377,8 @@ fn render_pdf_pages_for_vision(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> Result<(), tauri::Error> {
     #[cfg(target_os = "linux")]
-    match linux_session_bus::relaunch_with_resolved_address() {
-        Ok(true) => std::process::exit(0),
-        Ok(false) => {}
+    match linux_session_bus::exec_with_resolved_address() {
+        Ok(()) => {}
         Err(error) => {
             let message = format!(
                 "Epikrise could not restart with the desktop session-bus address.\n\n{error}\n\nCredential listing may fail."

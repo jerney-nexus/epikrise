@@ -62,18 +62,9 @@ function readOptionalFile(filePath, readFile) {
  */
 function hasListeningUnixSocket(procContents, socketName) {
   return procContents.split("\n").some((line) => {
-    const fields = line.trim().split(/\s+/);
-    if (fields.length < 8 || (Number.parseInt(fields[3], 16) & 0x00010000) === 0) {
-      return false;
-    }
-
-    const path = fields
-      .slice(7)
-      .join(" ")
-      .replace(/\\([0-7]{3})/g, (_match, octal) =>
-        String.fromCharCode(Number.parseInt(octal, 8)),
-      );
-    return path === socketName;
+    const entry = line.match(/^\s*\S+\s+\S+\s+\S+\s+(\S+)\s+\S+\s+\S+\s+\S+ (.*)$/);
+    if (!entry || (Number.parseInt(entry[1], 16) & 0x00010000) === 0) return false;
+    return entry[2] === socketName;
   });
 }
 

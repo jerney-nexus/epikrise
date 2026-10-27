@@ -1,29 +1,17 @@
-use std::{
-    env, fs, io,
-    os::{
-        linux::net::SocketAddrExt,
-        unix::{
-            ffi::OsStringExt,
-            net::{SocketAddr, UnixStream},
-        },
-    },
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{env, fs, io, os::unix::process::CommandExt, path::Path, process::Command};
 
 const SESSION_BUS_ADDRESS: &str = "DBUS_SESSION_BUS_ADDRESS";
 
-pub(crate) fn relaunch_with_resolved_address() -> io::Result<bool> {
+pub(crate) fn exec_with_resolved_address() -> io::Result<()> {
     let Some(address) = resolve_linux_session_bus_address() else {
-        return Ok(false);
+        return Ok(());
     };
     let executable = env::current_exe()?;
     let mut command = Command::new(executable);
     command
         .args(env::args_os().skip(1))
         .env(SESSION_BUS_ADDRESS, address);
-    command.spawn()?;
-    Ok(true)
+    Err(command.exec())
 }
 
 fn resolve_linux_session_bus_address() -> Option<String> {
@@ -72,18 +60,51 @@ fn resolve_address_from_record(record: &str) -> Option<String> {
         .next()?
         .split_once('=')?;
     let socket_name = decode_percent_encoding(encoded_name)?;
-    let reachable = match socket_type {
-        "path" => {
-            let path = PathBuf::from(std::ffi::OsString::from_vec(socket_name));
-            UnixStream::connect(path).is_ok()
-        }
-        "abstract" => SocketAddr::from_abstract_name(&socket_name)
-            .and_then(|address| UnixStream::connect_addr(&address))
-            .is_ok(),
-        _ => false,
+    let listening = is_listening_unix_socket(socket_type, &socket_name);
+
+    listening.then(|| address.to_owned())
+}
+
+fn is_listening_unix_socket(socket_type: &str, socket_name: &[u8]) -> bool {
+    let Ok(proc_contents) = fs::read_to_string("/proc/net/unix") else {
+        return false;
     };
 
-    reachable.then(|| address.to_owned())
+    proc_contents
+        .lines()
+        .any(|line| matches_socket_entry(line, socket_type, socket_name))
+}
+
+fn matches_socket_entry(line: &str, socket_type: &str, socket_name: &[u8]) -> bool {
+    let mut remaining = line;
+    let mut flags = None;
+    for column in 0..7 {
+        remaining = remaining.trim_start();
+        let Some(separator) = remaining.find(char::is_whitespace) else {
+            return false;
+        };
+        let (field, rest) = remaining.split_at(separator);
+        if column == 3 {
+            flags = u32::from_str_radix(field, 16).ok();
+        }
+        remaining = rest;
+    }
+
+    let Some(path) = remaining.strip_prefix(' ') else {
+        return false;
+    };
+    if flags.is_none_or(|value| value & 0x0001_0000 == 0) {
+        return false;
+    }
+
+    match socket_type {
+        "path" => path.as_bytes() == socket_name,
+        "abstract" => path
+            .as_bytes()
+            .strip_prefix(b"@")
+            .is_some_and(|name| name == socket_name),
+        _ => false,
+    }
 }
 
 fn decode_percent_encoding(value: &str) -> Option<Vec<u8>> {
@@ -119,9 +140,9 @@ mod tests {
     use super::resolve_address_from_record;
 
     #[test]
-    fn resolves_a_reachable_percent_escaped_socket_path() {
+    fn resolves_a_live_socket_with_escaped_spaces_and_backslashes() {
         let directory = tempdir().expect("temporary directory");
-        let socket_directory = directory.path().join("session bus");
+        let socket_directory = directory.path().join("session  bus\\123");
         fs::create_dir(&socket_directory).expect("socket directory");
         let socket_path = socket_directory.join("bus");
         let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
@@ -146,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn resolves_a_reachable_abstract_socket() {
+    fn resolves_a_live_abstract_socket() {
         let socket_name = b"epikrise-session-bus-test";
         let address = SocketAddr::from_abstract_name(socket_name).expect("abstract socket address");
         let _listener = UnixListener::bind_addr(&address).expect("session bus listener");
