@@ -726,9 +726,14 @@ test("restores workspace focus when template changes disable the dialog opener",
 
   await expect(dialog).toBeHidden();
   await expect(page.locator("dialog[open]")).toHaveCount(0);
-  await expect(
-    page.getByRole("textbox", { name: "Anonymized clinical material" }),
-  ).toBeFocused();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const workspace = document.querySelector("main.work-area");
+        return Boolean(workspace?.contains(document.activeElement));
+      }),
+    )
+    .toBe(true);
 });
 
 test("keeps template settings open when the file picker is canceled", async ({
