@@ -31,6 +31,15 @@ const restrictedPolicy: PolicyStatus = {
   permissionsWarning: false,
 };
 const policyTest = test.extend({ policy: restrictedPolicy });
+const providerRestrictedPolicyTest = test.extend({
+  policy: {
+    ...restrictedPolicy,
+    localOnly: false,
+    allowedProviders: ["gemini", "anthropic"],
+    allowedModels: [{ adapter: "anthropic", model: "approved-model" }],
+    fixedEndpoint: null,
+  },
+});
 const creationRestrictedTest = test.extend({
   policy: {
     ...restrictedPolicy,
@@ -1181,6 +1190,22 @@ policyTest("shows administrator-managed settings as restricted", async ({ page }
   ).toBeDisabled();
   await expect(page.locator("#template-section-summary")).toBeDisabled();
 });
+
+providerRestrictedPolicyTest(
+  "selects the first available provider when policy excludes the default",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Provider settings" }).click();
+
+    await expect(page.locator("#active-adapter")).toHaveValue("anthropic");
+    await expect(
+      page.getByRole("option", { name: "Gemini", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole("option", { name: "Ollama", exact: true }),
+    ).toBeDisabled();
+  },
+);
 
 creationRestrictedTest(
   "allows deletion when creation is policy-restricted",
