@@ -949,6 +949,67 @@ describe("Linux Windows OCR cross-build toolchain", () => {
     },
   );
 
+  it("patches zlib's ELF version-script condition for Windows idempotently", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-zlib-cmake-"));
+    const sourceDirectory = path.join(directory, "zlib");
+    const cmakeFile = path.join(sourceDirectory, "CMakeLists.txt");
+    const patchScript = path.join(repoRoot, "scripts/patch-zlib-windows-cmake.sh");
+    const buildScript = await readFile(
+      path.join(repoRoot, "scripts/build-windows-ocr.sh"),
+      "utf8",
+    );
+    const original = [
+      "if(UNIX)",
+      '  set_target_properties(zlib PROPERTIES LINK_FLAGS "-Wl,--version-script,zlib.map")',
+      "endif()",
+      "",
+    ].join("\n");
+    const patched = original.replace(
+      "if(UNIX)",
+      'if(UNIX AND NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")',
+    );
+
+    try {
+      await mkdir(sourceDirectory, { recursive: true });
+      expect(buildScript).toContain(
+        'bash "$repo_root/scripts/patch-zlib-windows-cmake.sh" "$zlib_source"',
+      );
+      await writeFile(cmakeFile, original, "utf8");
+
+      await execFile("bash", [patchScript, sourceDirectory]);
+      await expect(readFile(cmakeFile, "utf8")).resolves.toBe(patched);
+
+      await execFile("bash", [patchScript, sourceDirectory]);
+      await expect(readFile(cmakeFile, "utf8")).resolves.toBe(patched);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("fails when zlib's expected platform condition changes", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-zlib-cmake-"));
+    const sourceDirectory = path.join(directory, "zlib");
+    const patchScript = path.join(repoRoot, "scripts/patch-zlib-windows-cmake.sh");
+
+    try {
+      await mkdir(sourceDirectory, { recursive: true });
+      await writeFile(
+        path.join(sourceDirectory, "CMakeLists.txt"),
+        "if(UNIX)\nif(UNIX)\n",
+        "utf8",
+      );
+
+      await expect(
+        execFile("bash", [patchScript, sourceDirectory]),
+      ).rejects.toMatchObject({
+        code: 1,
+        stderr: expect.stringContaining("Unexpected zlib CMake platform condition"),
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not enter the cross-builder from CI or without manual NSIS context", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-ocr-guard-"));
     const scriptsDir = path.join(directory, "scripts");

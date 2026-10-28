@@ -134,6 +134,7 @@ zlib_source="$(extract_source "$zlib_archive_path" "zlib-1.3.1")"
 png_source="$(extract_source "$png_archive_path" "libpng-1.6.50")"
 lept_source="$(extract_source "$lept_archive_path" "leptonica-1.85.0")"
 tesseract_source="$(extract_source "$tesseract_archive_path" "tesseract-5.5.0")"
+bash "$repo_root/scripts/patch-zlib-windows-cmake.sh" "$zlib_source"
 
 cross_args=(
   -G Ninja
