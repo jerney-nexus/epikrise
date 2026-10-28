@@ -168,7 +168,9 @@ export async function verifyLinuxRuntimeDependencies(target, binaryPaths) {
   for (const binaryPath of binaryPaths) {
     let output;
     try {
-      const result = await execFile("ldd", [binaryPath]);
+      const result = await execFile("ldd", [binaryPath], {
+        env: { ...process.env, LC_ALL: "C" },
+      });
       output = `${result.stdout}\n${result.stderr}`;
     } catch (error) {
       output = getChildProcessOutput(error);

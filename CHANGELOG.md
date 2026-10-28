@@ -131,6 +131,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Fixed
 
+- Linux OCR builds and runtime checks now parse `ldd` output consistently,
+  regardless of the developer's locale.
 - Updated vulnerable frontend dependencies to patched releases, including
   DOMPurify, markdown-it, Vite, happy-dom, undici, and Vitest; standardized
   the project, container, and CI on pnpm 12.15.0.
