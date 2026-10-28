@@ -1194,6 +1194,7 @@
     modelsForProfile = "";
     connectionState = "idle";
     connectionMessage = "";
+    selectAllowedModelForAdapter();
   }
 
   function handleDialogKeydown(event: KeyboardEvent) {
