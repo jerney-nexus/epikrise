@@ -593,29 +593,24 @@ test("imports a valid synthetic file and rejects an oversized file locally", asy
 }) => {
   await page.goto("/");
   const fileInput = page.getByLabel("Choose clinical files");
-  const acceptedTypes = (await fileInput.getAttribute("accept"))
-    ?.split(",")
-    .map((type) => type.trim());
-  expect(acceptedTypes).toEqual(
-    expect.arrayContaining([
-      "text/plain",
-      "text/markdown",
-      "text/csv",
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "application/rtf",
-      "text/html",
-      "image/png",
-      "image/jpeg",
-    ]),
-  );
-  await fileInput.setInputFiles({
-    name: "synthetic-input.txt",
-    mimeType: "text/plain",
-    buffer: Buffer.from("Synthetic file contents only."),
-  });
+  await expect(fileInput).not.toHaveAttribute("accept");
+  await fileInput.setInputFiles([
+    {
+      name: "synthetic-input.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Synthetic file contents only."),
+    },
+    {
+      name: "synthetic-input.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4\nSynthetic test fixture."),
+    },
+  ]);
   await expect(page.getByText("synthetic-input.txt")).toBeVisible();
+  await expect(page.getByText("synthetic-input.pdf")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Add files or screenshots" }),
+  ).toBeEnabled();
   const fileCommand = await page.evaluate(() =>
     window.__EPIKRISE_TEST__?.commands.find(
       ({ command }) => command === "extract_file",
@@ -637,7 +632,11 @@ test("imports a valid synthetic file and rejects an oversized file locally", asy
       ({ command }) => command === "extract_file",
     ),
   );
-  expect(fileCommands).toHaveLength(1);
+  expect(fileCommands).toHaveLength(2);
+  expect(fileCommands?.map(({ args }) => args.fileName)).toEqual([
+    "synthetic-input.txt",
+    "synthetic-input.pdf",
+  ]);
 });
 
 test("keeps copying disabled when review acknowledgement fails", async ({ page }) => {
