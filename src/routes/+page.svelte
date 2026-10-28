@@ -1697,10 +1697,8 @@
     }
     const detectedLocale = navigator.languages[0] ?? navigator.language;
     const locale = initializeLocale(storedLocale, detectedLocale);
-    void tick().then(() => {
-      uiLocale = locale;
-      document.documentElement.lang = locale;
-    });
+    uiLocale = locale;
+    document.documentElement.lang = locale;
     desktopAvailable = isTauri();
     if (!desktopAvailable) return;
     void commands.getPolicyStatus().then((status) => {

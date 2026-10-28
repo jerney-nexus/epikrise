@@ -13,6 +13,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   pairs, including emoji.
 - Native desktop Settings and Help menus on macOS, Windows, and Linux open the
   existing localized dialogs and retain the in-app buttons as a fallback.
+  Linux places Settings between Window and Help and enables the standard
+  Minimize, Maximize, and Close Window actions.
   On Windows, Settings appears between Window and Help.
 - Native menu titles and standard action labels now follow the selected English,
   de-CH, or pseudo locale.

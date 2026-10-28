@@ -16,6 +16,12 @@ const GENERAL_SETTINGS_ID: &str = "native-settings-general";
 const PROVIDER_SETTINGS_ID: &str = "native-settings-provider";
 const MODEL_SETTINGS_ID: &str = "native-settings-model";
 const TEMPLATE_SETTINGS_ID: &str = "native-settings-template";
+#[cfg(target_os = "linux")]
+const MINIMIZE_WINDOW_ID: &str = "native-window-minimize";
+#[cfg(target_os = "linux")]
+const MAXIMIZE_WINDOW_ID: &str = "native-window-maximize";
+#[cfg(target_os = "linux")]
+const CLOSE_WINDOW_ID: &str = "native-window-close";
 #[cfg(not(target_os = "macos"))]
 const SETTINGS_SUBMENU_ID: &str = "native-settings-menu";
 
@@ -23,6 +29,8 @@ const SETTINGS_SUBMENU_ID: &str = "native-settings-menu";
 pub(crate) struct NativeMenuState(Mutex<Option<NativeMenuItems>>);
 
 struct NativeMenuItems {
+    #[cfg(target_os = "linux")]
+    menu: Menu<Wry>,
     help: MenuItem<Wry>,
     general_settings: MenuItem<Wry>,
     provider_settings: MenuItem<Wry>,
@@ -30,6 +38,8 @@ struct NativeMenuItems {
     template_settings: MenuItem<Wry>,
     localized_submenus: Vec<(Submenu<Wry>, NativeMenuTitle)>,
     localized_predefined: Vec<(PredefinedMenuItem<Wry>, NativeMenuLabel)>,
+    #[cfg(target_os = "linux")]
+    linux_window_items: Vec<(MenuItem<Wry>, NativeMenuLabel)>,
 }
 
 #[derive(Clone, Copy)]
@@ -224,11 +234,13 @@ impl NativeMenuLabel {
 pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
     let menu = Menu::default(app)?;
     let labels = NativeMenuLabels::english();
-    let mut localized_predefined = Vec::new();
-    collect_predefined_labels(&menu, &mut localized_predefined)?;
     let edit_menu = find_submenu(&menu, "Edit")?;
     let window_menu = find_submenu_by_id(&menu, WINDOW_SUBMENU_ID)?;
     let help_menu = find_submenu_by_id(&menu, HELP_SUBMENU_ID)?;
+    #[cfg(target_os = "linux")]
+    let linux_window_items = replace_linux_window_actions(app, &window_menu, &labels)?;
+    let mut localized_predefined = Vec::new();
+    collect_predefined_labels(&menu, &mut localized_predefined)?;
     let mut localized_submenus = vec![
         (edit_menu.clone(), NativeMenuTitle::Edit),
         (window_menu.clone(), NativeMenuTitle::Window),
@@ -306,7 +318,7 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
                 &template_settings,
             ],
         )?;
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
             let mut help_position = None;
             for (position, item) in menu.items()?.into_iter().enumerate() {
@@ -322,7 +334,7 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
             };
             menu.insert(&settings_menu, help_position)?;
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         menu.append(&settings_menu)?;
         localized_submenus.push((settings_menu.clone(), NativeMenuTitle::Settings));
     }
@@ -341,6 +353,8 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
     app.set_menu(menu.clone())?;
 
     Ok(NativeMenuState(Mutex::new(Some(NativeMenuItems {
+        #[cfg(target_os = "linux")]
+        menu,
         help,
         general_settings,
         provider_settings,
@@ -348,6 +362,8 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
         template_settings,
         localized_submenus,
         localized_predefined,
+        #[cfg(target_os = "linux")]
+        linux_window_items,
     }))))
 }
 
@@ -370,6 +386,11 @@ pub(crate) fn sync(
             .map_err(|_| "Native menu could not be synchronized".to_owned())?;
     }
     for (item, label) in &items.localized_predefined {
+        item.set_text(escaped_label(label.text(&labels)))
+            .map_err(|_| "Native menu could not be synchronized".to_owned())?;
+    }
+    #[cfg(target_os = "linux")]
+    for (item, label) in &items.linux_window_items {
         item.set_text(escaped_label(label.text(&labels)))
             .map_err(|_| "Native menu could not be synchronized".to_owned())?;
     }
@@ -409,6 +430,14 @@ pub(crate) fn sync(
         item.set_enabled(ready)
             .map_err(|_| "Native menu could not be synchronized".to_owned())?;
     }
+    #[cfg(target_os = "linux")]
+    {
+        // Reattach the GTK3 menu bar so its top-level labels reflect the new locale.
+        items
+            .menu
+            .set_as_app_menu()
+            .map_err(|_| "Native menu could not be synchronized".to_owned())?;
+    }
     Ok(())
 }
 
@@ -433,6 +462,55 @@ fn find_submenu_by_id(menu: &Menu<Wry>, id: &str) -> tauri::Result<Submenu<Wry>>
         Some(MenuItemKind::Submenu(submenu)) => Ok(submenu),
         _ => Err(setup_error("a default native submenu is unavailable")),
     }
+}
+
+#[cfg(target_os = "linux")]
+fn replace_linux_window_actions(
+    app: &AppHandle<Wry>,
+    window_menu: &Submenu<Wry>,
+    labels: &NativeMenuLabels,
+) -> tauri::Result<Vec<(MenuItem<Wry>, NativeMenuLabel)>> {
+    let mut positions = Vec::new();
+    for (position, item) in window_menu.items()?.into_iter().enumerate() {
+        if let MenuItemKind::Predefined(item) = item
+            && let Some(label) = NativeMenuLabel::from_default_text(&item.text()?)
+            && matches!(
+                label,
+                NativeMenuLabel::Minimize
+                    | NativeMenuLabel::Maximize
+                    | NativeMenuLabel::CloseWindow
+            )
+        {
+            positions.push((position, label));
+        }
+    }
+    if positions.len() != 3 {
+        return Err(setup_error("default Linux window actions are unavailable"));
+    }
+
+    for (position, _) in positions.iter().rev() {
+        window_menu.remove_at(*position)?;
+    }
+
+    let mut items = Vec::with_capacity(positions.len());
+    for (position, label) in positions {
+        let (id, accelerator) = match label {
+            NativeMenuLabel::Minimize => (MINIMIZE_WINDOW_ID, Some("Ctrl+M")),
+            NativeMenuLabel::Maximize => (MAXIMIZE_WINDOW_ID, None),
+            NativeMenuLabel::CloseWindow => (CLOSE_WINDOW_ID, Some("Alt+F4")),
+            _ => return Err(setup_error("unexpected Linux window action")),
+        };
+        let item = MenuItem::with_id(
+            app,
+            id,
+            escaped_label(label.text(labels)),
+            true,
+            accelerator,
+        )?;
+        window_menu.insert(&item, position)?;
+        items.push((item, label));
+    }
+    Ok(items)
 }
 
 fn collect_predefined_labels(
@@ -463,6 +541,23 @@ fn collect_predefined_from_items(
 }
 
 pub(crate) fn dispatch(app: &AppHandle<Wry>, id: &str) {
+    #[cfg(target_os = "linux")]
+    if let Some(action) = LinuxWindowAction::from_id(id) {
+        let Some(window) = app.get_webview_window("main") else {
+            emit_unavailable(app);
+            return;
+        };
+        let result = match action {
+            LinuxWindowAction::Minimize => window.minimize(),
+            LinuxWindowAction::Maximize => window.maximize(),
+            LinuxWindowAction::Close => window.close(),
+        };
+        if result.is_err() {
+            emit_unavailable(app);
+        }
+        return;
+    }
+
     let Some(action) = NativeMenuAction::from_id(id) else {
         return;
     };
@@ -487,6 +582,26 @@ pub(crate) fn dispatch(app: &AppHandle<Wry>, id: &str) {
         .is_err()
     {
         emit_unavailable(app);
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinuxWindowAction {
+    Minimize,
+    Maximize,
+    Close,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxWindowAction {
+    fn from_id(id: &str) -> Option<Self> {
+        match id {
+            MINIMIZE_WINDOW_ID => Some(Self::Minimize),
+            MAXIMIZE_WINDOW_ID => Some(Self::Maximize),
+            CLOSE_WINDOW_ID => Some(Self::Close),
+            _ => None,
+        }
     }
 }
 
@@ -538,7 +653,9 @@ mod tests {
 
     use crate::{NativeMenuAction, NativeMenuLabels, NativeMenuRequest};
 
-    use super::{NativeMenuLabel, NativeMenuState, escaped_label, sync};
+    #[cfg(target_os = "linux")]
+    use super::{CLOSE_WINDOW_ID, LinuxWindowAction, MAXIMIZE_WINDOW_ID, MINIMIZE_WINDOW_ID};
+    use super::{NativeMenuLabel, NativeMenuState, NativeMenuTitle, escaped_label, sync};
     #[cfg(not(target_os = "macos"))]
     use super::{help_accelerator, settings_accelerator};
 
@@ -581,6 +698,39 @@ mod tests {
             escaped_label("Research & development"),
             "Research && development"
         );
+    }
+
+    #[test]
+    fn native_menu_titles_use_the_selected_locale() {
+        let mut labels = NativeMenuLabels::english();
+        labels.edit_menu = "Bearbeiten".to_owned();
+        labels.window_menu = "Fenster".to_owned();
+        labels.help_menu = "Hilfe".to_owned();
+        labels.settings_menu = "Einstellungen".to_owned();
+
+        assert_eq!(NativeMenuTitle::Edit.text(&labels), "Bearbeiten");
+        assert_eq!(NativeMenuTitle::Window.text(&labels), "Fenster");
+        assert_eq!(NativeMenuTitle::Help.text(&labels), "Hilfe");
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(NativeMenuTitle::Settings.text(&labels), "Einstellungen");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_window_action_ids_are_stable() {
+        assert_eq!(
+            LinuxWindowAction::from_id(MINIMIZE_WINDOW_ID),
+            Some(LinuxWindowAction::Minimize)
+        );
+        assert_eq!(
+            LinuxWindowAction::from_id(MAXIMIZE_WINDOW_ID),
+            Some(LinuxWindowAction::Maximize)
+        );
+        assert_eq!(
+            LinuxWindowAction::from_id(CLOSE_WINDOW_ID),
+            Some(LinuxWindowAction::Close)
+        );
+        assert_eq!(LinuxWindowAction::from_id("unknown"), None);
     }
 
     #[test]
