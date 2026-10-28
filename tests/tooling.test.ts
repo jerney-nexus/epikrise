@@ -949,11 +949,13 @@ describe("Linux Windows OCR cross-build toolchain", () => {
     },
   );
 
-  it("patches zlib's ELF version-script condition for Windows idempotently", async () => {
+  it("patches zlib and Tesseract's Windows CMake conditions idempotently", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-zlib-cmake-"));
-    const sourceDirectory = path.join(directory, "zlib");
-    const cmakeFile = path.join(sourceDirectory, "CMakeLists.txt");
-    const patchScript = path.join(repoRoot, "scripts/patch-zlib-windows-cmake.sh");
+    const zlibSource = path.join(directory, "zlib");
+    const tesseractSource = path.join(directory, "tesseract");
+    const zlibCmakeFile = path.join(zlibSource, "CMakeLists.txt");
+    const tesseractCmakeFile = path.join(tesseractSource, "CMakeLists.txt");
+    const patchScript = path.join(repoRoot, "scripts/patch-windows-ocr-cmake.sh");
     const buildScript = await readFile(
       path.join(repoRoot, "scripts/build-windows-ocr.sh"),
       "utf8",
@@ -964,23 +966,46 @@ describe("Linux Windows OCR cross-build toolchain", () => {
       "endif()",
       "",
     ].join("\n");
-    const patched = original.replace(
+    const patchedZlib = original.replace(
       "if(UNIX)",
       'if(UNIX AND NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")',
     );
+    const originalTesseract = [
+      "elseif(UNIX)",
+      "  set(LIB_pthread pthread)",
+      "elseif(WIN32)",
+      "  set(LIB_Ws2_32 Ws2_32)",
+      "",
+    ].join("\n");
+    const patchedTesseract = originalTesseract.replace(
+      "elseif(UNIX)",
+      "elseif(UNIX AND NOT WIN32)",
+    );
 
     try {
-      await mkdir(sourceDirectory, { recursive: true });
+      await Promise.all([
+        mkdir(zlibSource, { recursive: true }),
+        mkdir(tesseractSource, { recursive: true }),
+      ]);
       expect(buildScript).toContain(
-        'bash "$repo_root/scripts/patch-zlib-windows-cmake.sh" "$zlib_source"',
+        'bash "$repo_root/scripts/patch-windows-ocr-cmake.sh" "$zlib_source" "$tesseract_source"',
       );
-      await writeFile(cmakeFile, original, "utf8");
+      await Promise.all([
+        writeFile(zlibCmakeFile, original, "utf8"),
+        writeFile(tesseractCmakeFile, originalTesseract, "utf8"),
+      ]);
 
-      await execFile("bash", [patchScript, sourceDirectory]);
-      await expect(readFile(cmakeFile, "utf8")).resolves.toBe(patched);
+      await execFile("bash", [patchScript, zlibSource, tesseractSource]);
+      await expect(readFile(zlibCmakeFile, "utf8")).resolves.toBe(patchedZlib);
+      await expect(readFile(tesseractCmakeFile, "utf8")).resolves.toBe(
+        patchedTesseract,
+      );
 
-      await execFile("bash", [patchScript, sourceDirectory]);
-      await expect(readFile(cmakeFile, "utf8")).resolves.toBe(patched);
+      await execFile("bash", [patchScript, zlibSource, tesseractSource]);
+      await expect(readFile(zlibCmakeFile, "utf8")).resolves.toBe(patchedZlib);
+      await expect(readFile(tesseractCmakeFile, "utf8")).resolves.toBe(
+        patchedTesseract,
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -988,19 +1013,30 @@ describe("Linux Windows OCR cross-build toolchain", () => {
 
   it("fails when zlib's expected platform condition changes", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-zlib-cmake-"));
-    const sourceDirectory = path.join(directory, "zlib");
-    const patchScript = path.join(repoRoot, "scripts/patch-zlib-windows-cmake.sh");
+    const zlibSource = path.join(directory, "zlib");
+    const tesseractSource = path.join(directory, "tesseract");
+    const patchScript = path.join(repoRoot, "scripts/patch-windows-ocr-cmake.sh");
 
     try {
-      await mkdir(sourceDirectory, { recursive: true });
-      await writeFile(
-        path.join(sourceDirectory, "CMakeLists.txt"),
-        "if(UNIX)\nif(UNIX)\n",
-        "utf8",
-      );
+      await Promise.all([
+        mkdir(zlibSource, { recursive: true }),
+        mkdir(tesseractSource, { recursive: true }),
+      ]);
+      await Promise.all([
+        writeFile(
+          path.join(zlibSource, "CMakeLists.txt"),
+          "if(UNIX)\nif(UNIX)\n",
+          "utf8",
+        ),
+        writeFile(
+          path.join(tesseractSource, "CMakeLists.txt"),
+          "elseif(UNIX)\n",
+          "utf8",
+        ),
+      ]);
 
       await expect(
-        execFile("bash", [patchScript, sourceDirectory]),
+        execFile("bash", [patchScript, zlibSource, tesseractSource]),
       ).rejects.toMatchObject({
         code: 1,
         stderr: expect.stringContaining("Unexpected zlib CMake platform condition"),
