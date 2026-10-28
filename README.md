@@ -72,9 +72,15 @@ is included; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Getting started
 
+Before building, complete the operating-system-specific prerequisites in
+[Local native setup](CONTRIBUTING.md#local-native-setup). In particular, a
+native build needs Tesseract and both German (`deu`) and English (`eng`)
+language data. The build compiles its own Tesseract sidecar, but uses the
+installed Tesseract command to locate that data.
+
 ```sh
 corepack enable pnpm
-pnpm install
+pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 

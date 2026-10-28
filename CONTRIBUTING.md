@@ -25,63 +25,84 @@ ships Rust, Node, the Tauri Linux dependencies and a lightweight desktop
 accessible through noVNC on port `6080`, so the app window can be viewed from
 a browser.
 
-### Local setup
+### Local native setup
 
-Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
-for your platform, plus Rust 1.98+ and Node 22+. macOS builds also require
-Homebrew Tesseract and German language data:
+Follow the steps for your operating system, then run the common commands below.
+Builds are native-only: use a machine and Rust toolchain for the same operating
+system and architecture. For the full system requirements, see the
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+All platforms need Rust 1.98+ and Node.js 22+. Install Rust with
+[rustup](https://rustup.rs/) and install Node.js for your operating system.
+Open a new terminal after installing them. Check that `rustc -vV` reports the
+host triple for this machine and that `node --version` reports v22.
+
+#### Linux (Debian or Ubuntu)
+
+Install Tauri, OCR, and native sidecar build dependencies:
 
 ```sh
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential cmake curl file libayatana-appindicator3-dev libssl-dev \
+  libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev ninja-build pkg-config \
+  tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+```
+
+For another Linux distribution, install the equivalent packages listed in the
+[Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux)
+and install Tesseract with German (`deu`) and English (`eng`) language data.
+
+#### macOS
+
+Install Xcode Command Line Tools if they are not already installed, then
+install the native OCR build tools and language data with Homebrew:
+
+```sh
+xcode-select --install
 brew install cmake ninja tesseract tesseract-lang
 ```
 
-`pnpm tauri` prepares the ignored, target-specific OCR files before
-invoking the Tauri CLI. It downloads the matching PDFium library from the
-upstream release and verifies its SHA-256 digest. It builds a portable native
-Tesseract sidecar from pinned, checksum-verified sources; German and English
-language data are copied from the host installation.
+#### Windows x64 or ARM64
 
-Then:
+Use the [native Windows setup](#native-build-from-windows) below. It covers
+Visual Studio's C++ tools, Git for Windows, OCR language data, and the
+architecture-specific build commands. Do not use WSL for a native Windows
+build.
+
+#### Install dependencies and run
+
+`pnpm tauri dev` first prepares local OCR and PDFium resources. The build uses
+the installed Tesseract command to find its language-data folder, and requires
+both `deu.traineddata` and `eng.traineddata`. It then builds the app's own
+Tesseract sidecar from pinned, checksum-verified sources. If the language data
+is in a custom folder, set `EPIKRISE_TESSDATA_DIR` to that folder before
+building.
+
+From the repository root:
 
 ```sh
 corepack enable pnpm
-pnpm install
+pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-On macOS, `cargo` must be on `PATH` in the terminal that runs pnpm. With
-Homebrew's keg-only `rustup`, add both the rustup executable and its Cargo
-shims. For Apple Silicon, run:
+On Linux and macOS, verify that `tesseract --list-langs` lists both `deu` and
+`eng`. If it does not, install the missing language data or set
+`EPIKRISE_TESSDATA_DIR` to a folder containing both `.traineddata` files.
+Keep that environment variable set in the same terminal where you run pnpm.
 
-```sh
-export PATH="$HOME/.cargo/bin:/opt/homebrew/opt/rustup/bin:$PATH"
-```
+### Windows native development and installers
 
-For Intel Macs, use `/usr/local/opt/rustup/bin` instead of
-`/opt/homebrew/opt/rustup/bin`. Put the matching line in `~/.zprofile` to keep
-it for new Terminal sessions. Verify the shell can find Cargo before building:
-
-```sh
-command -v cargo
-cargo --version
-```
-
-If `command -v cargo` prints nothing, install Rust with [rustup](https://rustup.rs/)
-and open a new terminal. Then retry `pnpm tauri build`.
-
-### Building Windows installers
-
-- **Native Windows build:** supported on matching Windows x64/ARM64 hosts; see
-  [Native build from Windows](#native-build-from-windows).
-- **Manual Linux cross-build:** builds diagnostic x64 and ARM64 NSIS installers
-  from the native Linux ARM64 Dev Container. It is separate from the approved
-  Windows cross-builds in GitHub Actions.
+Native Windows builds run on matching Windows x64 or ARM64 hosts. Windows
+cross-builds are not supported here. The separate Linux ARM64 Dev Container
+cross-build is for diagnostic NSIS installers only.
 
 #### Native build from Windows
 
-Use this path on Windows x64 to build x64, or on Windows ARM64 to build ARM64.
-The native wrapper deliberately rejects a target that does not match the host;
-cross-building from Windows is not supported by this command.
+Use PowerShell on Windows x64 to build x64, or on Windows ARM64 to build
+ARM64. The wrapper initializes Visual Studio for you. Do not use WSL or the
+Dev Container for a native Windows build.
 
 Install these prerequisites before building:
 
@@ -193,7 +214,14 @@ The data is stored under your local application data directory, not in the
 repository. Keep using the same PowerShell session so the environment variable
 and user-local pnpm shim remain available during the build.
 
-Run **one** build command, matching the Windows host.
+To start the app for development, run:
+
+```powershell
+pnpm.cmd tauri dev
+```
+
+To build an unsigned diagnostic installer, run **one** command matching the
+Windows host:
 
 On Windows ARM64:
 
@@ -257,9 +285,10 @@ toolset or its C++ headers are missing or inconsistent. Use Visual Studio
 Installer to add or repair the C++ build tools and Windows SDK for the host
 architecture, open a new PowerShell window, and rerun the native wrapper.
 
-#### Manual cross-build from Linux ARM64
+#### Manual Linux ARM64 cross-build
 
-Use this path only from the native Linux ARM64 Dev Container. It requires
+This path builds diagnostic Windows installers, not a native Windows app. Use
+it only from the native Linux ARM64 Dev Container. It requires
 LLVM, CMake, Ninja, NSIS, `cargo-xwin`, and Tauri's NSIS Restart Manager
 include. Do not use CPU emulation. Run setup in an interactive terminal; it
 installs `cargo-xwin` if needed before displaying the Microsoft SDK/CRT license
