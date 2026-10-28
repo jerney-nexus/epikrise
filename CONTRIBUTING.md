@@ -405,10 +405,12 @@ SmartScreen/Gatekeeper warnings or installation restrictions; do not distribute
 them into a clinical environment as trusted installers. The workflow does not
 publish releases or configure updates. Inspect package contents and test
 PDFium, German/English synthetic OCR, credentials, clipboard and uninstall on
-native Linux, macOS and Windows systems for every architecture. Cross-build
-success alone does not prove runtime support.
+native Linux and Windows systems for every architecture, and on macOS ARM64.
+macOS x64 runtime acceptance is deferred until further notice and is not a
+blocker for ongoing development. Do not infer macOS x64 runtime support from a
+successful build; package creation does not prove runtime compatibility.
 
-Validation evidence as of 2026-10-24:
+Validation evidence as of 2026-10-28:
 
 - `pnpm build:all` succeeded in
   [Actions run 40110573454](https://github.com/jerney-nexus/epikrise/actions/runs/40110573454)
@@ -437,10 +439,17 @@ Validation evidence as of 2026-10-24:
 - User-reported runtime evidence covers install, launch, and uninstall on
   Windows ARM64 and macOS Apple Silicon; provider flows on Windows ARM64; and
   an independent Linux x64 AppImage launch. No six-platform runtime acceptance
-  is implied. Windows x64, macOS Intel, and Linux ARM64 lifecycle checks, plus
-  synthetic German/English OCR, PDFium runtime loading, credentials, clipboard,
-  and isolated offline WebView2 readiness acceptance remain open where not
-  explicitly reported.
+  is implied. Windows x64 and Linux ARM64 lifecycle checks, plus synthetic
+  German/English OCR, PDFium runtime loading, credentials, clipboard, and
+  isolated offline WebView2 readiness acceptance remain open where not
+  explicitly reported. macOS Intel x64 runtime acceptance is unverified and
+  deferred until further notice. On Catalina 10.15.7, the app opened to a gray
+  background without rendering its interface. Vite's current default production
+  target is `baseline-widely-available`, newer than Catalina's WebKit; a trial
+  Safari 13.1 syntax target did not resolve this. The Tauri v2
+  [macOS 10.15 framework minimum](https://v2.tauri.app/start/prerequisites/)
+  is not a verified Epikrise minimum. This testing deferral is non-blocking for
+  ongoing development and must not be reported as verified runtime support.
 - The successful matrix predates the Windows PowerShell execution-policy
   follow-up on commit `ecb65eb3b600d460ba07a48336f4fd6ff281d6be`. That
   follow-up has not had a six-target native matrix run.

@@ -278,7 +278,10 @@ is rejected in CI. The CI builds are unsigned and unnotarized: Windows
 SmartScreen and macOS Gatekeeper may warn or block installation. This workflow
 does not publish releases or use the separate direct-release updater
 configuration. A successful package build is not a substitute for native
-installation and runtime acceptance testing on each target. Validation evidence as of 2026-10-24:
+installation and runtime acceptance testing on each target. macOS x64 runtime
+acceptance is deferred until further notice and is not a blocker for ongoing
+development; this does not establish runtime support. Validation evidence as of
+2026-10-28:
 
 - `pnpm build:all` succeeded in
   [Actions run 40110573454](https://github.com/jerney-nexus/epikrise/actions/runs/40110573454)
@@ -296,10 +299,18 @@ installation and runtime acceptance testing on each target. Validation evidence 
 - Users reported native install, launch, and uninstall on Windows ARM64 and
   macOS Apple Silicon. Windows ARM64 provider flows were also reported; a
   Linux x64 AppImage launch was tested separately. Live runtime testing on
-  Windows x64, macOS Intel, and Linux ARM64 remains unverified. Synthetic
-  German/English OCR, PDFium runtime loading, credentials, clipboard, and
-  isolated offline WebView2 readiness acceptance remain open where not
-  explicitly reported.
+  Windows x64, macOS Intel, and Linux ARM64 remains unverified. For macOS Intel,
+  this test is deferred until further notice and is explicitly non-blocking for
+  ongoing development. On Catalina 10.15.7, Epikrise opened to a gray background
+  without rendering the interface. Vite's current default production target is
+  `baseline-widely-available`, which is newer than Catalina's WebKit. A trial
+  build targeting Safari 13.1 syntax still did not render the interface, so
+  lowering the JavaScript syntax target alone is not a fix; the cause remains
+  undiagnosed. Tauri v2's documented
+  [macOS 10.15 framework minimum](https://v2.tauri.app/start/prerequisites/)
+  is not a verified Epikrise minimum. Synthetic German/English OCR, PDFium
+  runtime loading, credentials, clipboard, and isolated offline WebView2
+  readiness acceptance remain open where not explicitly reported.
 - The successful matrix predates the Windows PowerShell execution-policy
   follow-up on commit `ecb65eb3b600d460ba07a48336f4fd6ff281d6be`. That
   follow-up has not had a six-target native matrix run; the earlier run is not
