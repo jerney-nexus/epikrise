@@ -85,6 +85,28 @@
     "groq",
   ];
 
+  const sourceFileAcceptTypes = [
+    ".txt",
+    ".md",
+    ".csv",
+    ".pdf",
+    ".docx",
+    ".xlsx",
+    ".rtf",
+    ".html",
+    ".htm",
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/rtf",
+    "text/html",
+    "image/png",
+    "image/jpeg",
+  ].join(",");
+
   const errorMessages: Record<LlmError["key"], string> = {
     invalid_profile: "Check the provider settings.",
     invalid_request: "The request could not be sent.",
@@ -3662,7 +3684,7 @@
           <input
             class="source-file-input"
             type="file"
-            accept=".txt,.md,.csv,.pdf,.docx,.xlsx,.rtf,.html,.htm,image/png,image/jpeg"
+            accept={sourceFileAcceptTypes}
             multiple
             bind:this={sourceFileInput}
             onchange={handleFileSelection}

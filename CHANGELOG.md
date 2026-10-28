@@ -165,6 +165,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ### Fixed
 
+- The Linux native file picker now receives explicit MIME types for supported
+  document files as well as images.
 - Linux OCR builds and runtime checks now parse `ldd` output consistently,
   regardless of the developer's locale.
 - Updated vulnerable frontend dependencies to patched releases, including

@@ -593,6 +593,23 @@ test("imports a valid synthetic file and rejects an oversized file locally", asy
 }) => {
   await page.goto("/");
   const fileInput = page.getByLabel("Choose clinical files");
+  const acceptedTypes = (await fileInput.getAttribute("accept"))
+    ?.split(",")
+    .map((type) => type.trim());
+  expect(acceptedTypes).toEqual(
+    expect.arrayContaining([
+      "text/plain",
+      "text/markdown",
+      "text/csv",
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/rtf",
+      "text/html",
+      "image/png",
+      "image/jpeg",
+    ]),
+  );
   await fileInput.setInputFiles({
     name: "synthetic-input.txt",
     mimeType: "text/plain",
