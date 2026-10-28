@@ -147,7 +147,7 @@ fn decode_percent_encoding(value: &str) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use std::{
-        fs,
+        env, fs,
         os::{
             linux::net::SocketAddrExt,
             unix::{
@@ -155,11 +155,144 @@ mod tests {
                 net::{SocketAddr, UnixListener},
             },
         },
+        path::Path,
+        process::{Command, Output},
     };
 
     use tempfile::tempdir;
 
-    use super::{contains_listening_unix_socket, resolve_address_from_record};
+    use epikrise_llm::KeyringCredentialStore;
+
+    use super::{
+        SESSION_BUS_ADDRESS, contains_listening_unix_socket, exec_with_resolved_address,
+        resolve_address_from_record, resolve_linux_session_bus_address,
+    };
+
+    const STARTUP_TEST_MODE: &str = "EPIKRISE_LINUX_STARTUP_TEST_MODE";
+    const STARTUP_TEST_CREDENTIAL: &str = "EPIKRISE_LINUX_STARTUP_TEST_CREDENTIAL";
+    const STARTUP_TEST_ADDRESS: &str = "EPIKRISE_LINUX_STARTUP_TEST_ADDRESS";
+    const STARTUP_TEST_SECRET: &str = "disposable Linux startup integration test";
+
+    fn run_startup_test_process(
+        mode: &str,
+        credential_id: &str,
+        address: &str,
+        home_directory: Option<&Path>,
+    ) -> Output {
+        let mut command = Command::new(env::current_exe().expect("test executable path"));
+        command
+            .args(env::args_os().skip(1))
+            .env(STARTUP_TEST_MODE, mode)
+            .env(STARTUP_TEST_CREDENTIAL, credential_id)
+            .env(STARTUP_TEST_ADDRESS, address)
+            .env(SESSION_BUS_ADDRESS, address);
+        if let Some(home_directory) = home_directory {
+            command.env("HOME", home_directory);
+        }
+        command.output().expect("startup test subprocess")
+    }
+
+    fn assert_process_succeeded(output: &Output, action: &str) {
+        assert!(
+            output.status.success(),
+            "{action} failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    #[ignore = "run with pnpm test:rust:linux-startup-integration"]
+    fn linux_startup_reexec_resolves_autolaunch_and_lists_credentials() {
+        let mode = env::var(STARTUP_TEST_MODE).ok();
+        let credential_id = env::var(STARTUP_TEST_CREDENTIAL).ok();
+        let expected_address = env::var(STARTUP_TEST_ADDRESS).ok();
+
+        match mode.as_deref() {
+            Some("seed") => {
+                KeyringCredentialStore
+                    .set(
+                        credential_id.as_deref().expect("test credential id"),
+                        STARTUP_TEST_SECRET,
+                    )
+                    .expect("seed disposable keyring credential");
+                return;
+            }
+            Some("cleanup") => {
+                KeyringCredentialStore
+                    .delete(credential_id.as_deref().expect("test credential id"))
+                    .expect("delete disposable keyring credential");
+                return;
+            }
+            Some("launch") => {
+                if env::var(SESSION_BUS_ADDRESS)
+                    .is_ok_and(|address| address.starts_with("autolaunch:"))
+                {
+                    let result = exec_with_resolved_address();
+                    panic!("expected process replacement, resolver returned {result:?}");
+                }
+
+                assert_eq!(
+                    env::var(SESSION_BUS_ADDRESS).as_deref().ok(),
+                    expected_address.as_deref()
+                );
+                let listed = KeyringCredentialStore
+                    .list()
+                    .expect("list credentials after startup re-exec");
+                assert!(
+                    listed
+                        .iter()
+                        .any(|credential| Some(credential.id.as_str()) == credential_id.as_deref()),
+                    "re-executed process could not list the seeded credential"
+                );
+                return;
+            }
+            Some(other) => panic!("unexpected startup test mode: {other}"),
+            None => {}
+        }
+
+        let bus_address = env::var(SESSION_BUS_ADDRESS)
+            .ok()
+            .filter(|address| !address.starts_with("autolaunch:"))
+            .or_else(resolve_linux_session_bus_address)
+            .expect("an active Linux session-bus address is required");
+        let bus_address =
+            resolve_address_from_record(&format!("DBUS_SESSION_BUS_ADDRESS='{bus_address}'\n"))
+                .expect("session-bus address must refer to a listening Unix socket");
+        let machine_id = fs::read_to_string("/etc/machine-id")
+            .expect("machine id")
+            .trim()
+            .to_owned();
+        let home_directory = tempdir().expect("temporary home directory");
+        let session_bus_directory = home_directory.path().join(".dbus").join("session-bus");
+        fs::create_dir_all(&session_bus_directory).expect("session-bus record directory");
+        fs::write(
+            session_bus_directory.join(format!("{machine_id}-1")),
+            format!("DBUS_SESSION_BUS_ADDRESS='{bus_address}'\n"),
+        )
+        .expect("write temporary session-bus record");
+
+        let credential_id = format!("open_ai:linux-startup-test-{}", std::process::id());
+        let seed = run_startup_test_process("seed", &credential_id, &bus_address, None);
+        assert_process_succeeded(&seed, "credential seeding");
+
+        let launch = {
+            let mut command = Command::new(env::current_exe().expect("test executable path"));
+            command
+                .args(env::args_os().skip(1))
+                .env(STARTUP_TEST_MODE, "launch")
+                .env(STARTUP_TEST_CREDENTIAL, &credential_id)
+                .env(STARTUP_TEST_ADDRESS, &bus_address)
+                .env("HOME", home_directory.path())
+                .env("DISPLAY", ":1.0")
+                .env(SESSION_BUS_ADDRESS, "autolaunch:");
+            command.output().expect("launch re-exec integration test")
+        };
+
+        let cleanup = run_startup_test_process("cleanup", &credential_id, &bus_address, None);
+        assert_process_succeeded(&cleanup, "credential cleanup");
+        assert_process_succeeded(&launch, "autolaunch re-exec and credential listing");
+    }
 
     #[test]
     fn resolves_a_live_socket_with_escaped_spaces_and_backslashes() {
