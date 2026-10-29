@@ -121,6 +121,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 - Updated vulnerable frontend dependencies to patched releases, including
   DOMPurify, markdown-it, Vite, happy-dom, undici, and Vitest; standardized
   the project, container, and CI on pnpm 12.15.0.
+- Updated `tauri-plugin-updater` to 2.14.1, removing its vulnerable Windows
+  `zip 4.6.1` dependency in favor of the patched `zip 9` line.
 - Windows image OCR now opens the image and tessdata paths correctly in native
   and Linux cross-built apps. Invalid OCR output can also use vision fallback
   when enabled.
