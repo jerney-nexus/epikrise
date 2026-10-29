@@ -2364,11 +2364,13 @@ describe("signed release artifacts", () => {
     expect(stageJob).toContain("verify-uploaded");
     expect(stageJob).not.toContain("-F draft=false");
     expect(stageJob).toContain("asset-evidence");
-    expect(stageJob).toContain("release-evidence-${{ github.run_id }}");
+    expect(stageJob).toContain("name: acceptance-evidence-${{ github.run_id }}");
+    expect(stageJob).toContain("overwrite: true");
     expect(publishJob).toContain("needs: stage");
     expect(publishJob).toContain("environment:\n      name: release");
     expect(publishJob).toContain("validate-draft");
     expect(publishJob).toContain("actions/download-artifact@v8");
+    expect(publishJob).toContain("name: acceptance-evidence-${{ github.run_id }}");
     expect(publishJob).toContain(
       "--evidence-file release-evidence/release-assets.json",
     );
@@ -2378,7 +2380,7 @@ describe("signed release artifacts", () => {
     expect(publishJob).toContain("-F draft=false");
     expect(releaseWorkflow).toContain("group: updater-release-${{ github.ref_name }}");
     expect(publishJob).toMatch(
-      /concurrency:\s+group: updater-release-publication\s+cancel-in-progress: false/,
+      /concurrency:\s+group: updater-release-publication\s+queue: max\s+cancel-in-progress: false/,
     );
     expect(releaseWorkflow).toContain("--bundles appimage");
     expect(releaseWorkflow).toContain("--bundles deb rpm");
@@ -2752,6 +2754,12 @@ describe("signed release artifacts", () => {
         artifactsRoot,
         latestPath,
       });
+      await expect(
+        verifyUploadedReleaseAssets({
+          uploadedRoot,
+          releaseAssets,
+        }),
+      ).rejects.toThrow("Staged asset paths are required without persisted evidence.");
       await expect(
         verifyUploadedReleaseAssets({
           artifactsRoot,

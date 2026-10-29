@@ -631,10 +631,16 @@ export async function verifyUploadedReleaseAssets({
 }) {
   assert(Array.isArray(releaseAssets), "Release asset metadata is invalid.");
 
-  const expected =
-    expectedAssets === undefined
-      ? await collectExpectedReleaseAssets({ artifactsRoot, latestPath })
-      : validateReleaseAssetEvidence(expectedAssets);
+  let expected;
+  if (expectedAssets === undefined) {
+    assert(
+      typeof artifactsRoot === "string" && typeof latestPath === "string",
+      "Staged asset paths are required without persisted evidence.",
+    );
+    expected = await collectExpectedReleaseAssets({ artifactsRoot, latestPath });
+  } else {
+    expected = validateReleaseAssetEvidence(expectedAssets);
+  }
 
   /** @type {Map<string, number>} */
   const metadata = new Map();
