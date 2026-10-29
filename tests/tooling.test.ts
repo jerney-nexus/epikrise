@@ -2354,10 +2354,14 @@ describe("signed release artifacts", () => {
     );
     expect(releaseWorkflow).toContain("environment: release");
     const stageJobStart = releaseWorkflow.indexOf("\n  stage:");
+    const approveJobStart = releaseWorkflow.indexOf("\n  approve:");
     const publishJobStart = releaseWorkflow.indexOf("\n  publish:");
     expect(stageJobStart).toBeGreaterThan(-1);
+    expect(approveJobStart).toBeGreaterThan(stageJobStart);
     expect(publishJobStart).toBeGreaterThan(stageJobStart);
-    const stageJob = releaseWorkflow.slice(stageJobStart, publishJobStart);
+    expect(publishJobStart).toBeGreaterThan(approveJobStart);
+    const stageJob = releaseWorkflow.slice(stageJobStart, approveJobStart);
+    const approveJob = releaseWorkflow.slice(approveJobStart, publishJobStart);
     const publishJob = releaseWorkflow.slice(publishJobStart);
     expect(stageJob).toContain("needs: build");
     expect(stageJob).toContain("Create or recover draft and verify release assets");
@@ -2366,8 +2370,11 @@ describe("signed release artifacts", () => {
     expect(stageJob).toContain("asset-evidence");
     expect(stageJob).toContain("name: acceptance-evidence-${{ github.run_id }}");
     expect(stageJob).toContain("overwrite: true");
-    expect(publishJob).toContain("needs: stage");
-    expect(publishJob).toContain("environment:\n      name: release");
+    expect(approveJob).toContain("needs: stage");
+    expect(approveJob).toContain("environment:\n      name: release");
+    expect(approveJob).not.toContain("concurrency:");
+    expect(publishJob).toContain("needs: [stage, approve]");
+    expect(publishJob).not.toContain("environment:");
     expect(publishJob).toContain("validate-draft");
     expect(publishJob).toContain("actions/download-artifact@v8");
     expect(publishJob).toContain("name: acceptance-evidence-${{ github.run_id }}");
@@ -2380,7 +2387,17 @@ describe("signed release artifacts", () => {
     expect(publishJob).toContain("-F draft=false");
     expect(releaseWorkflow).toContain("group: updater-release-${{ github.ref_name }}");
     expect(publishJob).toMatch(
-      /concurrency:\s+group: updater-release-publication\s+queue: max\s+cancel-in-progress: false/,
+      /concurrency:\s+group: updater-release\s+queue: max\s+cancel-in-progress: false/,
+    );
+    expect(publishJob).toContain(
+      'gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME"',
+    );
+    expect(publishJob).toContain('gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_sha"');
+    expect(publishJob).toContain(
+      '[[ "$tag_type" != "commit" || "$tag_sha" != "$GITHUB_SHA" ]]',
+    );
+    expect(publishJob.indexOf("Release tag no longer points")).toBeLessThan(
+      publishJob.indexOf("-F draft=false"),
     );
     expect(releaseWorkflow).toContain("--bundles appimage");
     expect(releaseWorkflow).toContain("--bundles deb rpm");
@@ -2782,7 +2799,12 @@ describe("signed release artifacts", () => {
       expect(uploadedBundleName).toBeDefined();
       const uploadedBundle = path.join(uploadedRoot, uploadedBundleName!);
       const uploadedContents = await readFile(uploadedBundle, "utf8");
-      await writeFile(uploadedBundle, "altered after upload");
+      const tamperedContents = Buffer.from(uploadedContents);
+      tamperedContents[0] = tamperedContents[0]! ^ 1;
+      await writeFile(uploadedBundle, tamperedContents);
+      expect((await lstat(uploadedBundle)).size).toBe(
+        Buffer.byteLength(uploadedContents),
+      );
       await expect(
         verifyUploadedReleaseAssets({
           uploadedRoot,
