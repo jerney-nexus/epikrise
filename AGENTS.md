@@ -59,6 +59,27 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - A lightweight Fluxbox desktop is available through VNC or the web. Open a URL in the host browser with `"$BROWSER" <url>`.
 - For `gh api`, use hierarchical `-f` keys for object fields. GitHub Actions workflows must use `actions/upload-artifact` and `actions/download-artifact` v4 or later.
 
+## Efficient Agent Work
+
+- Handle small edits, known-file lookups, and a single continuous investigation
+  directly. Use a subagent only for substantial independent work or a required
+  specialist workflow; do not delegate just to run a command.
+- Give each delegated task a bounded scope, expected output, and stop condition.
+  Do not repeat its investigation in the parent or launch duplicate reviewers.
+- Use deterministic tools for file searches, formatting, and checks rather than
+  additional model calls. Batch independent reads and keep outputs bounded.
+- Respect the user's model selection and runtime subagent preferences. Do not
+  hardcode model names, reasoning effort, or context tiers in delegation calls
+  unless explicitly requested. Do not assume that inheriting the parent model
+  is the cheapest option.
+- Instructions cannot enforce model prices or change a host's routing catalog.
+  If routine work is using an expensive model, report the observed selection
+  and suggest the host's lower-cost routing controls rather than claiming to
+  have switched models.
+- Never upload chat logs, prompts, tool output, or session databases to diagnose
+  an agent issue. Report sanitized error summaries; account, sync, and model
+  configuration changes require the user's approval.
+
 ## Code Style
 
 - TypeScript, JavaScript, and Svelte: follow Prettier (2-space indentation, double quotes, trailing commas, 88-character print width) and ESLint; follow nearby Svelte component patterns.
