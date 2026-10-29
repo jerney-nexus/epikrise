@@ -342,10 +342,11 @@ capability probe is given an explicit cross-build result, so no Windows
 executable is run in Linux. TIFF input is not needed by the app's OCR path,
 which passes PNG images to Tesseract.
 
-Use a native Windows host for installer runtime validation; a successful
-cross-build alone does not verify installation or runtime behavior. The NSIS
-installer is configured for offline WebView2 installation in
-`src-tauri/tauri.windows.conf.json`.
+For runtime validation on a native target, install and launch the package,
+verify PDFium loading, run synthetic German and English OCR, check credentials
+and clipboard, then uninstall. A successful cross-build alone does not verify
+installation or runtime behavior. The NSIS installer is configured for offline
+WebView2 installation in `src-tauri/tauri.windows.conf.json`.
 
 For uninstall testing, use **Settings > Apps > Installed apps > Epikrise >
 Uninstall**. The NSIS setup executable's same-version maintenance page runs the
@@ -505,6 +506,12 @@ Keep signing keys in the approved GitHub Actions secrets; never commit private
 signing material or generate or replace a production key in CI. A Tauri updater
 signature verifies the update payload and does not replace platform publisher
 signing. Store delivery uses a separate Microsoft certification process.
+
+Before enabling signed updates for users, verify the release assets, signatures,
+`latest.json`, and target URLs. Test a real two-version update on a native
+installation and confirm a tampered copy of an update bundle is rejected before
+installation. These are post-merge release acceptance checks, not prerequisites
+to merging the stack; record current evidence in the related issues and PRs.
 
 ## Localization
 

@@ -97,6 +97,10 @@ pnpm tauri build
 This creates the macOS app and disk image in
 `src-tauri/target/host-<host-triple>/release/bundle/`.
 
+macOS Intel runtime support is unverified. On Catalina 10.15.7, the app opened
+to a gray window without rendering; Intel runtime testing remains deferred.
+A successful build does not establish runtime compatibility.
+
 ### Linux Installers
 
 Build on Linux after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),
