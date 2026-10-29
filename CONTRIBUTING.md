@@ -342,10 +342,10 @@ capability probe is given an explicit cross-build result, so no Windows
 executable is run in Linux. TIFF input is not needed by the app's OCR path,
 which passes PNG images to Tesseract.
 
-Cross-build success does not replace runtime acceptance testing. Test
-installation without WebView2, launch, OCR with German and English synthetic
-images, clipboard and credentials, and uninstall on native Windows x64 and
-ARM64 systems.
+Use a native Windows host for installer runtime validation; a successful
+cross-build alone does not verify installation or runtime behavior. The NSIS
+installer is configured for offline WebView2 installation in
+`src-tauri/tauri.windows.conf.json`.
 
 For uninstall testing, use **Settings > Apps > Installed apps > Epikrise >
 Uninstall**. The NSIS setup executable's same-version maintenance page runs the
@@ -397,62 +397,12 @@ upload packages to Partner Center or configure Store updates automatically.
 The Store package does not include the WebView2 Evergreen Runtime, which must
 be available on the Windows device. Continue using the NSIS `.exe` for local
 installation; it includes the offline WebView2 installer and remains separate
-from the Store package and Store update model. Store certification and manual
-Partner Center validation have not been performed.
+from the Store package and Store update model.
 
 Build artifacts are unsigned and macOS packages are not notarized. Expect
 SmartScreen/Gatekeeper warnings or installation restrictions; do not distribute
-them into a clinical environment as trusted installers. The workflow does not
-publish releases or configure updates. Inspect package contents and test
-PDFium, German/English synthetic OCR, credentials, clipboard and uninstall on
-native Linux and Windows systems for every architecture, and on macOS ARM64.
-macOS x64 runtime acceptance is deferred until further notice and is not a
-blocker for ongoing development. Do not infer macOS x64 runtime support from a
-successful build; package creation does not prove runtime compatibility.
-
-Validation evidence as of 2026-10-28:
-
-- `pnpm build:all` succeeded in
-  [Actions run 40110573454](https://github.com/jerney-nexus/epikrise/actions/runs/40110573454)
-  for commit `66a76e720ea32308d6721580a5b37b2af4a9a1aa`, version `2026.10.0`,
-  and request `1764b6f2-7f78-40db-8472-cb1f621b55ef`. All six native jobs
-  succeeded. The command downloaded and verified complete artifacts and their
-  request, commit, version, target, and SHA-256 evidence, including separate
-  Windows NSIS and Store MSIX families.
-- Both Store MSIX archives passed ZIP integrity checks. Their manifests
-  contained the reserved identity and publisher, version `2026.10.0.0`, and
-  matching x64/ARM64 architecture. The app, Tesseract, PDFium, and German/
-  English language payloads were present; packaged PE binaries matched the
-  declared architecture. This was package inspection, not Windows App
-  Certification Kit or Partner Center validation. No Store upload,
-  certification, or public release has been performed.
-- The x64/ARM64 MSIX SHA-256 values were
-  `fc5c9c80b6c84a63f295be08fe3a1f8b1cc2e8dad56601604e681cdf8c8fbb3d` and
-  `de1985ac5b732e58f9cd1eb1570b2d62f8f9e8f3c6571366d8c5027988150aee`.
-  Corresponding NSIS SHA-256 values were
-  `7c51c331029a4995d568629ec7d1a33e16c37b8ec83031bb37be2563d74d08e8` and
-  `514ede7a663570c5f660ca59f7684da7c84dd3e01577c117c4909261d3800562`.
-- In this run, Linux and macOS OCR caches were restored, both Windows OCR
-  caches missed, and the Node dependency caches were restored. Both Windows
-  builds succeeded despite the OCR cache misses; this is not evidence of a
-  warmed Windows OCR cache.
-- User-reported runtime evidence covers install, launch, and uninstall on
-  Windows ARM64 and macOS Apple Silicon; provider flows on Windows ARM64; and
-  an independent Linux x64 AppImage launch. No six-platform runtime acceptance
-  is implied. Windows x64 and Linux ARM64 lifecycle checks, plus synthetic
-  German/English OCR, PDFium runtime loading, credentials, clipboard, and
-  isolated offline WebView2 readiness acceptance remain open where not
-  explicitly reported. macOS Intel x64 runtime acceptance is unverified and
-  deferred until further notice. On Catalina 10.15.7, the app opened to a gray
-  background without rendering its interface. Vite's current default production
-  target is `baseline-widely-available`, newer than Catalina's WebKit; a trial
-  Safari 13.1 syntax target did not resolve this. The Tauri v2
-  [macOS 10.15 framework minimum](https://v2.tauri.app/start/prerequisites/)
-  is not a verified Epikrise minimum. This testing deferral is non-blocking for
-  ongoing development and must not be reported as verified runtime support.
-- The successful matrix predates the Windows PowerShell execution-policy
-  follow-up on commit `ecb65eb3b600d460ba07a48336f4fd6ff281d6be`. That
-  follow-up has not had a six-target native matrix run.
+them into a clinical environment as trusted installers. The workflow creates
+diagnostic artifacts; it does not publish releases or configure updates.
 
 ## Project layout
 
@@ -535,7 +485,7 @@ Actions tab. Enter a `YYYY.M.MICRO` version or leave it blank to select the
 next CalVer version. The workflow updates npm, Cargo, and Tauri metadata,
 generates release notes, and opens a pull request for review.
 
-### Release and update readiness
+### Release and update workflow
 
 Release identities use unpadded `YYYY.M.MICRO`. If Cargo, Tauri, an installer,
 or updater protocol requires another representation, derive it only for that
@@ -551,15 +501,10 @@ uses the public key configured in `src-tauri/tauri.release.conf.json` and
 requires the matching `TAURI_SIGNING_PRIVATE_KEY` GitHub Actions secret (and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key is encrypted).
 
-This workflow is implemented, but the updater is not yet accepted for
-production use. The checked-in public key does not prove matching private-key
-ownership or backup; an authorized key holder must verify a synthetic signature
-locally before signing is accepted. Then verify the first release's six target
-assets, signatures, manifest and URLs, and complete native installation and
-two-version update acceptance on each supported target. Never generate or
-replace a production key in CI, commit private signing material, or treat a
-Tauri update signature as platform publisher signing. Store delivery is a
-separate Microsoft-certified channel.
+Keep signing keys in the approved GitHub Actions secrets; never commit private
+signing material or generate or replace a production key in CI. A Tauri updater
+signature verifies the update payload and does not replace platform publisher
+signing. Store delivery uses a separate Microsoft certification process.
 
 ## Localization
 
