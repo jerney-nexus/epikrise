@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: updater-release
+  group: updater-release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -501,10 +501,28 @@ jobs:
             --uploaded-root "$uploaded_assets_dir" \
             --release-file "$uploaded_release_file"
 
+      - name: Create immutable release asset evidence
+        run: |
+          node scripts/release-artifacts.mjs asset-evidence \
+            --artifacts-root release-artifacts \
+            --latest-file latest.json \
+            --output release-assets.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-evidence-${{ github.run_id }}
+          path: release-assets.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
   publish:
     name: Publish after native acceptance
     needs: stage
     runs-on: ubuntu-22.04
+    concurrency:
+      group: updater-release-publication
+      cancel-in-progress: false
     environment:
       name: release
       url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
@@ -532,6 +550,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-evidence-${{ github.run_id }}
+          path: release-evidence
 
       - name: Publish accepted draft release
         env:
@@ -573,6 +596,17 @@ jobs:
           else
             make_latest=false
           fi
+
+          release_assets_file="$RUNNER_TEMP/release-assets.json"
+          uploaded_assets_dir="$RUNNER_TEMP/accepted-release-assets"
+          mkdir -p "$uploaded_assets_dir"
+          gh release view "$GITHUB_REF_NAME" --json assets > "$release_assets_file"
+          gh release download "$GITHUB_REF_NAME" --dir "$uploaded_assets_dir"
+          node scripts/release-artifacts.mjs verify-uploaded \
+            --evidence-file release-evidence/release-assets.json \
+            --uploaded-root "$uploaded_assets_dir" \
+            --release-file "$release_assets_file"
+
           gh api --method PATCH \
             "repos/$GITHUB_REPOSITORY/releases/$release_id" \
             -F draft=false \
