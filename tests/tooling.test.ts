@@ -1058,7 +1058,17 @@ describe("six-target desktop build tooling", () => {
     expect(buildScript).toContain(
       'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\Llvm" clang.exe > "%clang_file%" 2>nul',
     );
+    const clangArchitectureCheck = buildScript.indexOf(
+      "node scripts\\verify-binary-architecture.mjs aarch64-pc-windows-msvc",
+    );
+    expect(clangArchitectureCheck).toBeGreaterThan(buildScript.indexOf(":clang_found"));
+    expect(clangArchitectureCheck).toBeLessThan(
+      buildScript.indexOf('set "PATH=%clang_bin%;%PATH%"'),
+    );
     expect(buildScript).toContain("Clang is required to build ring for Windows ARM64.");
+    expect(buildScript).toContain(
+      "Clang must be an ARM64 executable for native Windows ARM64 builds:",
+    );
     expect(buildScript).toContain(
       'where.exe /r "%VSINSTALLDIR%\\VC\\Tools\\MSVC" cl.exe 2>nul | findstr /i /c:"\\Host%VSCMD_ARG_HOST_ARCH%\\%VSCMD_ARG_TGT_ARCH%\\cl.exe"',
     );

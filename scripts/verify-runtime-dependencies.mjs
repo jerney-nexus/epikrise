@@ -137,7 +137,7 @@ const windowsSystemLibraries = new Set([
 export function assertSystemOnlyPEDependencies(binaryPath, output) {
   const dependencies = [
     ...new Set(
-      [...output.matchAll(/^\s+([a-z0-9_.-]+\.dll)\s*$/gim)].map((match) =>
+      [...output.matchAll(/^\s+([^\s]+\.dll)\s*$/gim)].map((match) =>
         match[1].toLowerCase(),
       ),
     ),

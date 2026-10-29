@@ -17,6 +17,15 @@ describe("runtime dependency regressions", () => {
     ).not.toThrow();
   });
 
+  it("rejects C++ runtime DLL names containing plus signs", () => {
+    expect(() =>
+      assertSystemOnlyPEDependencies(
+        "Epikrise.exe",
+        "Image has the following dependencies:\n    KERNEL32.dll\n    libstdc++-6.dll",
+      ),
+    ).toThrow("Non-system runtime dependencies for Epikrise.exe: libstdc++-6.dll.");
+  });
+
   if (process.platform === "linux") {
     it("runs ldd in the C locale to recognize static-link diagnostics", async () => {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-static-ldd-"));

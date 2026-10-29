@@ -127,6 +127,11 @@ echo Clang is required to build ring for Windows ARM64. Install C++ Clang tools 
 exit /b 1
 :clang_found
 del /q "%clang_file%" >nul 2>&1
+node scripts\verify-binary-architecture.mjs aarch64-pc-windows-msvc "%EPIKRISE_CLANG_EXE%" >nul 2>&1
+if not errorlevel 1 goto clang_architecture_verified
+echo Clang must be an ARM64 executable for native Windows ARM64 builds: "%EPIKRISE_CLANG_EXE%" 1>&2
+exit /b 1
+:clang_architecture_verified
 for %%I in ("%EPIKRISE_CLANG_EXE%") do set "clang_bin=%%~dpI"
 set "PATH=%clang_bin%;%PATH%"
 :clang_ready
