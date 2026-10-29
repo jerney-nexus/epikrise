@@ -136,6 +136,7 @@ export function resolveLinuxSessionBusAddress(
     if (error instanceof URIError) return undefined;
     throw error;
   }
+  if (socketName.includes("\0")) return undefined;
 
   const isLiveSocket =
     socketMatch[1] === "path"

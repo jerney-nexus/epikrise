@@ -61,6 +61,9 @@ fn resolve_address_from_record(record: &str) -> Option<String> {
         .next()?
         .split_once('=')?;
     let socket_name = decode_percent_encoding(encoded_name)?;
+    if socket_name.contains(&0) {
+        return None;
+    }
     let listening = is_listening_unix_socket(socket_type, &socket_name);
 
     listening.then(|| address.to_owned())
@@ -319,6 +322,22 @@ mod tests {
 
         assert!(socket_path.exists());
         assert_eq!(resolve_address_from_record(&record), None);
+    }
+
+    #[test]
+    fn rejects_percent_encoded_nul_in_path_and_abstract_socket_names() {
+        assert_eq!(
+            resolve_address_from_record(
+                "DBUS_SESSION_BUS_ADDRESS='unix:path=/tmp/session%00bus,guid=0123456789abcdef'\n"
+            ),
+            None
+        );
+        assert_eq!(
+            resolve_address_from_record(
+                "DBUS_SESSION_BUS_ADDRESS='unix:abstract=session%00bus,guid=0123456789abcdef'\n"
+            ),
+            None
+        );
     }
 
     #[test]

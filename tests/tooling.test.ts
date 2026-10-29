@@ -1845,6 +1845,59 @@ describe("native Cargo host target guard", () => {
     }
   });
 
+  it("falls back when a D-Bus socket address decodes to a NUL byte", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-nul-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const address = "unix:path=/tmp/session%00bus,guid=0123456789abcdef";
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const isSocketPath = vi.fn(() => {
+      throw new Error("NUL-containing paths must not be probed");
+    });
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+      DISPLAY: ":1.0",
+      HOME: homeDirectory,
+    };
+    let childEnv: NodeJS.ProcessEnv | undefined;
+
+    try {
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='${address}'\n`,
+      );
+
+      const status = runTauri(["dev"], {
+        platform: "linux",
+        env,
+        resolveLinuxSessionBusAddress: (launchEnv) =>
+          resolveLinuxSessionBusAddress(launchEnv, {
+            machineIdPath,
+            isSocketPath,
+          }),
+        spawn: (_command, _args, options) => {
+          childEnv = options.env;
+          return { status: 0 };
+        },
+      });
+
+      expect(status).toBe(0);
+      expect(childEnv?.DBUS_SESSION_BUS_ADDRESS).toBe("autolaunch:");
+      expect(isSocketPath).not.toHaveBeenCalled();
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining("Could not resolve the desktop D-Bus session address"),
+      );
+    } finally {
+      warning.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("resolves live abstract Unix sockets with repeated spaces and backslashes", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-abstract-"));
     const homeDirectory = path.join(directory, "home");
