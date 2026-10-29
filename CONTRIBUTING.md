@@ -342,11 +342,14 @@ capability probe is given an explicit cross-build result, so no Windows
 executable is run in Linux. TIFF input is not needed by the app's OCR path,
 which passes PNG images to Tesseract.
 
-For runtime validation on a native target, install and launch the package,
-verify PDFium loading, run synthetic German and English OCR, check credentials
-and clipboard, then uninstall. A successful cross-build alone does not verify
-installation or runtime behavior. The NSIS installer is configured for offline
-WebView2 installation in `src-tauri/tauri.windows.conf.json`.
+For runtime validation, use a native host for each target whose support you
+intend to claim: install and launch the package, verify PDFium loading, run
+synthetic German and English OCR, check credentials and clipboard, then
+uninstall. A successful cross-build alone does not verify installation or
+runtime behavior. The NSIS installer is configured for offline WebView2
+installation in `src-tauri/tauri.windows.conf.json`; a separate install test
+starting without WebView2 is not required. macOS Intel runtime support remains
+explicitly unverified and deferred.
 
 For uninstall testing, use **Settings > Apps > Installed apps > Epikrise >
 Uninstall**. The NSIS setup executable's same-version maintenance page runs the
@@ -507,11 +510,24 @@ signing material or generate or replace a production key in CI. A Tauri updater
 signature verifies the update payload and does not replace platform publisher
 signing. Store delivery uses a separate Microsoft certification process.
 
-Before enabling signed updates for users, verify the release assets, signatures,
-`latest.json`, and target URLs. Test a real two-version update on a native
-installation and confirm a tampered copy of an update bundle is rejected before
-installation. These are post-merge release acceptance checks, not prerequisites
-to merging the stack; record current evidence in the related issues and PRs.
+The tag workflow creates and verifies a draft release before publication. Use
+its signed assets to validate the assets, signatures, `latest.json`, target
+URLs, and native installation/runtime behavior. The configured updater endpoint
+serves only the latest published release, so installed clients cannot update
+from a draft. A genuine two-version update and tampered-bundle rejection
+therefore require a previously published signed version and must be tested on
+each native target before claiming updater support; do not infer success across
+targets. The six-target manifest may include macOS Intel, but its runtime and
+updater support remain explicitly unverified and deferred.
+
+The final publish job is protected by the GitHub Actions `release` environment.
+After recording package and runtime acceptance evidence in the related issues
+or PRs, approve that job to publish the draft and make it available to opted-in
+installations. If any target being claimed as supported fails those checks, do
+not approve publication. Since update checks require a published candidate,
+record their results separately and do not claim updater support for a target
+until its two-version and tamper-rejection checks pass. This approval is a
+post-merge release gate, not a prerequisite to merging the stack.
 
 ## Localization
 

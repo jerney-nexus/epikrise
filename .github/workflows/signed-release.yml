@@ -417,7 +417,8 @@ jobs:
           retention-days: 3
           compression-level: 0
 
-  publish:
+  stage:
+    name: Stage signed updater release
     needs: build
     runs-on: ubuntu-22.04
     permissions:
@@ -465,7 +466,7 @@ jobs:
             --artifacts-root release-artifacts \
             --output latest.json
 
-      - name: Create or recover draft, then publish release
+      - name: Create or recover draft and verify release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -499,6 +500,49 @@ jobs:
             --latest-file latest.json \
             --uploaded-root "$uploaded_assets_dir" \
             --release-file "$uploaded_release_file"
+
+  publish:
+    name: Publish after native acceptance
+    needs: stage
+    runs-on: ubuntu-22.04
+    environment:
+      name: release
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.15.0
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish accepted draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_file="$RUNNER_TEMP/accepted-draft.json"
+          gh release view "$GITHUB_REF_NAME" --json isDraft,tagName,body > "$release_file"
+          node scripts/release-artifacts.mjs validate-draft \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --release-file "$release_file"
 
           latest_file="$RUNNER_TEMP/latest-release.json"
           latest_tag=""

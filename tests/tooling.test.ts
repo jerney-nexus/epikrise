@@ -2352,6 +2352,20 @@ describe("signed release artifacts", () => {
       "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}",
     );
     expect(releaseWorkflow).toContain("environment: release");
+    const stageJobStart = releaseWorkflow.indexOf("\n  stage:");
+    const publishJobStart = releaseWorkflow.indexOf("\n  publish:");
+    expect(stageJobStart).toBeGreaterThan(-1);
+    expect(publishJobStart).toBeGreaterThan(stageJobStart);
+    const stageJob = releaseWorkflow.slice(stageJobStart, publishJobStart);
+    const publishJob = releaseWorkflow.slice(publishJobStart);
+    expect(stageJob).toContain("needs: build");
+    expect(stageJob).toContain("Create or recover draft and verify release assets");
+    expect(stageJob).toContain("verify-uploaded");
+    expect(stageJob).not.toContain("-F draft=false");
+    expect(publishJob).toContain("needs: stage");
+    expect(publishJob).toContain("environment:\n      name: release");
+    expect(publishJob).toContain("validate-draft");
+    expect(publishJob).toContain("-F draft=false");
     expect(releaseWorkflow).toContain("--bundles appimage");
     expect(releaseWorkflow).toContain("--bundles deb rpm");
     expect(releaseWorkflow).toContain('"features":[]');

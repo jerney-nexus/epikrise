@@ -104,7 +104,9 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
   and Windows x64/ARM64 NSIS updater bundles, signatures, generated
   `latest.json`, and GitHub release publication. Linux deb/rpm packages are
   built without updater support, and signing jobs use the protected `release`
-  environment. Publication verifies updater signatures and uploaded bytes,
+  environment. The workflow stages and verifies a draft before a protected
+  publication approval; package and runtime acceptance can be completed against
+  the draft. Publication verifies updater signatures and uploaded bytes,
   recovers only matching drafts, and prevents retries from promoting an older
   version as latest.
 - Added synthetic Playwright and axe browser tests, `pnpm test:e2e` and
