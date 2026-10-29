@@ -520,14 +520,16 @@ each native target before claiming updater support; do not infer success across
 targets. The six-target manifest may include macOS Intel, but its runtime and
 updater support remain explicitly unverified and deferred.
 
-The final publish job is protected by the GitHub Actions `release` environment.
-After recording package and runtime acceptance evidence in the related issues
-or PRs, approve that job to publish the draft and make it available to opted-in
-installations. If any target being claimed as supported fails those checks, do
-not approve publication. Since update checks require a published candidate,
-record their results separately and do not claim updater support for a target
-until its two-version and tamper-rejection checks pass. This approval is a
-post-merge release gate, not a prerequisite to merging the stack.
+The `Approve accepted draft release` job is protected by the GitHub Actions
+`release` environment; the downstream `Publish accepted draft release` job
+performs publication. After recording package and runtime acceptance evidence
+in the related issues or PRs, approve `Approve accepted draft release` to
+authorize publication of the draft to opted-in installations. If any target
+being claimed as supported fails those checks, do not approve publication.
+Since update checks require a published candidate, record their results
+separately and do not claim updater support for a target until its two-version
+and tamper-rejection checks pass. This approval is a post-merge release gate,
+not a prerequisite to merging the stack.
 
 ## Localization
 
