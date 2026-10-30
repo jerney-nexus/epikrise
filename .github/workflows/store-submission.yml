@@ -90,14 +90,9 @@ jobs:
         run: |
           set -euo pipefail
           build_root="$RUNNER_TEMP/epikrise-store-release"
-          archive_file="$RUNNER_TEMP/epikrise-store-source.tar"
-          mkdir -p "$build_root"
-          git archive "$RELEASE_SHA" > "$archive_file"
-          source_archive_sha256="$(node --input-type=module -e \
-            'import { createHash } from "node:crypto"; import { readFileSync } from "node:fs"; process.stdout.write(createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"));' \
-            "$archive_file")"
-          tar --force-local -xf "$archive_file" -C "$build_root"
-          node scripts/prepare-release.mjs --prepare-build-inputs "$build_root"
+          source_archive_sha256="$(
+            node scripts/prepare-release-workspace.mjs "$RELEASE_SHA" "$build_root"
+          )"
           request_id="$(node --input-type=module <<'NODE'
             const sha = process.env.RELEASE_SHA;
             process.stdout.write(`${sha.slice(0, 8)}-${sha.slice(8, 12)}-${sha.slice(12, 16)}-${sha.slice(16, 20)}-${sha.slice(20, 32)}`);

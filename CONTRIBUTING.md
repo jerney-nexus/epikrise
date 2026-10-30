@@ -596,6 +596,14 @@ each native target before claiming updater support; do not infer success across
 targets. The six-target manifest may include macOS Intel, but its runtime and
 updater support remain explicitly unverified and deferred.
 
+Before creating a release tag, run the **Windows release workspace** workflow
+from the Actions tab on `main`. It exercises the same normalized-workspace
+preparation used by signed releases on native Windows x64 and ARM64 runners,
+without signing secrets or package builds. The workflow also runs automatically
+on pull requests that change the shared workspace preparation or either
+consumer workflow. Require both architecture jobs to pass before starting a
+tagged release.
+
 The `Approve accepted draft release` job is protected by the GitHub Actions
 `release` environment; the downstream `Publish accepted draft release` job
 performs publication. After recording package and runtime acceptance evidence

@@ -1,0 +1,69 @@
+name: Windows release workspace
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/signed-release.yml"
+      - ".github/workflows/store-submission.yml"
+      - ".github/workflows/windows-release-workspace.yml"
+      - "scripts/prepare-release-workspace.mjs"
+      - "scripts/prepare-release.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare release workspace (${{ matrix.architecture }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            runner: windows-2025
+          - architecture: ARM64
+            runner: windows-11-vs2026-arm
+
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.15.0
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install release workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare and verify normalized workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_root="$RUNNER_TEMP/epikrise-release-workspace-smoke"
+          source_archive_sha256="$(
+            node scripts/prepare-release-workspace.mjs "$GITHUB_SHA" "$build_root"
+          )"
+          [[ "$source_archive_sha256" =~ ^[0-9a-f]{64}$ ]]
+          [[ ! -e "$build_root/.git" ]]
+          [[ -f "$build_root/package.json" ]]
+          printf 'Prepared Windows %s workspace for %s.\n' \
+            '${{ matrix.architecture }}' "$GITHUB_SHA"
+          printf 'Source archive SHA-256: %s\n' "$source_archive_sha256"

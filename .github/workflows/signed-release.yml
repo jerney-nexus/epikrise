@@ -174,14 +174,9 @@ jobs:
         run: |
           set -euo pipefail
           build_root="$RUNNER_TEMP/epikrise-release"
-          archive_file="$RUNNER_TEMP/epikrise-source.tar"
-          mkdir -p "$build_root"
-          git archive "$GITHUB_SHA" > "$archive_file"
-          source_archive_sha256="$(node --input-type=module -e \
-            'import { createHash } from "node:crypto"; import { readFileSync } from "node:fs"; process.stdout.write(createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"));' \
-            "$archive_file")"
-          tar -xf - -C "$build_root" < "$archive_file"
-          node scripts/prepare-release.mjs --prepare-build-inputs "$build_root"
+          source_archive_sha256="$(
+            node scripts/prepare-release-workspace.mjs "$GITHUB_SHA" "$build_root"
+          )"
           printf 'RELEASE_BUILD_ROOT=%s\n' "$build_root" >> "$GITHUB_ENV"
           printf 'EPIKRISE_SOURCE_ARCHIVE_SHA256=%s\n' "$source_archive_sha256" >> "$GITHUB_ENV"
 

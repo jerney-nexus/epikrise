@@ -10,3 +10,6 @@ paths:
   .github/workflows/store-submission.yml:
     ignore:
       - 'label "windows-11-vs2026-arm" is unknown'
+  .github/workflows/windows-release-workspace.yml:
+    ignore:
+      - 'label "windows-11-vs2026-arm" is unknown'
