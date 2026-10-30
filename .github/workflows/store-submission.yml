@@ -96,7 +96,7 @@ jobs:
           source_archive_sha256="$(node --input-type=module -e \
             'import { createHash } from "node:crypto"; import { readFileSync } from "node:fs"; process.stdout.write(createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"));' \
             "$archive_file")"
-          tar -xf "$archive_file" -C "$build_root"
+          tar --force-local -xf "$archive_file" -C "$build_root"
           node scripts/prepare-release.mjs --prepare-build-inputs "$build_root"
           request_id="$(node --input-type=module <<'NODE'
             const sha = process.env.RELEASE_SHA;
