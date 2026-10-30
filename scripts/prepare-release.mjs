@@ -324,7 +324,7 @@ function replaceCargoSectionVersion(source, sectionName, version) {
   return source.slice(0, sectionStart) + updated + source.slice(sectionEnd);
 }
 
-/** @param {string} changelog @param {string} generatedNotes @param {string} version @param {string} previousVersion */
+/** @param {string} changelog @param {string} generatedNotes @param {string} version @param {string} previousVersion @param {boolean} previousReleaseTagExists */
 export function createReleasedChangelog(
   changelog,
   generatedNotes,
