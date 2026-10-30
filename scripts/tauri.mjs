@@ -126,7 +126,9 @@ export function resolveLinuxSessionBusAddress(
     /^DBUS_SESSION_BUS_ADDRESS=(?:"([^"]+)"|'([^']+)'|([^\r\n]+))$/m,
   );
   const address = addressMatch?.[1] ?? addressMatch?.[2] ?? addressMatch?.[3];
-  if (!address || address.includes("\0")) return undefined;
+  if (!address || address.startsWith("autolaunch:") || address.includes("\0")) {
+    return undefined;
+  }
   let hasLiveUnixSocket = false;
   for (const entry of address.split(";")) {
     const separator = entry.indexOf(":");
