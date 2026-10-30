@@ -294,8 +294,7 @@ jobs:
                   --config src-tauri/tauri.release.conf.json \
                   --config '{"build":{"beforeBuildCommand":null}}' \
                   --bundles appimage \
-                  --ci \
-                  --no-sign
+                  --ci
             cp -a "$bundle_root/appimage" "$saved_appimage"
             bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
               pnpm exec tauri build \
@@ -316,8 +315,7 @@ jobs:
                   --config src-tauri/tauri.release.conf.json \
                   --config '{"build":{"beforeBuildCommand":null}}' \
                   --bundles "${bundles[@]}" \
-                  --ci \
-                  --no-sign
+                  --ci
           fi
           unset signing_private_key signing_private_key_password
 
@@ -380,34 +378,32 @@ jobs:
           host_target="$(rustc -vV | sed -n 's/^host: //p')"
           if [[ "$PLATFORM" == 'windows' ]]; then
             bundle_root="release-bundles/nsis/offlineInstaller"
-            bootstrapper_args=(
-              --bootstrapper-root
-              "release-bundles/nsis/embedBootstrapper"
-            )
+            stage_args=(--bootstrapper-root "release-bundles/nsis/embedBootstrapper")
             cache_key="$EPIKRISE_WINDOWS_CACHE_KEY"
             cache_restored="${EPIKRISE_WINDOWS_CACHE_HIT:-false}"
           else
             bundle_root="src-tauri/target/host-$host_target/$TARGET/release/bundle"
-            bootstrapper_args=()
+            stage_args=()
             cache_key="$EPIKRISE_NATIVE_CACHE_KEY"
             cache_restored="${EPIKRISE_NATIVE_CACHE_HIT:-false}"
           fi
-          node scripts/release-artifacts.mjs stage \
-            --target "$RELEASE_TARGET" \
-            --native-target "$TARGET" \
-            --bundle-root "$bundle_root" \
-            "${bootstrapper_args[@]}" \
-            --stage-root "release-staging/$RELEASE_TARGET" \
-            --commit "$GITHUB_SHA" \
-            --resource-root src-tauri/resources/ocr \
-            --binary-root src-tauri/binaries \
-            --runner-os "$RUNNER_OS" \
-            --runner-arch "$RUNNER_ARCH" \
-            --rust-host "$host_target" \
-            --build-mode "$EPIKRISE_BUILD_MODE" \
-            --source-archive-sha256 "$EPIKRISE_SOURCE_ARCHIVE_SHA256" \
-            --cache-key "$cache_key" \
+          stage_args+=(
+            --target "$RELEASE_TARGET"
+            --native-target "$TARGET"
+            --bundle-root "$bundle_root"
+            --stage-root "release-staging/$RELEASE_TARGET"
+            --commit "$GITHUB_SHA"
+            --resource-root src-tauri/resources/ocr
+            --binary-root src-tauri/binaries
+            --runner-os "$RUNNER_OS"
+            --runner-arch "$RUNNER_ARCH"
+            --rust-host "$host_target"
+            --build-mode "$EPIKRISE_BUILD_MODE"
+            --source-archive-sha256 "$EPIKRISE_SOURCE_ARCHIVE_SHA256"
+            --cache-key "$cache_key"
             --cache-restored "$cache_restored"
+          )
+          node scripts/release-artifacts.mjs stage "${stage_args[@]}"
 
       - uses: actions/upload-artifact@v7
         with:
