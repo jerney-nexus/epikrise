@@ -5,6 +5,8 @@ on:
     paths:
       - .github/workflows/macos-updater-bundle-smoke.yml
       - .github/workflows/signed-release.yml
+      - scripts/with-cargo-host-target.sh
+      - scripts/validate-native-cargo-target.mjs
       - scripts/prepare-ocr.sh
       - scripts/build-native-ocr.sh
       - src-tauri/Cargo.toml

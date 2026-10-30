@@ -2583,6 +2583,20 @@ describe("signed release artifacts", () => {
   };
   const releaseCommit = "0123456789abcdef0123456789abcdef01234567";
 
+  it("runs the macOS updater smoke check when its Cargo guards change", async () => {
+    const workflow = await readFile(
+      path.join(repoRoot, ".github/workflows/macos-updater-bundle-smoke.yml"),
+      "utf8",
+    );
+    const pullRequestPaths = workflow.match(
+      /pull_request:\s*\n\s+paths:\s*\n([\s\S]*?)\n\s+workflow_dispatch:/,
+    )?.[1];
+
+    expect(pullRequestPaths).toBeDefined();
+    expect(pullRequestPaths).toContain("- scripts/with-cargo-host-target.sh");
+    expect(pullRequestPaths).toContain("- scripts/validate-native-cargo-target.mjs");
+  });
+
   it("requests updater-enabled app bundles for both macOS release targets", async () => {
     const workflow = await readFile(
       path.join(repoRoot, ".github/workflows/signed-release.yml"),

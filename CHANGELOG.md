@@ -32,7 +32,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
   validation, workspace guards, Git marker removal, and failure cleanup.
 
 - macOS signed releases now request Tauri's updater-enabled app bundle alongside
-  the disk image, and a native smoke workflow verifies updater archive creation.
+  the disk image, and a native smoke workflow verifies updater archive creation
+  when its native target guard scripts change.
 
 ## [2026.10.2] - 2026-10-30
 
