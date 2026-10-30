@@ -7,6 +7,10 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+## [2026.10.2] - 2026-10-30
+
+
+
 ## [2026.10.1] - 2026-10-30
 
 ### Added
@@ -471,4 +475,5 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 - Install actionlint from pinned release
 
 [2026.10.1]: https://github.com/jerney-nexus/epikrise/releases/tag/v2026.10.1
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.1...HEAD
+[2026.10.2]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.1...v2026.10.2
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.2...HEAD
