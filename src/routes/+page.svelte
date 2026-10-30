@@ -74,6 +74,17 @@
     groq: "Groq",
   };
 
+  const providerOrder: ProviderAdapter[] = [
+    "ollama",
+    "open_ai",
+    "anthropic",
+    "gemini",
+    "open_ai_compatible",
+    "open_router",
+    "xai",
+    "groq",
+  ];
+
   const errorMessages: Record<LlmError["key"], string> = {
     invalid_profile: "Check the provider settings.",
     invalid_request: "The request could not be sent.",
@@ -582,6 +593,10 @@
       modelsForProfile = "";
       connectionState = "idle";
       connectionMessage = "";
+    }
+    if (!isProviderAllowed(adapter)) {
+      const firstAllowedProvider = providerOrder.find(isProviderAllowed);
+      if (firstAllowedProvider) changeProvider(firstAllowedProvider);
     }
     if (!status.allowCredentialManagement) {
       credentialRemovalPending = false;
@@ -1179,6 +1194,7 @@
     modelsForProfile = "";
     connectionState = "idle";
     connectionMessage = "";
+    selectAllowedModelForAdapter();
   }
 
   function handleDialogKeydown(event: KeyboardEvent) {

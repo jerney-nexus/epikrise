@@ -182,5 +182,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 - Windows ARM64 now lists stored provider credentials correctly, enabling
   connection checks, model-list refresh, and report drafting. These flows were
   validated in a native Windows ARM64 app run.
+- Administrator-managed provider restrictions now select the first allowed
+  provider on startup, and changing providers selects the first model allowed
+  for the selected provider.
 
 [Unreleased]: https://github.com/jerney-nexus/epikrise/compare/HEAD

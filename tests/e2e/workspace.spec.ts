@@ -31,6 +31,28 @@ const restrictedPolicy: PolicyStatus = {
   permissionsWarning: false,
 };
 const policyTest = test.extend({ policy: restrictedPolicy });
+const providerRestrictedPolicyTest = test.extend({
+  policy: {
+    ...restrictedPolicy,
+    localOnly: false,
+    allowedProviders: ["gemini", "anthropic"],
+    allowedModels: [{ adapter: "anthropic", model: "approved-model" }],
+    fixedEndpoint: null,
+  },
+});
+const providerModelRestrictedTest = test.extend({
+  policy: {
+    ...restrictedPolicy,
+    localOnly: false,
+    allowedProviders: ["ollama", "anthropic"],
+    allowedModels: [
+      { adapter: "ollama", model: "ollama-approved" },
+      { adapter: "anthropic", model: "anthropic-first" },
+      { adapter: "anthropic", model: "anthropic-second" },
+    ],
+    fixedEndpoint: null,
+  },
+});
 const creationRestrictedTest = test.extend({
   policy: {
     ...restrictedPolicy,
@@ -1181,6 +1203,41 @@ policyTest("shows administrator-managed settings as restricted", async ({ page }
   ).toBeDisabled();
   await expect(page.locator("#template-section-summary")).toBeDisabled();
 });
+
+providerRestrictedPolicyTest(
+  "selects the first available provider when policy excludes the default",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Provider settings" }).click();
+
+    await expect(page.locator("#active-adapter")).toHaveValue("anthropic");
+    await expect(
+      page.getByRole("option", { name: "Gemini", exact: true }),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole("option", { name: "Ollama", exact: true }),
+    ).toBeDisabled();
+  },
+);
+
+providerModelRestrictedTest(
+  "selects the first allowed model when changing providers",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Provider settings" }).click();
+
+    const providerSelect = page.locator("#active-adapter");
+    await expect(providerSelect).toHaveValue("ollama");
+    await expect(
+      page.getByRole("option", { name: "Anthropic", exact: true }),
+    ).toBeEnabled();
+    await providerSelect.selectOption("anthropic");
+
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Model settings" }).click();
+    await expect(page.locator("#active-model")).toHaveValue("anthropic-first");
+  },
+);
 
 creationRestrictedTest(
   "allows deletion when creation is policy-restricted",
