@@ -58,18 +58,61 @@ fn resolve_address_from_record(record: &str) -> Option<String> {
         return None;
     }
 
-    let (socket_type, encoded_name) = address
-        .strip_prefix("unix:")?
-        .split(',')
-        .next()?
-        .split_once('=')?;
-    let socket_name = decode_percent_encoding(encoded_name)?;
-    if socket_name.contains(&0) {
-        return None;
-    }
-    let listening = is_listening_unix_socket(socket_type, &socket_name);
+    let mut has_listening_unix_socket = false;
+    for entry in address.split(';') {
+        let (transport, parameter_source) = entry.split_once(':')?;
+        if transport.is_empty()
+            || !transport
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+            || parameter_source.is_empty()
+        {
+            return None;
+        }
 
-    listening.then(|| address.to_owned())
+        let mut keys = std::collections::HashSet::new();
+        let mut socket_type = None;
+        let mut encoded_socket_name = None;
+        for parameter in parameter_source.split(',') {
+            let (key, value) = parameter.split_once('=')?;
+            if key.is_empty()
+                || !key
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+                || !keys.insert(key)
+                || !has_valid_percent_encoding(value)
+            {
+                return None;
+            }
+            if key == "guid"
+                && (value.len() != 32 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            {
+                return None;
+            }
+            if matches!(key, "path" | "abstract") {
+                if socket_type.is_some() {
+                    return None;
+                }
+                socket_type = Some(key);
+                encoded_socket_name = Some(value);
+            }
+        }
+
+        if transport != "unix" {
+            continue;
+        }
+        let (Some(socket_type), Some(encoded_socket_name)) = (socket_type, encoded_socket_name)
+        else {
+            continue;
+        };
+        let socket_name = decode_percent_encoding(encoded_socket_name)?;
+        if socket_name.contains(&0) {
+            return None;
+        }
+        has_listening_unix_socket |= is_listening_unix_socket(socket_type, &socket_name);
+    }
+
+    has_listening_unix_socket.then(|| address.to_owned())
 }
 
 fn is_listening_unix_socket(socket_type: &str, socket_name: &[u8]) -> bool {
@@ -148,6 +191,25 @@ fn decode_percent_encoding(value: &str) -> Option<Vec<u8>> {
         }
     }
     Some(decoded)
+}
+
+fn has_valid_percent_encoding(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            index += 1;
+            continue;
+        }
+        let Some(hex) = bytes.get(index + 1..index + 3) else {
+            return false;
+        };
+        if !hex.iter().all(u8::is_ascii_hexdigit) {
+            return false;
+        }
+        index += 3;
+    }
+    true
 }
 
 #[cfg(test)]
@@ -308,7 +370,7 @@ mod tests {
         let socket_path = socket_directory.join("bus");
         let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
         let encoded_path = socket_path.to_string_lossy().replace(' ', "%20");
-        let address = format!("unix:path={encoded_path},guid=0123456789abcdef");
+        let address = format!("unix:path={encoded_path},guid=0123456789abcdef0123456789abcdef");
         let record = format!("DBUS_SESSION_BUS_ADDRESS='{address}'\n");
 
         assert_eq!(resolve_address_from_record(&record), Some(address));
@@ -320,7 +382,10 @@ mod tests {
         let socket_path = directory.path().join("stale-bus");
         let listener = UnixListener::bind(&socket_path).expect("session bus listener");
         drop(listener);
-        let address = format!("unix:path={},guid=0123456789abcdef", socket_path.display());
+        let address = format!(
+            "unix:path={},guid=0123456789abcdef0123456789abcdef",
+            socket_path.display()
+        );
         let record = format!("DBUS_SESSION_BUS_ADDRESS='{address}'\n");
 
         assert!(socket_path.exists());
@@ -328,16 +393,36 @@ mod tests {
     }
 
     #[test]
+    fn rejects_invalid_guid_and_malformed_trailing_parameters() {
+        let directory = tempdir().expect("temporary directory");
+        let socket_path = directory.path().join("live-bus");
+        let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
+
+        for parameters in [
+            "guid=not-a-guid",
+            "guid=0123456789abcdef0123456789abcdef,malformed",
+            "guid=0123456789abcdef0123456789abcdef,extra=%GG",
+        ] {
+            let record = format!(
+                "DBUS_SESSION_BUS_ADDRESS='unix:path={},{}'\n",
+                socket_path.display(),
+                parameters
+            );
+            assert_eq!(resolve_address_from_record(&record), None, "{parameters}");
+        }
+    }
+
+    #[test]
     fn rejects_percent_encoded_nul_in_path_and_abstract_socket_names() {
         assert_eq!(
             resolve_address_from_record(
-                "DBUS_SESSION_BUS_ADDRESS='unix:path=/tmp/session%00bus,guid=0123456789abcdef'\n"
+                "DBUS_SESSION_BUS_ADDRESS='unix:path=/tmp/session%00bus,guid=0123456789abcdef0123456789abcdef'\n"
             ),
             None
         );
         assert_eq!(
             resolve_address_from_record(
-                "DBUS_SESSION_BUS_ADDRESS='unix:abstract=session%00bus,guid=0123456789abcdef'\n"
+                "DBUS_SESSION_BUS_ADDRESS='unix:abstract=session%00bus,guid=0123456789abcdef0123456789abcdef'\n"
             ),
             None
         );
@@ -349,7 +434,7 @@ mod tests {
         let socket_path = directory.path().join("live-bus");
         let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
         let address = format!(
-            "unix:path={},guid=0123456789abcdef\0",
+            "unix:path={},guid=0123456789abcdef0123456789abcdef\0",
             socket_path.display()
         );
         let record = format!("DBUS_SESSION_BUS_ADDRESS='{address}'\n");
@@ -363,7 +448,10 @@ mod tests {
         let socket_path = directory.path().join("unlinked-bus");
         let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
         fs::remove_file(&socket_path).expect("unlink session bus socket");
-        let address = format!("unix:path={},guid=0123456789abcdef", socket_path.display());
+        let address = format!(
+            "unix:path={},guid=0123456789abcdef0123456789abcdef",
+            socket_path.display()
+        );
         let record = format!("DBUS_SESSION_BUS_ADDRESS='{address}'\n");
         let proc_contents = fs::read("/proc/net/unix").expect("Unix socket table");
 
@@ -381,7 +469,7 @@ mod tests {
         let address = SocketAddr::from_abstract_name(socket_name).expect("abstract socket address");
         let _listener = UnixListener::bind_addr(&address).expect("session bus listener");
         let record = format!(
-            "DBUS_SESSION_BUS_ADDRESS='unix:abstract={},guid=0123456789abcdef'\n",
+            "DBUS_SESSION_BUS_ADDRESS='unix:abstract={},guid=0123456789abcdef0123456789abcdef'\n",
             String::from_utf8_lossy(socket_name)
         );
 

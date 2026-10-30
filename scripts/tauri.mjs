@@ -127,23 +127,60 @@ export function resolveLinuxSessionBusAddress(
   );
   const address = addressMatch?.[1] ?? addressMatch?.[2] ?? addressMatch?.[3];
   if (!address || address.includes("\0")) return undefined;
-  const socketMatch = address?.match(/^unix:(path|abstract)=([^,]+)/);
-  if (!socketMatch) return undefined;
+  let hasLiveUnixSocket = false;
+  for (const entry of address.split(";")) {
+    const separator = entry.indexOf(":");
+    if (separator <= 0) return undefined;
+    const transport = entry.slice(0, separator);
+    if (!/^[a-z0-9_-]+$/i.test(transport)) return undefined;
 
-  let socketName;
-  try {
-    socketName = decodeURIComponent(socketMatch[2]);
-  } catch (error) {
-    if (error instanceof URIError) return undefined;
-    throw error;
+    const parameters = new Map();
+    const parameterSource = entry.slice(separator + 1);
+    if (!parameterSource) return undefined;
+    for (const parameter of parameterSource.split(",")) {
+      const equals = parameter.indexOf("=");
+      if (equals <= 0) return undefined;
+      const key = parameter.slice(0, equals);
+      const value = parameter.slice(equals + 1);
+      if (
+        !/^[a-z0-9_-]+$/i.test(key) ||
+        parameters.has(key) ||
+        /%(?![\da-f]{2})/i.test(value)
+      ) {
+        return undefined;
+      }
+      if (key === "guid" && !/^[\da-f]{32}$/i.test(value)) return undefined;
+      parameters.set(key, value);
+    }
+
+    if (transport !== "unix") continue;
+    const socketType = parameters.has("path")
+      ? "path"
+      : parameters.has("abstract")
+        ? "abstract"
+        : undefined;
+    if (
+      !socketType ||
+      (socketType === "path" && parameters.has("abstract")) ||
+      (socketType === "abstract" && parameters.has("path"))
+    ) {
+      continue;
+    }
+
+    let socketName;
+    try {
+      socketName = decodeURIComponent(parameters.get(socketType));
+    } catch (error) {
+      if (error instanceof URIError) return undefined;
+      throw error;
+    }
+    if (socketName.includes("\0")) return undefined;
+    hasLiveUnixSocket ||=
+      socketType === "path"
+        ? isSocketPath(socketName)
+        : isListeningUnixSocket(`@${socketName}`, readFile);
   }
-  if (socketName.includes("\0")) return undefined;
-
-  const isLiveSocket =
-    socketMatch[1] === "path"
-      ? isSocketPath(socketName)
-      : isListeningUnixSocket(`@${socketName}`, readFile);
-  if (!isLiveSocket) return undefined;
+  if (!hasLiveUnixSocket) return undefined;
 
   return address;
 }

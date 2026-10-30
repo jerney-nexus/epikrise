@@ -1782,7 +1782,8 @@ describe("native Cargo host target guard", () => {
     const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
     const machineId = "0123456789abcdef0123456789abcdef";
     const machineIdPath = path.join(directory, "machine-id");
-    const address = "unix:path=/tmp/epikrise-test-dbus,guid=0123456789abcdef";
+    const address =
+      "unix:path=/tmp/epikrise-test-dbus,guid=0123456789abcdef0123456789abcdef";
 
     try {
       await mkdir(sessionBusDirectory, { recursive: true });
@@ -1817,7 +1818,8 @@ describe("native Cargo host target guard", () => {
     const machineId = "0123456789abcdef0123456789abcdef";
     const machineIdPath = path.join(directory, "machine-id");
     const socketPath = "/tmp/epikrise session bus";
-    const address = "unix:path=/tmp/epikrise%20session%20bus,guid=0123456789abcdef";
+    const address =
+      "unix:path=/tmp/epikrise%20session%20bus,guid=0123456789abcdef0123456789abcdef";
 
     try {
       await mkdir(sessionBusDirectory, { recursive: true });
@@ -1845,13 +1847,50 @@ describe("native Cargo host target guard", () => {
     }
   });
 
+  it.each([
+    ["invalid GUID", "guid=not-a-guid"],
+    ["malformed trailing parameter", "guid=0123456789abcdef0123456789abcdef,malformed"],
+    ["malformed trailing escape", "guid=0123456789abcdef0123456789abcdef,extra=%GG"],
+  ])("rejects a live D-Bus socket with %s", async (_description, parameters) => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-malformed-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const isSocketPath = vi.fn(() => true);
+
+    try {
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='unix:path=/tmp/epikrise-live-bus,${parameters}'\n`,
+      );
+
+      expect(
+        resolveLinuxSessionBusAddress(
+          {
+            DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+            DISPLAY: ":1.0",
+            HOME: homeDirectory,
+          },
+          { machineIdPath, isSocketPath },
+        ),
+      ).toBeUndefined();
+      expect(isSocketPath).not.toHaveBeenCalled();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("falls back when a D-Bus socket address decodes to a NUL byte", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-nul-"));
     const homeDirectory = path.join(directory, "home");
     const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
     const machineId = "0123456789abcdef0123456789abcdef";
     const machineIdPath = path.join(directory, "machine-id");
-    const address = "unix:path=/tmp/session%00bus,guid=0123456789abcdef";
+    const address =
+      "unix:path=/tmp/session%00bus,guid=0123456789abcdef0123456789abcdef";
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
     const isSocketPath = vi.fn(() => {
       throw new Error("NUL-containing paths must not be probed");
@@ -1904,7 +1943,8 @@ describe("native Cargo host target guard", () => {
     const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
     const machineId = "0123456789abcdef0123456789abcdef";
     const machineIdPath = path.join(directory, "machine-id");
-    const address = "unix:path=/tmp/session-bus,guid=0123456789abcdef\0";
+    const address =
+      "unix:path=/tmp/session-bus,guid=0123456789abcdef0123456789abcdef\0";
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
     const isSocketPath = vi.fn(() => true);
     const env: NodeJS.ProcessEnv = {
@@ -1957,7 +1997,7 @@ describe("native Cargo host target guard", () => {
     const machineIdPath = path.join(directory, "machine-id");
     const socketName = "/tmp/epikrise  abstract\\123 session bus";
     const address =
-      "unix:abstract=/tmp/epikrise%20%20abstract\\123%20session%20bus,guid=0123456789abcdef";
+      "unix:abstract=/tmp/epikrise%20%20abstract\\123%20session%20bus,guid=0123456789abcdef0123456789abcdef";
 
     try {
       await mkdir(sessionBusDirectory, { recursive: true });
@@ -1997,7 +2037,7 @@ describe("native Cargo host target guard", () => {
       const machineId = "0123456789abcdef0123456789abcdef";
       const machineIdPath = path.join(directory, "machine-id");
       const socketPath = path.join(directory, "session-bus");
-      const address = `unix:path=${socketPath},guid=0123456789abcdef`;
+      const address = `unix:path=${socketPath},guid=0123456789abcdef0123456789abcdef`;
       const server = createServer();
 
       try {
@@ -2038,7 +2078,8 @@ describe("native Cargo host target guard", () => {
   );
 
   it("passes the resolved D-Bus address to the Tauri process without mutating its input", () => {
-    const address = "unix:path=/tmp/epikrise-test-dbus,guid=0123456789abcdef";
+    const address =
+      "unix:path=/tmp/epikrise-test-dbus,guid=0123456789abcdef0123456789abcdef";
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
