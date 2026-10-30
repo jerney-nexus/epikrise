@@ -100,6 +100,7 @@ export async function prepareReleaseWorkspace(commit, buildRoot) {
       throw new AggregateError(
         [error, cleanupError],
         `Release workspace preparation failed: ${preparationMessage}. Cleanup also failed: ${cleanupMessage}.`,
+        { cause: error },
       );
     }
     throw error;
