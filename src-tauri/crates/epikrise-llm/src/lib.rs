@@ -309,7 +309,7 @@ impl GenaiLlmClient {
                 .ok_or(LlmError::Authentication)?,
         };
         let provider_config = ProviderConfig::from((endpoint, Some(auth)));
-        let client = genai::Client::builder().build();
+        let client = genai::Client::builder().build().map_err(map_genai_error)?;
         let mut models = client
             .all_model_names(adapter, provider_config)
             .await
@@ -359,7 +359,7 @@ fn genai_adapter(adapter: &ProviderAdapter, model: &str) -> genai::adapter::Adap
         ProviderAdapter::OpenAi => GenaiAdapter::OpenAI,
         ProviderAdapter::OpenAiCompatible => GenaiAdapter::OpenAI,
         ProviderAdapter::Anthropic => GenaiAdapter::Anthropic,
-        ProviderAdapter::Gemini => GenaiAdapter::Gemini,
+        ProviderAdapter::Gemini => GenaiAdapter::GeminiIx,
         ProviderAdapter::Ollama => GenaiAdapter::Ollama,
         ProviderAdapter::OpenRouter => GenaiAdapter::OpenRouter,
         ProviderAdapter::Xai => GenaiAdapter::Xai,
@@ -397,14 +397,36 @@ fn prepare_request(
     }
 
     let adapter = genai_adapter(&profile.adapter, &profile.model);
+    let model_for_request = match profile.adapter {
+        ProviderAdapter::Gemini
+            if profile.model.starts_with("gemini_ix::")
+                || profile.model.starts_with("gemini_interactions::") =>
+        {
+            profile.model.clone()
+        }
+        ProviderAdapter::Gemini => {
+            let model = profile
+                .model
+                .strip_prefix("gemini::")
+                .unwrap_or(&profile.model);
+            format!("gemini_ix::{model}")
+        }
+        ProviderAdapter::Groq if !profile.model.starts_with("groq::") => {
+            format!("groq::{}", profile.model)
+        }
+        ProviderAdapter::OpenRouter if !profile.model.starts_with("open_router::") => {
+            format!("open_router::{}", profile.model)
+        }
+        _ => profile.model.clone(),
+    };
     let endpoint = profile
         .endpoint
         .as_deref()
         .map(validate_endpoint)
         .transpose()?;
-    let model_name = profile.model.clone();
+    let target_model_name = model_for_request.clone();
     let target_resolver = move |mut target: ServiceTarget| {
-        target.model = ModelIden::new(adapter, model_name.clone());
+        target.model = ModelIden::new(adapter, target_model_name.clone());
         if let Some(endpoint) = endpoint.as_ref() {
             target.endpoint = Endpoint::from_owned(endpoint.clone());
         }
@@ -428,16 +450,8 @@ fn prepare_request(
     let client = Client::builder()
         .with_service_target_resolver_fn(target_resolver)
         .with_auth_resolver_fn(auth_resolver)
-        .build();
-    let model_for_request = match profile.adapter {
-        ProviderAdapter::Groq if !profile.model.starts_with("groq::") => {
-            format!("groq::{}", profile.model)
-        }
-        ProviderAdapter::OpenRouter if !profile.model.starts_with("open_router::") => {
-            format!("open_router::{}", profile.model)
-        }
-        _ => profile.model.clone(),
-    };
+        .build()
+        .map_err(map_genai_error)?;
 
     let system_prompt = messages
         .iter()
@@ -482,6 +496,9 @@ fn prepare_request(
             }
         }
     }
+    if profile.adapter == ProviderAdapter::Gemini {
+        request = request.with_store(false);
+    }
 
     let mut options = ChatOptions::default();
     if let Some(temperature) = profile.generation.temperature {
@@ -492,7 +509,7 @@ fn prepare_request(
     }
     if let Some(reasoning_effort) = profile.generation.reasoning_effort {
         let reasoning_effort = match reasoning_effort {
-            ReasoningEffort::None => genai::chat::ReasoningEffort::None,
+            ReasoningEffort::None => genai::chat::ReasoningEffort::Zero,
             ReasoningEffort::Minimal => genai::chat::ReasoningEffort::Minimal,
             ReasoningEffort::Low => genai::chat::ReasoningEffort::Low,
             ReasoningEffort::Medium => genai::chat::ReasoningEffort::Medium,
@@ -680,6 +697,10 @@ mod tests {
             genai_adapter(&ProviderAdapter::Groq, "llama-3.3-70b-versatile"),
             AdapterKind::Groq
         );
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::Gemini, "gemini-3.5-flash"),
+            AdapterKind::GeminiIx
+        );
     }
 
     #[tokio::test]
@@ -695,11 +716,20 @@ mod tests {
         let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
         let test_cases = [
             (
+                ProviderAdapter::Gemini,
+                "gemini-3.5-flash",
+                "gemini_ix::gemini-3.5-flash",
+                genai::adapter::AdapterKind::GeminiIx,
+                "https://generativelanguage.googleapis.com/v1beta/",
+                Some(false),
+            ),
+            (
                 ProviderAdapter::Groq,
                 "llama-3.3-70b-versatile",
                 "groq::llama-3.3-70b-versatile",
                 genai::adapter::AdapterKind::Groq,
                 "https://api.groq.com/openai/v1/",
+                None,
             ),
             (
                 ProviderAdapter::OpenRouter,
@@ -707,10 +737,18 @@ mod tests {
                 "open_router::openai/gpt-4o",
                 genai::adapter::AdapterKind::OpenRouter,
                 "https://openrouter.ai/api/v1/",
+                None,
             ),
         ];
 
-        for (adapter, model_name, expected_model, expected_adapter, expected_endpoint) in test_cases
+        for (
+            adapter,
+            model_name,
+            expected_model,
+            expected_adapter,
+            expected_endpoint,
+            expected_store,
+        ) in test_cases
         {
             let profile = ProviderProfile {
                 id: "provider".to_owned(),
@@ -730,7 +768,7 @@ mod tests {
                     reasoning_effort: None,
                 },
             };
-            let (client, model, _, _) = prepare_request(
+            let (client, model, request, _) = prepare_request(
                 &credentials,
                 &profile,
                 &[ChatMessage {
@@ -742,6 +780,7 @@ mod tests {
             .expect("provider request should be prepared");
 
             assert_eq!(model, expected_model);
+            assert_eq!(request.store, expected_store);
             let target = client
                 .resolve_service_target(model.as_str())
                 .await
@@ -749,6 +788,240 @@ mod tests {
             assert_eq!(target.model.adapter_kind, expected_adapter);
             assert_eq!(target.endpoint.base_url(), expected_endpoint);
         }
+    }
+
+    #[tokio::test]
+    async fn gemini_requests_use_interactions_endpoint_without_remote_storage() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        struct TestCredentials;
+
+        impl super::CredentialStore for TestCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(Some("synthetic-test-key".to_owned()))
+            }
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("mock endpoint should bind");
+        let address = listener
+            .local_addr()
+            .expect("mock endpoint should be addressable");
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener
+                .accept()
+                .expect("request should reach mock endpoint");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .expect("mock stream should accept a read timeout");
+            let mut reader = BufReader::new(stream);
+            let mut request_line = String::new();
+            reader
+                .read_line(&mut request_line)
+                .expect("request line should be readable");
+
+            let mut content_length = None;
+            loop {
+                let mut line = String::new();
+                reader
+                    .read_line(&mut line)
+                    .expect("request headers should be readable");
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some((name, value)) = line.split_once(':')
+                    && name.eq_ignore_ascii_case("content-length")
+                {
+                    content_length = value.trim().parse::<usize>().ok();
+                }
+            }
+
+            let mut body = vec![0; content_length.expect("request should include a body length")];
+            reader
+                .read_exact(&mut body)
+                .expect("request body should be readable");
+            reader
+                .get_mut()
+                .write_all(
+                    b"HTTP/1.1 400 Bad Request\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                )
+                .expect("mock response should be writable");
+            (request_line, body)
+        });
+
+        let client = GenaiLlmClient::new(Arc::new(TestCredentials));
+        let profile = ProviderProfile {
+            id: "gemini-test".to_owned(),
+            display_name: "Gemini test".to_owned(),
+            adapter: ProviderAdapter::Gemini,
+            model: "gemini::gemini-2.5-flash".to_owned(),
+            endpoint: Some(format!("http://{address}/v1beta/")),
+            auth: AuthSource::Keychain {
+                credential_id: "test".to_owned(),
+            },
+            capabilities: ModelCapabilities {
+                vision: false,
+                streaming: true,
+                max_context: None,
+            },
+            generation: GenerationParams {
+                temperature: None,
+                max_tokens: Some(16),
+                reasoning_effort: None,
+            },
+        };
+        let messages = [ChatMessage {
+            role: MessageRole::User,
+            content: "Reply with OK.".to_owned(),
+            images: Vec::new(),
+        }];
+
+        assert_eq!(
+            client.complete(&profile, &messages).await,
+            Err(LlmError::ProviderRejected { status: 400 })
+        );
+
+        let (request_line, body) = server.join().expect("mock endpoint should complete");
+        assert_eq!(
+            request_line.trim_end(),
+            "POST /v1beta/interactions HTTP/1.1"
+        );
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("request payload should be JSON");
+        assert_eq!(payload["model"], "gemini-2.5-flash");
+        assert_eq!(payload["store"], false);
+        assert_eq!(payload["stream"], false);
+    }
+
+    #[tokio::test]
+    async fn gemini_stream_uses_interactions_sse_without_remote_storage() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        struct TestCredentials;
+
+        impl super::CredentialStore for TestCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(Some("synthetic-test-key".to_owned()))
+            }
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("mock endpoint should bind");
+        let address = listener
+            .local_addr()
+            .expect("mock endpoint should be addressable");
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener
+                .accept()
+                .expect("stream request should reach mock endpoint");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .expect("mock stream should accept a read timeout");
+            let mut reader = BufReader::new(stream);
+            let mut request_line = String::new();
+            reader
+                .read_line(&mut request_line)
+                .expect("request line should be readable");
+
+            let mut content_length = None;
+            loop {
+                let mut line = String::new();
+                reader
+                    .read_line(&mut line)
+                    .expect("request headers should be readable");
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some((name, value)) = line.split_once(':')
+                    && name.eq_ignore_ascii_case("content-length")
+                {
+                    content_length = value.trim().parse::<usize>().ok();
+                }
+            }
+
+            let mut body = vec![0; content_length.expect("request should include a body length")];
+            reader
+                .read_exact(&mut body)
+                .expect("request body should be readable");
+            let response_body = concat!(
+                "event: interaction.created\n",
+                "data: {\"interaction\":{\"id\":\"test-id\"},\"event_type\":\"interaction.created\"}\n\n",
+                "event: step.delta\n",
+                "data: {\"index\":0,\"delta\":{\"type\":\"text\",\"text\":\"Gemini \"},\"event_type\":\"step.delta\"}\n\n",
+                "event: step.delta\n",
+                "data: {\"index\":0,\"delta\":{\"type\":\"text\",\"text\":\"stream\"},\"event_type\":\"step.delta\"}\n\n",
+                "event: interaction.completed\n",
+                "data: {\"interaction\":{\"id\":\"\",\"status\":\"completed\"},\"event_type\":\"interaction.completed\"}\n\n",
+                "event: done\n",
+                "data: [DONE]\n\n",
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body,
+            );
+            reader
+                .get_mut()
+                .write_all(response.as_bytes())
+                .expect("mock SSE response should be writable");
+            (request_line, body)
+        });
+
+        let client = GenaiLlmClient::new(Arc::new(TestCredentials));
+        let profile = ProviderProfile {
+            id: "gemini-test".to_owned(),
+            display_name: "Gemini test".to_owned(),
+            adapter: ProviderAdapter::Gemini,
+            model: "gemini-3.5-flash".to_owned(),
+            endpoint: Some(format!("http://{address}/v1beta/")),
+            auth: AuthSource::Keychain {
+                credential_id: "test".to_owned(),
+            },
+            capabilities: ModelCapabilities {
+                vision: false,
+                streaming: true,
+                max_context: None,
+            },
+            generation: GenerationParams {
+                temperature: None,
+                max_tokens: Some(16),
+                reasoning_effort: None,
+            },
+        };
+        let messages = [ChatMessage {
+            role: MessageRole::User,
+            content: "Reply with OK.".to_owned(),
+            images: Vec::new(),
+        }];
+        let mut deltas = Vec::new();
+
+        let result = {
+            let mut on_delta = |delta| deltas.push(delta);
+            client
+                .stream(
+                    &profile,
+                    &messages,
+                    tokio_util::sync::CancellationToken::new(),
+                    &mut on_delta,
+                )
+                .await
+        };
+
+        assert_eq!(result, Ok("Gemini stream".to_owned()));
+        assert_eq!(deltas, ["Gemini ", "stream"]);
+
+        let (request_line, body) = server.join().expect("mock endpoint should complete");
+        assert_eq!(
+            request_line.trim_end(),
+            "POST /v1beta/interactions HTTP/1.1"
+        );
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("request payload should be JSON");
+        assert_eq!(payload["model"], "gemini-3.5-flash");
+        assert_eq!(payload["store"], false);
+        assert_eq!(payload["stream"], true);
     }
 
     #[test]
@@ -886,7 +1159,7 @@ mod tests {
             }
         }
 
-        let profile = ProviderProfile {
+        let mut profile = ProviderProfile {
             id: "test".to_owned(),
             display_name: "Test".to_owned(),
             adapter: ProviderAdapter::OpenAi,
@@ -918,6 +1191,14 @@ mod tests {
         assert!(matches!(
             options.reasoning_effort,
             Some(genai::chat::ReasoningEffort::High)
+        ));
+
+        profile.generation.reasoning_effort = Some(ReasoningEffort::None);
+        let (_, _, _, options) = prepare_request(&credentials, &profile, &messages)
+            .expect("provider request should be prepared");
+        assert!(matches!(
+            options.reasoning_effort,
+            Some(genai::chat::ReasoningEffort::Zero)
         ));
     }
 

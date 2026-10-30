@@ -8,7 +8,7 @@ use calamine::{Data, Reader as WorkbookReader, Xlsx, open_workbook_from_rs};
 use epikrise_core::{ExtractedBlock, ExtractionMethod, InputProvenance};
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
-use rtf_parser_tt::{ControlWord, Lexer, Parser, Token};
+use rtf_parser_tt::RtfDocument;
 use serde::Serialize;
 use specta::Type;
 use std::{
@@ -425,12 +425,7 @@ fn extract_html_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock
 }
 
 fn extract_rtf_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
-    let source = String::from_utf8(bytes).map_err(|_| IngestError::InvalidUtf8)?;
-    let tokens = Lexer::scan(&source).map_err(|_| IngestError::InvalidRtf)?;
-    validate_rtf_unicode(&tokens)?;
-    let document = Parser::new(tokens)
-        .parse()
-        .map_err(|_| IngestError::InvalidRtf)?;
+    let document = RtfDocument::from_bytes(&bytes).map_err(|_| IngestError::InvalidRtf)?;
     let text = document.get_text();
     if text.trim().is_empty() {
         return Err(IngestError::NoRtfText);
@@ -441,34 +436,6 @@ fn extract_rtf_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock,
         InputProvenance::File { name: file_name },
         text,
     ))
-}
-
-fn validate_rtf_unicode(tokens: &[Token<'_>]) -> Result<(), IngestError> {
-    let mut index = 0;
-    while index < tokens.len() {
-        let Token::ControlSymbol((ControlWord::Unicode, property)) = &tokens[index] else {
-            index += 1;
-            continue;
-        };
-
-        let mut code_units = Vec::new();
-        code_units.push(
-            property
-                .get_unicode_value()
-                .map_err(|_| IngestError::InvalidRtf)?,
-        );
-        index += 1;
-        while let Some(Token::ControlSymbol((ControlWord::Unicode, property))) = tokens.get(index) {
-            code_units.push(
-                property
-                    .get_unicode_value()
-                    .map_err(|_| IngestError::InvalidRtf)?,
-            );
-            index += 1;
-        }
-        String::from_utf16(&code_units).map_err(|_| IngestError::InvalidRtf)?;
-    }
-    Ok(())
 }
 
 fn extract_xlsx_file(file_name: String, bytes: Vec<u8>) -> Result<ExtractedBlock, IngestError> {
@@ -1084,6 +1051,26 @@ mod tests {
     }
 
     #[test]
+    fn extracts_rtf_windows_code_page_and_surrogate_pair_characters() {
+        let mut windows_1252_rtf = br"{\rtf1\ansi\ansicpg1252 Caf".to_vec();
+        windows_1252_rtf.push(0xe9);
+        windows_1252_rtf.extend_from_slice(b"}");
+        let block = extract_file("windows-1252.rtf".to_owned(), windows_1252_rtf)
+            .expect("RTF should decode characters from its declared code page");
+        assert!(block.content.contains("Café"), "{:?}", block.content);
+
+        let emoji_rtf = br"{\rtf1\ansi\uc1\u-10179?\u-8704?}".to_vec();
+        let block = extract_file("emoji.rtf".to_owned(), emoji_rtf)
+            .expect("RTF surrogate pairs should decode as a single character");
+        assert!(block.content.contains("😀"), "{:?}", block.content);
+
+        let libreoffice_emoji_rtf = br"{\rtf1\ansi\uc0\u-10179\uc1\u-8704?}".to_vec();
+        let block = extract_file("libreoffice-emoji.rtf".to_owned(), libreoffice_emoji_rtf)
+            .expect("RTF Unicode fallback settings should not split surrogate pairs");
+        assert!(block.content.contains("😀"), "{:?}", block.content);
+    }
+
+    #[test]
     fn rejects_invalid_and_empty_rtf_or_html_content() {
         assert_eq!(
             extract_file("broken.rtf".to_owned(), b"{\\rtf1 ".to_vec()),
@@ -1096,13 +1083,12 @@ mod tests {
             ),
             Err(IngestError::NoRtfText)
         );
-        assert_eq!(
-            extract_file(
-                "surrogate.rtf".to_owned(),
-                br#"{\rtf1\ansi\uc0\u-10179}"#.to_vec()
-            ),
-            Err(IngestError::InvalidRtf)
-        );
+        let surrogate = extract_file(
+            "surrogate.rtf".to_owned(),
+            br"{\rtf1\ansi\uc0\u-10179}".to_vec(),
+        )
+        .expect("unpaired RTF surrogates should decode as the replacement character");
+        assert_eq!(surrogate.content, "\u{FFFD}");
         assert_eq!(
             extract_file(
                 "empty.html".to_owned(),

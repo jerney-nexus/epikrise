@@ -9,6 +9,11 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 ### Added
 
+- RTF ingestion now decodes declared Windows code pages and Unicode surrogate
+  pairs, including emoji.
+- Gemini profiles now use the Gemini Interactions API through `genai` 0.7.1,
+  retaining existing provider credentials, request settings, streaming, and
+  cancellation behavior.
 - Localized in-app help for the workflow, settings, case-data handling, and
   privacy boundaries.
 - Templates can format ISO `YYYY-MM-DD` values with the MiniJinja expression
@@ -110,5 +115,19 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   workspace E mark.
 - Spaced the active-template picker away from configuration and allowed the
   template editor to clone reactive Svelte state safely.
+
+### Fixed
+
+- Updated vulnerable frontend dependencies to patched releases, including
+  DOMPurify, markdown-it, Vite, happy-dom, undici, and Vitest; standardized
+  the project, container, and CI on pnpm 12.15.0.
+- Updated `tauri-plugin-updater` to 2.14.1, removing its vulnerable Windows
+  `zip 4.6.1` dependency in favor of the patched `zip 9` line.
+- Windows image OCR now opens the image and tessdata paths correctly in native
+  and Linux cross-built apps. Invalid OCR output can also use vision fallback
+  when enabled.
+- Windows ARM64 now lists stored provider credentials correctly, enabling
+  connection checks, model-list refresh, and report drafting. These flows were
+  validated in a native Windows ARM64 app run.
 
 [Unreleased]: https://github.com/jerney-nexus/epikrise/compare/HEAD

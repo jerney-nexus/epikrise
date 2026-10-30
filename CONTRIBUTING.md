@@ -71,17 +71,22 @@ and open a new terminal. Then retry `pnpm tauri build`.
 
 ### Building Windows installers
 
-Windows cross-compilation is configured for the ARM64 Linux dev container. Its
-setup installs LLVM, CMake, Ninja, NSIS and `cargo-xwin`; OCR sidecars and their
-static dependencies are compiled separately for x64 and ARM64. Provisioning
-also installs Tauri's required NSIS Restart Manager include. The pinned Windows
-PDFium and language resources are staged per target. If setup reports that the
-include is missing, rebuild the dev container to apply the updated provisioning.
+- **Native Windows build:** not currently supported by the repository scripts.
+- **Manual Linux cross-build:** builds diagnostic x64 and ARM64 NSIS installers
+  from the native Linux ARM64 Dev Container. It is separate from the approved
+  Windows cross-builds in GitHub Actions.
 
-Run setup interactively once. It displays the Microsoft SDK/CRT license link
-and downloads the pinned Windows SDK package `10.0.26100` and Visual C++
-toolset component `14.44.17.14` only
-after you type `ACCEPT`:
+#### Manual cross-build from Linux ARM64
+
+Use this path only from the native Linux ARM64 Dev Container. It requires
+LLVM, CMake, Ninja, NSIS, `cargo-xwin`, and Tauri's NSIS Restart Manager
+include. Do not use CPU emulation. Run setup in an interactive terminal; it
+installs `cargo-xwin` if needed before displaying the Microsoft SDK/CRT license
+link. Review the license and type `ACCEPT` to allow downloading the pinned
+Windows SDK package `10.0.26100` and Visual C++ toolset component `14.44.17.14`.
+This acceptance gates the SDK/CRT download, not installation of `cargo-xwin`.
+The interactive path is for local setup; GitHub Actions uses the separate
+`--ci` path only when `EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED=true`.
 
 ```sh
 pnpm windows:setup
@@ -111,7 +116,7 @@ ARM64 systems.
 
 ## Cross-platform Actions builds
 
-The manual **Desktop builds** workflow produces six native/target-matched
+The manual **Desktop builds** workflow produces six target-specific
 packages: Linux x64 and ARM64 (`.deb`, `.rpm`, AppImage), macOS x64 and ARM64
 (`.dmg`), and Windows x64 and ARM64 (NSIS `.exe` with offline WebView2). Linux
 and macOS use native GitHub-hosted runners; Windows uses the existing

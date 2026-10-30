@@ -64,7 +64,7 @@ Epikrise does not connect to a hospital information system.
 | Tool          | Version | Notes                                                                |
 | ------------- | ------- | -------------------------------------------------------------------- |
 | Rust          | 1.98+   | stable toolchain, edition 2024                                       |
-| Node.js       | 22+     | pnpm 12.10.1, activated through Corepack                             |
+| Node.js       | 22+     | pnpm 12.15.0, activated through Corepack                             |
 | Platform deps | —       | see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
 
 A [dev container](.devcontainer/devcontainer.json) with everything preinstalled
@@ -110,13 +110,19 @@ This creates AppImage, Debian (`.deb`), and RPM packages under
 
 Native Windows installer builds are not currently supported by the repository
 scripts. The bundled Tesseract OCR sidecar is cross-compiled on Linux ARM64, so
-use the dev container instructions below.
+use the Dev Container instructions below.
 
-#### Dev container build
+#### Dev Container cross-build
 
-From the ARM64 Linux dev container, run `pnpm windows:setup` once and review
-the Microsoft SDK/CRT license when prompted. Then build one architecture or both
-sequentially:
+From the native Linux ARM64 Dev Container (not Linux x64 or CPU emulation), run
+`pnpm windows:setup` interactively. The setup script installs `cargo-xwin` if
+needed, then prompts you to review the Microsoft SDK/CRT license. Typing
+`ACCEPT` gates downloading the pinned SDK/CRT; it is not required to install
+`cargo-xwin`. The manual setup path is for local interactive use, not CI; the
+approved CI setup path is described below.
+
+Then explicitly opt in for the current shell and build diagnostic NSIS
+installers:
 
 ```sh
 pnpm windows:build:x64
@@ -136,8 +142,10 @@ required. See [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
 workflow for the current pushed commit from either an ARM64 or x64 dev
 container. It builds Linux ARM64/x64 (`.deb`, `.rpm`, AppImage), macOS
 ARM64/x64 (`.dmg`), and Windows ARM64/x64 (NSIS `.exe` with offline WebView2)
-in six isolated jobs. The workflow must be enabled on GitHub, and the commit
-must contain the workflow. It never commits or pushes changes.
+in six isolated jobs. Windows jobs run on Linux ARM64 with `cargo-xwin`, so
+they are cross-builds rather than native Windows builds. The workflow must be
+enabled on GitHub, and the commit must contain the workflow. It never commits
+or pushes changes.
 
 The command requires a clean worktree, the current branch or tag pushed to
 `origin` at exactly `HEAD`, the GitHub CLI authenticated with Actions dispatch

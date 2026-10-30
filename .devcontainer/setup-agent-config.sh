@@ -42,6 +42,15 @@ copy_host_files /home/vscode/.copilot-host /home/vscode/.copilot \
 link_host_entries /home/vscode/.copilot-host /home/vscode/.copilot \
   skills agents instructions prompts
 
+# Preserve CLI sessions created before its home moved to a writable volume.
+if [[ -d /home/vscode/.copilot-host/session-state \
+  && ! -e /home/vscode/.copilot/session-state ]]; then
+  cp -R /home/vscode/.copilot-host/session-state /home/vscode/.copilot/
+fi
+
+# The feature's post-start updater runs as vscode but installs under /usr/local/bin.
+sudo rm -f /etc/devcontainer-copilot-cli/auto-update
+
 # Claude settings are seeded as a writable copy; skills and instructions remain
 # read-only host links. Projects, todos, sessions, and other state are writable.
 copy_host_files /home/vscode/.claude-host /home/vscode/.claude settings.json
