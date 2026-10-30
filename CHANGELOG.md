@@ -324,7 +324,7 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 - Enhance signed release workflow with environment and bundle configurations
 - Add approved_redirect_chain function for secure URL redirection validation
 - Update portable package implementation details and verification process
-- *(release)* Verify signed artifact integrity
+- _(release)_ Verify signed artifact integrity
 - Add native host builds for Tauri and OCR (#97)
 - Enable manual Linux NSIS cross-builds (#111)
 - Add safe image OCR diagnostics (#113)
@@ -353,34 +353,34 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 - Update pubkey in release config for updater plugin
 - Honor updater key from release config
 - Clarify blocker for native install and two-version update acceptance
-- *(release)* Enforce version and updater target contracts
-- *(ci)* Summarize cargo deny output
-- *(ci)* Use supported git-cliff version input
-- *(devcontainer)* Create optional bind sources
-- *(devcontainer)* Keep CLI runtime state writable
-- *(devcontainer)* Add protected SSH volume
-- *(TODO)* Mark blocked tasks for Playwright Test Explorer and portable package implementation
-- *(release)* Recover verified draft releases
-- *(release)* Keep latest promotion monotonic
-- *(release)* Verify uploaded draft assets
-- *(release)* Satisfy artifact validation types
-- *(release)* Enhance Windows setup script for noninteractive CI mode and retain interactive acceptance
-- *(release)* Fail closed on latest lookup errors
-- *(updater)* Require signed artifact version
-- *(release)* Send make_latest as string
-- *(ci)* Install NSIS package for desktop builds
-- *(security)* Strip remote images from clipboard HTML
-- *(vscode)* Use correct Rust format task script
-- *(release)* Accept already-normalized versions
-- *(output)* Annotate standalone code block lines
-- *(release)* Update source Cargo lock versions
-- *(release)* Generate notes from unreleased commits
-- *(updater)* Align Windows NSIS manifest targets
-- *(ci)* Remove invalid makensis package
+- _(release)_ Enforce version and updater target contracts
+- _(ci)_ Summarize cargo deny output
+- _(ci)_ Use supported git-cliff version input
+- _(devcontainer)_ Create optional bind sources
+- _(devcontainer)_ Keep CLI runtime state writable
+- _(devcontainer)_ Add protected SSH volume
+- _(TODO)_ Mark blocked tasks for Playwright Test Explorer and portable package implementation
+- _(release)_ Recover verified draft releases
+- _(release)_ Keep latest promotion monotonic
+- _(release)_ Verify uploaded draft assets
+- _(release)_ Satisfy artifact validation types
+- _(release)_ Enhance Windows setup script for noninteractive CI mode and retain interactive acceptance
+- _(release)_ Fail closed on latest lookup errors
+- _(updater)_ Require signed artifact version
+- _(release)_ Send make_latest as string
+- _(ci)_ Install NSIS package for desktop builds
+- _(security)_ Strip remote images from clipboard HTML
+- _(vscode)_ Use correct Rust format task script
+- _(release)_ Accept already-normalized versions
+- _(output)_ Annotate standalone code block lines
+- _(release)_ Update source Cargo lock versions
+- _(release)_ Generate notes from unreleased commits
+- _(updater)_ Align Windows NSIS manifest targets
+- _(ci)_ Remove invalid makensis package
 - Use supported gh workflow listing
-- *(deps)* Resolve source-map-js audit finding
+- _(deps)_ Resolve source-map-js audit finding
 - Make release lock test cache-independent (#50)
-- *(template)* Reject blank template names (#63)
+- _(template)_ Reject blank template names (#63)
 - Resolve Linux credential listing in desktop sessions (#110)
 - Update provider order and add tests for restricted policies (#137)
 - Allow document selection in Linux file picker (#140)
@@ -388,7 +388,7 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 ### 💼 Other
 
 - Add workflow for version bumping and changelog generation
-- *(devcontainer)* Isolate GitHub CLI auth
+- _(devcontainer)_ Isolate GitHub CLI auth
 
 ### 🚜 Refactor
 
@@ -405,14 +405,14 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 - Add security section for SSH key volume mounting in TODO
 - Update release integrity changelog
 - Clarify native acceptance blockers
-- *(todo)* Track signed release NSIS dependency issue
-- *(todo)* Track blocked items as issues
-- *(todo)* Keep PR scope focused
-- *(workflows)* Improve GitHub issue tracking
-- *(skills)* Update allowed-tools and clarify issue handling in agent skills
-- *(skills)* Address review feedback
-- *(skills)* Safeguard GitHub issue reports
-- *(skills)* Keep full-suite issues open until delivery
+- _(todo)_ Track signed release NSIS dependency issue
+- _(todo)_ Track blocked items as issues
+- _(todo)_ Keep PR scope focused
+- _(workflows)_ Improve GitHub issue tracking
+- _(skills)_ Update allowed-tools and clarify issue handling in agent skills
+- _(skills)_ Address review feedback
+- _(skills)_ Safeguard GitHub issue reports
+- _(skills)_ Keep full-suite issues open until delivery
 - Remove completed TODO ledger
 - Add private vulnerability reporting policy (#64)
 - Correct Windows installer output paths (#65)
