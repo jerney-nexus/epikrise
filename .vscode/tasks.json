@@ -236,6 +236,24 @@
       "args": ["release:prepare", "${input:releaseVersion}"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Release Preflight",
+      "detail": "Safely switches to an up-to-date main and reports release tag status.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["release:preflight"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Create and Push Release Tag",
+      "detail": "Creates and pushes an annotated release tag after confirmation.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["release:tag", "${input:releaseVersion}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
     }
   ],
   "inputs": [

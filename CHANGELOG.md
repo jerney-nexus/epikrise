@@ -7,6 +7,11 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+### Added
+
+- Added guarded `pnpm` and VS Code tasks for release preflight and explicitly
+  confirmed annotated-tag creation and push.
+
 ### Changed
 
 - Release preparation now formats generated release metadata and uses a GitHub

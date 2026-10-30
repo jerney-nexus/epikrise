@@ -34,6 +34,12 @@ import {
 } from "../scripts/prepare-release.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
 import {
+  assertCleanReleaseWorktree,
+  assertReleaseMainIsSynchronized,
+  assertReleaseTagAvailable,
+  resolveReleaseTagVersion,
+} from "../scripts/release-start.mjs";
+import {
   assertDispatchPreconditions,
   assertSuccessfulJobs,
   desktopTargets,
@@ -1087,6 +1093,42 @@ describe("release workspace preparation", () => {
       ).rejects.toBe(preparationError);
       await expect(lstat(workspace)).rejects.toMatchObject({ code: "ENOENT" });
     });
+  });
+});
+
+describe("release start shortcuts", () => {
+  it("rejects a dirty worktree", () => {
+    expect(() => assertCleanReleaseWorktree(" M package.json\n")).toThrow(
+      "worktree is dirty",
+    );
+    expect(() => assertCleanReleaseWorktree("")).not.toThrow();
+  });
+
+  it("requires main to match origin/main exactly", () => {
+    expect(() => assertReleaseMainIsSynchronized("feature", "abc", "abc")).toThrow(
+      "requires main",
+    );
+    expect(() => assertReleaseMainIsSynchronized("main", "abc", "def")).toThrow(
+      "not synchronized",
+    );
+    expect(() => assertReleaseMainIsSynchronized("main", "abc", "abc")).not.toThrow();
+  });
+
+  it("defaults to the project version and rejects a different requested version", () => {
+    expect(resolveReleaseTagVersion("2026.10.2")).toBe("2026.10.2");
+    expect(resolveReleaseTagVersion("2026.10.2", "2026.10.2")).toBe("2026.10.2");
+    expect(() => resolveReleaseTagVersion("2026.10.2", "2026.10.3")).toThrow(
+      "does not match package.json version",
+    );
+  });
+
+  it.each([
+    [true, false, "locally"],
+    [false, true, "on origin"],
+  ])("rejects an existing tag (%s, %s)", (localExists, remoteExists, location) => {
+    expect(() =>
+      assertReleaseTagAvailable("v2026.10.2", localExists, remoteExists),
+    ).toThrow(location);
   });
 });
 

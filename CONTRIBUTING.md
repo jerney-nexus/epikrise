@@ -565,6 +565,15 @@ Actions tab. Enter a `YYYY.M.MICRO` version or leave it blank to select the
 next CalVer version. The workflow updates npm, Cargo, and Tauri metadata,
 generates release notes, and opens a pull request for review.
 
+After merging that PR, run `pnpm release:preflight` from a clean worktree. It
+fetches tags, fast-forward updates `main` from `origin/main`, and reports the
+project version and whether its tag exists locally and remotely. If the
+preflight reports that the tag is absent, run `pnpm release:tag` (optionally
+with the version) from the clean, synchronized `main` branch. The tag command
+checks the version and local/remote tag state, asks for an interactive `PUSH`
+confirmation, then creates an annotated tag and pushes only that tag ref. It
+never force-updates a tag. Both commands are also available as VS Code tasks.
+
 ### Release and update workflow
 
 Release identities use unpadded `YYYY.M.MICRO`. If Cargo, Tauri, an installer,
