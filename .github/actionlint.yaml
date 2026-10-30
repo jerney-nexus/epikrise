@@ -1,0 +1,8 @@
+# actionlint 1.7.12 has not added this GA hosted runner label yet.
+paths:
+  .github/workflows/desktop-builds.yml:
+    ignore:
+      - 'label "windows-11-vs2026-arm" is unknown'
+  .github/workflows/signed-release.yml:
+    ignore:
+      - 'label "windows-11-vs2026-arm" is unknown'

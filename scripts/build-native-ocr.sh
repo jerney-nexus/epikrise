@@ -159,8 +159,9 @@ if [[ -L "$sidecar" ]]; then
   rm -f "$sidecar"
 fi
 install -m 0755 "$prefix/bin/tesseract" "$sidecar"
+node "$repo_root/scripts/verify-binary-architecture.mjs" "$target" "$sidecar"
 if [[ "$platform" == "linux" ]]; then
-  ldd_output="$(ldd "$sidecar" 2>&1 || true)"
+  ldd_output="$(LC_ALL=C ldd "$sidecar" 2>&1 || true)"
   if [[ "$ldd_output" != *"not a dynamic executable"* && "$ldd_output" != *"statically linked"* ]]; then
     printf 'Linux Tesseract sidecar is not statically linked.\n' >&2
     exit 1

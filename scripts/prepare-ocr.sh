@@ -84,34 +84,47 @@ if [[ "$target" != "$host_target" && "$target" != *-pc-windows-msvc ]]; then
   exit 1
 fi
 
-tesseract_path="$(command -v tesseract || true)"
-if [[ -z "$tesseract_path" ]]; then
-  printf 'Tesseract was not found. Install it and the deu/eng language data before building.\n' >&2
-  exit 1
+tessdata_dir="${EPIKRISE_TESSDATA_DIR:-}"
+if [[ "$tessdata_dir" =~ ^[A-Za-z]:[\\/].* ]]; then
+  if ! command -v cygpath >/dev/null 2>&1; then
+    printf 'cygpath is required to resolve a Windows EPIKRISE_TESSDATA_DIR path.\n' >&2
+    exit 1
+  fi
+  tessdata_dir="$(cygpath -u "$tessdata_dir")"
 fi
+if [[ -z "$tessdata_dir" ]]; then
+  tesseract_path="$(command -v tesseract || true)"
+  if [[ -z "$tesseract_path" ]]; then
+    printf 'Tesseract was not found. Install it or set EPIKRISE_TESSDATA_DIR before building.\n' >&2
+    exit 1
+  fi
 
-tessdata_dir="$(tesseract --list-langs 2>&1 | sed -n 's/.* in \"\([^\"]*\)\".*/\1/p' | head -n 1)"
-if [[ ! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata" ]]; then
-  child_tessdata_dir="$tessdata_dir/tessdata"
-  if [[ -f "$child_tessdata_dir/deu.traineddata" && -f "$child_tessdata_dir/eng.traineddata" ]]; then
-    tessdata_dir="$child_tessdata_dir"
+  tessdata_dir="$(tesseract --list-langs 2>&1 | sed -n 's/.* in "\([^"]*\)".*/\1/p' | head -n 1)"
+  if [[ ! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata" ]]; then
+    child_tessdata_dir="$tessdata_dir/tessdata"
+    if [[ -f "$child_tessdata_dir/deu.traineddata" && -f "$child_tessdata_dir/eng.traineddata" ]]; then
+      tessdata_dir="$child_tessdata_dir"
+    fi
+  fi
+  if [[ (! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata") ]] && command -v dpkg-query >/dev/null 2>&1; then
+    tessdata_packages="${EPIKRISE_TESSDATA_PACKAGES:-tesseract-ocr-deu tesseract-ocr-eng}"
+    read -r -a tessdata_package_names <<< "$tessdata_packages"
+    for tessdata_package in "${tessdata_package_names[@]}"; do
+      package_tessdata_dir="$(dpkg-query --listfiles "$tessdata_package" 2>/dev/null | sed -n 's#\(.*\)/\(deu\|eng\)\.traineddata$#\1#p' | head -n 1 || true)"
+      if [[ -n "$package_tessdata_dir" && -f "$package_tessdata_dir/deu.traineddata" && -f "$package_tessdata_dir/eng.traineddata" ]]; then
+        tessdata_dir="$package_tessdata_dir"
+        break
+      fi
+    done
   fi
 fi
-if [[ (! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata") ]] && command -v dpkg-query >/dev/null 2>&1; then
-  tessdata_packages="${EPIKRISE_TESSDATA_PACKAGES:-tesseract-ocr-deu tesseract-ocr-eng}"
-  read -r -a tessdata_package_names <<< "$tessdata_packages"
-  for tessdata_package in "${tessdata_package_names[@]}"; do
-    package_tessdata_dir="$(dpkg-query --listfiles "$tessdata_package" 2>/dev/null | sed -n 's#\(.*\)/\(deu\|eng\)\.traineddata$#\1#p' | head -n 1 || true)"
-    if [[ -n "$package_tessdata_dir" && -f "$package_tessdata_dir/deu.traineddata" && -f "$package_tessdata_dir/eng.traineddata" ]]; then
-      tessdata_dir="$package_tessdata_dir"
-      break
-    fi
-  done
-fi
-if [[ -z "$tessdata_dir" || ! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata" ]]; then
-  printf 'Tesseract must have both deu and eng language data installed.\n' >&2
+
+if [[ ! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata" ]]; then
+  printf 'Tesseract language data must include both deu and eng traineddata files.\n' >&2
   if [[ "$host_target" == *-apple-darwin ]]; then
     printf 'Install them with: brew install tesseract tesseract-lang\n' >&2
+  else
+    printf 'Set EPIKRISE_TESSDATA_DIR to their directory.\n' >&2
   fi
   exit 1
 fi
@@ -140,12 +153,17 @@ temp_dir="$(mktemp -d)"
 trap 'rm -rf "$temp_dir"' EXIT
 tar -xzf "$pdfium_cache_path" -C "$temp_dir" "$pdfium_member"
 install -m 0644 "$temp_dir/$pdfium_member" "$pdfium_path"
+node "$repo_root/scripts/verify-binary-architecture.mjs" "$target" "$pdfium_path"
 
 install -m 0644 "$tessdata_dir/deu.traineddata" "$resource_dir/tessdata/deu.traineddata"
 install -m 0644 "$tessdata_dir/eng.traineddata" "$resource_dir/tessdata/eng.traineddata"
 
 if [[ "$target" == *-pc-windows-msvc ]]; then
-  builder="${EPIKRISE_WINDOWS_OCR_BUILDER:-$repo_root/scripts/build-windows-ocr.sh}"
+  if [[ "$target" == "$host_target" ]]; then
+    builder="${EPIKRISE_NATIVE_WINDOWS_OCR_BUILDER:-$repo_root/scripts/build-native-windows-ocr.sh}"
+  else
+    builder="${EPIKRISE_WINDOWS_OCR_BUILDER:-$repo_root/scripts/build-windows-ocr.sh}"
+  fi
   EPIKRISE_OCR_BINARY_DIR="$binary_dir" bash "$builder" "$target"
 else
   builder="${EPIKRISE_NATIVE_OCR_BUILDER:-$repo_root/scripts/build-native-ocr.sh}"
@@ -155,4 +173,9 @@ fi
 if [[ ! -f "$binary_dir/tesseract-$target" && ! -f "$binary_dir/tesseract-$target.exe" ]]; then
   printf 'Tesseract sidecar was not produced for target %s.\n' "$target" >&2
   exit 1
+fi
+if [[ -f "$binary_dir/tesseract-$target.exe" ]]; then
+  node "$repo_root/scripts/verify-binary-architecture.mjs" "$target" "$binary_dir/tesseract-$target.exe"
+else
+  node "$repo_root/scripts/verify-binary-architecture.mjs" "$target" "$binary_dir/tesseract-$target"
 fi
