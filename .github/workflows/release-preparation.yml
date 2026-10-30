@@ -42,6 +42,8 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: node scripts/prepare-release.mjs "$RELEASE_VERSION"
+      - name: Verify release metadata formatting
+        run: pnpm format:check:file CHANGELOG.md src-tauri/tauri.conf.json
       - uses: peter-evans/create-pull-request@v8
         with:
           base: ${{ github.event.repository.default_branch }}

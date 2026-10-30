@@ -18,11 +18,14 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
+import * as prettier from "prettier";
 import { describe, expect, it, vi } from "vitest";
 import {
   assertStoreVersionAdvances,
   createReleasedChangelog,
   deriveReleaseVersions,
+  formatReleaseArtifacts,
+  hasGitTag,
   nextCalverVersion,
   prepareReleaseBuildInputs,
   releaseVersionFromProtocolVersion,
@@ -891,6 +894,7 @@ describe("CalVer release versions", () => {
       generatedNotes,
       "2026.10.1",
       "2026.10.0",
+      true,
     );
 
     expect(result).toMatch(/## \[2026\.10\.1\] - \d{4}-\d{2}-\d{2}/);
@@ -902,6 +906,98 @@ describe("CalVer release versions", () => {
     expect(result).toContain(
       "[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.1...HEAD",
     );
+  });
+
+  it("links the first release to its GitHub release page", () => {
+    const changelog = [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      "- First release note.",
+      "",
+      "[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/HEAD",
+      "",
+    ].join("\n");
+    const generatedNotes = [
+      "## [2026.10.1] - 2026-10-01",
+      "",
+      "- Generated release note.",
+    ].join("\n");
+
+    const result = createReleasedChangelog(
+      changelog,
+      generatedNotes,
+      "2026.10.1",
+      "2026.10.0",
+      false,
+    );
+
+    expect(result).toContain(
+      "[2026.10.1]: https://github.com/jerney-nexus/epikrise/releases/tag/v2026.10.1",
+    );
+    expect(result).not.toContain(
+      "[2026.10.1]: https://github.com/jerney-nexus/epikrise/compare/",
+    );
+  });
+
+  it("detects an exact prior release tag", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-release-tag-"));
+    const tag = "v2026.10.0";
+    try {
+      await execFile("git", ["init", "--quiet"], { cwd: directory });
+      await writeFile(path.join(directory, "fixture.txt"), "fixture\n");
+      await execFile("git", ["add", "fixture.txt"], { cwd: directory });
+      await execFile(
+        "git",
+        [
+          "-c",
+          "user.name=Epikrise Test",
+          "-c",
+          "user.email=epikrise-test@example.invalid",
+          "commit",
+          "--quiet",
+          "-m",
+          "fixture",
+        ],
+        { cwd: directory },
+      );
+
+      expect(await hasGitTag(tag, directory)).toBe(false);
+      await execFile("git", ["tag", tag], { cwd: directory });
+      expect(await hasGitTag(tag, directory)).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("formats generated release metadata with Prettier", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-release-format-"));
+    try {
+      const changelogPath = path.join(directory, "CHANGELOG.md");
+      const configPath = path.join(directory, "src-tauri/tauri.conf.json");
+      await mkdir(path.dirname(configPath), { recursive: true });
+      await writeFile(changelogPath, "# Changelog\n\n## [Unreleased]\n- note\n");
+      await writeFile(
+        configPath,
+        '{"version":"2026.10.1","bundle":{"targets":["dmg","app"]}}',
+      );
+
+      await formatReleaseArtifacts(directory);
+
+      for (const filePath of [changelogPath, configPath]) {
+        const content = await readFile(filePath, "utf8");
+        const config = await prettier.resolveConfig(filePath);
+        expect(
+          await prettier.check(content, {
+            ...(config ?? {}),
+            filepath: filePath,
+          }),
+        ).toBe(true);
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("limits generated release notes to unreleased commits", async () => {

@@ -13,6 +13,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import TOML from "@iarna/toml";
+import * as prettier from "prettier";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -329,6 +330,7 @@ export function createReleasedChangelog(
   generatedNotes,
   version,
   previousVersion,
+  previousReleaseTagExists,
 ) {
   const heading = "## [Unreleased]";
   const headingStart = changelog.indexOf(heading);
@@ -351,8 +353,12 @@ export function createReleasedChangelog(
   const suffix = changelog.slice(bodyEnd).trimStart();
   let updated = `${prefix}${heading}\n\n${releasedSection}\n\n${suffix}`;
 
-  const baseUrl = "https://github.com/jerney-nexus/epikrise/compare";
-  const versionReference = `[${version}]: ${baseUrl}/v${previousVersion}...v${version}`;
+  const repositoryUrl = "https://github.com/jerney-nexus/epikrise";
+  const versionUrl = previousReleaseTagExists
+    ? `${repositoryUrl}/compare/v${previousVersion}...v${version}`
+    : `${repositoryUrl}/releases/tag/v${version}`;
+  const versionReference = `[${version}]: ${versionUrl}`;
+  const baseUrl = `${repositoryUrl}/compare`;
   const unreleasedReference = `[Unreleased]: ${baseUrl}/v${version}...HEAD`;
   if (!/^\[Unreleased\]:/m.test(updated)) {
     throw new Error("CHANGELOG.md is missing its Unreleased link reference.");
@@ -362,6 +368,30 @@ export function createReleasedChangelog(
     `${versionReference}\n${unreleasedReference}`,
   );
   return updated;
+}
+
+/** @param {string} tag @param {string} cwd */
+export async function hasGitTag(tag, cwd = repoRoot) {
+  const { stdout } = await execFile("git", ["tag", "--list", tag], {
+    cwd,
+    maxBuffer: 1024 * 1024,
+  });
+  return stdout.split(/\r?\n/).includes(tag);
+}
+
+/** @param {string} workspaceRoot */
+export async function formatReleaseArtifacts(workspaceRoot = repoRoot) {
+  const root = path.resolve(workspaceRoot);
+  for (const relativePath of ["CHANGELOG.md", "src-tauri/tauri.conf.json"]) {
+    const filePath = path.join(root, relativePath);
+    const source = await readFile(filePath, "utf8");
+    const config = await prettier.resolveConfig(path.join(repoRoot, relativePath));
+    const formatted = await prettier.format(source, {
+      ...(config ?? {}),
+      filepath: filePath,
+    });
+    await writeFile(filePath, formatted);
+  }
 }
 
 /** @param {string} requestedVersion */
@@ -377,6 +407,7 @@ async function prepareRelease(requestedVersion) {
       `Release version ${version} must be greater than ${previousVersion}.`,
     );
   }
+  const previousReleaseTagExists = await hasGitTag(`v${previousVersion}`);
 
   const { stdout: generatedNotes } = await execFile(
     "git-cliff",
@@ -423,8 +454,15 @@ async function prepareRelease(requestedVersion) {
   const changelog = await readFile(changelogPath, "utf8");
   await writeFile(
     changelogPath,
-    createReleasedChangelog(changelog, generatedNotes, version, previousVersion),
+    createReleasedChangelog(
+      changelog,
+      generatedNotes,
+      version,
+      previousVersion,
+      previousReleaseTagExists,
+    ),
   );
+  await formatReleaseArtifacts();
 
   if (process.env.GITHUB_OUTPUT) {
     await appendFile(process.env.GITHUB_OUTPUT, `version=${version}\n`);
