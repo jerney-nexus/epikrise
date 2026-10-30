@@ -1,0 +1,310 @@
+name: Store submission packages
+run-name: Store submission packages ${{ github.event.workflow_run.head_branch }}
+
+on:
+  workflow_run:
+    workflows:
+      - Signed updater release
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-submission-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    name: Build Store MSIX ${{ matrix.architecture }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            target: x86_64-pc-windows-msvc
+            runner: windows-2025
+          - architecture: arm64
+            target: aarch64-pc-windows-msvc
+            runner: windows-11-vs2026-arm
+    env:
+      RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+      WINDOWS_ARCH: ${{ matrix.architecture }}
+      TARGET: ${{ matrix.target }}
+      EPIKRISE_NATIVE_BUILD_TARGET: ${{ matrix.target }}
+      EPIKRISE_BUILD_MODE: diagnostic
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.15.0
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install source tooling
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate release tag and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          node scripts/release-artifacts.mjs validate --tag "$RELEASE_TAG"
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]]
+          [[ "$(git rev-parse "${RELEASE_TAG}^{commit}")" == "$RELEASE_SHA" ]]
+
+      - name: Verify native build host and target
+        env:
+          EPIKRISE_RUNNER_OS: ${{ runner.os }}
+          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
+        shell: bash
+        run: bash scripts/with-cargo-host-target.sh --native-only --validate-only
+
+      - name: Prepare normalized Store build workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_root="$RUNNER_TEMP/epikrise-store-release"
+          archive_file="$RUNNER_TEMP/epikrise-store-source.tar"
+          mkdir -p "$build_root"
+          git archive "$RELEASE_SHA" > "$archive_file"
+          source_archive_sha256="$(node --input-type=module -e \
+            'import { createHash } from "node:crypto"; import { readFileSync } from "node:fs"; process.stdout.write(createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"));' \
+            "$archive_file")"
+          tar -xf "$archive_file" -C "$build_root"
+          node scripts/prepare-release.mjs --prepare-build-inputs "$build_root"
+          request_id="$(node --input-type=module <<'NODE'
+            const sha = process.env.RELEASE_SHA;
+            process.stdout.write(`${sha.slice(0, 8)}-${sha.slice(8, 12)}-${sha.slice(12, 16)}-${sha.slice(16, 20)}-${sha.slice(20, 32)}`);
+          NODE
+          )"
+          {
+            printf 'RELEASE_BUILD_ROOT=%s\n' "$build_root"
+            printf 'EPIKRISE_SOURCE_ARCHIVE_SHA256=%s\n' "$source_archive_sha256"
+            printf 'STORE_REQUEST_ID=%s\n' "$request_id"
+          } >> "$GITHUB_ENV"
+
+      - name: Cache Windows OCR sources and toolchain
+        id: windows-ocr-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/epikrise/windows-ocr-native-msvc
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-store-submission-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
+
+      - name: Capture cache restore details
+        env:
+          WINDOWS_CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-store-submission-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
+          WINDOWS_CACHE_HIT: ${{ steps.windows-ocr-cache.outputs.cache-hit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'EPIKRISE_CACHE_KEY=%s\n' "$WINDOWS_CACHE_KEY" >> "$GITHUB_ENV"
+          printf 'EPIKRISE_CACHE_RESTORED=%s\n' "${WINDOWS_CACHE_HIT:-false}" >> "$GITHUB_ENV"
+
+      - name: Install release workspace dependencies
+        working-directory: ${{ runner.temp }}/epikrise-store-release
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: ${{ runner.temp }}/epikrise-store-release
+        run: pnpm build
+
+      - name: Install native Windows bundle dependencies
+        working-directory: ${{ runner.temp }}/epikrise-store-release
+        shell: pwsh
+        run: ./scripts/setup-native-windows-runner.ps1
+
+      - name: Build native Windows application without updater features
+        working-directory: ${{ runner.temp }}/epikrise-store-release
+        shell: cmd
+        run: call scripts\build-native-windows.cmd "%WINDOWS_ARCH%" diagnostic
+
+      - name: Verify staged Windows binary architectures
+        working-directory: ${{ runner.temp }}/epikrise-store-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_binary="$(bash scripts/tauri-build-output.sh "$TARGET" --target "$TARGET")"
+          test -s "$app_binary"
+          node scripts/verify-binary-architecture.mjs "$TARGET" "$app_binary"
+          node scripts/verify-binary-architecture.mjs "$TARGET" "src-tauri/binaries/tesseract-$TARGET.exe"
+          node scripts/verify-binary-architecture.mjs "$TARGET" src-tauri/resources/ocr/pdfium/pdfium.dll
+
+      - name: Create unsigned Store MSIX
+        working-directory: ${{ runner.temp }}/epikrise-store-release
+        shell: pwsh
+        run: |
+          $hostLine = (rustc -vV | Select-String '^host: ').Line
+          if (-not $hostLine) {
+            throw "Unable to determine the native Rust host target."
+          }
+          $hostTarget = $hostLine -replace '^host: ', ''
+          $buildDirectory = "src-tauri/target/host-$hostTarget/$env:TARGET/release"
+          ./scripts/package-store-msix.ps1 `
+            -Architecture $env:WINDOWS_ARCH `
+            -Target $env:TARGET `
+            -BuildDirectory $buildDirectory `
+            -OutputDirectory "artifact-staging/store-msix"
+
+      - name: Stage Store MSIX with integrity manifest
+        working-directory: ${{ runner.temp }}/epikrise-store-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          node scripts/desktop-builds.mjs stage \
+            --target "$TARGET" \
+            --package-family store-msix \
+            --bundle-root artifact-staging/store-msix \
+            --stage-root artifact-staging/store-msix-artifact \
+            --commit "$RELEASE_SHA" \
+            --request-id "$STORE_REQUEST_ID" \
+            --runner-os "$RUNNER_OS" \
+            --runner-arch "$RUNNER_ARCH" \
+            --rust-host "$host_target" \
+            --build-mode "$EPIKRISE_BUILD_MODE" \
+            --source-archive-sha256 "$EPIKRISE_SOURCE_ARCHIVE_SHA256" \
+            --cache-key "$EPIKRISE_CACHE_KEY" \
+            --cache-restored "$EPIKRISE_CACHE_RESTORED"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: epikrise-store-msix-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/epikrise-store-release/artifact-staging/store-msix-artifact/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  publish:
+    needs: build
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    name: Attach Store packages to GitHub Release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.15.0
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install source tooling
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: epikrise-store-msix-*
+          path: store-artifacts
+          merge-multiple: false
+
+      - name: Validate release and stage downloadable Store packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          request_id="$(node --input-type=module <<'NODE'
+            const sha = process.env.RELEASE_SHA;
+            process.stdout.write(`${sha.slice(0, 8)}-${sha.slice(8, 12)}-${sha.slice(12, 16)}-${sha.slice(16, 20)}-${sha.slice(20, 32)}`);
+          NODE
+          )"
+          node scripts/desktop-builds.mjs stage-store-release \
+            --x64-root store-artifacts/epikrise-store-msix-x64 \
+            --arm64-root store-artifacts/epikrise-store-msix-arm64 \
+            --output-root store-release-assets \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_SHA" \
+            --request-id "$request_id"
+
+      - name: Verify published release identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_file="$RUNNER_TEMP/store-release.json"
+          gh release view "$RELEASE_TAG" --json isDraft,tagName,body > "$release_file"
+          node --input-type=module - "$release_file" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const release = JSON.parse(readFileSync(process.argv[2], "utf8"));
+          const tag = process.env.RELEASE_TAG;
+          const commit = process.env.RELEASE_SHA;
+          const marker = `<!-- epikrise-signed-release-commit:${commit} -->`;
+          if (
+            release.isDraft ||
+            release.tagName !== tag ||
+            typeof release.body !== "string" ||
+            !release.body.includes(marker)
+          ) {
+            throw new Error("The published release does not match the successful signed release run.");
+          }
+          NODE
+
+      - name: Attach and verify Store submission assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" store-release-assets/* --clobber
+          downloaded="$RUNNER_TEMP/store-release-assets"
+          mkdir -p "$downloaded"
+          gh release download "$RELEASE_TAG" \
+            --pattern 'Epikrise_*.msix' \
+            --pattern 'Epikrise_*.msix.manifest.json' \
+            --dir "$downloaded"
+          request_id="$(node --input-type=module <<'NODE'
+            const sha = process.env.RELEASE_SHA;
+            process.stdout.write(`${sha.slice(0, 8)}-${sha.slice(8, 12)}-${sha.slice(12, 16)}-${sha.slice(16, 20)}-${sha.slice(20, 32)}`);
+          NODE
+          )"
+          node scripts/desktop-builds.mjs verify-store-release \
+            --root "$downloaded" \
+            --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_SHA" \
+            --request-id "$request_id"

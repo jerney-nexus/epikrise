@@ -3,7 +3,7 @@ mod windows_updater_features;
 
 use std::env;
 
-const WINDOWS_UPDATER_FEATURES: [(&str, &str); 4] = [
+const WINDOWS_UPDATER_FEATURES: [(&str, &str); 2] = [
     (
         "updater-windows-x86_64-nsis",
         "CARGO_FEATURE_UPDATER_WINDOWS_X86_64_NSIS",
@@ -11,14 +11,6 @@ const WINDOWS_UPDATER_FEATURES: [(&str, &str); 4] = [
     (
         "updater-windows-aarch64-nsis",
         "CARGO_FEATURE_UPDATER_WINDOWS_AARCH64_NSIS",
-    ),
-    (
-        "updater-windows-x86_64-msi",
-        "CARGO_FEATURE_UPDATER_WINDOWS_X86_64_MSI",
-    ),
-    (
-        "updater-windows-aarch64-msi",
-        "CARGO_FEATURE_UPDATER_WINDOWS_AARCH64_MSI",
     ),
 ];
 

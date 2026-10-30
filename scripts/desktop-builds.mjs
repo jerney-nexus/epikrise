@@ -15,6 +15,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { assertBuildProvenance, createBuildProvenance } from "./build-provenance.mjs";
+import { deriveReleaseVersions } from "./prepare-release.mjs";
+import { assertNativeBuildMetadata } from "./verify-native-build-environment.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -31,8 +34,12 @@ export const desktopTargets = /** @type {const} */ ([
 /** @typedef {(typeof desktopTargets)[number]} DesktopTarget */
 /** @typedef {{ databaseId: number, displayTitle: string, headSha: string, event: string }} WorkflowRun */
 /** @typedef {{ name: string, conclusion: string | null }} WorkflowJob */
-/** @typedef {{ schema_version: number, request_id: string, commit: string, target: DesktopTarget, version: string, signed: false, files: Array<{ path: string, size_bytes: number, sha256: string }> }} ArtifactManifest */
-/** @typedef {{ requestId: string, commit: string, version: string, target: DesktopTarget }} ArtifactExpectation */
+/** @typedef {"desktop" | "store-msix"} PackageFamily */
+/** @typedef {{ runnerOS: string, runnerArch: string, rustHost: string, target: string, buildMode: string }} NativeBuildInput */
+/** @typedef {{ runner_os: string, runner_arch: string, rust_host: string, target: string, build_mode: string }} NativeBuildEvidence */
+/** @typedef {{ source: { commit: string, archive_sha256: string }, cache: { key: string, restored: boolean }, tool_versions: Record<string, string> }} BuildProvenance */
+/** @typedef {{ schema_version: number, request_id: string, commit: string, target: DesktopTarget, package_family: PackageFamily, native_build: NativeBuildEvidence, source: { commit: string, archive_sha256: string }, cache: { key: string, restored: boolean }, tool_versions: Record<string, string>, version: string, signed: false, files: Array<{ path: string, size_bytes: number, sha256: string }> }} ArtifactManifest */
+/** @typedef {{ requestId: string, commit: string, version: string, target: DesktopTarget, packageFamily: PackageFamily }} ArtifactExpectation */
 
 const expectedSuffixes = {
   "x86_64-unknown-linux-gnu": [".deb", ".rpm", ".AppImage"],
@@ -42,6 +49,18 @@ const expectedSuffixes = {
   "x86_64-pc-windows-msvc": [".exe"],
   "aarch64-pc-windows-msvc": [".exe"],
 };
+const storeMsixTargets = new Set(["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]);
+
+/**
+ * @param {DesktopTarget} target
+ * @param {PackageFamily} packageFamily
+ */
+function packageSuffixes(target, packageFamily) {
+  if (packageFamily === "store-msix") {
+    return storeMsixTargets.has(target) ? [".msix"] : [];
+  }
+  return packageFamily === "desktop" ? expectedSuffixes[target] : [];
+}
 
 /** @param {unknown} condition @param {string} message */
 function assert(condition, message) {
@@ -141,20 +160,36 @@ async function collectFiles(directory) {
  * @param {DesktopTarget} target
  * @param {string} commit
  * @param {string} requestId
+ * @param {PackageFamily} packageFamily
+ * @param {NativeBuildEvidence} nativeBuild
+ * @param {BuildProvenance} buildProvenance
  * @returns {Promise<ArtifactManifest>}
  */
-async function buildManifest(stageRoot, target, commit, requestId) {
+async function buildManifest(
+  stageRoot,
+  target,
+  commit,
+  requestId,
+  packageFamily,
+  nativeBuild,
+  buildProvenance,
+) {
   assert(desktopTargets.includes(target), `Unsupported desktop target: ${target}.`);
   assert(/^[0-9a-f]{40}$/.test(commit), "Commit must be a full Git SHA.");
   assert(/^[0-9a-f-]{36}$/.test(requestId), "Request ID must be a UUID.");
 
   const filesDirectory = path.join(stageRoot, "files");
   const stagedPaths = await collectFiles(filesDirectory);
-  const suffixes = expectedSuffixes[target];
+  const suffixes = packageSuffixes(target, packageFamily);
+  assert(
+    suffixes.length > 0,
+    `Unsupported ${packageFamily} package target: ${target}.`,
+  );
   for (const suffix of suffixes) {
+    const matches = stagedPaths.filter((filePath) => filePath.endsWith(suffix));
     assert(
-      stagedPaths.some((filePath) => filePath.endsWith(suffix)),
-      `No ${suffix} package was staged for ${target}.`,
+      matches.length === 1,
+      `Expected exactly one ${suffix} package for ${target}, found ${matches.length}.`,
     );
   }
   const packageFiles = [];
@@ -176,29 +211,38 @@ async function buildManifest(stageRoot, target, commit, requestId) {
     await readFile(path.join(repoRoot, "package.json"), "utf8"),
   );
   return {
-    schema_version: 1,
+    schema_version: 3,
     request_id: requestId,
     commit,
     target,
+    package_family: packageFamily,
+    native_build: nativeBuild,
+    ...buildProvenance,
     version: packageJson.version,
     signed: false,
     files: packageFiles,
   };
 }
 
-/** @param {string} bundleRoot @param {DesktopTarget} target */
-async function findPackages(bundleRoot, target) {
-  const bundleDirectory = target.endsWith("-pc-windows-msvc")
-    ? path.join(bundleRoot, "nsis")
-    : bundleRoot;
+/** @param {string} bundleRoot @param {DesktopTarget} target @param {PackageFamily} packageFamily */
+async function findPackages(bundleRoot, target, packageFamily) {
+  const suffixes = packageSuffixes(target, packageFamily);
+  assert(
+    suffixes.length > 0,
+    `Unsupported ${packageFamily} package target: ${target}.`,
+  );
+  const bundleDirectory =
+    packageFamily === "desktop" && target.endsWith("-pc-windows-msvc")
+      ? path.join(bundleRoot, "nsis")
+      : bundleRoot;
   const paths = await collectFiles(bundleDirectory);
   return paths.filter((filePath) =>
-    expectedSuffixes[target].some((suffix) => filePath.endsWith(suffix)),
+    suffixes.some((suffix) => filePath.endsWith(suffix)),
   );
 }
 
 /**
- * @param {{ target: DesktopTarget, commit: string, requestId: string, bundleRoot: string, stageRoot: string }} options
+ * @param {{ target: DesktopTarget, commit: string, requestId: string, bundleRoot: string, stageRoot: string, packageFamily: PackageFamily, nativeBuild: NativeBuildInput, sourceArchiveSha256: string, cacheKey: string, cacheRestored: boolean }} options
  * @returns {Promise<ArtifactManifest>}
  */
 export async function stagePackages({
@@ -207,8 +251,24 @@ export async function stagePackages({
   requestId,
   bundleRoot,
   stageRoot,
+  packageFamily,
+  nativeBuild,
+  sourceArchiveSha256,
+  cacheKey,
+  cacheRestored,
 }) {
   assert(desktopTargets.includes(target), `Unsupported desktop target: ${target}.`);
+  const buildEvidence = assertNativeBuildMetadata(nativeBuild);
+  const buildProvenance = await createBuildProvenance({
+    commit,
+    sourceArchiveSha256,
+    cacheKey,
+    cacheRestored,
+  });
+  assert(
+    packageFamily === "desktop" || packageFamily === "store-msix",
+    `Unsupported desktop package family: ${packageFamily}.`,
+  );
   try {
     await lstat(stageRoot);
     throw new Error(`Artifact staging directory already exists: ${stageRoot}.`);
@@ -216,7 +276,7 @@ export async function stagePackages({
     if (!isNotFoundError(error)) throw error;
   }
 
-  const packages = await findPackages(bundleRoot, target);
+  const packages = await findPackages(bundleRoot, target, packageFamily);
   const filesDirectory = path.join(stageRoot, "files");
   await mkdir(filesDirectory, { recursive: true });
   const basenames = new Set();
@@ -226,7 +286,15 @@ export async function stagePackages({
     basenames.add(basename);
     await cp(packagePath, path.join(filesDirectory, basename));
   }
-  const manifest = await buildManifest(stageRoot, target, commit, requestId);
+  const manifest = await buildManifest(
+    stageRoot,
+    target,
+    commit,
+    requestId,
+    packageFamily,
+    buildEvidence,
+    buildProvenance,
+  );
   await writeFile(
     path.join(stageRoot, "manifest.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
@@ -245,7 +313,7 @@ async function verifyArtifactDirectory(directory, expected) {
   const manifest = JSON.parse(
     await readFile(path.join(directory, "manifest.json"), "utf8"),
   );
-  assert(manifest.schema_version === 1, "Unsupported artifact manifest schema.");
+  assert(manifest.schema_version === 3, "Unsupported artifact manifest schema.");
   assert(
     manifest.request_id === expected.requestId,
     "Artifact request ID does not match.",
@@ -254,13 +322,30 @@ async function verifyArtifactDirectory(directory, expected) {
   assert(manifest.version === expected.version, "Artifact version does not match.");
   assert(manifest.signed === false, "Unexpected signed artifact status.");
   assert(
-    expectedSuffixes[expected.target],
-    `Unsupported artifact target: ${expected.target}.`,
+    manifest.package_family === expected.packageFamily,
+    "Artifact package family does not match its download slot.",
   );
   assert(
     manifest.target === expected.target,
     "Artifact target does not match its download slot.",
   );
+  assert(
+    typeof manifest.native_build === "object" && manifest.native_build !== null,
+    "Native build evidence is missing.",
+  );
+  assert(
+    manifest.native_build.target === expected.target &&
+      manifest.native_build.build_mode === "diagnostic",
+    "Native build evidence does not match the diagnostic target.",
+  );
+  assertNativeBuildMetadata({
+    runnerOS: manifest.native_build.runner_os,
+    runnerArch: manifest.native_build.runner_arch,
+    rustHost: manifest.native_build.rust_host,
+    target: manifest.native_build.target,
+    buildMode: manifest.native_build.build_mode,
+  });
+  assertBuildProvenance(manifest, manifest.commit);
   assert(
     Array.isArray(manifest.files) && manifest.files.length > 0,
     "Artifact manifest has no files.",
@@ -300,10 +385,18 @@ async function verifyArtifactDirectory(directory, expected) {
     );
   }
 
-  for (const suffix of expectedSuffixes[expected.target]) {
+  const suffixes = packageSuffixes(expected.target, expected.packageFamily);
+  assert(
+    suffixes.length > 0,
+    `Unsupported ${expected.packageFamily} package target: ${expected.target}.`,
+  );
+  for (const suffix of suffixes) {
+    const matches = manifest.files.filter((file) => file.path.endsWith(suffix));
     assert(
-      manifest.files.some((file) => file.path.endsWith(suffix)),
-      `Artifact is missing the required ${suffix} package.`,
+      matches.length === 1,
+      matches.length === 0
+        ? `Artifact is missing the required ${suffix} package.`
+        : `Artifact contains multiple ${suffix} packages.`,
     );
   }
   const actualPaths = new Set(
@@ -332,10 +425,185 @@ export async function verifyArtifactSet(root, expected) {
       await verifyArtifactDirectory(path.join(root, target), {
         ...expected,
         target,
+        packageFamily: "desktop",
       }),
     );
+    if (storeMsixTargets.has(target)) {
+      await verifyArtifactDirectory(path.join(root, `${target}-store-msix`), {
+        ...expected,
+        target,
+        packageFamily: "store-msix",
+      });
+    }
   }
   return manifests;
+}
+
+const storeReleaseTargets = /** @type {const} */ ([
+  {
+    target: "x86_64-pc-windows-msvc",
+    architecture: "x64",
+  },
+  {
+    target: "aarch64-pc-windows-msvc",
+    architecture: "arm64",
+  },
+]);
+
+/**
+ * @param {{ x64Root: string, arm64Root: string, outputRoot: string, tag: string, commit: string, requestId: string }} options
+ */
+export async function stageStoreReleaseAssets({
+  x64Root,
+  arm64Root,
+  outputRoot,
+  tag,
+  commit,
+  requestId,
+}) {
+  assert(
+    /^v\d{4}\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$/.test(tag),
+    "Store submission assets require a padded CalVer release tag.",
+  );
+  assert(/^[0-9a-f]{40}$/.test(commit), "Release commit is invalid.");
+  const version = tag.slice(1);
+  const roots = { x64: x64Root, arm64: arm64Root };
+  try {
+    await lstat(outputRoot);
+    throw new Error(`Store release staging directory already exists: ${outputRoot}.`);
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
+  }
+
+  await mkdir(outputRoot, { recursive: true });
+  for (const target of storeReleaseTargets) {
+    const artifactRoot = roots[target.architecture];
+    const artifactManifest = await verifyArtifactDirectory(artifactRoot, {
+      requestId,
+      commit,
+      version,
+      target: target.target,
+      packageFamily: "store-msix",
+    });
+    assert(
+      artifactManifest.files.length === 1,
+      `Expected one Store package for ${target.architecture}.`,
+    );
+    const artifactFile = artifactManifest.files[0];
+    const packageName = path.posix.basename(artifactFile.path);
+    assert(
+      packageName.startsWith("Epikrise_") &&
+        packageName.endsWith(`_${target.architecture}.msix`),
+      `Store package name does not match ${target.architecture}: ${packageName}.`,
+    );
+
+    const sourcePath = path.join(artifactRoot, ...artifactFile.path.split("/"));
+    const outputPath = path.join(outputRoot, packageName);
+    await cp(sourcePath, outputPath, { errorOnExist: true, force: false });
+    const releaseManifest = {
+      schema_version: 1,
+      tag,
+      commit,
+      architecture: target.architecture,
+      target: target.target,
+      package: {
+        file: packageName,
+        size_bytes: artifactFile.size_bytes,
+        sha256: artifactFile.sha256,
+      },
+      artifact_manifest: {
+        ...artifactManifest,
+        files: [{ ...artifactFile, path: packageName }],
+      },
+    };
+    await writeFile(
+      path.join(outputRoot, `${packageName}.manifest.json`),
+      `${JSON.stringify(releaseManifest, null, 2)}\n`,
+      { flag: "wx" },
+    );
+  }
+
+  await verifyStoreReleaseAssets(outputRoot, { tag, commit, requestId });
+}
+
+/**
+ * @param {string} root
+ * @param {{ tag: string, commit: string, requestId: string }} expected
+ */
+export async function verifyStoreReleaseAssets(root, expected) {
+  assert(
+    /^v\d{4}\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$/.test(expected.tag),
+    "Store submission assets require a padded CalVer release tag.",
+  );
+  assert(/^[0-9a-f]{40}$/.test(expected.commit), "Release commit is invalid.");
+  const version = expected.tag.slice(1);
+  const storeVersion = deriveReleaseVersions(version).msixIdentityVersion;
+  for (const target of storeReleaseTargets) {
+    const expectedPackage = `Epikrise_${storeVersion}_${target.architecture}.msix`;
+    assert(
+      (await readdir(root)).includes(expectedPackage),
+      `Store release is missing the ${target.architecture} MSIX package ${expectedPackage}.`,
+    );
+    const manifestPath = path.join(root, `${expectedPackage}.manifest.json`);
+    const releaseManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    assert(releaseManifest.schema_version === 1, "Unsupported Store release manifest.");
+    assert(
+      releaseManifest.tag === expected.tag &&
+        releaseManifest.commit === expected.commit &&
+        releaseManifest.architecture === target.architecture &&
+        releaseManifest.target === target.target,
+      "Store release manifest does not match its release target.",
+    );
+    assert(
+      releaseManifest.package?.file === expectedPackage &&
+        /^[0-9a-f]{64}$/.test(releaseManifest.package.sha256),
+      "Store release package evidence is invalid.",
+    );
+    const packagePath = path.join(root, expectedPackage);
+    const packageMetadata = await lstat(packagePath);
+    assert(
+      packageMetadata.isFile() &&
+        !packageMetadata.isSymbolicLink() &&
+        packageMetadata.size === releaseManifest.package.size_bytes,
+      "Store release package size or file type does not match its manifest.",
+    );
+    assert(
+      (await sha256(packagePath)) === releaseManifest.package.sha256,
+      "Store release package SHA-256 verification failed.",
+    );
+
+    const artifactManifest = releaseManifest.artifact_manifest;
+    assert(
+      artifactManifest?.schema_version === 3 &&
+        artifactManifest.request_id === expected.requestId &&
+        artifactManifest.commit === expected.commit &&
+        artifactManifest.version === version &&
+        artifactManifest.target === target.target &&
+        artifactManifest.package_family === "store-msix" &&
+        artifactManifest.signed === false,
+      "Store release artifact provenance does not match the release.",
+    );
+    assert(
+      artifactManifest.files?.length === 1 &&
+        artifactManifest.files[0].path === expectedPackage &&
+        artifactManifest.files[0].size_bytes === releaseManifest.package.size_bytes &&
+        artifactManifest.files[0].sha256 === releaseManifest.package.sha256,
+      "Store release artifact integrity evidence is inconsistent.",
+    );
+    assertBuildProvenance(artifactManifest, expected.commit);
+    assert(
+      artifactManifest.native_build?.target === target.target &&
+        artifactManifest.native_build?.build_mode === "diagnostic",
+      "Store release native build evidence does not match the diagnostic target.",
+    );
+    assertNativeBuildMetadata({
+      runnerOS: artifactManifest.native_build?.runner_os,
+      runnerArch: artifactManifest.native_build?.runner_arch,
+      rustHost: artifactManifest.native_build?.rust_host,
+      target: artifactManifest.native_build?.target,
+      buildMode: artifactManifest.native_build?.build_mode,
+    });
+  }
 }
 
 /** @param {string} command @param {string[]} args */
@@ -508,6 +776,20 @@ async function dispatchAndDownload() {
         "--dir",
         destination,
       ]);
+      if (storeMsixTargets.has(target)) {
+        const storeDestination = path.join(temporaryRoot, `${target}-store-msix`);
+        const architecture = target.startsWith("aarch64-") ? "arm64" : "x64";
+        await mkdir(storeDestination, { recursive: true });
+        await run("gh", [
+          "run",
+          "download",
+          String(selectedRun.databaseId),
+          "--name",
+          `epikrise-store-msix-${architecture}`,
+          "--dir",
+          storeDestination,
+        ]);
+      }
     }
     const packageJson = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
@@ -532,7 +814,9 @@ async function dispatchAndDownload() {
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
-  console.log(`Verified all six architecture-specific bundles: ${outputRoot}`);
+  console.log(
+    `Verified all six targets and both Windows package families: ${outputRoot}`,
+  );
 }
 
 /** @param {string[]} args @returns {Record<string, string>} */
@@ -553,18 +837,54 @@ async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (command === "stage") {
     const options = parseOptions(args);
+    assert(
+      options["cache-restored"] === "true" || options["cache-restored"] === "false",
+      "Cache restore status must be true or false.",
+    );
     await stagePackages({
       target: /** @type {DesktopTarget} */ (options.target),
       commit: options.commit,
       requestId: options["request-id"],
       bundleRoot: options["bundle-root"],
       stageRoot: options["stage-root"],
+      packageFamily: /** @type {PackageFamily} */ (options["package-family"]),
+      nativeBuild: {
+        runnerOS: options["runner-os"],
+        runnerArch: options["runner-arch"],
+        rustHost: options["rust-host"],
+        target: options.target,
+        buildMode: options["build-mode"],
+      },
+      sourceArchiveSha256: options["source-archive-sha256"],
+      cacheKey: options["cache-key"],
+      cacheRestored: options["cache-restored"] === "true",
+    });
+    return;
+  }
+  if (command === "stage-store-release") {
+    const options = parseOptions(args);
+    await stageStoreReleaseAssets({
+      x64Root: options["x64-root"],
+      arm64Root: options["arm64-root"],
+      outputRoot: options["output-root"],
+      tag: options.tag,
+      commit: options.commit,
+      requestId: options["request-id"],
+    });
+    return;
+  }
+  if (command === "verify-store-release") {
+    const options = parseOptions(args);
+    await verifyStoreReleaseAssets(options.root, {
+      tag: options.tag,
+      commit: options.commit,
+      requestId: options["request-id"],
     });
     return;
   }
   assert(
     command === "dispatch",
-    "Usage: node scripts/desktop-builds.mjs dispatch|stage [options]",
+    "Usage: node scripts/desktop-builds.mjs dispatch|stage|stage-store-release|verify-store-release [options]",
   );
   await dispatchAndDownload();
 }

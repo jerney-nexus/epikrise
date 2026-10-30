@@ -98,33 +98,42 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
+            release_target: x86_64-unknown-linux-gnu
             runner: ubuntu-22.04
             platform: linux
             bundles: deb rpm appimage
           - target: aarch64-unknown-linux-gnu
+            release_target: aarch64-unknown-linux-gnu
             runner: ubuntu-22.04-arm
             platform: linux
             bundles: deb rpm appimage
           - target: x86_64-apple-darwin
+            release_target: x86_64-apple-darwin
             runner: macos-15-intel
             platform: macos
             bundles: dmg
           - target: aarch64-apple-darwin
+            release_target: aarch64-apple-darwin
             runner: macos-15
             platform: macos
             bundles: dmg
           - target: x86_64-pc-windows-msvc
+            release_target: x86_64-pc-windows-msvc
             runner: windows-2025
             platform: windows
             windows_arch: x64
           - target: aarch64-pc-windows-msvc
+            release_target: aarch64-pc-windows-msvc
             runner: windows-11-vs2026-arm
             platform: windows
             windows_arch: arm64
 
     env:
       TARGET: ${{ matrix.target }}
+      RELEASE_TARGET: ${{ matrix.release_target }}
       PLATFORM: ${{ matrix.platform }}
+      EPIKRISE_NATIVE_BUILD_TARGET: ${{ matrix.target }}
+      EPIKRISE_BUILD_MODE: signed-release
 
     steps:
       - uses: actions/checkout@v7
@@ -153,17 +162,31 @@ jobs:
       - name: Install source tooling
         run: pnpm install --frozen-lockfile
 
+      - name: Verify native build host and target
+        env:
+          EPIKRISE_RUNNER_OS: ${{ runner.os }}
+          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
+        shell: bash
+        run: bash scripts/with-cargo-host-target.sh --native-only --validate-only
+
       - name: Prepare normalized release workspace
         shell: bash
         run: |
           set -euo pipefail
           build_root="$RUNNER_TEMP/epikrise-release"
+          archive_file="$RUNNER_TEMP/epikrise-source.tar"
           mkdir -p "$build_root"
-          git archive "$GITHUB_SHA" | tar -x -C "$build_root"
+          git archive "$GITHUB_SHA" > "$archive_file"
+          source_archive_sha256="$(node --input-type=module -e \
+            'import { createHash } from "node:crypto"; import { readFileSync } from "node:fs"; process.stdout.write(createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"));' \
+            "$archive_file")"
+          tar -xf "$archive_file" -C "$build_root"
           node scripts/prepare-release.mjs --prepare-build-inputs "$build_root"
           printf 'RELEASE_BUILD_ROOT=%s\n' "$build_root" >> "$GITHUB_ENV"
+          printf 'EPIKRISE_SOURCE_ARCHIVE_SHA256=%s\n' "$source_archive_sha256" >> "$GITHUB_ENV"
 
       - name: Cache native OCR and Cargo inputs
+        id: native-ocr-cache
         if: matrix.platform != 'windows'
         uses: actions/cache@v6
         with:
@@ -171,9 +194,10 @@ jobs:
             ~/.cache/epikrise/native-ocr
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-signed-release-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh', 'scripts/verify-native-build-environment.mjs') }}
 
       - name: Cache Windows OCR sources and toolchain
+        id: windows-ocr-cache
         if: matrix.platform == 'windows'
         uses: actions/cache@v6
         with:
@@ -181,7 +205,7 @@ jobs:
             ~/.cache/epikrise/windows-ocr-native-msvc
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-signed-release-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
 
       - name: Install release workspace dependencies
         working-directory: ${{ runner.temp }}/epikrise-release
@@ -220,11 +244,26 @@ jobs:
         working-directory: ${{ runner.temp }}/epikrise-release
         env:
           WINDOWS_ARCH: ${{ matrix.windows_arch }}
-          EPIKRISE_WINDOWS_INSTALLER_FAMILY: nsis
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        shell: cmd
-        run: call scripts\build-native-windows.cmd "%WINDOWS_ARCH%" release
+        shell: pwsh
+        run: |
+          $hostTarget = (rustc -vV | Select-String '^host: ').ToString().Substring(6)
+          $bundleRoot = Join-Path $PWD "src-tauri/target/host-$hostTarget/$env:TARGET/release/bundle/nsis"
+          foreach ($mode in @("embedBootstrapper", "offlineInstaller")) {
+            $env:EPIKRISE_WINDOWS_WEBVIEW_MODE = $mode
+            & cmd /c "scripts\build-native-windows.cmd $env:WINDOWS_ARCH release"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Windows NSIS $mode build failed with exit code $LASTEXITCODE."
+            }
+            $variantDirectory = Join-Path $PWD "release-bundles/nsis/$mode"
+            New-Item -ItemType Directory -Path $variantDirectory -Force | Out-Null
+            $packages = @(Get-ChildItem -LiteralPath $bundleRoot -File | Where-Object { $_.Name -match '\.(exe|msi)(\.sig)?$' })
+            if ($packages.Count -ne 2) {
+              throw "Expected one signed package and signature in $bundleRoot, found $($packages.Count)."
+            }
+            Copy-Item -LiteralPath $packages.FullName -Destination $variantDirectory
+          }
 
       - name: Build signed Linux or macOS updater bundles
         if: matrix.platform != 'windows'
@@ -249,7 +288,7 @@ jobs:
             saved_appimage="$RUNNER_TEMP/$TARGET-appimage"
             TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
               TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
-              bash scripts/with-cargo-host-target.sh \
+              bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
                 pnpm exec tauri build \
                   --target "$TARGET" \
                   --config src-tauri/tauri.release.conf.json \
@@ -258,7 +297,7 @@ jobs:
                   --ci \
                   --no-sign
             cp -a "$bundle_root/appimage" "$saved_appimage"
-            bash scripts/with-cargo-host-target.sh \
+            bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
               pnpm exec tauri build \
                 --target "$TARGET" \
                 --config '{"build":{"beforeBuildCommand":null,"features":[]}}' \
@@ -271,7 +310,7 @@ jobs:
             read -r -a bundles <<< "$BUNDLE_TARGETS"
             TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
               TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
-              bash scripts/with-cargo-host-target.sh \
+              bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
                 pnpm exec tauri build \
                   --target "$TARGET" \
                   --config src-tauri/tauri.release.conf.json \
@@ -287,6 +326,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          app_binary="$(bash scripts/tauri-build-output.sh "$TARGET" --target "$TARGET")"
+          test -s "$app_binary"
+          node scripts/verify-binary-architecture.mjs "$TARGET" "$app_binary"
           case "$TARGET" in
             x86_64-unknown-linux-gnu)
               readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'Advanced Micro Devices X86-64'
@@ -309,25 +351,68 @@ jobs:
               node scripts/verify-binary-architecture.mjs "$TARGET" src-tauri/resources/ocr/pdfium/pdfium.dll
               ;;
           esac
+          if [[ "$PLATFORM" != 'windows' ]]; then
+            case "$PLATFORM" in
+              linux)
+                pdfium="src-tauri/resources/ocr/pdfium/libpdfium.so"
+                tesseract="src-tauri/binaries/tesseract-$TARGET"
+                ;;
+              macos)
+                pdfium="src-tauri/resources/ocr/pdfium/libpdfium.dylib"
+                tesseract="src-tauri/binaries/tesseract-$TARGET"
+                ;;
+            esac
+            node scripts/verify-runtime-dependencies.mjs \
+              "$TARGET" "$pdfium" "$tesseract" "$app_binary"
+          fi
 
       - name: Stage and verify updater packages
         working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          EPIKRISE_SOURCE_ARCHIVE_SHA256: ${{ env.EPIKRISE_SOURCE_ARCHIVE_SHA256 }}
+          EPIKRISE_NATIVE_CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-signed-release-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh', 'scripts/verify-native-build-environment.mjs') }}
+          EPIKRISE_WINDOWS_CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-signed-release-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
+          EPIKRISE_NATIVE_CACHE_HIT: ${{ steps.native-ocr-cache.outputs.cache-hit }}
+          EPIKRISE_WINDOWS_CACHE_HIT: ${{ steps.windows-ocr-cache.outputs.cache-hit }}
         shell: bash
         run: |
           set -euo pipefail
           host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          if [[ "$PLATFORM" == 'windows' ]]; then
+            bundle_root="release-bundles/nsis/offlineInstaller"
+            bootstrapper_args=(
+              --bootstrapper-root
+              "release-bundles/nsis/embedBootstrapper"
+            )
+            cache_key="$EPIKRISE_WINDOWS_CACHE_KEY"
+            cache_restored="${EPIKRISE_WINDOWS_CACHE_HIT:-false}"
+          else
+            bundle_root="src-tauri/target/host-$host_target/$TARGET/release/bundle"
+            bootstrapper_args=()
+            cache_key="$EPIKRISE_NATIVE_CACHE_KEY"
+            cache_restored="${EPIKRISE_NATIVE_CACHE_HIT:-false}"
+          fi
           node scripts/release-artifacts.mjs stage \
-            --target "$TARGET" \
-            --bundle-root "src-tauri/target/host-$host_target/$TARGET/release/bundle" \
-            --stage-root "release-staging/$TARGET" \
+            --target "$RELEASE_TARGET" \
+            --native-target "$TARGET" \
+            --bundle-root "$bundle_root" \
+            "${bootstrapper_args[@]}" \
+            --stage-root "release-staging/$RELEASE_TARGET" \
             --commit "$GITHUB_SHA" \
             --resource-root src-tauri/resources/ocr \
-            --binary-root src-tauri/binaries
+            --binary-root src-tauri/binaries \
+            --runner-os "$RUNNER_OS" \
+            --runner-arch "$RUNNER_ARCH" \
+            --rust-host "$host_target" \
+            --build-mode "$EPIKRISE_BUILD_MODE" \
+            --source-archive-sha256 "$EPIKRISE_SOURCE_ARCHIVE_SHA256" \
+            --cache-key "$cache_key" \
+            --cache-restored "$cache_restored"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.target }}
-          path: ${{ runner.temp }}/epikrise-release/release-staging/${{ matrix.target }}/
+          name: release-${{ matrix.release_target }}
+          path: ${{ runner.temp }}/epikrise-release/release-staging/${{ matrix.release_target }}/
           if-no-files-found: error
           retention-days: 3
           compression-level: 0

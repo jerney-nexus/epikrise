@@ -34,17 +34,16 @@ export function deriveReleaseVersions(version) {
   const month = Number(monthText);
   const patch = BigInt(patchText);
 
-  if (year < 2000 || year > 2255) {
-    throw new Error("Release year must be between 2000 and 2255 for MSI.");
+  if (year < 2000) {
+    throw new Error("Release year must be at least 2000.");
   }
   if (patch > 65535n) {
-    throw new Error("Release patch must be at most 65535 for MSI and MSIX.");
+    throw new Error("Release patch must be at most 65535 for MSIX.");
   }
 
   return {
     releaseVersion: version,
     updateProtocolVersion: `${year}.${month}.${patch}`,
-    msiProductVersion: `${year - 2000}.${month}.${patch}`,
     msixIdentityVersion: `${year}.${month}.${patch}.0`,
   };
 }
@@ -177,11 +176,6 @@ export async function prepareReleaseBuildInputs(workspaceRoot) {
     throw new Error("Disposable Tauri version does not match package.json.");
   }
   tauriConfig.version = versions.updateProtocolVersion;
-  tauriConfig.bundle ??= {};
-  tauriConfig.bundle.windows ??= {};
-  tauriConfig.bundle.windows.wix ??= {};
-  tauriConfig.bundle.windows.wix.version = versions.msiProductVersion;
-
   await writeFile(cargoManifestPath, cargoManifest);
   await writeFile(cargoLockPath, TOML.stringify(cargoLock));
   await writeFile(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`);

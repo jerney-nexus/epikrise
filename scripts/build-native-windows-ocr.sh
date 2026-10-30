@@ -142,15 +142,27 @@ download_verified() {
   local filename="$2"
   local expected_sha256="$3"
   local archive_path="$download_dir/$filename"
+  local actual_sha256
+  local attempt
 
   if [[ ! -f "$archive_path" ]] || [[ "$(file_sha256 "$archive_path")" != "$expected_sha256" ]]; then
     rm -f "$archive_path" "$archive_path.part"
-    curl --fail --location --silent --show-error "$url" -o "$archive_path.part"
-    if [[ "$(file_sha256 "$archive_path.part")" != "$expected_sha256" ]]; then
-      printf 'SHA-256 mismatch for %s.\n' "$filename" >&2
-      exit 1
-    fi
-    mv "$archive_path.part" "$archive_path"
+    for attempt in 1 2; do
+      if ! curl --fail --location --silent --show-error "$url" -o "$archive_path.part"; then
+        printf 'Download attempt %s/2 failed for %s.\n' "$attempt" "$filename" >&2
+        continue
+      fi
+      actual_sha256="$(file_sha256 "$archive_path.part")"
+      if [[ "$actual_sha256" == "$expected_sha256" ]]; then
+        mv "$archive_path.part" "$archive_path"
+        printf '%s\n' "$archive_path"
+        return 0
+      fi
+      printf 'SHA-256 mismatch for %s.\nExpected %s, got %s on attempt %s/2.\n' \
+        "$filename" "$expected_sha256" "$actual_sha256" "$attempt" >&2
+    done
+    rm -f "$archive_path.part"
+    return 1
   fi
   printf '%s\n' "$archive_path"
 }

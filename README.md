@@ -250,13 +250,23 @@ architecture-specific MSIX artifact for manual Microsoft Partner Center
 submission. The workflow must be enabled on GitHub, and the commit must contain
 the workflow. It never commits or pushes changes.
 
+After a successful tagged signed release, a separate Store submission workflow
+builds only the native Windows x64 and ARM64 Store variants and attaches each
+unsigned MSIX, plus its SHA-256 and build-provenance manifest, as an individual
+asset on that same GitHub Release. This avoids running the six-target
+diagnostic workflow to obtain Partner Center packages. The packages are not
+uploaded to Partner Center automatically.
+
 The command requires a clean worktree, the current branch or tag pushed to
 `origin` at exactly `HEAD`, the GitHub CLI authenticated with Actions dispatch
 and artifact-read permissions, and network access to GitHub Actions. It waits
 for all six jobs, then verifies the request ID, commit, version, target, package
-completeness and SHA-256 values. Verified manifests and packages are written to
-`.artifacts/desktop-builds/<request-id>/`; partial, stale or modified artifacts
-are rejected. Each artifact expires after 14 days.
+completeness and SHA-256 values. Windows NSIS and Store MSIX artifacts are
+downloaded and verified as separate package families, with manifests binding
+each package to its runner architecture and Rust target. Verified manifests and
+packages are written to `.artifacts/desktop-builds/<request-id>/`; partial,
+stale, wrong-target or modified artifacts are rejected. Each artifact expires
+after 14 days.
 
 Windows jobs use native Windows runners; the human-only Linux cross-build setup
 is rejected in CI. The CI builds are unsigned and unnotarized: Windows
@@ -274,9 +284,10 @@ the `year.month.patch.0` package version. It is an unsigned Store-upload
 artifact, not the local Windows installer and not a supported direct-sideload
 package. Submit it manually through Partner Center; Microsoft signs accepted
 packages and manages Store distribution and updates. The optional
-`previous_store_version` workflow input rejects a package version that does not
-advance the last submitted Store version. Store certification, public release,
-and Partner Center submission have not been performed. MSIX requires the
+`previous_store_version` input on a manual Desktop builds dispatch rejects a
+package version that does not advance the last submitted Store version. Store
+certification, public release, and Partner Center submission have not been
+performed. MSIX requires the
 Microsoft Edge WebView2 Evergreen Runtime; it is not bundled in the Store
 package. Use the NSIS `.exe` for local installation, which includes the
 offline WebView2 installer and retains the existing direct-release updater

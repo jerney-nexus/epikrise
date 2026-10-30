@@ -16,12 +16,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { deriveReleaseVersions } from "./prepare-release.mjs";
+import { assertBuildProvenance, createBuildProvenance } from "./build-provenance.mjs";
+import { assertNativeBuildMetadata } from "./verify-native-build-environment.mjs";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const execFile = promisify(execFileCallback);
 
 /** @typedef {{ path: string, size_bytes: number, sha256: string }} FileEvidence */
-/** @typedef {{ schema_version: number, target: string, architecture: string, architecture_verified: boolean, commit: string, version: string, assets: FileEvidence[], resources: FileEvidence[] }} ReleaseIntegrityManifest */
+/** @typedef {{ runnerOS: string, runnerArch: string, rustHost: string, target: string, buildMode: string }} NativeBuildInput */
+/** @typedef {{ runner_os: string, runner_arch: string, rust_host: string, target: string, build_mode: string }} NativeBuildEvidence */
+/** @typedef {{ schema_version: number, target: string, architecture: string, architecture_verified: boolean, native_build: NativeBuildEvidence, package_family?: string, webview_modes?: { updater: string, alternate: string }, source: { commit: string, archive_sha256: string }, cache: { key: string, restored: boolean }, tool_versions: Record<string, string>, commit: string, version: string, assets: FileEvidence[], resources: FileEvidence[] }} ReleaseIntegrityManifest */
+/** @typedef {{ platform: string, suffixes: string[], updaterSuffix: string, family?: string, packageExtension?: string, nativeTarget?: string }} ReleaseTargetConfig */
 
 export const releaseTargets = /** @type {const} */ ([
   "x86_64-unknown-linux-gnu",
@@ -32,7 +37,7 @@ export const releaseTargets = /** @type {const} */ ([
   "aarch64-pc-windows-msvc",
 ]);
 
-const targetConfig = {
+const targetConfig = /** @type {Record<string, ReleaseTargetConfig>} */ ({
   "x86_64-unknown-linux-gnu": {
     platform: "linux-x86_64",
     suffixes: [".deb", ".rpm", ".AppImage", ".AppImage.sig"],
@@ -55,15 +60,29 @@ const targetConfig = {
   },
   "x86_64-pc-windows-msvc": {
     platform: "windows-x86_64-nsis",
-    suffixes: [".exe", ".exe.sig"],
-    updaterSuffix: ".exe",
+    family: "nsis",
+    packageExtension: ".exe",
+    suffixes: [
+      "-offline.exe",
+      "-offline.exe.sig",
+      "-bootstrapper.exe",
+      "-bootstrapper.exe.sig",
+    ],
+    updaterSuffix: "-offline.exe",
   },
   "aarch64-pc-windows-msvc": {
     platform: "windows-aarch64-nsis",
-    suffixes: [".exe", ".exe.sig"],
-    updaterSuffix: ".exe",
+    family: "nsis",
+    packageExtension: ".exe",
+    suffixes: [
+      "-offline.exe",
+      "-offline.exe.sig",
+      "-bootstrapper.exe",
+      "-bootstrapper.exe.sig",
+    ],
+    updaterSuffix: "-offline.exe",
   },
-};
+});
 
 /** @param {unknown} condition @param {string} message @returns {asserts condition} */
 function assert(condition, message) {
@@ -186,21 +205,42 @@ export function assertRecoverableReleaseDraft(release, tag, commit) {
 }
 
 /**
- * @param {{ target: string, bundleRoot: string, stageRoot: string, commit: string, version: string, resourceRoot: string, binaryRoot: string }} options
+ * @param {{ target: string, bundleRoot: string, bootstrapperRoot?: string, stageRoot: string, commit: string, version: string, resourceRoot: string, binaryRoot: string, nativeBuild: NativeBuildInput, sourceArchiveSha256: string, cacheKey: string, cacheRestored: boolean }} options
  * @returns {Promise<string[]>}
  */
 export async function stageReleaseArtifacts({
   target,
   bundleRoot,
+  bootstrapperRoot,
   stageRoot,
   commit,
   version,
   resourceRoot,
   binaryRoot,
+  nativeBuild,
+  sourceArchiveSha256,
+  cacheKey,
+  cacheRestored,
 }) {
   const config = targetConfig[/** @type {keyof typeof targetConfig} */ (target)];
   assert(config, `Unsupported release target: ${target}.`);
+  const buildEvidence = assertNativeBuildMetadata(nativeBuild);
+  const nativeTarget = target;
+  assert(
+    buildEvidence.target === nativeTarget,
+    "Native build evidence target does not match.",
+  );
+  assert(
+    buildEvidence.build_mode === "signed-release",
+    "Signed updater artifacts require signed-release native build evidence.",
+  );
   assert(/^[0-9a-f]{40}$/.test(commit), "Release commit must be a full Git SHA.");
+  const buildProvenance = await createBuildProvenance({
+    commit,
+    sourceArchiveSha256,
+    cacheKey,
+    cacheRestored,
+  });
   assert(
     /^[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$/.test(version),
     "Release version must use padded CalVer.",
@@ -214,25 +254,63 @@ export async function stageReleaseArtifacts({
   }
 
   const files = await collectFiles(bundleRoot);
+  /** @type {Array<{ sourcePath: string, prefix: string }>} */
   const selected = [];
-  for (const suffix of config.suffixes) {
-    const matches = files.filter((file) => path.basename(file).endsWith(suffix));
+  if (config.family) {
     assert(
-      matches.length === 1,
-      `Expected exactly one ${suffix} artifact for ${target}, found ${matches.length}.`,
+      bootstrapperRoot,
+      `Bootstrapper package directory is required for ${target}.`,
     );
-    selected.push(matches[0]);
+    const bootstrapperFiles = await collectFiles(bootstrapperRoot);
+    assert(
+      typeof config.packageExtension === "string",
+      `Windows package extension is not configured for ${target}.`,
+    );
+    /** @type {Array<[string[], string]>} */
+    const sourceGroups = [
+      [files, "offline"],
+      [bootstrapperFiles, "bootstrapper"],
+    ];
+    for (const [rootFiles, label] of sourceGroups) {
+      for (const suffix of [
+        config.packageExtension,
+        `${config.packageExtension}.sig`,
+      ]) {
+        const matches = rootFiles.filter((file) =>
+          path.basename(file).endsWith(suffix),
+        );
+        assert(
+          matches.length === 1,
+          `Expected exactly one ${label} ${suffix} artifact for ${target}, found ${matches.length}.`,
+        );
+        selected.push({
+          sourcePath: matches[0],
+          prefix: label,
+        });
+      }
+    }
+  } else {
+    for (const suffix of config.suffixes) {
+      const matches = files.filter((file) => path.basename(file).endsWith(suffix));
+      assert(
+        matches.length === 1,
+        `Expected exactly one ${suffix} artifact for ${target}, found ${matches.length}.`,
+      );
+      selected.push({ sourcePath: matches[0], prefix: "" });
+    }
   }
 
   await mkdir(stageRoot, { recursive: true });
   const assetNames = [];
-  for (const sourcePath of selected) {
+  for (const { sourcePath, prefix } of selected) {
     const metadata = await lstat(sourcePath);
     assert(
       metadata.isFile() && !metadata.isSymbolicLink(),
       "Release assets must be regular files.",
     );
-    const assetName = `${target}-${path.basename(sourcePath)}`;
+    const assetName = config.family
+      ? `${config.platform}-${prefix}${config.packageExtension}${sourcePath.endsWith(".sig") ? ".sig" : ""}`
+      : `${target}-${path.basename(sourcePath)}`;
     await cp(sourcePath, path.join(stageRoot, assetName), { errorOnExist: true });
     if (assetName.endsWith(".sig")) {
       assert(
@@ -243,14 +321,14 @@ export async function stageReleaseArtifacts({
     assetNames.push(assetName);
   }
 
-  const pdfiumName = target.includes("apple-darwin")
+  const pdfiumName = nativeTarget.includes("apple-darwin")
     ? "libpdfium.dylib"
-    : target.includes("windows-msvc")
+    : nativeTarget.includes("windows-msvc")
       ? "pdfium.dll"
       : "libpdfium.so";
-  const tesseractName = target.includes("windows-msvc")
-    ? `tesseract-${target}.exe`
-    : `tesseract-${target}`;
+  const tesseractName = nativeTarget.includes("windows-msvc")
+    ? `tesseract-${nativeTarget}.exe`
+    : `tesseract-${nativeTarget}`;
   const resourceFiles = await Promise.all(
     [
       [path.join(resourceRoot, "pdfium", pdfiumName), `pdfium/${pdfiumName}`],
@@ -268,12 +346,23 @@ export async function stageReleaseArtifacts({
   const assetFiles = await Promise.all(
     assetNames.map((name) => fileEvidence(path.join(stageRoot, name), name)),
   );
-  const architecture = target.startsWith("aarch64-") ? "arm64" : "x86_64";
+  const architecture = nativeTarget.startsWith("aarch64-") ? "arm64" : "x86_64";
   const integrityManifest = {
-    schema_version: 1,
+    schema_version: 4,
     target,
     architecture,
     architecture_verified: true,
+    native_build: buildEvidence,
+    ...(config.family
+      ? {
+          package_family: config.family,
+          webview_modes: {
+            updater: "offlineInstaller",
+            alternate: "embedBootstrapper",
+          },
+        }
+      : {}),
+    ...buildProvenance,
     commit,
     version,
     assets: assetFiles,
@@ -336,7 +425,7 @@ export async function createLatestManifest({
       await readFile(path.join(targetDirectory, integrityName), "utf8"),
     );
     assert(
-      integrity.schema_version === 1,
+      integrity.schema_version === 4,
       "Unsupported release integrity manifest schema.",
     );
     assert(
@@ -348,9 +437,37 @@ export async function createLatestManifest({
       `Architecture was not verified for ${target}.`,
     );
     assert(
+      typeof integrity.native_build === "object" && integrity.native_build !== null,
+      `Native build evidence is missing for ${target}.`,
+    );
+    assert(
+      integrity.native_build.target === target &&
+        integrity.native_build.build_mode === "signed-release",
+      `Native build evidence does not match ${target}.`,
+    );
+    if (config.family) {
+      assert(
+        integrity.package_family === config.family,
+        `Installer family does not match ${target}.`,
+      );
+      assert(
+        integrity.webview_modes?.updater === "offlineInstaller" &&
+          integrity.webview_modes.alternate === "embedBootstrapper",
+        `WebView2 installer modes do not match ${target}.`,
+      );
+    }
+    assertNativeBuildMetadata({
+      runnerOS: integrity.native_build.runner_os,
+      runnerArch: integrity.native_build.runner_arch,
+      rustHost: integrity.native_build.rust_host,
+      target: integrity.native_build.target,
+      buildMode: integrity.native_build.build_mode,
+    });
+    assert(
       integrity.commit === (commit ?? integrity.commit),
       `Integrity commit does not match ${target}.`,
     );
+    assertBuildProvenance(integrity, integrity.commit);
     assert(
       integrity.version === packageVersion,
       `Integrity version does not match ${target}.`,
@@ -571,6 +688,10 @@ async function main() {
     const packageJson = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
     );
+    assert(
+      options["cache-restored"] === "true" || options["cache-restored"] === "false",
+      "Cache restore status must be true or false.",
+    );
     await stageReleaseArtifacts({
       target: options.target,
       bundleRoot: options["bundle-root"],
@@ -579,6 +700,17 @@ async function main() {
       version: packageJson.version,
       resourceRoot: options["resource-root"],
       binaryRoot: options["binary-root"],
+      bootstrapperRoot: options["bootstrapper-root"],
+      nativeBuild: {
+        runnerOS: options["runner-os"],
+        runnerArch: options["runner-arch"],
+        rustHost: options["rust-host"],
+        target: options["native-target"] ?? options.target,
+        buildMode: options["build-mode"],
+      },
+      sourceArchiveSha256: options["source-archive-sha256"],
+      cacheKey: options["cache-key"],
+      cacheRestored: options["cache-restored"] === "true",
     });
     return;
   }

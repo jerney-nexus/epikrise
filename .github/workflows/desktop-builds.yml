@@ -65,6 +65,8 @@ jobs:
       REQUEST_ID: ${{ inputs.request_id }}
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       ARTIFACT_STAGE: artifact-staging/${{ matrix.target }}
+      EPIKRISE_NATIVE_BUILD_TARGET: ${{ matrix.target }}
+      EPIKRISE_BUILD_MODE: diagnostic
 
     steps:
       - uses: actions/checkout@v7
@@ -79,10 +81,17 @@ jobs:
       - name: Verify requested commit
         shell: bash
         run: |
+          set -euo pipefail
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]]
           [[ "$GITHUB_SHA" == "$EXPECTED_SHA" ]]
           [[ "$REQUEST_ID" =~ ^[0-9a-f-]{36}$ ]]
+          archive_file="$RUNNER_TEMP/epikrise-source.tar"
+          git archive "$EXPECTED_SHA" > "$archive_file"
+          source_archive_sha256="$(node --input-type=module -e \
+            'import { createHash } from "node:crypto"; import { readFileSync } from "node:fs"; process.stdout.write(createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"));' \
+            "$archive_file")"
+          printf 'EPIKRISE_SOURCE_ARCHIVE_SHA256=%s\n' "$source_archive_sha256" >> "$GITHUB_ENV"
 
       - uses: pnpm/setup@v2
         with:
@@ -99,6 +108,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache native OCR and Cargo inputs
+        id: native-ocr-cache
         if: matrix.platform != 'windows'
         uses: actions/cache@v6
         with:
@@ -106,9 +116,10 @@ jobs:
             ~/.cache/epikrise/native-ocr
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-diagnostic-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh', 'scripts/verify-native-build-environment.mjs') }}
 
       - name: Cache Windows OCR sources and toolchain
+        id: windows-ocr-cache
         if: matrix.platform == 'windows'
         uses: actions/cache@v6
         with:
@@ -116,7 +127,36 @@ jobs:
             ~/.cache/epikrise/windows-ocr-native-msvc
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-diagnostic-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
+
+      - name: Capture cache restore details
+        env:
+          NATIVE_CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-diagnostic-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh', 'scripts/verify-native-build-environment.mjs') }}
+          WINDOWS_CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-diagnostic-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
+          NATIVE_CACHE_HIT: ${{ steps.native-ocr-cache.outputs.cache-hit }}
+          WINDOWS_CACHE_HIT: ${{ steps.windows-ocr-cache.outputs.cache-hit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$PLATFORM" == 'windows' ]]; then
+            cache_key="$WINDOWS_CACHE_KEY"
+            cache_restored="${WINDOWS_CACHE_HIT:-false}"
+          else
+            cache_key="$NATIVE_CACHE_KEY"
+            cache_restored="${NATIVE_CACHE_HIT:-false}"
+          fi
+          printf 'EPIKRISE_CACHE_KEY=%s\n' "$cache_key" >> "$GITHUB_ENV"
+          printf 'EPIKRISE_CACHE_RESTORED=%s\n' "$cache_restored" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify native build host and target
+        env:
+          EPIKRISE_RUNNER_OS: ${{ runner.os }}
+          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
+        shell: bash
+        run: bash scripts/with-cargo-host-target.sh --native-only --validate-only
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
@@ -136,9 +176,6 @@ jobs:
         shell: pwsh
         run: ./scripts/setup-native-windows-runner.ps1
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
       - name: Prepare target OCR resources
         if: matrix.platform != 'windows'
         run: bash scripts/prepare-ocr.sh --target "$TARGET"
@@ -147,7 +184,6 @@ jobs:
         if: matrix.target == 'aarch64-pc-windows-msvc' && inputs.windows_arm64_symbols
         env:
           WINDOWS_ARCH: arm64
-          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
           CARGO_PROFILE_RELEASE_DEBUG: "2"
           CARGO_PROFILE_RELEASE_STRIP: none
         shell: cmd
@@ -157,7 +193,6 @@ jobs:
         if: matrix.platform == 'windows' && (matrix.target != 'aarch64-pc-windows-msvc' || !inputs.windows_arm64_symbols)
         env:
           WINDOWS_ARCH: ${{ matrix.windows_arch }}
-          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
         shell: cmd
         run: call scripts\build-native-windows.cmd "%WINDOWS_ARCH%" diagnostic
 
@@ -173,6 +208,9 @@ jobs:
       - name: Verify staged OCR architectures
         shell: bash
         run: |
+          app_binary="$(bash scripts/tauri-build-output.sh "$TARGET" --target "$TARGET")"
+          test -s "$app_binary"
+          node scripts/verify-binary-architecture.mjs "$TARGET" "$app_binary"
           case "$TARGET" in
             x86_64-unknown-linux-gnu)
               readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'Advanced Micro Devices X86-64'
@@ -221,11 +259,31 @@ jobs:
           }
           ./scripts/package-store-msix.ps1 @arguments
 
+      - name: Stage Store MSIX with integrity manifest
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          node scripts/desktop-builds.mjs stage \
+            --target "$TARGET" \
+            --package-family store-msix \
+            --bundle-root artifact-staging/store-msix \
+            --stage-root artifact-staging/store-msix-artifact \
+            --commit "$EXPECTED_SHA" \
+            --request-id "$REQUEST_ID" \
+            --runner-os "$RUNNER_OS" \
+            --runner-arch "$RUNNER_ARCH" \
+            --rust-host "$host_target" \
+            --build-mode "$EPIKRISE_BUILD_MODE" \
+            --source-archive-sha256 "$EPIKRISE_SOURCE_ARCHIVE_SHA256" \
+            --cache-key "$EPIKRISE_CACHE_KEY" \
+            --cache-restored "$EPIKRISE_CACHE_RESTORED"
+
       - uses: actions/upload-artifact@v7
         if: matrix.platform == 'windows'
         with:
           name: epikrise-store-msix-${{ matrix.windows_arch }}
-          path: artifact-staging/store-msix/*.msix
+          path: artifact-staging/store-msix-artifact/
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -236,8 +294,16 @@ jobs:
           host_target="$(rustc -vV | sed -n 's/^host: //p')"
           node scripts/desktop-builds.mjs stage \
             --target "$TARGET" \
+            --package-family desktop \
             --commit "$EXPECTED_SHA" \
             --request-id "$REQUEST_ID" \
+            --runner-os "$RUNNER_OS" \
+            --runner-arch "$RUNNER_ARCH" \
+            --rust-host "$host_target" \
+            --build-mode "$EPIKRISE_BUILD_MODE" \
+            --source-archive-sha256 "$EPIKRISE_SOURCE_ARCHIVE_SHA256" \
+            --cache-key "$EPIKRISE_CACHE_KEY" \
+            --cache-restored "$EPIKRISE_CACHE_RESTORED" \
             --bundle-root "src-tauri/target/host-$host_target/$TARGET/release/bundle" \
             --stage-root "$ARTIFACT_STAGE"
 

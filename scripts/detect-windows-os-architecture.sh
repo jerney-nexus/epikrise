@@ -1,24 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-windows_os_arch="${EPIKRISE_RUNNER_ARCH:-${PROCESSOR_ARCHITEW6432:-}}"
-if [[ -z "$windows_os_arch" ]]; then
-  if ! windows_os_arch="$(
-    powershell.exe -NoLogo -NoProfile -NonInteractive \
-      -Command '[System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture' \
-      2>/dev/null
-  )"; then
-    windows_os_arch=""
-  fi
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+windows_os_arch=""
+if ! windows_os_arch="$(
+  powershell.exe -NoLogo -NoProfile -NonInteractive \
+    -ExecutionPolicy Bypass \
+    -File "$repo_root/scripts/detect-windows-os-architecture.ps1" \
+    2>/dev/null
+)"; then
+  windows_os_arch=""
 fi
-
 windows_os_arch="${windows_os_arch//$'\r'/}"
 windows_os_arch="${windows_os_arch//$'\n'/}"
 if [[ -z "$windows_os_arch" ]]; then
-  windows_os_arch="${RUNNER_ARCH:-${PROCESSOR_ARCHITECTURE:-}}"
-fi
-if [[ -z "$windows_os_arch" ]]; then
-  printf 'Could not determine native Windows OS architecture using PowerShell or environment variables.\n' >&2
+  printf 'Could not determine physical Windows OS architecture using PowerShell.\n' >&2
   exit 1
 fi
 

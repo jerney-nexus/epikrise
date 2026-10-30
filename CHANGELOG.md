@@ -14,6 +14,15 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 - Gemini profiles now use the Gemini Interactions API through `genai` 0.7.1,
   retaining existing provider credentials, request settings, streaming, and
   cancellation behavior.
+- Native Windows x64 and ARM64 desktop builds now produce separate unsigned
+  MSIX artifacts for manual Partner Center submission, with the reserved Store
+  identity, validated architecture-specific OCR payloads, and bounded
+  CalVer-derived package versions. NSIS remains the local installer; Store
+  signing and updates remain managed by Microsoft.
+- Successful tagged signed releases now trigger a separate Windows-only Store
+  build that attaches x64 and ARM64 unsigned MSIX packages and SHA-256/build
+  provenance manifests to the matching GitHub Release, without running the
+  six-target diagnostic workflow.
 - Native-host Tauri builds verify the bundled app executable and OCR dependencies
   across Linux, macOS, and Windows. Windows x64/ARM64 desktop and signed-release
   workflows compile on matching native runners, and native Windows setup
@@ -27,6 +36,9 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   Desktop builds workflow passed; native install, launch, and uninstall were
   confirmed on Windows ARM64 and macOS Apple Silicon. Live testing on the other
   platform targets is deferred.
+- `pnpm build:all` now downloads and verifies Windows NSIS and Store MSIX as
+  separate package families. Artifact manifests bind each package to its
+  request, commit, version, native runner, Rust target, and SHA-256.
 - Localized in-app help for the workflow, settings, case-data handling, and
   privacy boundaries.
 - Linux setup documentation now explains the Secret Service keyring requirement

@@ -12,8 +12,6 @@ default = []
 direct-release-updater = ["dep:tauri-plugin-updater", "dep:reqwest-updater"]
 updater-windows-x86_64-nsis = ["direct-release-updater"]
 updater-windows-aarch64-nsis = ["direct-release-updater"]
-updater-windows-x86_64-msi = ["direct-release-updater"]
-updater-windows-aarch64-msi = ["direct-release-updater"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

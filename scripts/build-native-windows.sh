@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 build_mode="${2:-diagnostic}"
-installer_family="${EPIKRISE_WINDOWS_INSTALLER_FAMILY:-}"
+webview_mode="${EPIKRISE_WINDOWS_WEBVIEW_MODE:-}"
 
 case "${1:-}" in
   x64)
@@ -33,19 +33,22 @@ case "$build_mode" in
       printf 'TAURI_SIGNING_PRIVATE_KEY is required for signed releases.\n' >&2
       exit 1
     fi
-    case "$installer_family" in
-      nsis|msi) ;;
+    case "$webview_mode" in
+      embedBootstrapper|offlineInstaller) ;;
       *)
-        printf 'EPIKRISE_WINDOWS_INSTALLER_FAMILY must be set to nsis or msi for signed releases.\n' >&2
+        printf 'EPIKRISE_WINDOWS_WEBVIEW_MODE must be embedBootstrapper or offlineInstaller for signed releases.\n' >&2
         exit 2
         ;;
     esac
+    windows_config="$(node scripts/windows-release-config.mjs \
+      "--target=$target" \
+      "--webview-mode=$webview_mode")"
     unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
     tauri_args=(
-      --features "updater-windows-${updater_arch}-${installer_family}"
+      --features "updater-windows-${updater_arch}-nsis"
       --config src-tauri/tauri.release.conf.json
       --config '{"build":{"beforeBuildCommand":null}}'
-      --config "{\"bundle\":{\"targets\":[\"$installer_family\"]}}"
+      --config "$windows_config"
       --ci
       --no-sign
     )
