@@ -245,10 +245,10 @@ close the installer.
 workflow for the current pushed commit from either an ARM64 or x64 dev
 container. It builds Linux ARM64/x64 (`.deb`, `.rpm`, AppImage), macOS
 ARM64/x64 (`.dmg`), and Windows ARM64/x64 (NSIS `.exe` with offline WebView2)
-in six isolated jobs. Windows jobs run on Linux ARM64 with `cargo-xwin`, so
-they are cross-builds rather than native Windows builds. The workflow must be
-enabled on GitHub, and the commit must contain the workflow. It never commits
-or pushes changes.
+in six isolated jobs. Each native Windows job also uploads a separate unsigned,
+architecture-specific MSIX artifact for manual Microsoft Partner Center
+submission. The workflow must be enabled on GitHub, and the commit must contain
+the workflow. It never commits or pushes changes.
 
 The command requires a clean worktree, the current branch or tag pushed to
 `origin` at exactly `HEAD`, the GitHub CLI authenticated with Actions dispatch
@@ -267,7 +267,20 @@ installation and runtime acceptance testing on each target. The six-target
 Actions build passed, and native install, launch, and uninstall were confirmed
 on Windows ARM64 and macOS Apple Silicon. Live testing on Windows x64, macOS
 Intel, and Linux x64/ARM64 is deferred; synthetic OCR and other per-target
-runtime checks remain outstanding. See
+runtime checks remain outstanding.
+
+The MSIX artifact uses the reserved `JerneyNexus.Epikrise` Store identity and
+the `year.month.patch.0` package version. It is an unsigned Store-upload
+artifact, not the local Windows installer and not a supported direct-sideload
+package. Submit it manually through Partner Center; Microsoft signs accepted
+packages and manages Store distribution and updates. The optional
+`previous_store_version` workflow input rejects a package version that does not
+advance the last submitted Store version. Store certification, public release,
+and Partner Center submission have not been performed. MSIX requires the
+Microsoft Edge WebView2 Evergreen Runtime; it is not bundled in the Store
+package. Use the NSIS `.exe` for local installation, which includes the
+offline WebView2 installer and retains the existing direct-release updater
+separation. See
 [CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
 
 On macOS, copy `Epikrise.app` from the mounted image to `/Applications` first.
