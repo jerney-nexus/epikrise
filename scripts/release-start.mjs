@@ -227,6 +227,14 @@ async function createAndPushReleaseTag(requestedVersion) {
     projectVersionAfterConfirmation,
   );
 
+  const remoteTagExistsAfterConfirmation = await readRemoteTagExists(tag);
+  const localTagExistsAfterConfirmation = await hasLocalTag(tag);
+  assertReleaseTagAvailable(
+    tag,
+    localTagExistsAfterConfirmation,
+    remoteTagExistsAfterConfirmation,
+  );
+
   await git(["tag", "-a", tag, checkedHead, "-m", `Release ${version}`]);
   await git(["push", "--no-follow-tags", "origin", `refs/tags/${tag}`]);
   process.stdout.write(`Created and pushed ${tag}.\n`);

@@ -1201,6 +1201,31 @@ describe("release start shortcuts", () => {
     ).toThrow("not synchronized");
   });
 
+  it("rechecks remote tag availability after confirmation before creating the tag", async () => {
+    const source = await readFile(
+      path.join(repoRoot, "scripts/release-start.mjs"),
+      "utf8",
+    );
+    const confirmationIndex = source.indexOf("confirmTagPush(tag, version)");
+    const remoteTagCheckIndex = source.indexOf(
+      "readRemoteTagExists(tag)",
+      confirmationIndex,
+    );
+    const availabilityCheckIndex = source.indexOf(
+      "assertReleaseTagAvailable(\n    tag,\n    localTagExistsAfterConfirmation,\n    remoteTagExistsAfterConfirmation,",
+      confirmationIndex,
+    );
+    const tagCreationIndex = source.indexOf(
+      'await git(["tag", "-a", tag, checkedHead',
+      confirmationIndex,
+    );
+
+    expect(confirmationIndex).toBeGreaterThan(-1);
+    expect(remoteTagCheckIndex).toBeGreaterThan(confirmationIndex);
+    expect(availabilityCheckIndex).toBeGreaterThan(remoteTagCheckIndex);
+    expect(tagCreationIndex).toBeGreaterThan(availabilityCheckIndex);
+  });
+
   it.each([
     [true, false, "locally"],
     [false, true, "on origin"],
