@@ -27,6 +27,7 @@
     type ExtractionMethod,
     type IngestError,
     type LlmError,
+    type NativeMenuAction,
     type OutputViolation,
     type ProviderAdapter,
     type ProviderProfile,
@@ -199,6 +200,10 @@
   let isInvalidatingReview = $state(false);
   let desktopAvailable = $state(false);
   let uiLocale = $state(defaultLocale);
+  let nativeMenuUnavailable = $state(false);
+  let ordinaryDialogOpener: HTMLElement | null = null;
+  let nativeMenuSyncRevision = 0;
+  let nativeMenuSyncQueue: Promise<void> = Promise.resolve();
 
   const t = $derived.by(() => {
     const locale = uiLocale;
@@ -210,6 +215,163 @@
     setLocale(locale);
     uiLocale = locale;
     document.documentElement.lang = locale === pseudoLocale ? "en" : locale;
+    void syncNativeMenu(locale, nativeMenuListenerReady);
+  }
+
+  let nativeMenuListenerReady = false;
+
+  function labelsForNativeMenu(locale: string) {
+    const t = (source: string) => translate(locale, source);
+    const appName = "Epikrise";
+    // This consonant-only token survives pseudo-localization until the brand is restored.
+    const appNamePlaceholder = "x7q9z";
+    const appLabel = (source: string) =>
+      translate(locale, source, { app: appNamePlaceholder }).replaceAll(
+        appNamePlaceholder,
+        appName,
+      );
+    return {
+      fileMenu: t("File"),
+      editMenu: t("Edit"),
+      viewMenu: t("View"),
+      windowMenu: t("Window"),
+      settingsMenu: t("Settings"),
+      helpMenu: t("Help"),
+      aboutAction: t("About"),
+      aboutAppAction: appLabel("About { $app }"),
+      servicesAction: t("Services"),
+      hideAppAction: appLabel("Hide { $app }"),
+      hideOthersAction: t("Hide Others"),
+      quitAppAction: appLabel("Quit { $app }"),
+      closeAction: t("Close"),
+      closeWindowAction: t("Close Window"),
+      exitAction: t("Exit"),
+      undoAction: t("Undo"),
+      redoAction: t("Redo"),
+      cutAction: t("Cut"),
+      copyAction: t("Copy"),
+      pasteAction: t("Paste"),
+      pasteAndMatchStyleAction: t("Paste and Match Style"),
+      deleteAction: t("Delete"),
+      selectAllAction: t("Select All"),
+      fullscreenAction: t("Toggle Full Screen"),
+      minimizeAction: t("Minimize"),
+      maximizeAction: t("Maximize"),
+      zoomAction: t("Zoom"),
+      showAllAction: t("Show All"),
+      bringAllToFrontAction: t("Bring All to Front"),
+      actualSizeAction: t("Actual Size"),
+      zoomInAction: t("Zoom In"),
+      zoomOutAction: t("Zoom Out"),
+      startSpeakingAction: t("Start Speaking"),
+      stopSpeakingAction: t("Stop Speaking"),
+      startDictationAction: t("Start Dictation…"),
+      emojiAndSymbolsAction: t("Emoji & Symbols"),
+      helpAction: t("Help"),
+      generalSettingsAction: t("General settings"),
+      providerSettingsAction: t("Provider settings"),
+      modelSettingsAction: t("Model settings"),
+      templateSettingsAction: t("Template settings"),
+    };
+  }
+
+  function syncNativeMenu(locale: string, ready: boolean): Promise<void> {
+    if (!desktopAvailable) return Promise.resolve();
+    const revision = ++nativeMenuSyncRevision;
+    const sync = async () => {
+      try {
+        const result = await commands.syncNativeMenu(
+          labelsForNativeMenu(locale),
+          ready,
+        );
+        if (revision === nativeMenuSyncRevision) {
+          nativeMenuUnavailable = result.status === "error" || !ready;
+        }
+      } catch {
+        if (revision === nativeMenuSyncRevision) nativeMenuUnavailable = true;
+      }
+    };
+    nativeMenuSyncQueue = nativeMenuSyncQueue.then(sync, sync);
+    return nativeMenuSyncQueue;
+  }
+
+  function switchableDialogs() {
+    return [
+      providerSettingsDialog,
+      generalSettingsDialog,
+      modelSettingsDialog,
+      templateSettingsDialog,
+      helpDialog,
+    ].filter((dialog): dialog is HTMLDialogElement => Boolean(dialog));
+  }
+
+  function openSwitchableDialog(target: HTMLDialogElement | undefined) {
+    if (!target || target.open) return;
+    const dialogs = switchableDialogs();
+    if (
+      Array.from(document.querySelectorAll<HTMLDialogElement>("dialog[open]")).some(
+        (dialog) => !dialogs.includes(dialog),
+      )
+    ) {
+      return;
+    }
+
+    if (!dialogs.some((dialog) => dialog.open)) {
+      const activeElement = document.activeElement;
+      ordinaryDialogOpener =
+        activeElement instanceof HTMLElement && activeElement !== document.body
+          ? activeElement
+          : null;
+    }
+    dialogs.filter((dialog) => dialog.open).forEach((dialog) => dialog.close());
+    target.showModal();
+    void tick().then(() => {
+      if (!target.open) return;
+      const focusTarget =
+        target.querySelector<HTMLElement>(
+          'input:not([disabled]):not([type="hidden"]):not([aria-hidden="true"]), select:not([disabled]), textarea:not([disabled])',
+        ) ??
+        target.querySelector<HTMLElement>(
+          'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"]):not([aria-hidden="true"])',
+        );
+      focusTarget?.focus();
+    });
+  }
+
+  function restoreOrdinaryDialogFocus() {
+    requestAnimationFrame(() => {
+      if (switchableDialogs().some((dialog) => dialog.open)) return;
+      const opener = ordinaryDialogOpener;
+      ordinaryDialogOpener = null;
+      if (opener?.isConnected) opener.focus();
+      if (!opener?.isConnected || document.activeElement !== opener) {
+        const workspace = document.querySelector<HTMLElement>(".work-area");
+        workspace?.focus();
+        if (workspace && !workspace.contains(document.activeElement)) {
+          const target =
+            workspace.querySelector<HTMLElement>("textarea:not([disabled])") ??
+            workspace.querySelector<HTMLElement>("button:not([disabled])");
+          target?.focus();
+        }
+      }
+    });
+  }
+
+  function handleNativeMenuAction(action: NativeMenuAction) {
+    if (
+      (providerSettingsDialog?.open && credentialRemovalPending) ||
+      (templateSettingsDialog?.open && templateDeletionPending)
+    ) {
+      return;
+    }
+    const target = {
+      help: helpDialog,
+      generalSettings: generalSettingsDialog,
+      providerSettings: providerSettingsDialog,
+      modelSettings: modelSettingsDialog,
+      templateSettings: templateSettingsDialog,
+    }[action];
+    openSwitchableDialog(target);
   }
 
   const isGenerating = $derived(activeRequestId !== null);
@@ -972,23 +1134,23 @@
   }
 
   function openProviderSettings() {
-    providerSettingsDialog?.showModal();
+    openSwitchableDialog(providerSettingsDialog);
   }
 
   function openGeneralSettings() {
-    generalSettingsDialog?.showModal();
+    openSwitchableDialog(generalSettingsDialog);
   }
 
   function openModelSettings() {
-    modelSettingsDialog?.showModal();
+    openSwitchableDialog(modelSettingsDialog);
   }
 
   function openTemplateSettings() {
-    templateSettingsDialog?.showModal();
+    openSwitchableDialog(templateSettingsDialog);
   }
 
   function openHelp() {
-    helpDialog?.showModal();
+    openSwitchableDialog(helpDialog);
   }
 
   function openAddCredential() {
@@ -1036,7 +1198,11 @@
         topDialog.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ),
-      ).filter((element) => element.getClientRects().length > 0);
+      ).filter(
+        (element) =>
+          element.getClientRects().length > 0 &&
+          element.getAttribute("aria-hidden") !== "true",
+      );
       const first = focusable[0];
       const last = focusable.at(-1);
       if (!first || !last) return;
@@ -1531,10 +1697,8 @@
     }
     const detectedLocale = navigator.languages[0] ?? navigator.language;
     const locale = initializeLocale(storedLocale, detectedLocale);
-    void tick().then(() => {
-      uiLocale = locale;
-      document.documentElement.lang = locale;
-    });
+    uiLocale = locale;
+    document.documentElement.lang = locale;
     desktopAvailable = isTauri();
     if (!desktopAvailable) return;
     void commands.getPolicyStatus().then((status) => {
@@ -1592,6 +1756,37 @@
         }
       });
 
+    let menuDisposed = false;
+    let unlistenMenu: (() => void)[] = [];
+    void Promise.allSettled([
+      events.nativeMenuRequest.listen(({ payload }) =>
+        handleNativeMenuAction(payload.action),
+      ),
+      events.nativeMenuStatus.listen(({ payload }) => {
+        nativeMenuUnavailable = !payload.available;
+      }),
+    ]).then((results) => {
+      const listeners = results.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      const failed = results.some((result) => result.status === "rejected");
+      if (menuDisposed || failed) {
+        listeners.forEach((stop) => stop());
+        void syncNativeMenu(uiLocale, false).then(() => {
+          if (!menuDisposed) nativeMenuUnavailable = true;
+        });
+        return;
+      }
+      unlistenMenu = listeners;
+      nativeMenuListenerReady = true;
+      void syncNativeMenu(uiLocale, true).then(() => {
+        if (menuDisposed) {
+          nativeMenuListenerReady = false;
+          void syncNativeMenu(uiLocale, false);
+        }
+      });
+    });
+
     void loadProviderCredentials();
 
     const blockContextMenu = (event: MouseEvent) => event.preventDefault();
@@ -1602,6 +1797,10 @@
     return () => {
       disposed = true;
       unlisten.forEach((stop) => stop());
+      menuDisposed = true;
+      nativeMenuListenerReady = false;
+      unlistenMenu.forEach((stop) => stop());
+      void syncNativeMenu(uiLocale, false);
       document.removeEventListener("contextmenu", blockContextMenu);
     };
   });
@@ -1987,6 +2186,7 @@
       bind:this={providerSettingsDialog}
       aria-labelledby="provider-settings-title"
       onkeydown={handleDialogKeydown}
+      onclose={restoreOrdinaryDialogFocus}
       oncancel={(event) => {
         event.preventDefault();
         providerSettingsDialog?.close();
@@ -2168,6 +2368,7 @@
       bind:this={generalSettingsDialog}
       aria-labelledby="general-settings-title"
       onkeydown={handleDialogKeydown}
+      onclose={restoreOrdinaryDialogFocus}
       oncancel={(event) => {
         event.preventDefault();
         generalSettingsDialog?.close();
@@ -2393,6 +2594,7 @@
       bind:this={helpDialog}
       aria-labelledby="help-title"
       onkeydown={handleDialogKeydown}
+      onclose={restoreOrdinaryDialogFocus}
       oncancel={(event) => {
         event.preventDefault();
         helpDialog?.close();
@@ -2538,12 +2740,18 @@
         {t(generationMessage)}
       </p>
     {/if}
+    {#if nativeMenuUnavailable}
+      <p class="generation-status" role="status">
+        {t("Native Settings and Help menus are unavailable. Use the in-app buttons.")}
+      </p>
+    {/if}
 
     <dialog
       class="settings-dialog"
       bind:this={modelSettingsDialog}
       aria-labelledby="model-settings-title"
       onkeydown={handleDialogKeydown}
+      onclose={restoreOrdinaryDialogFocus}
       oncancel={(event) => {
         event.preventDefault();
         modelSettingsDialog?.close();
@@ -2676,6 +2884,7 @@
       bind:this={templateSettingsDialog}
       aria-labelledby="template-settings-title"
       onkeydown={handleDialogKeydown}
+      onclose={restoreOrdinaryDialogFocus}
       oncancel={(event) => {
         event.preventDefault();
       }}
@@ -3395,7 +3604,7 @@
     </section>
   </dialog>
 
-  <main class="work-area">
+  <main class="work-area" tabindex="-1">
     {#if isFirstRun}
       <section class="first-run-panel" aria-labelledby="first-run-title">
         <p class="eyebrow">{t("Getting started / Template setup")}</p>

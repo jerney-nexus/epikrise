@@ -11,6 +11,17 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 
 - RTF ingestion now decodes declared Windows code pages and Unicode surrogate
   pairs, including emoji.
+- Native desktop Settings and Help menus on macOS, Windows, and Linux open the
+  existing localized dialogs and retain the in-app buttons as a fallback.
+  Linux places Settings between Window and Help and enables the standard
+  Minimize, Maximize, and Close Window actions.
+  On Windows, Settings appears between Window and Help.
+- Native menu titles and standard action labels now follow the selected English,
+  de-CH, or pseudo locale.
+- Additional predefined macOS menu actions use the selected locale when present,
+  without assuming system-managed menu items have fixed positions.
+- The macOS app bundle now advertises English and Swiss German localizations,
+  allowing AppKit-generated menu items to follow the macOS language.
 - Gemini profiles now use the Gemini Interactions API through `genai` 0.7.1,
   retaining existing provider credentials, request settings, streaming, and
   cancellation behavior.

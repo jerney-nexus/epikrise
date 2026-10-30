@@ -11,6 +11,9 @@ type FixtureOptions = {
   allSectionsDisabled: boolean;
   uiLocale: string;
   policy: PolicyStatus;
+  tauriRuntime: boolean;
+  failNativeMenuListener: boolean;
+  delayNativeMenuListener: boolean;
 };
 
 type FixtureSetup = {
@@ -19,6 +22,9 @@ type FixtureSetup = {
   uiLocale: string;
   template: ClinicalTemplate;
   policy: PolicyStatus;
+  tauriRuntime: boolean;
+  failNativeMenuListener: boolean;
+  delayNativeMenuListener: boolean;
 };
 
 type InvokeArguments = Record<string, unknown>;
@@ -29,6 +35,9 @@ type BrowserFixture = {
   clipboardWrites: { command: string; args: InvokeArguments }[];
   failNextCredentialList: boolean;
   failNextReviewAck: boolean;
+  failNextNativeMenuSync: boolean;
+  failNativeMenuListener: boolean;
+  releaseNativeMenuListenerRegistration: () => void;
   failHtmlClipboard: boolean;
   templateExportCancelled: boolean;
   emit: (event: string, payload: unknown) => void;
@@ -103,11 +112,18 @@ function installTauriFixture({
   uiLocale,
   template,
   policy,
+  tauriRuntime,
+  failNativeMenuListener,
+  delayNativeMenuListener,
 }: FixtureSetup) {
   const callbacks = new Map<number, (payload: unknown) => void>();
   const listeners = new Map<string, Map<number, number>>();
   const authorizedCases = new Set<string>();
   const credentials = new Map<string, CredentialSummary>();
+  let releaseNativeMenuListenerGate: (() => void) | undefined;
+  const nativeMenuListenerGate = new Promise<void>((resolve) => {
+    releaseNativeMenuListenerGate = resolve;
+  });
   let nextCallbackId = 1;
   let nextListenerId = 1;
   let updaterEnabled = false;
@@ -117,6 +133,11 @@ function installTauriFixture({
     clipboardWrites: [],
     failNextCredentialList: false,
     failNextReviewAck: false,
+    failNextNativeMenuSync: false,
+    failNativeMenuListener,
+    releaseNativeMenuListenerRegistration: () => {
+      releaseNativeMenuListenerGate?.();
+    },
     failHtmlClipboard: false,
     templateExportCancelled: false,
     emit(event, payload) {
@@ -128,7 +149,7 @@ function installTauriFixture({
     },
   };
   window.__EPIKRISE_TEST__ = fixture;
-  Object.assign(globalThis, { isTauri: true });
+  Object.assign(globalThis, { isTauri: tauriRuntime });
   window.localStorage.setItem("epikrise.ui-locale", uiLocale);
 
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
@@ -184,6 +205,12 @@ function installTauriFixture({
           return null;
         case "get_policy_status":
           return policy;
+        case "sync_native_menu":
+          if (fixture.failNextNativeMenuSync) {
+            fixture.failNextNativeMenuSync = false;
+            throw new Error("Synthetic native menu synchronization failure");
+          }
+          return null;
         case "load_templates":
           return templateData;
         case "list_provider_credentials":
@@ -281,6 +308,13 @@ function installTauriFixture({
           };
         case "plugin:event|listen": {
           const event = String(args.event);
+          if (event.startsWith("native-menu://") && fixture.failNativeMenuListener) {
+            fixture.failNativeMenuListener = false;
+            throw new Error("Synthetic native menu listener failure");
+          }
+          if (event.startsWith("native-menu://") && delayNativeMenuListener) {
+            await nativeMenuListenerGate;
+          }
           const callbackId = Number(args.handler);
           const eventId = nextListenerId++;
           const eventListeners = listeners.get(event) ?? new Map<number, number>();
@@ -312,7 +346,22 @@ export const test = base.extend<FixtureOptions>({
   allSectionsDisabled: [false, { option: true }],
   uiLocale: ["en", { option: true }],
   policy: [syntheticPolicy, { option: true }],
-  page: async ({ page, seedTemplates, allSectionsDisabled, uiLocale, policy }, use) => {
+  tauriRuntime: [true, { option: true }],
+  failNativeMenuListener: [false, { option: true }],
+  delayNativeMenuListener: [false, { option: true }],
+  page: async (
+    {
+      page,
+      seedTemplates,
+      allSectionsDisabled,
+      uiLocale,
+      policy,
+      tauriRuntime,
+      failNativeMenuListener,
+      delayNativeMenuListener,
+    },
+    use,
+  ) => {
     const origin = new URL("http://127.0.0.1:1420").origin;
     const unexpectedRequests: string[] = [];
     await page.addInitScript(installTauriFixture, {
@@ -321,6 +370,9 @@ export const test = base.extend<FixtureOptions>({
       uiLocale,
       template: syntheticTemplate,
       policy,
+      tauriRuntime,
+      failNativeMenuListener,
+      delayNativeMenuListener,
     });
     await page.route("**/*", async (route) => {
       const requestUrl = new URL(route.request().url());

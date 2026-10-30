@@ -38,6 +38,7 @@ export const commands = {
 	getUpdateSettings: () => typedError<UpdateSettings, UpdaterError>(__TAURI_INVOKE("get_update_settings")),
 	installUpdate: (confirmed: boolean) => typedError<null, UpdaterError>(__TAURI_INVOKE("install_update", { confirmed })),
 	setUpdateEnabled: (enabled: boolean) => typedError<UpdateSettings, UpdaterError>(__TAURI_INVOKE("set_update_enabled", { enabled })),
+	syncNativeMenu: (labels: NativeMenuLabels, ready: boolean) => typedError<null, NativeMenuError>(__TAURI_INVOKE("sync_native_menu", { labels, ready })),
 };
 
 /** Events */
@@ -45,6 +46,8 @@ export const events = {
 	generationDelta: makeEvent<GenerationDelta>("generation://delta"),
 	generationDone: makeEvent<GenerationDone>("generation://done"),
 	generationError: makeEvent<GenerationError>("generation://error"),
+	nativeMenuRequest: makeEvent<NativeMenuRequest>("native-menu://request"),
+	nativeMenuStatus: makeEvent<NativeMenuStatus>("native-menu://status"),
 	updaterProgress: makeEvent<UpdateProgress>("updater://progress"),
 };
 
@@ -145,6 +148,62 @@ export type ModelCapabilities = {
 	vision: boolean,
 	streaming: boolean,
 	max_context: number | null,
+};
+
+export type NativeMenuAction = "help" | "generalSettings" | "providerSettings" | "modelSettings" | "templateSettings";
+
+export type NativeMenuError = { key: "unavailable" };
+
+export type NativeMenuLabels = {
+	fileMenu: string,
+	editMenu: string,
+	viewMenu: string,
+	windowMenu: string,
+	settingsMenu: string,
+	helpMenu: string,
+	aboutAction: string,
+	aboutAppAction: string,
+	servicesAction: string,
+	hideAppAction: string,
+	hideOthersAction: string,
+	quitAppAction: string,
+	closeAction: string,
+	closeWindowAction: string,
+	exitAction: string,
+	undoAction: string,
+	redoAction: string,
+	cutAction: string,
+	copyAction: string,
+	pasteAction: string,
+	pasteAndMatchStyleAction: string,
+	deleteAction: string,
+	selectAllAction: string,
+	fullscreenAction: string,
+	minimizeAction: string,
+	maximizeAction: string,
+	zoomAction: string,
+	showAllAction: string,
+	bringAllToFrontAction: string,
+	actualSizeAction: string,
+	zoomInAction: string,
+	zoomOutAction: string,
+	startSpeakingAction: string,
+	stopSpeakingAction: string,
+	startDictationAction: string,
+	emojiAndSymbolsAction: string,
+	helpAction: string,
+	generalSettingsAction: string,
+	providerSettingsAction: string,
+	modelSettingsAction: string,
+	templateSettingsAction: string,
+};
+
+export type NativeMenuRequest = {
+	action: NativeMenuAction,
+};
+
+export type NativeMenuStatus = {
+	available: boolean,
 };
 
 export type OcrDiagnosticCategory = "language_data" | "language_data_file" | "language_load" | "no_languages_loaded" | "language_engine_components_missing" | "input_image" | "tiff_support_warning" | "no_stderr" | "other";

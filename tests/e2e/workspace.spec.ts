@@ -3,6 +3,14 @@ import type { Page } from "@playwright/test";
 import type { PolicyStatus } from "../../src/bindings";
 
 const onboardingTest = test.extend({ seedTemplates: false });
+const browserTest = test.extend({ tauriRuntime: false });
+const emptyTemplateTest = test.extend({ seedTemplates: false });
+const nativeMenuListenerFailureTest = test.extend({
+  failNativeMenuListener: true,
+});
+const delayedNativeMenuListenerTest = test.extend({
+  delayNativeMenuListener: true,
+});
 const restrictedPolicy: PolicyStatus = {
   active: true,
   localOnly: true,
@@ -55,6 +63,330 @@ const creationAllowedOnboardingTest = test.extend({
     allowTemplateDeletion: false,
   },
 });
+
+async function emitNativeMenuAction(page: Page, action: string) {
+  await page.evaluate((nativeAction) => {
+    window.__EPIKRISE_TEST__?.emit("native-menu://request", {
+      action: nativeAction,
+    });
+  }, action);
+}
+
+async function waitForNativeMenu(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__EPIKRISE_TEST__?.commands.some(
+          ({ command, args }) => command === "sync_native_menu" && args.ready === true,
+        ),
+      ),
+    )
+    .toBe(true);
+}
+
+test("native menu actions open each existing dialog and switch without stacking", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  const destinations = [
+    ["help", "Using Epikrise"],
+    ["generalSettings", "General settings"],
+    ["providerSettings", "Provider settings"],
+    ["modelSettings", "Model settings"],
+    ["templateSettings", "Template settings"],
+  ] as const;
+
+  for (const [action, name] of destinations) {
+    await emitNativeMenuAction(page, action);
+    const dialog = page.getByRole("dialog", { name });
+    await expect(dialog).toBeVisible();
+    await expect(page.locator("dialog[open]")).toHaveCount(1);
+    await emitNativeMenuAction(page, action);
+    await expect(page.locator("dialog[open]")).toHaveCount(1);
+  }
+  await expect(page.getByRole("dialog", { name: "Template settings" })).toBeVisible();
+});
+
+test("native menu navigation leaves protected credential entry untouched", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  await page.getByRole("button", { name: "Provider settings" }).click();
+  await page.getByRole("button", { name: "Add provider credential" }).click();
+
+  const credentialDialog = page.getByRole("dialog", {
+    name: "Add provider credential",
+  });
+  const secret = page.getByLabel("API key");
+  await secret.fill("synthetic-only-secret");
+  await emitNativeMenuAction(page, "help");
+
+  await expect(credentialDialog).toBeVisible();
+  await expect(secret).toHaveValue("synthetic-only-secret");
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toHaveCount(0);
+});
+
+test("native menu navigation leaves template editing and its draft untouched", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  await page.getByRole("button", { name: "Template settings" }).click();
+  await page.getByRole("button", { name: "Edit template" }).click();
+
+  const editor = page.locator("dialog.template-editor-dialog");
+  const name = page.getByLabel("Template name");
+  await name.fill("Synthetic draft in progress");
+  await emitNativeMenuAction(page, "help");
+
+  await expect(editor).toBeVisible();
+  await expect(name).toHaveValue("Synthetic draft in progress");
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toHaveCount(0);
+});
+
+test("native menu navigation leaves credential removal confirmation untouched", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  await page.getByRole("button", { name: "Provider settings" }).click();
+  await page.getByRole("button", { name: "Add provider credential" }).click();
+  const addCredentialDialog = page.getByRole("dialog", {
+    name: "Add provider credential",
+  });
+  await addCredentialDialog.getByLabel("Credential label").fill("Work key");
+  await addCredentialDialog.getByLabel("API key").fill("synthetic-secret");
+  await addCredentialDialog
+    .getByRole("button", { name: "Add credential", exact: true })
+    .click();
+
+  await page.getByRole("button", { name: "Remove provider credential" }).click();
+  const confirmation = page.getByRole("group", {
+    name: "Confirm credential removal",
+  });
+  await expect(confirmation).toBeVisible();
+  await emitNativeMenuAction(page, "help");
+
+  await expect(confirmation).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toHaveCount(0);
+  await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await emitNativeMenuAction(page, "help");
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toBeVisible();
+});
+
+test("native menu navigation leaves template deletion confirmation untouched", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  await page.getByRole("button", { name: "Template settings" }).click();
+  await page.getByRole("button", { name: "Delete active template" }).click();
+  const confirmation = page.getByRole("group", {
+    name: "Confirm template deletion",
+  });
+  await expect(confirmation).toBeVisible();
+  await emitNativeMenuAction(page, "help");
+
+  await expect(confirmation).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toHaveCount(0);
+  await confirmation.getByRole("button", { name: "Cancel" }).click();
+  await emitNativeMenuAction(page, "help");
+  await expect(page.getByRole("dialog", { name: "Using Epikrise" })).toBeVisible();
+});
+
+emptyTemplateTest(
+  "template settings initial focus skips the aria-hidden file input",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Template settings", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Template settings" });
+    await expect(dialog).toBeVisible();
+
+    const hiddenFileInput = dialog.locator("#template-file");
+    await expect(hiddenFileInput).toHaveAttribute("aria-hidden", "true");
+    await expect(hiddenFileInput).not.toBeFocused();
+    await expect(dialog.locator(":focus")).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  },
+);
+
+browserTest(
+  "browser mode retains in-app settings without native menu calls",
+  async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "General settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Help" })).toBeVisible();
+    await page.getByRole("button", { name: "General settings" }).click();
+    await expect(page.getByRole("dialog", { name: "General settings" })).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        window.__EPIKRISE_TEST__?.commands.some(
+          ({ command }) => command === "sync_native_menu",
+        ),
+      ),
+    ).toBe(false);
+  },
+);
+
+nativeMenuListenerFailureTest(
+  "native menu listener failure keeps in-app buttons usable",
+  async ({ page }) => {
+    await page.goto("/");
+    const warning = page.getByText(
+      "Native Settings and Help menus are unavailable. Use the in-app buttons.",
+    );
+    await expect(warning).toBeVisible();
+    await page.getByRole("button", { name: "General settings" }).click();
+    await expect(page.getByRole("dialog", { name: "General settings" })).toBeVisible();
+    await page.locator("#interface-language").selectOption("de-CH");
+    await page.keyboard.press("Escape");
+    await expect(
+      page.getByText(
+        "Die nativen Menüs «Einstellungen» und «Hilfe» sind nicht verfügbar. Verwenden Sie die Schaltflächen in der App.",
+      ),
+    ).toBeVisible();
+  },
+);
+
+test("native menu labels follow locale changes and failures show a fallback", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForNativeMenu(page);
+  await page.getByRole("button", { name: "General settings" }).click();
+  await page.locator("#interface-language").selectOption("de-CH");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const sync = window.__EPIKRISE_TEST__?.commands
+          .filter(({ command }) => command === "sync_native_menu")
+          .at(-1);
+        const labels = sync?.args.labels as Record<string, unknown> | undefined;
+        return labels
+          ? Object.fromEntries(
+              Object.entries(labels).map(([key, value]) => [
+                key,
+                typeof value === "string"
+                  ? value.replaceAll(/[\u2068\u2069]/g, "")
+                  : value,
+              ]),
+            )
+          : undefined;
+      }),
+    )
+    .toMatchObject({
+      fileMenu: "Datei",
+      editMenu: "Bearbeiten",
+      viewMenu: "Darstellung",
+      windowMenu: "Fenster",
+      settingsMenu: "Einstellungen",
+      helpMenu: "Hilfe",
+      aboutAction: "Über",
+      aboutAppAction: "Über Epikrise",
+      servicesAction: "Dienste",
+      hideAppAction: "Epikrise ausblenden",
+      hideOthersAction: "Andere ausblenden",
+      quitAppAction: "Epikrise beenden",
+      closeAction: "Schliessen",
+      closeWindowAction: "Fenster schliessen",
+      exitAction: "Beenden",
+      undoAction: "Rückgängig",
+      redoAction: "Wiederholen",
+      cutAction: "Ausschneiden",
+      copyAction: "Kopieren",
+      pasteAction: "Einsetzen",
+      pasteAndMatchStyleAction: "Einsetzen und Stil anpassen",
+      deleteAction: "Löschen",
+      selectAllAction: "Alles auswählen",
+      fullscreenAction: "Vollbild ein/aus",
+      minimizeAction: "Minimieren",
+      maximizeAction: "Maximieren",
+      zoomAction: "Zoomen",
+      showAllAction: "Alle einblenden",
+      bringAllToFrontAction: "Alle nach vorne bringen",
+      actualSizeAction: "Originalgrösse",
+      zoomInAction: "Vergrössern",
+      zoomOutAction: "Verkleinern",
+      startSpeakingAction: "Sprachausgabe starten",
+      stopSpeakingAction: "Sprachausgabe stoppen",
+      startDictationAction: "Diktat starten…",
+      emojiAndSymbolsAction: "Emoji & Symbole",
+      helpAction: "Hilfe",
+    });
+
+  await page.locator("#interface-language").selectOption("qps-ploc");
+  await expect(page.locator("#interface-language")).toHaveValue("qps-ploc");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const sync = window.__EPIKRISE_TEST__?.commands
+          .filter(({ command }) => command === "sync_native_menu")
+          .at(-1);
+        const labels = sync?.args.labels as Record<string, unknown> | undefined;
+        return labels
+          ? Object.fromEntries(
+              Object.entries(labels).map(([key, value]) => [
+                key,
+                typeof value === "string"
+                  ? value.replaceAll(/[\u2068\u2069]/g, "")
+                  : value,
+              ]),
+            )
+          : undefined;
+      }),
+    )
+    .toMatchObject({
+      aboutAppAction: "［Aaboouut Epikrise］",
+      hideAppAction: "［Hiidee Epikrise］",
+      quitAppAction: "［Quuiit Epikrise］",
+    });
+
+  await page.evaluate(() => {
+    if (window.__EPIKRISE_TEST__) {
+      window.__EPIKRISE_TEST__.failNextNativeMenuSync = true;
+    }
+  });
+  await page.locator("#interface-language").selectOption("en");
+  await expect(
+    page.getByText(
+      "Native Settings and Help menus are unavailable. Use the in-app buttons.",
+    ),
+  ).toBeVisible();
+});
+
+delayedNativeMenuListenerTest(
+  "native menu registration uses the current locale after delayed listeners",
+  async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "General settings" }).click();
+    await page.locator("#interface-language").selectOption("de-CH");
+    await page.evaluate(() => {
+      const fixture = window.__EPIKRISE_TEST__;
+      if (!fixture) throw new Error("Tauri test fixture was not installed");
+      fixture.releaseNativeMenuListenerRegistration();
+    });
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const readySync = window.__EPIKRISE_TEST__?.commands
+            .filter(
+              ({ command, args }) =>
+                command === "sync_native_menu" && args.ready === true,
+            )
+            .at(-1);
+          const labels = readySync?.args.labels as Record<string, unknown> | undefined;
+          return labels?.fileMenu;
+        }),
+      )
+      .toBe("Datei");
+  },
+);
 
 test("requires updater opt-in and explicit install confirmation", async ({ page }) => {
   await page.goto("/");
@@ -370,6 +702,38 @@ test("invalidates reviewed output after a template change", async ({ page }) => 
   await page.locator("#template-section-summary").uncheck();
   await expect(copyButton).toBeDisabled();
   await expect(review).not.toBeChecked();
+});
+
+test("restores workspace focus when template changes disable the dialog opener", async ({
+  page,
+}) => {
+  await completeSyntheticGeneration(page, "Synthetic reviewed template output.");
+  const copyButton = page.getByRole("button", { name: "Copy to medical record" });
+  await page
+    .getByRole("checkbox", {
+      name: "I have reviewed the output and take responsibility.",
+    })
+    .check();
+  await copyButton.focus();
+  await expect(copyButton).toBeFocused();
+
+  await emitNativeMenuAction(page, "templateSettings");
+  const dialog = page.getByRole("dialog", { name: "Template settings" });
+  await expect(dialog).toBeVisible();
+  await page.locator("#template-section-summary").uncheck();
+  await expect(copyButton).toBeDisabled();
+  await dialog.getByRole("button", { name: "Close template settings" }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("dialog[open]")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const workspace = document.querySelector("main.work-area");
+        return Boolean(workspace?.contains(document.activeElement));
+      }),
+    )
+    .toBe(true);
 });
 
 test("keeps template settings open when the file picker is canceled", async ({

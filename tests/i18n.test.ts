@@ -103,6 +103,53 @@ describe("Fluent localization", () => {
     expect(translate(pseudoLocale, "Provider")).toMatch(/^［.*］$/);
   });
 
+  it("localizes native menu labels and fallback status in every locale", () => {
+    expect(translate("en", "Settings")).toBe("Settings");
+    expect(translate("de-CH", "Settings")).toBe("Einstellungen");
+    expect(translate(pseudoLocale, "Settings")).toMatch(/^［.*］$/);
+    expect(translate(pseudoLocale, "Undo")).toMatch(/^［.*］$/);
+    for (const label of [
+      "Paste and Match Style",
+      "Delete",
+      "Show All",
+      "Bring All to Front",
+      "Actual Size",
+      "Zoom In",
+      "Zoom Out",
+      "Start Speaking",
+      "Stop Speaking",
+      "Start Dictation…",
+      "Emoji & Symbols",
+    ]) {
+      expect(translate("en", label), label).toBe(label);
+      expect(translate("de-CH", label), label).not.toBe(label);
+      expect(translate(pseudoLocale, label), label).toMatch(/^［.+］$/);
+    }
+    expect(
+      translate(
+        "en",
+        "Native Settings and Help menus are unavailable. Use the in-app buttons.",
+      ),
+    ).toContain("Use the in-app buttons");
+    expect(
+      translate(
+        "de-CH",
+        "Native Settings and Help menus are unavailable. Use the in-app buttons.",
+      ),
+    ).toContain("Schaltflächen in der App");
+    const removeBidiIsolates = (value: string) =>
+      value.replaceAll(/[\u2068\u2069]/g, "");
+    expect(
+      removeBidiIsolates(translate("en", "About { $app }", { app: "Epikrise" })),
+    ).toBe("About Epikrise");
+    expect(
+      removeBidiIsolates(translate("de-CH", "Hide { $app }", { app: "Epikrise" })),
+    ).toBe("Epikrise ausblenden");
+    expect(
+      removeBidiIsolates(translate("de-CH", "Quit { $app }", { app: "Epikrise" })),
+    ).toBe("Epikrise beenden");
+  });
+
   it("pseudo-localizes every UI message and finds no untranslated markup text", async () => {
     const source = await readFile(
       new URL("../src/routes/+page.svelte", import.meta.url),
