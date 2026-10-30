@@ -16,6 +16,7 @@ async function hashGitArchive(commit) {
     cwd: repoRoot,
     stdio: ["ignore", "pipe", "inherit"],
   });
+  /** @type {Promise<void>} */
   const exit = new Promise((resolve, reject) => {
     archive.once("error", reject);
     archive.once("close", (code, signal) => {
@@ -53,8 +54,12 @@ async function assertWorkspaceDoesNotExist(buildRoot) {
   throw new Error(`Release workspace already exists: ${buildRoot}.`);
 }
 
-/** @param {string} commit @param {string} buildRoot */
-export async function prepareReleaseWorkspace(commit, buildRoot) {
+/**
+ * @param {string} commit
+ * @param {string} buildRoot
+ * @param {{ prepareReleaseBuildInputs?: (workspaceRoot: string) => Promise<unknown> }} [dependencies]
+ */
+export async function prepareReleaseWorkspace(commit, buildRoot, dependencies = {}) {
   if (!/^[0-9a-f]{40}$/.test(commit)) {
     throw new Error("Release commit must be a full lowercase Git SHA.");
   }
@@ -72,7 +77,9 @@ export async function prepareReleaseWorkspace(commit, buildRoot) {
   });
 
   try {
-    await prepareReleaseBuildInputs(resolvedBuildRoot);
+    await (dependencies.prepareReleaseBuildInputs ?? prepareReleaseBuildInputs)(
+      resolvedBuildRoot,
+    );
     const { stdout } = await execFile(
       "git",
       ["-C", resolvedBuildRoot, "rev-parse", "HEAD"],

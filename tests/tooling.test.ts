@@ -29,6 +29,7 @@ import {
   updateSourceCargoLockVersions,
   validateCalverVersion,
 } from "../scripts/prepare-release.mjs";
+import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
 import {
   assertDispatchPreconditions,
   assertSuccessfulJobs,
@@ -913,6 +914,82 @@ describe("CalVer release versions", () => {
     expect(invocation).toBeDefined();
     expect(invocation).toContain('"--unreleased"');
     expect(invocation).toContain('"--tag"');
+  });
+});
+
+describe("release workspace preparation", () => {
+  async function withTemporaryWorkspace(
+    test: (temporaryRoot: string, commit: string) => Promise<void>,
+  ) {
+    const temporaryRoot = await mkdtemp(
+      path.join(tmpdir(), "epikrise-release-workspace-test-"),
+    );
+    const { stdout } = await execFile("git", ["rev-parse", "HEAD"], {
+      cwd: repoRoot,
+    });
+
+    try {
+      await test(temporaryRoot, stdout.trim());
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      await execFile("git", ["worktree", "prune"], { cwd: repoRoot });
+    }
+  }
+
+  it("requires a full lowercase commit SHA and a new separate workspace", async () => {
+    await withTemporaryWorkspace(async (temporaryRoot, commit) => {
+      const workspace = path.join(temporaryRoot, "workspace");
+      await expect(
+        prepareReleaseWorkspace(commit.slice(0, 7), workspace),
+      ).rejects.toThrow("full lowercase Git SHA");
+      await expect(lstat(workspace)).rejects.toMatchObject({ code: "ENOENT" });
+
+      await mkdir(workspace);
+      await expect(prepareReleaseWorkspace(commit, workspace)).rejects.toThrow(
+        "already exists",
+      );
+      await expect(prepareReleaseWorkspace(commit, repoRoot)).rejects.toThrow(
+        "separate from the source checkout",
+      );
+    });
+  });
+
+  it("verifies the requested commit and removes the Git metadata marker", async () => {
+    await withTemporaryWorkspace(async (temporaryRoot, commit) => {
+      const workspace = path.join(temporaryRoot, "workspace");
+      const archiveHash = await prepareReleaseWorkspace(commit, workspace, {
+        prepareReleaseBuildInputs: async () => {},
+      });
+
+      expect(archiveHash).toMatch(/^[0-9a-f]{64}$/);
+      const { stdout: expectedPackageJson } = await execFile(
+        "git",
+        ["show", `${commit}:package.json`],
+        { cwd: repoRoot },
+      );
+      expect(await readFile(path.join(workspace, "package.json"), "utf8")).toBe(
+        expectedPackageJson,
+      );
+      await expect(lstat(path.join(workspace, ".git"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    });
+  });
+
+  it("removes the worktree when build-input preparation fails", async () => {
+    await withTemporaryWorkspace(async (temporaryRoot, commit) => {
+      const workspace = path.join(temporaryRoot, "workspace");
+      const preparationError = new Error("Build-input preparation failed.");
+
+      await expect(
+        prepareReleaseWorkspace(commit, workspace, {
+          prepareReleaseBuildInputs: async () => {
+            throw preparationError;
+          },
+        }),
+      ).rejects.toBe(preparationError);
+      await expect(lstat(workspace)).rejects.toMatchObject({ code: "ENOENT" });
+    });
   });
 });
 
