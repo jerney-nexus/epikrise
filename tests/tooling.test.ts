@@ -668,106 +668,503 @@ describe("Windows cross-build versions", () => {
     expect(buildScript).toContain(`crt_version="${setupCrtVersion}"`);
   });
 
-  it("requires explicit license approval before entering the CI setup path", async () => {
+  it("does not expose the former CI license-bypass setup path", async () => {
     const setupScript = path.join(repoRoot, "scripts/windows-setup.sh");
+    const source = await readFile(setupScript, "utf8");
 
-    for (const approval of [undefined, "false", "yes"]) {
-      await expect(
-        execFile("bash", [setupScript, "--ci"], {
-          env: {
-            ...process.env,
-            EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: approval,
-          },
-        }),
-      ).rejects.toMatchObject({
-        stderr: expect.stringContaining("EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED"),
-      });
-    }
     await expect(
-      execFile("bash", [setupScript, "--ci", "unexpected"], {
-        env: {
+      execFile("bash", [setupScript, "--ci"], {
+        env: clearCiEnvironment({
           ...process.env,
           EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: "true",
-        },
+        }),
       }),
     ).rejects.toMatchObject({
       stderr: expect.stringContaining("Usage:"),
     });
+    expect(source).not.toContain("--ci");
+    expect(source).not.toContain("EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED");
   });
 });
 
 describe("Windows setup noninteractive behavior", () => {
-  it("downloads only in approved CI mode and keeps local acceptance interactive", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-setup-"));
-    const binDir = path.join(directory, "bin");
-    const setupScript = path.join(directory, "windows-setup.sh");
-    const headerPath = path.join(directory, "RestartManager.nsh");
-    const cargoLog = path.join(directory, "cargo.log");
-    const cacheRoot = path.join(directory, "cache");
+  it.each(["x86_64", "aarch64"])(
+    "reaches the interactive license prompt on Linux %s without downloading",
+    async (hostArch) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-setup-"));
+      const binDir = path.join(directory, "bin");
+      const setupScript = path.join(directory, "windows-setup.sh");
+      const headerPath = path.join(directory, "RestartManager.nsh");
+      const cargoLog = path.join(directory, "cargo.log");
+      const cacheRoot = path.join(directory, "cache");
 
-    try {
-      await mkdir(binDir);
-      await writeFile(headerPath, "synthetic header");
-      const source = await readFile(
-        path.join(repoRoot, "scripts/windows-setup.sh"),
-        "utf8",
-      );
-      await writeFile(
-        setupScript,
-        source.replace("/usr/share/nsis/Include/Win/RestartManager.nsh", headerPath),
-      );
-      await writeExecutable(
-        path.join(binDir, "uname"),
-        '#!/usr/bin/env bash\nif [[ "$1" == "-s" ]]; then printf "Linux\\n"; else printf "aarch64\\n"; fi\n',
-      );
-      await writeExecutable(
-        path.join(binDir, "cargo"),
-        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
-      );
-      for (const tool of [
-        "rustup",
-        "clang",
-        "llvm-rc",
-        "llvm-ar",
-        "lld-link",
-        "cmake",
-        "ninja",
-        "makensis",
-      ]) {
-        await writeExecutable(path.join(binDir, tool), "#!/usr/bin/env bash\nexit 0\n");
+      try {
+        await mkdir(binDir);
+        await writeFile(headerPath, "synthetic header");
+        const source = await readFile(
+          path.join(repoRoot, "scripts/windows-setup.sh"),
+          "utf8",
+        );
+        await writeFile(
+          setupScript,
+          source.replace("/usr/share/nsis/Include/Win/RestartManager.nsh", headerPath),
+        );
+        await writeMockUname(binDir, `${hostArch}-unknown-linux-gnu`);
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${hostArch}-unknown-linux-gnu\\n'\n`,
+        );
+        await writeExecutable(
+          path.join(binDir, "cargo"),
+          '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CARGO_LOG"\n',
+        );
+        for (const tool of [
+          "rustup",
+          "clang",
+          "llvm-rc",
+          "llvm-ar",
+          "lld-link",
+          "cmake",
+          "ninja",
+          "makensis",
+        ]) {
+          await writeExecutable(
+            path.join(binDir, tool),
+            "#!/usr/bin/env bash\nexit 0\n",
+          );
+        }
+        const env = clearCiEnvironment({
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          XDG_CACHE_HOME: cacheRoot,
+          CARGO_LOG: cargoLog,
+          EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: "true",
+        });
+
+        await expect(execFile("bash", [setupScript], { env })).rejects.toMatchObject({
+          stderr: expect.stringContaining("interactive terminal"),
+          stdout: expect.stringContaining("Type ACCEPT"),
+        });
+        await expect(readFile(cargoLog, "utf8")).rejects.toThrow();
+        await expect(
+          readFile(
+            path.join(
+              cacheRoot,
+              "epikrise/windows/sdk-license-accepted-17-10.0.26100-14.44.17.14",
+            ),
+            "utf8",
+          ),
+        ).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
       }
-      const env = {
-        ...process.env,
-        PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-        XDG_CACHE_HOME: cacheRoot,
-        CARGO_LOG: cargoLog,
-        EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: "true",
-      };
+    },
+  );
 
-      await expect(execFile("bash", [setupScript], { env })).rejects.toMatchObject({
-        stderr: expect.stringContaining("interactive terminal"),
-      });
-      expect(await readFile(cargoLog, "utf8")).not.toContain("cache xwin");
+  it.each([
+    ["CI=true", { CI: "true" }],
+    ["CI=1", { CI: "1" }],
+    ["CI=yes", { CI: "yes" }],
+    ["CI=YES", { CI: "YES" }],
+    ["CI=On", { CI: "On" }],
+    ["GitHub Actions", { GITHUB_ACTIONS: "true" }],
+    ["GitLab CI", { GITLAB_CI: "true" }],
+  ])("rejects %s even when SDK approval is supplied", async (_name, ciEnvironment) => {
+    const setupScript = path.join(repoRoot, "scripts/windows-setup.sh");
+    await expect(
+      execFile("bash", [setupScript], {
+        env: {
+          ...clearCiEnvironment({ ...process.env }),
+          ...ciEnvironment,
+          EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED: "true",
+        },
+      }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("cannot run in CI"),
+    });
+  });
+});
 
-      const { stdout } = await execFile("bash", [setupScript, "--ci"], { env });
-      expect(stdout).toContain("Windows cross-build tools are ready.");
-      expect(stdout).not.toContain("Type ACCEPT");
-      expect(await readFile(cargoLog, "utf8")).toContain(
-        "cache xwin --xwin-version 17 --xwin-sdk-version 10.0.26100 --xwin-crt-version 14.44.17.14",
-      );
-      expect(
-        await readFile(
-          path.join(
-            cacheRoot,
-            "epikrise/windows/sdk-license-accepted-17-10.0.26100-14.44.17.14",
+describe("manual Linux NSIS cross-build guards", () => {
+  it.each(["x86_64", "aarch64"])(
+    "routes both Windows NSIS targets through the opted-in Linux %s host",
+    async (hostArch) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-build-"));
+      try {
+        const fixture = await createWindowsCrossBuildFixture(directory, { hostArch });
+        await execFile("bash", [fixture.scriptPath, "all"], {
+          cwd: fixture.repoRoot,
+          env: fixture.environment,
+        });
+
+        const prepareLog = await readFile(fixture.prepareLog, "utf8");
+        expect(prepareLog).toContain(
+          `--target x86_64-pc-windows-msvc|nsis|${hostArch}|true`,
+        );
+        expect(prepareLog).toContain(
+          `--target aarch64-pc-windows-msvc|nsis|${hostArch}|true`,
+        );
+        const buildLog = await readFile(fixture.buildLog, "utf8");
+        expect(buildLog).toContain('--config {"bundle":{"targets":["nsis"]}}');
+        expect(
+          buildLog.match(/--target (x86_64|aarch64)-pc-windows-msvc/g),
+        ).toHaveLength(2);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    [
+      "missing opt-in",
+      { EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "" },
+      "EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD=true",
+    ],
+    ["CI=true", { CI: "true" }, "cannot run in CI"],
+    ["CI=1", { CI: "1" }, "cannot run in CI"],
+    ["CI=yes", { CI: "yes" }, "cannot run in CI"],
+    ["CI=YES", { CI: "YES" }, "cannot run in CI"],
+    ["CI=On", { CI: "On" }, "cannot run in CI"],
+    ["GitHub Actions", { GITHUB_ACTIONS: "true" }, "cannot run in CI"],
+    ["GitLab CI", { GITLAB_CI: "true" }, "cannot run in CI"],
+    ["release mode", {}, "diagnostic NSIS packages only"],
+    ["MSI", { EPIKRISE_WINDOWS_INSTALLER_FAMILY: "msi" }, "NSIS packages only"],
+    ["MSIX", { EPIKRISE_WINDOWS_INSTALLER_FAMILY: "msix" }, "NSIS packages only"],
+    [
+      "other package",
+      { EPIKRISE_WINDOWS_INSTALLER_FAMILY: "appimage" },
+      "NSIS packages only",
+    ],
+    ["unsupported OS", { TEST_HOST_OS: "Darwin" }, "only from Linux x64 or ARM64"],
+    [
+      "unsupported architecture",
+      { TEST_HOST_ARCH: "s390x" },
+      "native Linux x64 or ARM64",
+    ],
+  ])(
+    "rejects %s before OCR preparation or compilation",
+    async (name, environmentOverrides, message) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-build-"));
+      try {
+        const fixture = await createWindowsCrossBuildFixture(directory);
+        const environment = {
+          ...fixture.environment,
+          EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "true",
+          ...environmentOverrides,
+        };
+        const args = [fixture.scriptPath, "x64"];
+        if (name === "release mode") args.push("release");
+
+        await expect(
+          execFile("bash", args, {
+            cwd: fixture.repoRoot,
+            env: environment,
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining(message),
+        });
+        await expect(readFile(fixture.prepareLog, "utf8")).rejects.toThrow();
+        await expect(readFile(fixture.buildLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("Linux Windows OCR cross-build toolchain", () => {
+  it.each([
+    [
+      "x86_64",
+      "llvm-mingw-20260922-ucrt-ubuntu-22.04-x86_64.tar.xz",
+      "bb7bb7654b33d5aa8712acb837c963b2e0c56352560c76105270a3268c665c21",
+    ],
+    [
+      "aarch64",
+      "llvm-mingw-20260922-ucrt-ubuntu-22.04-aarch64.tar.xz",
+      "07d21263c56bfe9a713db6fdb3f7434bf4c121a005e40397d3b4c0170fb06769",
+    ],
+  ])(
+    "selects the pinned %s-host LLVM-MinGW archive and host/target cache",
+    async (hostArch, archive, checksum) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-ocr-"));
+      const repoRoot = path.join(directory, "repo");
+      const scriptsDir = path.join(repoRoot, "scripts");
+      const binDir = path.join(directory, "bin");
+      const cacheRoot = path.join(directory, "ocr-cache");
+      const curlLog = path.join(directory, "curl.log");
+      const scriptPath = path.join(scriptsDir, "build-windows-ocr.sh");
+      const target = "x86_64-pc-windows-msvc";
+
+      try {
+        await Promise.all([
+          mkdir(scriptsDir, { recursive: true }),
+          mkdir(binDir, { recursive: true }),
+        ]);
+        await writeFile(
+          scriptPath,
+          await readFile(
+            path.join(repoRootForTests(), "scripts/build-windows-ocr.sh"),
+            "utf8",
           ),
           "utf8",
-        ),
-      ).toBe("");
+        );
+        await writeMockUname(binDir, `${hostArch}-unknown-linux-gnu`);
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          `#!/usr/bin/env bash\nprintf 'host: ${hostArch}-unknown-linux-gnu\\n'\n`,
+        );
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CURL_LOG"\nexit 74\n',
+        );
+        const environment = clearCiEnvironment({
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+          CURL_LOG: curlLog,
+          EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "true",
+          EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE: "nsis",
+          EPIKRISE_WINDOWS_HOST_ARCH: hostArch,
+          EPIKRISE_WINDOWS_OCR_CACHE: cacheRoot,
+          EPIKRISE_OCR_BINARY_DIR: path.join(directory, "binaries"),
+        });
+
+        await expect(
+          execFile("bash", [scriptPath, target], {
+            cwd: repoRoot,
+            env: environment,
+          }),
+        ).rejects.toMatchObject({ code: 1 });
+        expect(await readFile(curlLog, "utf8")).toContain(archive);
+        const source = await readFile(scriptPath, "utf8");
+        expect(source).toContain(checksum);
+        await expect(
+          lstat(path.join(cacheRoot, `host-${hostArch}`, "build", target)),
+        ).resolves.toBeDefined();
+        await expect(lstat(path.join(cacheRoot, "build", target))).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("patches zlib and Tesseract's Windows CMake conditions idempotently", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-zlib-cmake-"));
+    const zlibSource = path.join(directory, "zlib");
+    const tesseractSource = path.join(directory, "tesseract");
+    const zlibCmakeFile = path.join(zlibSource, "CMakeLists.txt");
+    const tesseractCmakeFile = path.join(tesseractSource, "CMakeLists.txt");
+    const patchScript = path.join(repoRoot, "scripts/patch-windows-ocr-cmake.sh");
+    const buildScript = await readFile(
+      path.join(repoRoot, "scripts/build-windows-ocr.sh"),
+      "utf8",
+    );
+    const original = [
+      "if(UNIX)",
+      '  set_target_properties(zlib PROPERTIES LINK_FLAGS "-Wl,--version-script,zlib.map")',
+      "endif()",
+      "",
+    ].join("\n");
+    const patchedZlib = original.replace(
+      "if(UNIX)",
+      'if(UNIX AND NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")',
+    );
+    const originalTesseract = [
+      "elseif(UNIX)",
+      "  set(LIB_pthread pthread)",
+      "elseif(WIN32)",
+      "  set(LIB_Ws2_32 Ws2_32)",
+      "",
+    ].join("\n");
+    const patchedTesseract = originalTesseract.replace(
+      "elseif(UNIX)",
+      "elseif(UNIX AND NOT WIN32)",
+    );
+
+    try {
+      await Promise.all([
+        mkdir(zlibSource, { recursive: true }),
+        mkdir(tesseractSource, { recursive: true }),
+      ]);
+      expect(buildScript).toContain(
+        'bash "$repo_root/scripts/patch-windows-ocr-cmake.sh" "$zlib_source" "$tesseract_source"',
+      );
+      await Promise.all([
+        writeFile(zlibCmakeFile, original, "utf8"),
+        writeFile(tesseractCmakeFile, originalTesseract, "utf8"),
+      ]);
+
+      await execFile("bash", [patchScript, zlibSource, tesseractSource]);
+      await expect(readFile(zlibCmakeFile, "utf8")).resolves.toBe(patchedZlib);
+      await expect(readFile(tesseractCmakeFile, "utf8")).resolves.toBe(
+        patchedTesseract,
+      );
+
+      await execFile("bash", [patchScript, zlibSource, tesseractSource]);
+      await expect(readFile(zlibCmakeFile, "utf8")).resolves.toBe(patchedZlib);
+      await expect(readFile(tesseractCmakeFile, "utf8")).resolves.toBe(
+        patchedTesseract,
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("fails when zlib's expected platform condition changes", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-zlib-cmake-"));
+    const zlibSource = path.join(directory, "zlib");
+    const tesseractSource = path.join(directory, "tesseract");
+    const patchScript = path.join(repoRoot, "scripts/patch-windows-ocr-cmake.sh");
+
+    try {
+      await Promise.all([
+        mkdir(zlibSource, { recursive: true }),
+        mkdir(tesseractSource, { recursive: true }),
+      ]);
+      await Promise.all([
+        writeFile(
+          path.join(zlibSource, "CMakeLists.txt"),
+          "if(UNIX)\nif(UNIX)\n",
+          "utf8",
+        ),
+        writeFile(
+          path.join(tesseractSource, "CMakeLists.txt"),
+          "elseif(UNIX)\n",
+          "utf8",
+        ),
+      ]);
+
+      await expect(
+        execFile("bash", [patchScript, zlibSource, tesseractSource]),
+      ).rejects.toMatchObject({
+        code: 1,
+        stderr: expect.stringContaining("Unexpected zlib CMake platform condition"),
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not enter the cross-builder from CI or without manual NSIS context", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-ocr-guard-"));
+    const scriptsDir = path.join(directory, "scripts");
+    const binDir = path.join(directory, "bin");
+    const curlLog = path.join(directory, "curl.log");
+    const scriptPath = path.join(scriptsDir, "build-windows-ocr.sh");
+
+    try {
+      await Promise.all([
+        mkdir(scriptsDir, { recursive: true }),
+        mkdir(binDir, { recursive: true }),
+      ]);
+      await writeFile(
+        scriptPath,
+        await readFile(
+          path.join(repoRootForTests(), "scripts/build-windows-ocr.sh"),
+          "utf8",
+        ),
+        "utf8",
+      );
+      await writeMockUname(binDir, "x86_64-unknown-linux-gnu");
+      await writeExecutable(
+        path.join(binDir, "rustc"),
+        "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+      );
+      await writeExecutable(
+        path.join(binDir, "curl"),
+        '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\n',
+      );
+      const baseEnvironment = clearCiEnvironment({
+        ...process.env,
+        PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+        CURL_LOG: curlLog,
+        EPIKRISE_WINDOWS_OCR_CACHE: path.join(directory, "cache"),
+      });
+      const contextEnvironment = {
+        ...baseEnvironment,
+        EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "true",
+        EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE: "nsis",
+        EPIKRISE_WINDOWS_HOST_ARCH: "x86_64",
+      };
+
+      await expect(
+        execFile("bash", [scriptPath, "x86_64-pc-windows-msvc"], {
+          cwd: directory,
+          env: baseEnvironment,
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("explicitly opted-in manual NSIS build"),
+      });
+      await expect(
+        execFile("bash", [scriptPath, "x86_64-pc-windows-msvc"], {
+          cwd: directory,
+          env: { ...contextEnvironment, GITHUB_ACTIONS: "true" },
+        }),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("cannot run in CI"),
+      });
+      await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["yes", "YES", "On", "tRuE", "1"])(
+    "rejects CI=%s in the direct cross-builder before downloads",
+    async (ciValue) => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-ocr-ci-"));
+      const scriptsDir = path.join(directory, "scripts");
+      const binDir = path.join(directory, "bin");
+      const curlLog = path.join(directory, "curl.log");
+      const scriptPath = path.join(scriptsDir, "build-windows-ocr.sh");
+
+      try {
+        await Promise.all([
+          mkdir(scriptsDir, { recursive: true }),
+          mkdir(binDir, { recursive: true }),
+        ]);
+        await writeFile(
+          scriptPath,
+          await readFile(
+            path.join(repoRootForTests(), "scripts/build-windows-ocr.sh"),
+            "utf8",
+          ),
+          "utf8",
+        );
+        await writeMockUname(binDir, "x86_64-unknown-linux-gnu");
+        await writeExecutable(
+          path.join(binDir, "rustc"),
+          "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+        );
+        await writeExecutable(
+          path.join(binDir, "curl"),
+          '#!/usr/bin/env bash\nprintf "called\\n" >> "$CURL_LOG"\n',
+        );
+
+        const environment = clearCiEnvironment({
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+          CURL_LOG: curlLog,
+          EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "true",
+          EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE: "nsis",
+          EPIKRISE_WINDOWS_HOST_ARCH: "x86_64",
+        });
+        environment.CI = ciValue;
+        await expect(
+          execFile("bash", [scriptPath, "x86_64-pc-windows-msvc"], {
+            cwd: directory,
+            env: environment,
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("cannot run in CI"),
+        });
+        await expect(readFile(curlLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("six-target desktop build tooling", () => {
@@ -1365,77 +1762,6 @@ describe("signed release artifacts", () => {
     expect(diagnosticWorkflow).not.toContain("gh release create");
   });
 
-  it("requires a signing key before starting a Windows release build", async () => {
-    const cacheRoot = await mkdtemp(path.join(tmpdir(), "epikrise-windows-release-"));
-    const windowsCache = path.join(cacheRoot, "epikrise", "windows");
-
-    try {
-      await mkdir(windowsCache, { recursive: true });
-      await writeFile(
-        path.join(windowsCache, "sdk-license-accepted-17-10.0.26100-14.44.17.14"),
-        "",
-      );
-      await expect(
-        execFile("bash", ["scripts/build-windows.sh", "x64", "release"], {
-          cwd: repoRoot,
-          env: {
-            ...process.env,
-            XDG_CACHE_HOME: cacheRoot,
-            EPIKRISE_WINDOWS_INSTALLER_FAMILY: "nsis",
-            TAURI_SIGNING_PRIVATE_KEY: "",
-            TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
-          },
-        }),
-      ).rejects.toMatchObject({
-        code: 1,
-        stderr: expect.stringContaining("TAURI_SIGNING_PRIVATE_KEY is required"),
-      });
-    } finally {
-      await rm(cacheRoot, { recursive: true, force: true });
-    }
-  });
-
-  it.each([undefined, "both"])(
-    "rejects missing or conflicting signed Windows installer-family selection: %s",
-    async (family) => {
-      const cacheRoot = await mkdtemp(path.join(tmpdir(), "epikrise-windows-family-"));
-      const windowsCache = path.join(cacheRoot, "epikrise", "windows");
-      const environment: NodeJS.ProcessEnv = {
-        ...process.env,
-        XDG_CACHE_HOME: cacheRoot,
-        TAURI_SIGNING_PRIVATE_KEY: "synthetic-test-key",
-        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
-      };
-
-      if (family === undefined) {
-        delete environment.EPIKRISE_WINDOWS_INSTALLER_FAMILY;
-      } else {
-        environment.EPIKRISE_WINDOWS_INSTALLER_FAMILY = family;
-      }
-
-      try {
-        await mkdir(windowsCache, { recursive: true });
-        await writeFile(
-          path.join(windowsCache, "sdk-license-accepted-17-10.0.26100-14.44.17.14"),
-          "",
-        );
-        await expect(
-          execFile("bash", ["scripts/build-windows.sh", "x64", "release"], {
-            cwd: repoRoot,
-            env: environment,
-          }),
-        ).rejects.toMatchObject({
-          code: 2,
-          stderr: expect.stringContaining(
-            "EPIKRISE_WINDOWS_INSTALLER_FAMILY must be set to nsis or msi",
-          ),
-        });
-      } finally {
-        await rm(cacheRoot, { recursive: true, force: true });
-      }
-    },
-  );
-
   it("stages all platform packages and builds a signed static updater manifest", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-signed-release-"));
     const artifactsRoot = path.join(directory, "artifacts");
@@ -1734,6 +2060,119 @@ describe("Tauri localization contract", () => {
 async function writeExecutable(filePath: string, contents: string) {
   await writeFile(filePath, contents, "utf8");
   await chmod(filePath, 0o755);
+}
+
+function clearCiEnvironment(environment: NodeJS.ProcessEnv) {
+  for (const variable of [
+    "CI",
+    "GITHUB_ACTIONS",
+    "GITLAB_CI",
+    "CIRCLECI",
+    "JENKINS_URL",
+    "BUILD_NUMBER",
+    "TF_BUILD",
+    "TEAMCITY_VERSION",
+    "BUILDKITE",
+    "DRONE",
+    "CODEBUILD_BUILD_ID",
+  ]) {
+    delete environment[variable];
+  }
+  environment.CI = "";
+  environment.GITHUB_ACTIONS = "";
+  return environment;
+}
+
+async function createWindowsCrossBuildFixture(
+  directory: string,
+  options: { hostArch?: string } = {},
+) {
+  const { hostArch = "x86_64" } = options;
+  const repoRoot = path.join(directory, "repo");
+  const scriptsDir = path.join(repoRoot, "scripts");
+  const binDir = path.join(directory, "bin");
+  const cacheRoot = path.join(directory, "cache");
+  const prepareLog = path.join(directory, "prepare.log");
+  const buildLog = path.join(directory, "build.log");
+  const scriptPath = path.join(scriptsDir, "build-windows.sh");
+  const windowsCache = path.join(cacheRoot, "epikrise", "windows");
+  await Promise.all([
+    mkdir(scriptsDir, { recursive: true }),
+    mkdir(binDir, { recursive: true }),
+    mkdir(windowsCache, { recursive: true }),
+  ]);
+  await writeFile(
+    scriptPath,
+    await readFile(path.join(repoRootForTests(), "scripts/build-windows.sh"), "utf8"),
+    "utf8",
+  );
+  await writeFile(
+    path.join(windowsCache, "sdk-license-accepted-17-10.0.26100-14.44.17.14"),
+    "",
+  );
+  await writeExecutable(
+    path.join(scriptsDir, "prepare-ocr.sh"),
+    [
+      "#!/usr/bin/env bash",
+      'printf "%s|%s|%s|%s\\n" "$*" "${EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE:-}" "${EPIKRISE_WINDOWS_HOST_ARCH:-}" "${EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD:-}" >> "$PREPARE_LOG"',
+      "",
+    ].join("\n"),
+  );
+  await writeExecutable(
+    path.join(scriptsDir, "with-cargo-host-target.sh"),
+    '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$BUILD_LOG"\n',
+  );
+  await writeExecutable(
+    path.join(scriptsDir, "clang-xwin.sh"),
+    "#!/usr/bin/env bash\nexit 0\n",
+  );
+  await writeExecutable(
+    path.join(binDir, "uname"),
+    [
+      "#!/usr/bin/env bash",
+      'if [[ "$1" == "-s" ]]; then printf "%s\\n" "${TEST_HOST_OS:-Linux}"; else printf "%s\\n" "${TEST_HOST_ARCH:-x86_64}"; fi',
+      "",
+    ].join("\n"),
+  );
+  await writeExecutable(
+    path.join(binDir, "rustc"),
+    [
+      "#!/usr/bin/env bash",
+      'printf "host: %s-unknown-linux-gnu\\n" "${TEST_HOST_ARCH:-x86_64}"',
+      "",
+    ].join("\n"),
+  );
+  await writeExecutable(
+    path.join(binDir, "node"),
+    [
+      "#!/usr/bin/env bash",
+      'if [[ "$1" == */verify-linux-host-architecture.mjs ]]; then',
+      '  printf "%s\\n" "$3"',
+      "else",
+      `  exec ${JSON.stringify(process.execPath)} "$@"`,
+      "fi",
+      "",
+    ].join("\n"),
+  );
+  await writeExecutable(path.join(binDir, "clang"), "#!/usr/bin/env bash\nexit 0\n");
+
+  const environment = clearCiEnvironment({
+    ...process.env,
+    PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    XDG_CACHE_HOME: cacheRoot,
+    TEST_HOST_ARCH: hostArch,
+    TEST_HOST_OS: "Linux",
+    PREPARE_LOG: prepareLog,
+    BUILD_LOG: buildLog,
+    EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "true",
+  });
+  delete environment.EPIKRISE_WINDOWS_INSTALLER_FAMILY;
+
+  return { repoRoot, scriptPath, prepareLog, buildLog, environment };
+}
+
+function repoRootForTests() {
+  return fileURLToPath(new URL("../", import.meta.url));
 }
 
 async function writeMockUname(
@@ -3199,10 +3638,16 @@ async function createWindowsOcrFixture(
   const pdfiumFixturePath = path.join(directory, "pdfium.fixture");
   const tesseractFixturePath = path.join(directory, "tesseract.fixture");
   const builderPath = path.join(directory, "build-ocr.sh");
+  const builderContextLog = path.join(directory, "builder-context.log");
   await Promise.all([
     mkdir(binDir, { recursive: true }),
     mkdir(tessdataDir, { recursive: true }),
   ]);
+  await writeMockUname(binDir, "x86_64-unknown-linux-gnu");
+  await writeExecutable(
+    path.join(binDir, "rustc"),
+    "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
+  );
   await writeFile(path.join(tessdataDir, "deu.traineddata"), "deu", "utf8");
   await writeFile(path.join(tessdataDir, "eng.traineddata"), "eng", "utf8");
   await writeFile(pdfiumFixturePath, createBinaryHeader(targetTriple));
@@ -3280,6 +3725,7 @@ async function createWindowsOcrFixture(
     builderPath,
     [
       "#!/usr/bin/env bash",
+      'printf "%s|%s|%s\\n" "$EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE" "$EPIKRISE_WINDOWS_HOST_ARCH" "$EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD" >> "$BUILDER_CONTEXT_LOG"',
       'mkdir -p "$EPIKRISE_OCR_BINARY_DIR"',
       'cp "$TESSERACT_FIXTURE_PATH" "$EPIKRISE_OCR_BINARY_DIR/tesseract-$1.exe"',
       "",
@@ -3294,12 +3740,13 @@ async function createWindowsOcrFixture(
     dpkgLog,
     resourceDir,
     binaryDir,
+    builderContextLog,
     tarLog,
     pdfiumFixturePath,
     tesseractFixturePath,
     tessdataDir,
     environment: {
-      ...process.env,
+      ...clearCiEnvironment({ ...process.env }),
       PATH: `${binDir}:${process.env.PATH ?? ""}`,
       TESSDATA_DIR: reportedTessdataDir,
       TESSDATA_PACKAGE_DIR: tessdataDir,
@@ -3317,6 +3764,10 @@ async function createWindowsOcrFixture(
       EPIKRISE_OCR_BINARY_DIR: binaryDir,
       EPIKRISE_WINDOWS_OCR_CACHE: cacheRoot,
       EPIKRISE_WINDOWS_OCR_BUILDER: builderPath,
+      EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "true",
+      EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE: "nsis",
+      EPIKRISE_WINDOWS_HOST_ARCH: "x86_64",
+      BUILDER_CONTEXT_LOG: builderContextLog,
     },
   };
 }
@@ -3457,6 +3908,63 @@ if (process.platform !== "win32") {
   describe("Windows OCR preparation", () => {
     const prepareScript = path.join(repoRoot, "scripts/prepare-ocr.sh");
 
+    it("rejects direct cross-target preparation without approved context before downloads", async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-context-"));
+      try {
+        const fixture = await createWindowsOcrFixture(
+          directory,
+          windowsOcrTargets[0].checksum,
+        );
+        const environment = clearCiEnvironment({ ...fixture.environment });
+        delete environment.EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD;
+        delete environment.EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE;
+
+        await expect(
+          execFile("bash", [prepareScript, "--target", windowsOcrTargets[0].target], {
+            cwd: repoRoot,
+            env: environment,
+          }),
+        ).rejects.toMatchObject({
+          stderr: expect.stringContaining("explicitly opted-in manual NSIS build"),
+        });
+        await expect(readFile(fixture.curlLog, "utf8")).rejects.toThrow();
+        await expect(readFile(fixture.builderContextLog, "utf8")).rejects.toThrow();
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it.each(["yes", "YES", "On", "tRuE", "1"])(
+      "rejects CI=%s from direct OCR preparation before downloads",
+      async (ciValue) => {
+        const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-ci-"));
+        try {
+          const fixture = await createWindowsOcrFixture(
+            directory,
+            windowsOcrTargets[0].checksum,
+          );
+          await expect(
+            execFile("bash", [prepareScript, "--target", windowsOcrTargets[0].target], {
+              cwd: repoRoot,
+              env: {
+                ...fixture.environment,
+                CI: ciValue,
+                EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD: "true",
+                EPIKRISE_WINDOWS_CROSS_BUILD_PACKAGE: "nsis",
+                EPIKRISE_WINDOWS_HOST_ARCH: "x86_64",
+              },
+            }),
+          ).rejects.toMatchObject({
+            stderr: expect.stringContaining("cannot run in CI"),
+          });
+          await expect(readFile(fixture.curlLog, "utf8")).rejects.toThrow();
+          await expect(readFile(fixture.builderContextLog, "utf8")).rejects.toThrow();
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      },
+    );
+
     for (const targetCase of windowsOcrTargets) {
       it(`stages the matching PDFium and Tesseract for ${targetCase.target}`, async () => {
         const directory = await mkdtemp(path.join(tmpdir(), "epikrise-ocr-"));
@@ -3496,6 +4004,9 @@ if (process.platform !== "win32") {
             ),
           ).toEqual(await readFile(fixture.tesseractFixturePath));
           expect(await readFile(fixture.curlLog, "utf8")).toContain(targetCase.archive);
+          expect(await readFile(fixture.builderContextLog, "utf8")).toContain(
+            "nsis|x86_64|true",
+          );
           expect(
             await readFile(
               path.join(
