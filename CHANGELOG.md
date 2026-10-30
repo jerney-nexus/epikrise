@@ -32,10 +32,15 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   emulation, cross-target Cargo configuration (including forwarded `--config`
   overrides), and custom Tauri runners in native build/dev commands. Clustered
   short target options are validated and reflected in build-output verification.
-  Local PowerShell setup and troubleshooting are documented. The six-target
-  Desktop builds workflow passed; native install, launch, and uninstall were
-  confirmed on Windows ARM64 and macOS Apple Silicon. Live testing on the other
-  platform targets is deferred.
+  Local PowerShell setup and troubleshooting are documented. All six native
+  Desktop jobs passed in
+  [Actions run 40110573454](https://github.com/jerney-nexus/epikrise/actions/runs/40110573454)
+  for commit `66a76e720ea32308d6721580a5b37b2af4a9a1aa`; `pnpm build:all`
+  verified the downloaded manifests and hashes, including both Windows
+  package families. User-reported install, launch, and uninstall checks cover
+  Windows ARM64 and macOS Apple Silicon; remaining native runtime and Store
+  certification gates are documented in README and CONTRIBUTING. Live testing
+  on the other platform targets is deferred.
 - `pnpm build:all` now downloads and verifies Windows NSIS and Store MSIX as
   separate package families. Artifact manifests bind each package to its
   request, commit, version, native runner, Rust target, and SHA-256.

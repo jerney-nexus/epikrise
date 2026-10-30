@@ -18,6 +18,20 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - `build/`: Generated files.
 - `src-tauri/target/`: Rust build artifacts, isolated by host triple.
 
+## Native Builds and Packaging
+
+- Local `pnpm tauri build` compiles Epikrise and OCR for the physical host
+  operating system and architecture. Native host/target mismatches fail closed.
+- All six GitHub Actions desktop targets build natively on matching runners.
+  Cross-compilation is never an Actions or release path.
+- The only cross-build exception is an explicit human Linux x64/ARM64 build of
+  the diagnostic Windows NSIS installer. MSI and MSIX are not cross-built.
+- Windows NSIS is the local installer. The unsigned Store MSIX is a
+  Partner Center submission input; Microsoft manages Store signing and updates.
+  Package creation is not Store certification.
+- See `README.md` and `CONTRIBUTING.md` for prerequisites, exact commands, and
+  current acceptance evidence.
+
 ## Global Rules
 
 - Never commit secrets or API keys.

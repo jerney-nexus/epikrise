@@ -393,16 +393,42 @@ PDFium, German/English synthetic OCR, credentials, clipboard and uninstall on
 native Linux, macOS and Windows systems for every architecture. Cross-build
 success alone does not prove runtime support.
 
-Validation evidence as of 2026-10-18:
+Validation evidence as of 2026-10-24:
 
-- All six native Desktop builds succeeded in
-  [Actions run 39154332435](https://github.com/jerney-nexus/epikrise/actions/runs/39154332435)
-  for commit `3016dfe78a67a8074ffc280f1a4664271e94d989`.
-- Native install, launch, and uninstall were confirmed on Windows ARM64 and
-  macOS Apple Silicon.
-- Live installation and runtime testing on Windows x64, macOS Intel, and Linux
-  x64/ARM64 is deferred. These lifecycle checks do not complete the separate
-  PDFium, synthetic OCR, credentials, or clipboard acceptance checks.
+- `pnpm build:all` succeeded in
+  [Actions run 40110573454](https://github.com/jerney-nexus/epikrise/actions/runs/40110573454)
+  for commit `66a76e720ea32308d6721580a5b37b2af4a9a1aa`, version `2026.10.0`,
+  and request `1764b6f2-7f78-40db-8472-cb1f621b55ef`. All six native jobs
+  succeeded. The command downloaded and verified complete artifacts and their
+  request, commit, version, target, and SHA-256 evidence, including separate
+  Windows NSIS and Store MSIX families.
+- Both Store MSIX archives passed ZIP integrity checks. Their manifests
+  contained the reserved identity and publisher, version `2026.10.0.0`, and
+  matching x64/ARM64 architecture. The app, Tesseract, PDFium, and German/
+  English language payloads were present; packaged PE binaries matched the
+  declared architecture. This was package inspection, not Windows App
+  Certification Kit or Partner Center validation. No Store upload,
+  certification, or public release has been performed.
+- The x64/ARM64 MSIX SHA-256 values were
+  `fc5c9c80b6c84a63f295be08fe3a1f8b1cc2e8dad56601604e681cdf8c8fbb3d` and
+  `de1985ac5b732e58f9cd1eb1570b2d62f8f9e8f3c6571366d8c5027988150aee`.
+  Corresponding NSIS SHA-256 values were
+  `7c51c331029a4995d568629ec7d1a33e16c37b8ec83031bb37be2563d74d08e8` and
+  `514ede7a663570c5f660ca59f7684da7c84dd3e01577c117c4909261d3800562`.
+- In this run, Linux and macOS OCR caches were restored, both Windows OCR
+  caches missed, and the Node dependency caches were restored. Both Windows
+  builds succeeded despite the OCR cache misses; this is not evidence of a
+  warmed Windows OCR cache.
+- User-reported runtime evidence covers install, launch, and uninstall on
+  Windows ARM64 and macOS Apple Silicon; provider flows on Windows ARM64; and
+  an independent Linux x64 AppImage launch. No six-platform runtime acceptance
+  is implied. Windows x64, macOS Intel, and Linux ARM64 lifecycle checks, plus
+  synthetic German/English OCR, PDFium runtime loading, credentials, clipboard,
+  and isolated offline WebView2 readiness acceptance remain open where not
+  explicitly reported.
+- The successful matrix predates the Windows PowerShell execution-policy
+  follow-up on commit `ecb65eb3b600d460ba07a48336f4fd6ff281d6be`. That
+  follow-up has not had a six-target native matrix run.
 
 ## Project layout
 
