@@ -3662,7 +3662,6 @@
           <input
             class="source-file-input"
             type="file"
-            accept=".txt,.md,.csv,.pdf,.docx,.xlsx,.rtf,.html,.htm,image/png,image/jpeg"
             multiple
             bind:this={sourceFileInput}
             onchange={handleFileSelection}

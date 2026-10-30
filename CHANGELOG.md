@@ -165,6 +165,9 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ### Fixed
 
+- Removed the source file picker's file-type filter so Linux native choosers do
+  not hide supported document files; unsupported selections remain rejected by
+  the importer.
 - Linux OCR builds and runtime checks now parse `ldd` output consistently,
   regardless of the developer's locale.
 - Updated vulnerable frontend dependencies to patched releases, including
