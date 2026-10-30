@@ -496,6 +496,12 @@ configure clinical-content logging; debug representations of case, extraction,
 image and chat payloads redact their contents. Production devtools and the
 context menu are disabled.
 
+## Versioning
+
+Epikrise uses [Calendar Versioning](https://calver.org). Versions follow
+**`YYYY.M.MICRO`**; for example, `2026.10.0` is the first release of October
+2026, and the final number counts fixes within that month.
+
 ## Documentation
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup, project layout, quality gates

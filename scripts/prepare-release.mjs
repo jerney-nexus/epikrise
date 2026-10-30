@@ -16,12 +16,12 @@ import TOML from "@iarna/toml";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const calverPattern = /^(\d{4})\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$/;
+const calverPattern = /^(\d{4})\.([1-9]|1[0-2])\.(0|[1-9]\d*)$/;
 
 /** @param {string} version */
 export function validateCalverVersion(version) {
   if (!calverPattern.test(version)) {
-    throw new Error(`Invalid CalVer version: ${version}. Expected YYYY.MM.PATCH.`);
+    throw new Error(`Invalid CalVer version: ${version}. Expected YYYY.M.MICRO.`);
   }
   return version;
 }
@@ -50,9 +50,9 @@ export function deriveReleaseVersions(version) {
 
 /** @param {string} version */
 export function releaseVersionFromProtocolVersion(version) {
-  const match = /^(\d{4})\.([1-9]|1[0-2])\.(0|[1-9]\d*)$/.exec(version);
+  const match = calverPattern.exec(version);
   if (!match) throw new Error(`Invalid update protocol version: ${version}.`);
-  const releaseVersion = `${match[1]}.${match[2].padStart(2, "0")}.${match[3]}`;
+  const releaseVersion = version;
   deriveReleaseVersions(releaseVersion);
   return releaseVersion;
 }
@@ -292,9 +292,9 @@ export function nextCalverVersion(currentVersion, date = new Date()) {
     throw new Error("The current date is earlier than the project version.");
   }
   if (year === currentYear && month === currentMonth) {
-    return `${year}.${String(month).padStart(2, "0")}.${currentPatch + 1}`;
+    return `${year}.${month}.${currentPatch + 1}`;
   }
-  return `${year}.${String(month).padStart(2, "0")}.0`;
+  return `${year}.${month}.0`;
 }
 
 /** @param {string} left @param {string} right */

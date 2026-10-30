@@ -620,23 +620,24 @@ describe("CalVer release versions", () => {
   });
 
   it("starts a new month at patch zero", () => {
-    expect(nextCalverVersion("2026.09.4", new Date("2026-10-01T12:00:00Z"))).toBe(
+    expect(nextCalverVersion("2026.9.4", new Date("2026-10-01T12:00:00Z"))).toBe(
       "2026.10.0",
     );
   });
 
   it("rejects invalid dates and versions earlier than the project version", () => {
     expect(() => validateCalverVersion("2026.13.0")).toThrow();
+    expect(() => validateCalverVersion("2026.01.0")).toThrow();
     expect(() =>
       nextCalverVersion("2026.10.0", new Date("2026-09-30T12:00:00Z")),
     ).toThrow();
   });
 
   it.each([
-    ["2026.01.0", "2026.1.0", "2026.1.0.0"],
-    ["2026.09.4", "2026.9.4", "2026.9.4.0"],
+    ["2026.1.0", "2026.1.0", "2026.1.0.0"],
+    ["2026.9.4", "2026.9.4", "2026.9.4.0"],
     ["2026.10.0", "2026.10.0", "2026.10.0.0"],
-    ["2027.01.0", "2027.1.0", "2027.1.0.0"],
+    ["2027.1.0", "2027.1.0", "2027.1.0.0"],
   ])(
     "derives bounded protocol/package versions from %s without changing its tag",
     (releaseVersion, protocolVersion, msixVersion) => {
@@ -651,14 +652,14 @@ describe("CalVer release versions", () => {
 
   it("enforces Store version bounds and rejects Store downgrades", () => {
     expect(() => deriveReleaseVersions("1999.12.0")).toThrow("at least 2000");
-    expect(deriveReleaseVersions("2256.01.0").msixIdentityVersion).toBe("2256.1.0.0");
-    expect(() => deriveReleaseVersions("2026.01.65536")).toThrow("65535");
+    expect(deriveReleaseVersions("2256.1.0").msixIdentityVersion).toBe("2256.1.0.0");
+    expect(() => deriveReleaseVersions("2026.1.65536")).toThrow("65535");
     expect(() => releaseVersionFromProtocolVersion("2026.00.0")).toThrow();
     expect(() => releaseVersionFromProtocolVersion("2026.09.0")).toThrow();
     expect(() => releaseVersionFromProtocolVersion("0001.1.0")).toThrow();
     expect(() => releaseVersionFromProtocolVersion("2026.1.65536")).toThrow();
     expect(assertStoreVersionAdvances("2026.10.0", "2026.9.4.0")).toBe("2026.10.0.0");
-    expect(() => assertStoreVersionAdvances("2026.09.4", "2026.9.4.0")).toThrow(
+    expect(() => assertStoreVersionAdvances("2026.9.4", "2026.9.4.0")).toThrow(
       "must be greater",
     );
     expect(() => assertStoreVersionAdvances("2026.10.0", "2026.9.65536.0")).toThrow(
@@ -667,8 +668,8 @@ describe("CalVer release versions", () => {
   });
 
   it.each([
-    ["2026.01.0", "2026.1.0"],
-    ["2026.09.4", "2026.9.4"],
+    ["2026.1.0", "2026.1.0"],
+    ["2026.9.4", "2026.9.4"],
     ["2026.10.0", "2026.10.0"],
   ])(
     "builds disposable Cargo and Tauri inputs with --locked for %s",
@@ -2192,28 +2193,26 @@ describe("signed release artifacts", () => {
     return { resourceRoot, binaryRoot };
   }
 
-  it("requires the padded tag to match the package and normalizes protocol SemVer", () => {
-    expect(validateReleaseTag("v2026.09.4", "2026.09.4")).toEqual({
-      tag: "v2026.09.4",
-      releaseVersion: "2026.09.4",
+  it("requires an unpadded tag to match the package version", () => {
+    expect(validateReleaseTag("v2026.9.4", "2026.9.4")).toEqual({
+      tag: "v2026.9.4",
+      releaseVersion: "2026.9.4",
       updateProtocolVersion: "2026.9.4",
     });
-    expect(() => validateReleaseTag("v2026.9.4", "2026.09.4")).toThrow(
-      "vYYYY.MM.PATCH",
-    );
-    expect(() => validateReleaseTag("v2026.09.4", "2026.09.3")).toThrow(
+    expect(() => validateReleaseTag("v2026.09.4", "2026.9.4")).toThrow("vYYYY.M.MICRO");
+    expect(() => validateReleaseTag("v2026.9.4", "2026.9.3")).toThrow(
       "match package.json",
     );
   });
 
   it("promotes only releases that are not older than the current latest", () => {
     expect(shouldPromoteLatest("v2026.10.0", undefined)).toBe(true);
-    expect(shouldPromoteLatest("v2026.10.0", "v2026.09.99")).toBe(true);
-    expect(shouldPromoteLatest("v2027.01.0", "v2026.12.99")).toBe(true);
-    expect(shouldPromoteLatest("v2026.09.4", "v2026.09.4")).toBe(true);
-    expect(shouldPromoteLatest("v2026.09.3", "v2026.09.4")).toBe(false);
+    expect(shouldPromoteLatest("v2026.10.0", "v2026.9.99")).toBe(true);
+    expect(shouldPromoteLatest("v2027.1.0", "v2026.12.99")).toBe(true);
+    expect(shouldPromoteLatest("v2026.9.4", "v2026.9.4")).toBe(true);
+    expect(shouldPromoteLatest("v2026.9.3", "v2026.9.4")).toBe(false);
     expect(() => shouldPromoteLatest("v2026.09.4", "v2026.9.4")).toThrow(
-      "not padded CalVer",
+      "not unpadded CalVer",
     );
   });
 
@@ -2231,7 +2230,7 @@ describe("signed release artifacts", () => {
       assertRecoverableReleaseDraft({ ...release, isDraft: false }, tag, commit),
     ).toThrow("Only an existing draft release can be recovered.");
     expect(() =>
-      assertRecoverableReleaseDraft({ ...release, tagName: "v2026.09.4" }, tag, commit),
+      assertRecoverableReleaseDraft({ ...release, tagName: "v2026.9.4" }, tag, commit),
     ).toThrow("Existing draft tag does not match.");
     expect(() =>
       assertRecoverableReleaseDraft(
@@ -2503,7 +2502,7 @@ describe("signed release artifacts", () => {
           ...(isWindows ? { bootstrapperRoot } : {}),
           stageRoot: path.join(artifactsRoot, `release-${target}`),
           commit: releaseCommit,
-          version: "2026.09.4",
+          version: "2026.9.4",
           resourceRoot,
           binaryRoot,
           nativeBuild: nativeBuildEvidence(target, "signed-release"),
@@ -2515,8 +2514,8 @@ describe("signed release artifacts", () => {
 
       const verifiedSignatures: string[] = [];
       const manifest = await createLatestManifest({
-        tag: "v2026.09.4",
-        packageVersion: "2026.09.4",
+        tag: "v2026.9.4",
+        packageVersion: "2026.9.4",
         repository: "owner/repo",
         artifactsRoot,
         commit: releaseCommit,
@@ -2532,7 +2531,7 @@ describe("signed release artifacts", () => {
       expect(manifest.platforms).toMatchObject({
         "linux-x86_64": {
           signature: "signature-x86_64-unknown-linux-gnu",
-          url: expect.stringContaining("v2026.09.4/"),
+          url: expect.stringContaining("v2026.9.4/"),
         },
         "linux-aarch64": {
           signature: "signature-aarch64-unknown-linux-gnu",
@@ -2589,7 +2588,7 @@ describe("signed release artifacts", () => {
           tauri_cli: expect.any(String),
         },
         commit: releaseCommit,
-        version: "2026.09.4",
+        version: "2026.9.4",
       });
       expect(linuxIntegrity.assets).toHaveLength(
         targetSuffixes[releaseTargets[0]].length,
@@ -2604,8 +2603,8 @@ describe("signed release artifacts", () => {
       );
       await expect(
         createLatestManifest({
-          tag: "v2026.09.4",
-          packageVersion: "2026.09.4",
+          tag: "v2026.9.4",
+          packageVersion: "2026.9.4",
           repository: "owner/repo",
           artifactsRoot,
           commit: releaseCommit,
@@ -2626,8 +2625,8 @@ describe("signed release artifacts", () => {
       );
       await expect(
         createLatestManifest({
-          tag: "v2026.09.4",
-          packageVersion: "2026.09.4",
+          tag: "v2026.9.4",
+          packageVersion: "2026.9.4",
           repository: "owner/repo",
           artifactsRoot,
           commit: releaseCommit,
@@ -2666,8 +2665,8 @@ describe("signed release artifacts", () => {
       );
       await expect(
         createLatestManifest({
-          tag: "v2026.09.4",
-          packageVersion: "2026.09.4",
+          tag: "v2026.9.4",
+          packageVersion: "2026.9.4",
           repository: "owner/repo",
           artifactsRoot,
           commit: releaseCommit,
@@ -2687,8 +2686,8 @@ describe("signed release artifacts", () => {
       );
       await expect(
         createLatestManifest({
-          tag: "v2026.09.4",
-          packageVersion: "2026.09.4",
+          tag: "v2026.9.4",
+          packageVersion: "2026.9.4",
           repository: "owner/repo",
           artifactsRoot,
           commit: releaseCommit,
@@ -2765,8 +2764,8 @@ describe("signed release artifacts", () => {
       await writeFile(appImagePath, "tampered updater payload");
       await expect(
         createLatestManifest({
-          tag: "v2026.09.4",
-          packageVersion: "2026.09.4",
+          tag: "v2026.9.4",
+          packageVersion: "2026.9.4",
           repository: "owner/repo",
           artifactsRoot,
           commit: releaseCommit,
@@ -2778,8 +2777,8 @@ describe("signed release artifacts", () => {
 
       await expect(
         createLatestManifest({
-          tag: "v2026.09.4",
-          packageVersion: "2026.09.4",
+          tag: "v2026.9.4",
+          packageVersion: "2026.9.4",
           repository: "owner/repo",
           artifactsRoot,
           commit: releaseCommit,
@@ -2794,8 +2793,8 @@ describe("signed release artifacts", () => {
       await writeFile(unexpectedAsset, "unlisted");
       await expect(
         createLatestManifest({
-          tag: "v2026.09.4",
-          packageVersion: "2026.09.4",
+          tag: "v2026.9.4",
+          packageVersion: "2026.9.4",
           repository: "owner/repo",
           artifactsRoot,
           commit: releaseCommit,
@@ -2812,8 +2811,8 @@ describe("signed release artifacts", () => {
       await rm(path.join(linuxArtifacts, debPackage!));
       await expect(
         createLatestManifest({
-          tag: "v2026.09.4",
-          packageVersion: "2026.09.4",
+          tag: "v2026.9.4",
+          packageVersion: "2026.9.4",
           repository: "owner/repo",
           artifactsRoot,
           commit: releaseCommit,
@@ -2842,7 +2841,7 @@ describe("signed release artifacts", () => {
           bundleRoot,
           stageRoot: path.join(directory, "staged"),
           commit: releaseCommit,
-          version: "2026.09.4",
+          version: "2026.9.4",
           resourceRoot: path.join(directory, "resources", "ocr"),
           binaryRoot: path.join(directory, "binaries"),
           nativeBuild: nativeBuildEvidence(releaseTargets[0], "signed-release"),
@@ -2868,7 +2867,7 @@ describe("signed release artifacts", () => {
       bootstrapperRoot,
       stageRoot,
       commit: releaseCommit,
-      version: "2026.09.4",
+      version: "2026.9.4",
       resourceRoot: path.join(directory, "resources", "ocr"),
       binaryRoot: path.join(directory, "binaries"),
       nativeBuild: nativeBuildEvidence(target, "signed-release"),

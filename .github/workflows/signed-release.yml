@@ -39,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate padded version tag
+      - name: Validate CalVer version tag
         run: node scripts/release-artifacts.mjs validate --tag "$GITHUB_REF_NAME"
 
       - name: Reject unrelated releases and allow matching drafts

@@ -156,13 +156,13 @@ async function verifyUpdaterSignature(bundlePath, signature, publicKey) {
 /** @param {string} tag @param {string} packageVersion */
 export function validateReleaseTag(tag, packageVersion) {
   assert(
-    /^v\d{4}\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$/.test(tag),
-    "Release tag must use vYYYY.MM.PATCH.",
+    /^v\d{4}\.([1-9]|1[0-2])\.(0|[1-9]\d*)$/.test(tag),
+    "Release tag must use vYYYY.M.MICRO.",
   );
   const releaseVersion = tag.slice(1);
   assert(
     releaseVersion === packageVersion,
-    "Release tag must match package.json's padded CalVer version.",
+    "Release tag must match package.json's CalVer version.",
   );
   const { updateProtocolVersion } = deriveReleaseVersions(releaseVersion);
   return { tag, releaseVersion, updateProtocolVersion };
@@ -170,8 +170,8 @@ export function validateReleaseTag(tag, packageVersion) {
 
 /** @param {string} tag */
 function releaseTagParts(tag) {
-  const match = /^v(\d{4})\.(0[1-9]|1[0-2])\.(0|[1-9]\d*)$/.exec(tag);
-  assert(match, `Release tag is not padded CalVer: ${tag}.`);
+  const match = /^v(\d{4})\.([1-9]|1[0-2])\.(0|[1-9]\d*)$/.exec(tag);
+  assert(match, `Release tag is not unpadded CalVer: ${tag}.`);
   return [Number(match[1]), Number(match[2]), BigInt(match[3])];
 }
 
@@ -242,8 +242,8 @@ export async function stageReleaseArtifacts({
     cacheRestored,
   });
   assert(
-    /^[0-9]{4}\.(0[1-9]|1[0-2])\.(0|[1-9][0-9]*)$/.test(version),
-    "Release version must use padded CalVer.",
+    /^[0-9]{4}\.([1-9]|1[0-2])\.(0|[1-9][0-9]*)$/.test(version),
+    "Release version must use unpadded CalVer.",
   );
 
   try {

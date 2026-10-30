@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: CalVer version (YYYY.MM.PATCH); leave empty to select the next version
+        description: CalVer version (YYYY.M.MICRO); leave empty to select the next version
         required: false
         type: string
 

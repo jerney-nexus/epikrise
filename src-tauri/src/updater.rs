@@ -273,7 +273,7 @@ fn release_version_from_protocol(version: &str) -> Result<String, UpdaterError> 
     if year < 2000 || !(1..=12).contains(&month) || patch > 65535 {
         return Err(UpdaterError::UpdateFailed);
     }
-    Ok(format!("{year}.{month:02}.{patch}"))
+    Ok(format!("{year}.{month}.{patch}"))
 }
 
 #[cfg(feature = "direct-release-updater")]
@@ -760,7 +760,7 @@ mod tests {
         .expect("test URL should parse");
         assert_eq!(
             release_version_from_protocol("2026.9.4").as_deref(),
-            Ok("2026.09.4")
+            Ok("2026.9.4")
         );
         assert!(validate_candidate("2026.11.0", "linux-x86_64", &url, "linux-x86_64").is_ok());
         assert!(validate_candidate("2026.9.4", "linux-x86_64", &url, "linux-x86_64").is_err());
