@@ -6,7 +6,7 @@
 
 <!-- Link an issue, or write "None". -->
 
-- [ ] Completed all acceptance criteria from the linked issues.
+- [ ] Completed all acceptance criteria from the linked issues or not applicable
 
 ## Validation
 

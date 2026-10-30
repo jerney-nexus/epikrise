@@ -1,0 +1,60 @@
+name: Task
+description: Plan or track repository work
+title: "[Task]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include patient data, clinical text, credentials, API keys, or other sensitive information. Use synthetic examples only.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: Describe what this task needs to accomplish.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and requirements
+      description: Describe the work included and any relevant requirements or constraints.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List specific, verifiable conditions for considering this task complete.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and related issues
+      description: Link issues or describe work that must happen before or alongside this task.
+    validations:
+      required: false
+  - type: textarea
+    id: implementation-notes
+    attributes:
+      label: Implementation notes
+      description: Suggest an implementation order or add technical details that may help.
+    validations:
+      required: false
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: Note related work that should not be included in this task.
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add relevant non-sensitive context.
+    validations:
+      required: false
