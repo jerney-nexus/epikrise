@@ -40,6 +40,82 @@ back up and explicitly migrate the old data into the named volume. Do not copy
 live session databases. Verify that sessions reopen after a rebuild before
 removing any old copy.
 
+### Copilot tools, models, and session sync
+
+The shared assistant rules are in [AGENTS.md](AGENTS.md); Copilot-specific tool
+discovery and failure handling are in
+[`.github/copilot-instructions.md`](.github/copilot-instructions.md).
+Repository instructions guide behavior, but cannot repair an MCP connection,
+override organization policy, or guarantee a particular model or price.
+
+#### Tools and model cost
+
+- A deferred MCP tool must first be loaded through the current host's tool
+  search. Reuse its returned schema; tool names are not portable across clients.
+  Do not disable tool search or load every MCP tool as a blanket workaround:
+  that increases context and can make tool selection worse.
+- For a failing MCP server, inspect its status and diagnostic output in the
+  client that owns it. Separate discovery/schema errors from sign-in,
+  authorization, connectivity, and rate limits. A successful read-only probe
+  establishes only that operation's availability, not write permission.
+- For routine work, use direct tools instead of spawning an agent for every
+  lookup or command. Review actual model usage, not just the agent's role name.
+  In Copilot CLI, `/model` selects the main model and `/subagents` configures
+  subagent preferences. Where supported, Auto's efficiency profile is a
+  cost-oriented option, not a guarantee of the cheapest model.
+- Check the installed client's controls with `copilot --version`,
+  `copilot --help`, and `copilot help config`. Supported Copilot CLI versions
+  expose `autoTier` and `subagents.agents.<agent-name>` preferences. VS Code
+  model selection and an embedded SDK host's routing may differ from standalone
+  CLI settings. Do not pin model IDs in shared instructions or silently change
+  a contributor's personal settings.
+
+#### Missing sessions on GitHub
+
+Local session persistence, cloud history sync, and remote session control are
+separate features. Docker volumes preserve local state, not cloud uploads.
+Session history may include prompts, responses, file changes, and tool output.
+Never put clinical material or secrets in chats, and do not upload diagnostic
+logs or enable sharing to troubleshoot sync.
+
+1. Identify the client that created the missing session: VS Code's Copilot
+   harness, standalone Copilot CLI, or an SDK host. Confirm the intended GitHub
+   account and repository in that client; working `gh` or GitHub MCP access
+   alone does not establish session-sync authentication.
+2. In VS Code, inspect the Chat view's Copilot session-sync status. Sync needs
+   both `chat.sessionSync.enabled` and
+   `github.copilot.chat.localIndex.enabled`. Check effective settings, repository
+   exclusions (`chat.sessionSync.excludeRepositories`), and policy, not only
+   the checked-in workspace value. "Disabled by policy" requires an administrator;
+   instructions cannot override it.
+3. For standalone CLI, consult the installed help and the configuration reference
+   below for `remoteExport`. Current CLI user preferences live in
+   `$COPILOT_HOME/settings.json` (default `~/.copilot/settings.json`);
+   `config.json` holds application state. This container seeds `config.json`
+   and `mcp-config.json` from the host only when absent; it does not continuously
+   mirror host preferences or seed `settings.json`. A host preference therefore
+   need not apply inside the container.
+4. Inspect only relevant, sanitized diagnostics: the session log for tool/model
+   behavior and the owning client's runtime/output log for export errors.
+   Request-send or batch-flush failures establish an upload failure, not whether
+   its cause is network, authentication, or service availability. Check for
+   exporter shutdown/drain errors as well. A reachable API hostname does not
+   verify authenticated export or backlog delivery.
+5. Before any user-approved change or restart, keep local state intact. Do not
+   delete databases, copy live stores, export to a gist, enable remote control,
+   or reauthenticate as an automatic fix. If policy and settings permit sync,
+   verify recovery with a new non-sensitive session appearing in the intended
+   GitHub account. Verify older missing sessions separately; do not assume
+   they were backfilled.
+
+References:
+
+- [Copilot tool search](https://docs.github.com/en/copilot/concepts/agent-capabilities/agent-powered-workflows-and-operations/tool-search)
+- [VS Code custom agents and model/tool configuration](https://code.visualstudio.com/docs/agent-customization/custom-agents)
+- [VS Code session history, sync status, and policy](https://code.visualstudio.com/docs/agents/run/sessions/session-history)
+- [Copilot session data and CLI sync policy](https://docs.github.com/en/copilot/concepts/security-governance-and-network-settings/session-data)
+- [Copilot CLI configuration directory and settings](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference)
+
 ### Local native setup
 
 Follow the steps for your operating system, then run the common commands below.
