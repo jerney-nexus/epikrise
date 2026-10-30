@@ -34,6 +34,8 @@ describe("Tauri command detection", () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-command-"));
     const binDirectory = path.join(directory, "bin");
     const fakeBash = path.join(binDirectory, "bash");
+    const fakeNode = path.join(binDirectory, "node");
+    const fakeAppBinary = path.join(directory, "epikrise");
     const preparationLog = path.join(directory, "prepare.log");
 
     try {
@@ -46,6 +48,7 @@ describe("Tauri command detection", () => {
           'case "$script" in',
           '  tauri-command.sh) exec /bin/bash "$@" ;;',
           "  with-cargo-host-target.sh) exit 0 ;;",
+          '  tauri-build-output.sh) printf "%s\\n" "$TAURI_TEST_APP_BINARY" ;;',
           '  prepare-ocr.sh) printf "prepared\\n" >> "$OCR_PREP_LOG" ;;',
           '  *) exec /bin/bash "$@" ;;',
           "esac",
@@ -53,6 +56,19 @@ describe("Tauri command detection", () => {
         ].join("\n"),
       );
       await chmod(fakeBash, 0o755);
+      await writeFile(
+        fakeNode,
+        [
+          "#!/bin/bash",
+          'case "${1##*/}" in',
+          "  verify-binary-architecture.mjs|verify-runtime-dependencies.mjs) exit 0 ;;",
+          `  *) exec ${JSON.stringify(process.execPath)} "$@" ;;`,
+          "esac",
+          "",
+        ].join("\n"),
+      );
+      await chmod(fakeNode, 0o755);
+      await writeFile(fakeAppBinary, "synthetic test executable\n");
 
       await execFile("bash", [path.join(repoRoot, "scripts/tauri.sh"), ...args], {
         cwd: repoRoot,
@@ -60,6 +76,7 @@ describe("Tauri command detection", () => {
           ...process.env,
           PATH: `${binDirectory}${path.delimiter}${process.env.PATH}`,
           OCR_PREP_LOG: preparationLog,
+          TAURI_TEST_APP_BINARY: fakeAppBinary,
         },
       });
 
