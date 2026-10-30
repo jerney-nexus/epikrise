@@ -41,6 +41,34 @@ export function assertReleaseMainIsSynchronized(branch, head, remoteHead) {
   }
 }
 
+/**
+ * @param {string} branch
+ * @param {string} head
+ * @param {string} remoteHead
+ * @param {string} worktreeStatus
+ * @param {string} checkedHead
+ * @param {string} checkedVersion
+ * @param {string} projectVersion
+ */
+export function assertReleaseTagContextIsUnchanged(
+  branch,
+  head,
+  remoteHead,
+  worktreeStatus,
+  checkedHead,
+  checkedVersion,
+  projectVersion,
+) {
+  assertCleanReleaseWorktree(worktreeStatus);
+  assertReleaseMainIsSynchronized(branch, head, remoteHead);
+  if (head !== checkedHead) {
+    throw new Error("HEAD changed during confirmation.");
+  }
+  if (projectVersion !== checkedVersion) {
+    throw new Error("Project version changed during confirmation.");
+  }
+}
+
 /** @param {string} projectVersion @param {string} requestedVersion */
 export function resolveReleaseTagVersion(projectVersion, requestedVersion = "") {
   validateCalverVersion(projectVersion);
@@ -169,14 +197,37 @@ async function createAndPushReleaseTag(requestedVersion) {
   const remoteExists = await readRemoteTagExists(tag);
   const localExists = await hasLocalTag(tag);
   assertReleaseTagAvailable(tag, localExists, remoteExists);
+  const checkedHead = await git(["rev-parse", "HEAD"]);
 
   if (!(await confirmTagPush(tag, version))) {
     process.stdout.write("Tag creation cancelled.\n");
     return;
   }
 
-  await git(["tag", "-a", tag, "-m", `Release ${version}`]);
-  await git(["push", "origin", `refs/tags/${tag}`]);
+  const branchAfterConfirmation = await git(["branch", "--show-current"]);
+  const headAfterConfirmation = await git(["rev-parse", "HEAD"]);
+  const remoteHeadAfterConfirmation = await git([
+    "rev-parse",
+    "refs/remotes/origin/main",
+  ]);
+  const worktreeStatusAfterConfirmation = await git([
+    "status",
+    "--porcelain",
+    "--untracked-files=all",
+  ]);
+  const projectVersionAfterConfirmation = await readProjectVersion();
+  assertReleaseTagContextIsUnchanged(
+    branchAfterConfirmation,
+    headAfterConfirmation,
+    remoteHeadAfterConfirmation,
+    worktreeStatusAfterConfirmation,
+    checkedHead,
+    projectVersion,
+    projectVersionAfterConfirmation,
+  );
+
+  await git(["tag", "-a", tag, checkedHead, "-m", `Release ${version}`]);
+  await git(["push", "--no-follow-tags", "origin", `refs/tags/${tag}`]);
   process.stdout.write(`Created and pushed ${tag}.\n`);
 }
 

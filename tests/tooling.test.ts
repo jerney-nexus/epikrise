@@ -36,6 +36,7 @@ import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mj
 import {
   assertCleanReleaseWorktree,
   assertReleaseMainIsSynchronized,
+  assertReleaseTagContextIsUnchanged,
   assertReleaseTagAvailable,
   resolveReleaseTagVersion,
 } from "../scripts/release-start.mjs";
@@ -1112,6 +1113,64 @@ describe("release start shortcuts", () => {
       "not synchronized",
     );
     expect(() => assertReleaseMainIsSynchronized("main", "abc", "abc")).not.toThrow();
+  });
+
+  it("revalidates the release context after confirmation", () => {
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "main",
+        "abc",
+        "abc",
+        "",
+        "abc",
+        "2026.10.2",
+        "2026.10.2",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "main",
+        "def",
+        "def",
+        "",
+        "abc",
+        "2026.10.2",
+        "2026.10.2",
+      ),
+    ).toThrow("HEAD changed during confirmation");
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "main",
+        "abc",
+        "abc",
+        "",
+        "abc",
+        "2026.10.2",
+        "2026.10.3",
+      ),
+    ).toThrow("Project version changed during confirmation");
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "feature",
+        "abc",
+        "abc",
+        "",
+        "abc",
+        "2026.10.2",
+        "2026.10.2",
+      ),
+    ).toThrow("requires main");
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "main",
+        "abc",
+        "abc",
+        " M package.json\n",
+        "abc",
+        "2026.10.2",
+        "2026.10.2",
+      ),
+    ).toThrow("worktree is dirty");
   });
 
   it("defaults to the project version and rejects a different requested version", () => {

@@ -10,7 +10,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 ### Added
 
 - Added guarded `pnpm` and VS Code tasks for release preflight and explicitly
-  confirmed annotated-tag creation and push.
+  confirmed annotated-tag creation and push; revalidate the release context
+  afterward and push only the confirmed tag.
 
 ### Changed
 
