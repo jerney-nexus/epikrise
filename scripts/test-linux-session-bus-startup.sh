@@ -9,10 +9,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-HOME="$test_home" XDG_DATA_HOME="$xdg_data_home" dbus-run-session -- bash -c '
+dbus-run-session -- bash -c '
 set -euo pipefail
 printf "%s\n" "epikrise-integration-test" |
-  gnome-keyring-daemon --unlock --components=secrets >/dev/null
+  HOME="$1" XDG_DATA_HOME="$2" gnome-keyring-daemon --unlock --components=secrets >/dev/null
 pnpm test:rust:package epikrise --run-ignored ignored-only \
   linux_session_bus::tests::linux_startup_reexec_resolves_autolaunch_and_lists_credentials
-' epikrise
+' epikrise "$test_home" "$xdg_data_home"

@@ -54,7 +54,7 @@ fn resolve_address_from_record(record: &str) -> Option<String> {
     } else {
         value
     };
-    if address.contains('\0') {
+    if address.starts_with("autolaunch:") || address.contains('\0') {
         return None;
     }
 
@@ -389,6 +389,20 @@ mod tests {
         let record = format!("DBUS_SESSION_BUS_ADDRESS='{address}'\n");
 
         assert!(socket_path.exists());
+        assert_eq!(resolve_address_from_record(&record), None);
+    }
+
+    #[test]
+    fn rejects_autolaunch_records_even_when_they_include_a_live_socket() {
+        let directory = tempdir().expect("temporary directory");
+        let socket_path = directory.path().join("live-bus");
+        let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
+        let address = format!(
+            "autolaunch:scope=session;unix:path={},guid=0123456789abcdef0123456789abcdef",
+            socket_path.display()
+        );
+        let record = format!("DBUS_SESSION_BUS_ADDRESS='{address}'\n");
+
         assert_eq!(resolve_address_from_record(&record), None);
     }
 
