@@ -110,6 +110,21 @@ pnpm tauri build
 This creates AppImage, Debian (`.deb`), and RPM packages under
 `src-tauri/target/host-<host-triple>/release/bundle/`.
 
+#### Linux Credential Storage
+
+Epikrise stores provider credentials in the desktop's Secret Service keyring.
+Some lightweight desktop installations, including Lubuntu, may not include a
+keyring service by default. On Debian or Ubuntu, install GNOME Keyring and
+Seahorse if needed:
+
+```sh
+sudo apt install gnome-keyring seahorse
+```
+
+GNOME Keyring provides the Secret Service backend; Seahorse is the graphical
+tool for managing its stored passwords. Make sure the keyring service starts
+with your desktop session before using credential storage in Epikrise.
+
 ### Windows Installers
 
 #### Local Windows build

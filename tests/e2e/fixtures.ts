@@ -27,6 +27,7 @@ type BrowserFixture = {
   commands: { command: string; args: InvokeArguments }[];
   generationRequests: InvokeArguments[];
   clipboardWrites: { command: string; args: InvokeArguments }[];
+  failNextCredentialList: boolean;
   failNextReviewAck: boolean;
   failHtmlClipboard: boolean;
   templateExportCancelled: boolean;
@@ -114,6 +115,7 @@ function installTauriFixture({
     commands: [],
     generationRequests: [],
     clipboardWrites: [],
+    failNextCredentialList: false,
     failNextReviewAck: false,
     failHtmlClipboard: false,
     templateExportCancelled: false,
@@ -185,6 +187,10 @@ function installTauriFixture({
         case "load_templates":
           return templateData;
         case "list_provider_credentials":
+          if (fixture.failNextCredentialList) {
+            fixture.failNextCredentialList = false;
+            throw { key: "authentication" };
+          }
           return [...credentials.values()];
         case "create_case_session":
           return {

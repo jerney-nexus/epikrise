@@ -11,12 +11,14 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   assertStoreVersionAdvances,
   createReleasedChangelog,
@@ -44,7 +46,7 @@ import {
   validateReleaseTag,
   verifyUploadedReleaseAssets,
 } from "../scripts/release-artifacts.mjs";
-import { runTauri } from "../scripts/tauri.mjs";
+import { resolveLinuxSessionBusAddress, runTauri } from "../scripts/tauri.mjs";
 import { verifyBinaryArchitecture } from "../scripts/verify-binary-architecture.mjs";
 import {
   assertResolvedLinuxDependencies,
@@ -1773,6 +1775,364 @@ async function writeMockUname(
 describe("native Cargo host target guard", () => {
   const wrapperPath = path.join(repoRoot, "scripts/with-cargo-host-target.sh");
   const tauriScriptPath = path.join(repoRoot, "scripts/tauri.sh");
+
+  it("resolves the D-Bus address from the active X11 session record", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-session-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const address =
+      "unix:path=/tmp/epikrise-test-dbus,guid=0123456789abcdef0123456789abcdef";
+
+    try {
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='${address}'\nDBUS_SESSION_BUS_PID=123\n`,
+      );
+
+      expect(
+        resolveLinuxSessionBusAddress(
+          {
+            DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+            DISPLAY: ":1.0",
+            HOME: homeDirectory,
+          },
+          {
+            machineIdPath,
+            isSocketPath: (socketPath) => socketPath === "/tmp/epikrise-test-dbus",
+          },
+        ),
+      ).toBe(address);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("decodes percent-escaped D-Bus socket paths for validation", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-escaped-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const socketPath = "/tmp/epikrise session bus";
+    const address =
+      "unix:path=/tmp/epikrise%20session%20bus,guid=0123456789abcdef0123456789abcdef";
+
+    try {
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='${address}'\nDBUS_SESSION_BUS_PID=123\n`,
+      );
+
+      expect(
+        resolveLinuxSessionBusAddress(
+          {
+            DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+            DISPLAY: ":1.0",
+            HOME: homeDirectory,
+          },
+          {
+            machineIdPath,
+            isSocketPath: (candidate) => candidate === socketPath,
+          },
+        ),
+      ).toBe(address);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["invalid GUID", "guid=not-a-guid"],
+    ["malformed trailing parameter", "guid=0123456789abcdef0123456789abcdef,malformed"],
+    ["malformed trailing escape", "guid=0123456789abcdef0123456789abcdef,extra=%GG"],
+  ])("rejects a live D-Bus socket with %s", async (_description, parameters) => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-malformed-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const isSocketPath = vi.fn(() => true);
+
+    try {
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='unix:path=/tmp/epikrise-live-bus,${parameters}'\n`,
+      );
+
+      expect(
+        resolveLinuxSessionBusAddress(
+          {
+            DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+            DISPLAY: ":1.0",
+            HOME: homeDirectory,
+          },
+          { machineIdPath, isSocketPath },
+        ),
+      ).toBeUndefined();
+      expect(isSocketPath).not.toHaveBeenCalled();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back when a D-Bus socket address decodes to a NUL byte", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-nul-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const address =
+      "unix:path=/tmp/session%00bus,guid=0123456789abcdef0123456789abcdef";
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const isSocketPath = vi.fn(() => {
+      throw new Error("NUL-containing paths must not be probed");
+    });
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+      DISPLAY: ":1.0",
+      HOME: homeDirectory,
+    };
+    let childEnv: NodeJS.ProcessEnv | undefined;
+
+    try {
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='${address}'\n`,
+      );
+
+      const status = runTauri(["dev"], {
+        platform: "linux",
+        env,
+        resolveLinuxSessionBusAddress: (launchEnv) =>
+          resolveLinuxSessionBusAddress(launchEnv, {
+            machineIdPath,
+            isSocketPath,
+          }),
+        spawn: (_command, _args, options) => {
+          childEnv = options.env;
+          return { status: 0 };
+        },
+      });
+
+      expect(status).toBe(0);
+      expect(childEnv?.DBUS_SESSION_BUS_ADDRESS).toBe("autolaunch:");
+      expect(isSocketPath).not.toHaveBeenCalled();
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining("Could not resolve the desktop D-Bus session address"),
+      );
+    } finally {
+      warning.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back when a live D-Bus socket address contains a literal NUL", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-nul-guid-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const address =
+      "unix:path=/tmp/session-bus,guid=0123456789abcdef0123456789abcdef\0";
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const isSocketPath = vi.fn(() => true);
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+      DISPLAY: ":1.0",
+      HOME: homeDirectory,
+    };
+    let childEnv: NodeJS.ProcessEnv | undefined;
+
+    try {
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='${address}'\n`,
+      );
+
+      const status = runTauri(["dev"], {
+        platform: "linux",
+        env,
+        resolveLinuxSessionBusAddress: (launchEnv) =>
+          resolveLinuxSessionBusAddress(launchEnv, {
+            machineIdPath,
+            isSocketPath,
+          }),
+        spawn: (_command, _args, options) => {
+          childEnv = options.env;
+          return { status: 0 };
+        },
+      });
+
+      expect(status).toBe(0);
+      expect(childEnv?.DBUS_SESSION_BUS_ADDRESS).toBe("autolaunch:");
+      expect(isSocketPath).not.toHaveBeenCalled();
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining("Could not resolve the desktop D-Bus session address"),
+      );
+    } finally {
+      warning.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves live abstract Unix sockets with repeated spaces and backslashes", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-abstract-"));
+    const homeDirectory = path.join(directory, "home");
+    const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+    const machineId = "0123456789abcdef0123456789abcdef";
+    const machineIdPath = path.join(directory, "machine-id");
+    const socketName = "/tmp/epikrise  abstract\\123 session bus";
+    const address =
+      "unix:abstract=/tmp/epikrise%20%20abstract\\123%20session%20bus,guid=0123456789abcdef0123456789abcdef";
+
+    try {
+      await mkdir(sessionBusDirectory, { recursive: true });
+      await writeFile(machineIdPath, `${machineId}\n`);
+      await writeFile(
+        path.join(sessionBusDirectory, `${machineId}-1`),
+        `DBUS_SESSION_BUS_ADDRESS='${address}'\nDBUS_SESSION_BUS_PID=123\n`,
+      );
+
+      expect(
+        resolveLinuxSessionBusAddress(
+          {
+            DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+            DISPLAY: ":1.0",
+            HOME: homeDirectory,
+          },
+          {
+            machineIdPath,
+            readFile: (filePath) =>
+              filePath === "/proc/net/unix"
+                ? `Num RefCount Protocol Flags Type St Inode Path\n0000000000000000: 00000002 00000000 00010000 0001 01 1234 @${socketName}\n`
+                : readFileSync(filePath, "utf8"),
+          },
+        ),
+      ).toBe(address);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "does not use a socket path without a listening D-Bus endpoint",
+    async () => {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-dbus-stale-"));
+      const homeDirectory = path.join(directory, "home");
+      const sessionBusDirectory = path.join(homeDirectory, ".dbus", "session-bus");
+      const machineId = "0123456789abcdef0123456789abcdef";
+      const machineIdPath = path.join(directory, "machine-id");
+      const socketPath = path.join(directory, "session-bus");
+      const address = `unix:path=${socketPath},guid=0123456789abcdef0123456789abcdef`;
+      const server = createServer();
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          server.once("error", reject);
+          server.listen(socketPath, resolve);
+        });
+        await mkdir(sessionBusDirectory, { recursive: true });
+        await writeFile(machineIdPath, `${machineId}\n`);
+        await writeFile(
+          path.join(sessionBusDirectory, `${machineId}-1`),
+          `DBUS_SESSION_BUS_ADDRESS='${address}'\nDBUS_SESSION_BUS_PID=123\n`,
+        );
+
+        expect(
+          resolveLinuxSessionBusAddress(
+            {
+              DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+              DISPLAY: ":1.0",
+              HOME: homeDirectory,
+            },
+            {
+              machineIdPath,
+              readFile: (filePath) =>
+                filePath === "/proc/net/unix"
+                  ? `Num RefCount Protocol Flags Type St Inode Path\n0000000000000000: 00000002 00000000 00000000 0001 01 1234 ${socketPath}\n`
+                  : readFileSync(filePath, "utf8"),
+            },
+          ),
+        ).toBeUndefined();
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+        });
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("passes the resolved D-Bus address to the Tauri process without mutating its input", () => {
+    const address =
+      "unix:path=/tmp/epikrise-test-dbus,guid=0123456789abcdef0123456789abcdef";
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+      DISPLAY: ":1.0",
+    };
+    let childEnv: NodeJS.ProcessEnv | undefined;
+
+    const status = runTauri(["dev"], {
+      platform: "linux",
+      env,
+      resolveLinuxSessionBusAddress: () => address,
+      spawn: (_command, _args, options) => {
+        childEnv = options.env;
+        return { status: 0 };
+      },
+    });
+
+    expect(status).toBe(0);
+    expect(childEnv?.DBUS_SESSION_BUS_ADDRESS).toBe(address);
+    expect(env.DBUS_SESSION_BUS_ADDRESS).toBe("autolaunch:");
+  });
+
+  it("continues launching when D-Bus session discovery fails", () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      DBUS_SESSION_BUS_ADDRESS: "autolaunch:",
+      DISPLAY: ":1.0",
+    };
+    let childEnv: NodeJS.ProcessEnv | undefined;
+
+    try {
+      const status = runTauri(["build"], {
+        platform: "linux",
+        env,
+        resolveLinuxSessionBusAddress: () => {
+          throw new Error("permission denied");
+        },
+        spawn: (_command, _args, options) => {
+          childEnv = options.env;
+          return { status: 0 };
+        },
+      });
+
+      expect(status).toBe(0);
+      expect(childEnv?.DBUS_SESSION_BUS_ADDRESS).toBe("autolaunch:");
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining("permission denied"),
+      );
+    } finally {
+      warning.mockRestore();
+    }
+  });
 
   it("initializes MSVC for regular Windows-shell Tauri invocations without losing arguments", () => {
     const args = ["build", "--target", "aarch64-pc-windows-msvc", "--config", "a & b"];

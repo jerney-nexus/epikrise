@@ -29,6 +29,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
   platform targets is deferred.
 - Localized in-app help for the workflow, settings, case-data handling, and
   privacy boundaries.
+- Linux setup documentation now explains the Secret Service keyring requirement
+  and how to install GNOME Keyring and Seahorse on Debian or Ubuntu.
 - Templates can format ISO `YYYY-MM-DD` values with the MiniJinja expression
   `{{ case.visit_date | format_date }}`; German locales use `DD.MM.YYYY`,
   English locales use `Month D, YYYY`, other locales retain ISO output, and
@@ -141,6 +143,10 @@ and this project uses [CalVer](https://calver.org) in `YYYY.MM.PATCH` format.
 - Windows image OCR now opens the image and tessdata paths correctly in native
   and Linux cross-built apps. Invalid OCR output can also use vision fallback
   when enabled.
+- Linux desktop launches now resolve the active D-Bus session before listing
+  keyring credentials, including when session-bus socket paths contain escaped
+  characters. Credential-list failures provide keyring and session-bus
+  troubleshooting guidance.
 - Windows ARM64 now lists stored provider credentials correctly, enabling
   connection checks, model-list refresh, and report drafting. These flows were
   validated in a native Windows ARM64 app run.

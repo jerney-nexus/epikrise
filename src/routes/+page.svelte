@@ -1658,7 +1658,7 @@
     try {
       const result = await commands.listProviderCredentials();
       if (result.status === "error") {
-        credentialMessage = formatError(result.error);
+        credentialMessage = "Saved provider credentials could not be loaded.";
         credentialIsError = true;
         return false;
       }
