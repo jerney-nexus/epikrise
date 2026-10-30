@@ -26,6 +26,20 @@ const MAX_URL_REDIRECTS: usize = 3;
 const MAX_IMAGE_INPUT_BYTES: usize = 20 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION: u32 = 8_192;
 
+#[derive(Debug, Clone, Copy, Serialize, Type, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OcrDiagnosticCategory {
+    LanguageData,
+    LanguageDataFile,
+    LanguageLoad,
+    NoLanguagesLoaded,
+    LanguageEngineComponentsMissing,
+    InputImage,
+    TiffSupportWarning,
+    NoStderr,
+    Other,
+}
+
 #[derive(Debug, Error, Serialize, Type, PartialEq, Eq)]
 #[serde(tag = "key", rename_all = "snake_case")]
 pub enum IngestError {
@@ -95,8 +109,11 @@ pub enum IngestError {
     InvalidImage,
     #[error("image OCR runtime is unavailable")]
     ImageOcrUnavailable,
-    #[error("image OCR failed or returned no text")]
-    ImageOcrFailed,
+    #[error("image OCR process failed")]
+    ImageOcrFailed {
+        exit_code: Option<i32>,
+        stderr_category: OcrDiagnosticCategory,
+    },
 }
 
 pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError> {
@@ -280,7 +297,7 @@ where
     let (normalized, _) = normalize_image(bytes)?;
     let text = recognize(&normalized)?;
     if text.trim().is_empty() {
-        return Err(IngestError::ImageOcrFailed);
+        return Err(IngestError::NoTextExtracted);
     }
     let mut block = ExtractedBlock::new(
         uuid::Uuid::new_v4().to_string(),
@@ -778,6 +795,22 @@ mod tests {
                 .map(|image| image.mime_type.as_str()),
             Some("image/png")
         );
+    }
+
+    #[test]
+    fn empty_image_ocr_output_is_reported_separately_from_runtime_failure() {
+        let mut image_bytes = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgb8(2, 2)
+            .write_to(&mut image_bytes, image::ImageFormat::Png)
+            .expect("synthetic image should encode");
+
+        let error =
+            extract_image_with_ocr("screen.png".to_owned(), &image_bytes.into_inner(), |_| {
+                Ok(" \n\t".to_owned())
+            })
+            .expect_err("empty OCR output should be rejected");
+
+        assert_eq!(error, IngestError::NoTextExtracted);
     }
 
     #[test]

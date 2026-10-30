@@ -831,14 +831,21 @@ fn extract_image(
         ocr_image_bytes(&app, temp_session.path(), png)
     }) {
         Ok(block) => Ok(block),
-        Err(
-            error @ (epikrise_ingest::IngestError::ImageOcrUnavailable
-            | epikrise_ingest::IngestError::ImageOcrFailed),
-        ) if vision_enabled => {
+        Err(error) if vision_enabled && should_fallback_to_vision(&error) => {
             epikrise_ingest::extract_image_for_vision(file_name, &bytes).or(Err(error))
         }
         Err(error) => Err(error),
     }
+}
+
+fn should_fallback_to_vision(error: &epikrise_ingest::IngestError) -> bool {
+    matches!(
+        error,
+        epikrise_ingest::IngestError::ImageOcrUnavailable
+            | epikrise_ingest::IngestError::ImageOcrFailed { .. }
+            | epikrise_ingest::IngestError::InvalidUtf8
+            | epikrise_ingest::IngestError::NoTextExtracted
+    )
 }
 
 #[tauri::command]
@@ -1199,7 +1206,9 @@ fn ocr_pdf_pages(
         &pdfium_path,
         &tessdata_dir,
         temp_directory,
-        |image_path, tessdata_dir| run_tesseract(app, image_path, tessdata_dir),
+        |image_path, tessdata_dir| {
+            run_tesseract(app, image_path, tessdata_dir).map_err(map_pdf_tesseract_error)
+        },
     )
 }
 
@@ -1224,40 +1233,133 @@ fn ocr_image_bytes(
         .0
         .as_file_mut()
         .write_all(png)
-        .map_err(|_| epikrise_ingest::IngestError::ImageOcrFailed)?;
+        .map_err(|_| epikrise_ingest::IngestError::ImageOcrUnavailable)?;
     temp_file
         .0
         .as_file()
         .sync_all()
-        .map_err(|_| epikrise_ingest::IngestError::ImageOcrFailed)?;
-    run_tesseract(app, temp_file.0.path(), &tessdata_dir)
-        .map_err(|_| epikrise_ingest::IngestError::ImageOcrFailed)
+        .map_err(|_| epikrise_ingest::IngestError::ImageOcrUnavailable)?;
+    run_tesseract(app, temp_file.0.path(), &tessdata_dir).map_err(map_image_tesseract_error)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum TesseractError {
+    Unavailable,
+    ProcessFailed {
+        exit_code: Option<i32>,
+        stderr_category: epikrise_ingest::OcrDiagnosticCategory,
+    },
+    InvalidUtf8,
+}
+
+fn map_image_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestError {
+    match error {
+        TesseractError::Unavailable => epikrise_ingest::IngestError::ImageOcrUnavailable,
+        TesseractError::ProcessFailed {
+            exit_code,
+            stderr_category,
+        } => epikrise_ingest::IngestError::ImageOcrFailed {
+            exit_code,
+            stderr_category,
+        },
+        TesseractError::InvalidUtf8 => epikrise_ingest::IngestError::InvalidUtf8,
+    }
+}
+
+fn map_pdf_tesseract_error(error: TesseractError) -> epikrise_ingest::IngestError {
+    match error {
+        TesseractError::Unavailable => epikrise_ingest::IngestError::PdfOcrUnavailable,
+        TesseractError::ProcessFailed { .. } | TesseractError::InvalidUtf8 => {
+            epikrise_ingest::IngestError::PdfOcrFailed
+        }
+    }
+}
+
+fn classify_tesseract_stderr(stderr: &[u8]) -> epikrise_ingest::OcrDiagnosticCategory {
+    use epikrise_ingest::OcrDiagnosticCategory;
+
+    let stderr = String::from_utf8_lossy(stderr).to_ascii_lowercase();
+    if stderr.trim().is_empty() {
+        OcrDiagnosticCategory::NoStderr
+    } else if stderr.contains("error opening data file") {
+        OcrDiagnosticCategory::LanguageDataFile
+    } else if stderr.contains("failed loading language") {
+        OcrDiagnosticCategory::LanguageLoad
+    } else if stderr.contains("couldn't load any languages") {
+        OcrDiagnosticCategory::NoLanguagesLoaded
+    } else if stderr.contains("engine requested") && stderr.contains("components are not present") {
+        OcrDiagnosticCategory::LanguageEngineComponentsMissing
+    } else if stderr.contains("traineddata") {
+        OcrDiagnosticCategory::LanguageData
+    } else if stderr.contains("cannot read input file")
+        || stderr.contains("cannot read input image")
+        || stderr.contains("pixreadstream: unknown format")
+        || stderr.contains("pixreadmem: unknown format")
+    {
+        OcrDiagnosticCategory::InputImage
+    } else if stderr.contains("pixreadmemtiff: function not present") {
+        OcrDiagnosticCategory::TiffSupportWarning
+    } else {
+        OcrDiagnosticCategory::Other
+    }
+}
+
+#[cfg(any(windows, test))]
+fn strip_windows_verbatim_prefix(path: &[u16]) -> Option<Vec<u16>> {
+    const VERBATIM_PREFIX: [u16; 4] = [92, 92, 63, 92];
+    const UNC_PREFIX: [u16; 4] = [85, 78, 67, 92];
+    let remainder = path.strip_prefix(&VERBATIM_PREFIX)?;
+    if let Some(unc_path) = remainder.strip_prefix(&UNC_PREFIX) {
+        let mut normalized = vec![92, 92];
+        normalized.extend_from_slice(unc_path);
+        Some(normalized)
+    } else {
+        Some(remainder.to_vec())
+    }
+}
+
+#[cfg(windows)]
+fn tesseract_path_arg(path: &Path) -> OsString {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    let wide_path = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    strip_windows_verbatim_prefix(&wide_path)
+        .map(|path| OsString::from_wide(&path))
+        .unwrap_or_else(|| path.as_os_str().to_owned())
+}
+
+#[cfg(not(windows))]
+fn tesseract_path_arg(path: &Path) -> OsString {
+    path.as_os_str().to_owned()
 }
 
 fn run_tesseract(
     app: &AppHandle,
     image_path: &Path,
     tessdata_dir: &Path,
-) -> Result<String, epikrise_ingest::IngestError> {
+) -> Result<String, TesseractError> {
     let command = app
         .shell()
         .sidecar("tesseract")
-        .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+        .map_err(|_| TesseractError::Unavailable)?;
     let args: [OsString; 6] = [
-        image_path.as_os_str().to_owned(),
+        tesseract_path_arg(image_path),
         "stdout".into(),
         "-l".into(),
         "deu+eng".into(),
         "--tessdata-dir".into(),
-        tessdata_dir.as_os_str().to_owned(),
+        tesseract_path_arg(tessdata_dir),
     ];
     let output = std::process::Command::from(command.args(args))
         .output()
-        .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;
+        .map_err(|_| TesseractError::Unavailable)?;
     if !output.status.success() {
-        return Err(epikrise_ingest::IngestError::PdfOcrFailed);
+        return Err(TesseractError::ProcessFailed {
+            exit_code: output.status.code(),
+            stderr_category: classify_tesseract_stderr(&output.stderr),
+        });
     }
-    String::from_utf8(output.stdout).map_err(|_| epikrise_ingest::IngestError::PdfOcrFailed)
+    String::from_utf8(output.stdout).map_err(|_| TesseractError::InvalidUtf8)
 }
 
 fn ocr_pdf_pages_with<F>(
@@ -1490,10 +1592,11 @@ pub fn run() -> Result<(), tauri::Error> {
 mod tests {
     use super::{
         MAX_PDF_VISION_PAGES, OcrTempSession, TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile,
-        commit_case_generation, load_template_library_from_paths, ocr_pdf_pages_with,
-        parse_template_library, prepare_case_generation, render_pdf_pages_for_vision,
-        validate_template_changes, validate_template_creation, validate_template_deletion,
-        wipe_directory_contents,
+        TesseractError, classify_tesseract_stderr, commit_case_generation,
+        load_template_library_from_paths, map_image_tesseract_error, map_pdf_tesseract_error,
+        ocr_pdf_pages_with, parse_template_library, prepare_case_generation,
+        render_pdf_pages_for_vision, strip_windows_verbatim_prefix, validate_template_changes,
+        validate_template_creation, validate_template_deletion, wipe_directory_contents,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
@@ -1510,6 +1613,135 @@ mod tests {
         process::Command,
         sync::Mutex,
     };
+
+    #[test]
+    fn image_tesseract_errors_are_classified_without_exposing_output() {
+        use epikrise_ingest::{IngestError, OcrDiagnosticCategory};
+
+        assert_eq!(
+            map_image_tesseract_error(TesseractError::Unavailable),
+            IngestError::ImageOcrUnavailable
+        );
+        assert_eq!(
+            map_image_tesseract_error(TesseractError::ProcessFailed {
+                exit_code: Some(1),
+                stderr_category: OcrDiagnosticCategory::Other,
+            }),
+            IngestError::ImageOcrFailed {
+                exit_code: Some(1),
+                stderr_category: OcrDiagnosticCategory::Other,
+            }
+        );
+        assert_eq!(
+            map_image_tesseract_error(TesseractError::InvalidUtf8),
+            IngestError::InvalidUtf8
+        );
+        assert_eq!(
+            map_pdf_tesseract_error(TesseractError::Unavailable),
+            IngestError::PdfOcrUnavailable
+        );
+        assert_eq!(
+            map_pdf_tesseract_error(TesseractError::ProcessFailed {
+                exit_code: Some(1),
+                stderr_category: OcrDiagnosticCategory::Other,
+            }),
+            IngestError::PdfOcrFailed
+        );
+        assert_eq!(
+            map_pdf_tesseract_error(TesseractError::InvalidUtf8),
+            IngestError::PdfOcrFailed
+        );
+    }
+
+    #[test]
+    fn invalid_ocr_output_is_eligible_for_vision_fallback() {
+        use epikrise_ingest::IngestError;
+
+        assert!(super::should_fallback_to_vision(&IngestError::InvalidUtf8));
+        assert!(super::should_fallback_to_vision(
+            &IngestError::ImageOcrUnavailable
+        ));
+        assert!(super::should_fallback_to_vision(
+            &IngestError::ImageOcrFailed {
+                exit_code: Some(1),
+                stderr_category: epikrise_ingest::OcrDiagnosticCategory::Other,
+            }
+        ));
+        assert!(super::should_fallback_to_vision(
+            &IngestError::NoTextExtracted
+        ));
+        assert!(!super::should_fallback_to_vision(
+            &IngestError::InvalidImage
+        ));
+    }
+
+    #[test]
+    fn classifies_tesseract_stderr_without_returning_raw_diagnostics() {
+        use epikrise_ingest::OcrDiagnosticCategory;
+
+        assert_eq!(
+            classify_tesseract_stderr(b"Error opening data file C:\\private\\deu.traineddata"),
+            OcrDiagnosticCategory::LanguageDataFile
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b"Failed loading language 'deu'"),
+            OcrDiagnosticCategory::LanguageLoad
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b"Couldn't load any languages!"),
+            OcrDiagnosticCategory::NoLanguagesLoaded
+        );
+        assert_eq!(
+            classify_tesseract_stderr(
+                b"Error: Tesseract (legacy) engine requested, but components are not present in C:\\private\\deu.traineddata!!"
+            ),
+            OcrDiagnosticCategory::LanguageEngineComponentsMissing
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b"Error, cannot read input file"),
+            OcrDiagnosticCategory::InputImage
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b"Error in pixReadMemTiff: function not present"),
+            OcrDiagnosticCategory::TiffSupportWarning
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b""),
+            OcrDiagnosticCategory::NoStderr
+        );
+        assert_eq!(
+            classify_tesseract_stderr(b"an unclassified diagnostic"),
+            OcrDiagnosticCategory::Other
+        );
+    }
+
+    #[test]
+    fn strips_verbatim_windows_prefixes_from_tesseract_paths() {
+        let drive_path = r"\\?\C:\Epikrise\resources\ocr\tessdata"
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        let normalized_drive_path = strip_windows_verbatim_prefix(&drive_path)
+            .expect("verbatim drive path should be normalized");
+        assert_eq!(
+            String::from_utf16(&normalized_drive_path).expect("path should be valid UTF-16"),
+            r"C:\Epikrise\resources\ocr\tessdata"
+        );
+
+        let unc_path = r"\\?\UNC\server\share\Epikrise\tessdata"
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        let normalized_unc_path = strip_windows_verbatim_prefix(&unc_path)
+            .expect("verbatim UNC path should be normalized");
+        assert_eq!(
+            String::from_utf16(&normalized_unc_path).expect("path should be valid UTF-16"),
+            r"\\server\share\Epikrise\tessdata"
+        );
+
+        let ordinary_path = r"C:\Epikrise\resources\ocr\tessdata"
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        assert_eq!(strip_windows_verbatim_prefix(&ordinary_path), None);
+    }
 
     #[derive(Default)]
     struct FakeLlmClient {
