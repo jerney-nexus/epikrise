@@ -9,8 +9,6 @@
 # and instruction directories are symlinked so the CLIs cannot modify the host.
 set -euo pipefail
 
-sudo install -d -o vscode -g vscode -m 0700 /home/vscode/.copilot /home/vscode/.claude
-
 link_host_entries() {
   local host_dir="$1"
   local target_dir="$2"

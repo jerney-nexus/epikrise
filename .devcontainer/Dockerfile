@@ -121,6 +121,18 @@ RUN apt-get update \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
+RUN install -d -o vscode -g vscode -m 0700 \
+    /home/vscode/.copilot \
+    /home/vscode/.claude \
+    /home/vscode/.local \
+    /home/vscode/.local/share \
+    /home/vscode/.local/share/gh \
+    /home/vscode/.local/share/ssh \
+  && install -d -o vscode -g vscode -m 0755 \
+    /home/vscode/.vscode-server \
+  && install -d -o vscode -g vscode -m 0700 \
+    /home/vscode/.vscode-server/data
+
 USER vscode
 
 RUN rustup component add clippy rustfmt llvm-tools-preview \
