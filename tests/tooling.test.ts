@@ -1181,6 +1181,26 @@ describe("release start shortcuts", () => {
     );
   });
 
+  it("enforces release version bounds before tagging", () => {
+    expect(() => resolveReleaseTagVersion("1999.12.0")).toThrow("at least 2000");
+    expect(() => resolveReleaseTagVersion("2026.1.65536")).toThrow("65535");
+    expect(() => resolveReleaseTagVersion("2026.1.0", "2026.1.65536")).toThrow("65535");
+  });
+
+  it("rejects an origin/main advance during confirmation", () => {
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "main",
+        "checked-head",
+        "new-remote-head",
+        "",
+        "checked-head",
+        "2026.10.2",
+        "2026.10.2",
+      ),
+    ).toThrow("not synchronized");
+  });
+
   it.each([
     [true, false, "locally"],
     [false, true, "on origin"],

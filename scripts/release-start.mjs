@@ -4,7 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
-import { validateCalverVersion } from "./prepare-release.mjs";
+import { deriveReleaseVersions, validateCalverVersion } from "./prepare-release.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -71,9 +71,9 @@ export function assertReleaseTagContextIsUnchanged(
 
 /** @param {string} projectVersion @param {string} requestedVersion */
 export function resolveReleaseTagVersion(projectVersion, requestedVersion = "") {
-  validateCalverVersion(projectVersion);
+  deriveReleaseVersions(projectVersion);
   if (!requestedVersion) return projectVersion;
-  validateCalverVersion(requestedVersion);
+  deriveReleaseVersions(requestedVersion);
   if (requestedVersion !== projectVersion) {
     throw new Error(
       `Requested tag version ${requestedVersion} does not match package.json version ${projectVersion}.`,
@@ -204,6 +204,7 @@ async function createAndPushReleaseTag(requestedVersion) {
     return;
   }
 
+  await git(["fetch", "origin", "refs/heads/main:refs/remotes/origin/main"]);
   const branchAfterConfirmation = await git(["branch", "--show-current"]);
   const headAfterConfirmation = await git(["rev-parse", "HEAD"]);
   const remoteHeadAfterConfirmation = await git([
