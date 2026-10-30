@@ -2590,8 +2590,8 @@ describe("signed release artifacts", () => {
     );
     for (const target of ["x86_64-apple-darwin", "aarch64-apple-darwin"]) {
       const targetConfig = workflow
-        .split(`target: ${target}`)[1]
-        ?.split("\n          - target:")[0];
+        .split("\n          - target: ")
+        .find((section) => section.startsWith(target));
       expect(targetConfig).toContain("bundles: app dmg");
     }
   });
