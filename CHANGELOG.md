@@ -9,6 +9,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ### Added
 
+- Documented the unresolved Catalina/macOS Intel compatibility limitation and
+  deferred macOS x64 runtime testing as non-blocking for ongoing development.
 - RTF ingestion now decodes declared Windows code pages and Unicode surrogate
   pairs, including emoji.
 - Native desktop Settings and Help menus on macOS, Windows, and Linux open the
