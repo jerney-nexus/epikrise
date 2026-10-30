@@ -2583,6 +2583,19 @@ describe("signed release artifacts", () => {
   };
   const releaseCommit = "0123456789abcdef0123456789abcdef01234567";
 
+  it("requests updater-enabled app bundles for both macOS release targets", async () => {
+    const workflow = await readFile(
+      path.join(repoRoot, ".github/workflows/signed-release.yml"),
+      "utf8",
+    );
+    for (const target of ["x86_64-apple-darwin", "aarch64-apple-darwin"]) {
+      const targetConfig = workflow
+        .split(`target: ${target}`)[1]
+        ?.split("\n          - target:")[0];
+      expect(targetConfig).toContain("bundles: app dmg");
+    }
+  });
+
   async function createOcrFixture(root: string, target: string) {
     const nativeTarget = nativeBuildEvidence(target).target;
     const resourceRoot = path.join(root, "resources", "ocr");

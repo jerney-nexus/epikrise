@@ -111,12 +111,12 @@ jobs:
             release_target: x86_64-apple-darwin
             runner: macos-15-intel
             platform: macos
-            bundles: dmg
+            bundles: app dmg
           - target: aarch64-apple-darwin
             release_target: aarch64-apple-darwin
             runner: macos-15
             platform: macos
-            bundles: dmg
+            bundles: app dmg
           - target: x86_64-pc-windows-msvc
             release_target: x86_64-pc-windows-msvc
             runner: windows-2025

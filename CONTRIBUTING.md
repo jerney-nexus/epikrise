@@ -592,6 +592,13 @@ uses the public key configured in `src-tauri/tauri.release.conf.json` and
 requires the matching `TAURI_SIGNING_PRIVATE_KEY` GitHub Actions secret (and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key is encrypted).
 
+Changes to macOS updater bundle generation run the **macOS updater bundle
+smoke** workflow on native Intel and Apple Silicon runners. It builds the
+updater-enabled `.app.tar.gz` without production signing secrets and verifies
+that the archive is generated. This smoke check does not verify a production
+signature; keep signed-release acceptance pending until a native signed run
+confirms both the archive and its signature.
+
 Keep signing keys in the approved GitHub Actions secrets; never commit private
 signing material or generate or replace a production key in CI. A Tauri updater
 signature verifies the update payload and does not replace platform publisher

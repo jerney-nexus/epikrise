@@ -31,6 +31,9 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
   check available before a tagged release. Added regression tests for commit
   validation, workspace guards, Git marker removal, and failure cleanup.
 
+- macOS signed releases now request Tauri's updater-enabled app bundle alongside
+  the disk image, and a native smoke workflow verifies updater archive creation.
+
 ## [2026.10.2] - 2026-10-30
 
 ### Fixed
