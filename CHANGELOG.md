@@ -9,7 +9,13 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [2026.10.2] - 2026-10-30
 
+### Fixed
 
+- Fixed Windows release workflows failing to extract source archives from
+  Windows drive paths.
+- Fixed signed Linux AppImage and macOS updater builds to generate required
+  signatures, and prevented macOS Bash 3.2 staging from failing on an empty
+  argument array.
 
 ## [2026.10.1] - 2026-10-30
 
