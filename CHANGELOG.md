@@ -470,5 +470,5 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 - Run actionlint in quality checks
 - Install actionlint from pinned release
 
-[2026.10.1]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.0...v2026.10.1
+[2026.10.1]: https://github.com/jerney-nexus/epikrise/releases/tag/v2026.10.1
 [Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.1...HEAD
