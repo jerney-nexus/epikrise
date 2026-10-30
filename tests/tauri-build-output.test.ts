@@ -189,6 +189,22 @@ describe("Tauri build output path", () => {
       "",
     ],
     [
+      "forwarded clustered release option overrides debug",
+      "x86_64-unknown-linux-gnu",
+      ["build", "--debug", "--", "-vr"],
+      undefined,
+      "release",
+      "",
+    ],
+    [
+      "forwarded release option at start of cluster overrides debug",
+      "x86_64-unknown-linux-gnu",
+      ["build", "--debug", "--", "-rv"],
+      undefined,
+      "release",
+      "",
+    ],
+    [
       "forwarded target",
       "x86_64-unknown-linux-gnu",
       ["build", "--", "--target", "x86_64-unknown-linux-gnu"],

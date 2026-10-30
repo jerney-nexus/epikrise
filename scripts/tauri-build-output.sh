@@ -73,24 +73,37 @@ while [[ $# -gt 0 ]]; do
       fi
       ;;
     -*)
-      if [[ "$after_separator" == false && "$1" != --* ]]; then
+      if [[ "$1" != --* ]]; then
         short_options="${1#-}"
         while [[ -n "$short_options" ]]; do
           short_option="${short_options:0:1}"
           short_options="${short_options:1}"
-          case "$short_option" in
-            d)
-              build_profile="debug"
-              ;;
-            v)
-              ;;
-            c|f|r|t)
-              break
-              ;;
-            *)
-              break
-              ;;
-          esac
+          if [[ "$after_separator" == true ]]; then
+            case "$short_option" in
+              r)
+                build_profile="release"
+                ;;
+              v|q)
+                ;;
+              *)
+                break
+                ;;
+            esac
+          else
+            case "$short_option" in
+              d)
+                build_profile="debug"
+                ;;
+              v)
+                ;;
+              c|f|r|t)
+                break
+                ;;
+              *)
+                break
+                ;;
+            esac
+          fi
         done
       fi
       ;;
