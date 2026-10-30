@@ -7,6 +7,12 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows release workflows now prepare source workspaces through Git worktrees
+  instead of platform-dependent tar extraction, with a native x64/ARM64 smoke
+  check available before a tagged release.
+
 ## [2026.10.2] - 2026-10-30
 
 ### Fixed
