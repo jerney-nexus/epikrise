@@ -241,9 +241,10 @@ impl KeyringCredentialStore {
             .values()
             .filter_map(|metadata| {
                 #[cfg(target_os = "windows")]
-                if metadata.get("Target").map(String::as_str) != Some(KEYRING_SERVICE) {
-                    return None;
-                }
+                let account_id = metadata
+                    .get("Target")?
+                    .strip_suffix(&format!(".{KEYRING_SERVICE}"))?;
+                #[cfg(not(target_os = "windows"))]
                 let account_id = metadata
                     .get("acct")
                     .or_else(|| metadata.get("username"))
@@ -645,6 +646,22 @@ mod tests {
         validate_endpoint,
     };
     use std::sync::Arc;
+
+    #[cfg(target_os = "windows")]
+    use super::CredentialStore;
+
+    #[cfg(target_os = "windows")]
+    fn windows_smoke_credential_id() -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique_suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after the Unix epoch")
+            .as_nanos();
+        let label = format!("windows-smoke-{}-{unique_suffix}", std::process::id());
+        credential_account_id(&ProviderAdapter::OpenAi, &label)
+            .expect("smoke-test credential ID should be valid")
+    }
 
     #[test]
     fn chat_message_debug_redacts_clinical_prompt_and_response_text() {
@@ -1146,6 +1163,60 @@ mod tests {
         assert_eq!(
             KeyringCredentialStore.set("test", "  "),
             Err(LlmError::InvalidProfile)
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_keyring_smoke_round_trips_and_deletes_a_disposable_credential() {
+        const TEST_SECRET: &str = "epikrise-windows-keyring-smoke-test";
+
+        let store = KeyringCredentialStore;
+        let credential_id = windows_smoke_credential_id();
+        let set_result = store.set(&credential_id, TEST_SECRET);
+        let get_result = if set_result.is_ok() {
+            store.get(&credential_id)
+        } else {
+            Err(LlmError::Authentication)
+        };
+        let delete_result = store.delete(&credential_id);
+
+        assert!(
+            set_result.is_ok(),
+            "credential write failed: {set_result:?}"
+        );
+        assert_eq!(get_result, Ok(Some(TEST_SECRET.to_owned())));
+        assert!(
+            delete_result.is_ok(),
+            "credential cleanup failed: {delete_result:?}"
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_keyring_smoke_lists_a_disposable_credential() {
+        const TEST_SECRET: &str = "epikrise-windows-keyring-smoke-test";
+
+        let store = KeyringCredentialStore;
+        let credential_id = windows_smoke_credential_id();
+        let set_result = store.set(&credential_id, TEST_SECRET);
+        let list_result = if set_result.is_ok() {
+            store
+                .list()
+                .map(|credentials| credentials.iter().any(|item| item.id == credential_id))
+        } else {
+            Err(LlmError::Authentication)
+        };
+        let delete_result = store.delete(&credential_id);
+
+        assert!(
+            set_result.is_ok(),
+            "credential write failed: {set_result:?}"
+        );
+        assert_eq!(list_result, Ok(true));
+        assert!(
+            delete_result.is_ok(),
+            "credential cleanup failed: {delete_result:?}"
         );
     }
 
