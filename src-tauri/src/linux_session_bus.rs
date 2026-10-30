@@ -54,6 +54,9 @@ fn resolve_address_from_record(record: &str) -> Option<String> {
     } else {
         value
     };
+    if address.contains('\0') {
+        return None;
+    }
 
     let (socket_type, encoded_name) = address
         .strip_prefix("unix:")?
@@ -338,6 +341,20 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn rejects_literal_nul_elsewhere_in_a_live_socket_address() {
+        let directory = tempdir().expect("temporary directory");
+        let socket_path = directory.path().join("live-bus");
+        let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
+        let address = format!(
+            "unix:path={},guid=0123456789abcdef\0",
+            socket_path.display()
+        );
+        let record = format!("DBUS_SESSION_BUS_ADDRESS='{address}'\n");
+
+        assert_eq!(resolve_address_from_record(&record), None);
     }
 
     #[test]

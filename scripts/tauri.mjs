@@ -126,8 +126,9 @@ export function resolveLinuxSessionBusAddress(
     /^DBUS_SESSION_BUS_ADDRESS=(?:"([^"]+)"|'([^']+)'|([^\r\n]+))$/m,
   );
   const address = addressMatch?.[1] ?? addressMatch?.[2] ?? addressMatch?.[3];
+  if (!address || address.includes("\0")) return undefined;
   const socketMatch = address?.match(/^unix:(path|abstract)=([^,]+)/);
-  if (!address || !socketMatch) return undefined;
+  if (!socketMatch) return undefined;
 
   let socketName;
   try {
