@@ -1,4 +1,6 @@
 import { execFile as execFileCallback } from "node:child_process";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -21,5 +23,60 @@ describe("Tauri command detection", () => {
   ])("detects build after global options %j", async (args, expected) => {
     const { stdout } = await execFile("bash", [commandScriptPath, ...args]);
     expect(stdout).toBe(expected);
+  });
+
+  it.each([
+    ["dev", ["dev"], true],
+    ["build", ["build"], true],
+    ["info", ["info"], false],
+    ["help", ["--help"], false],
+  ])("prepares OCR only for Tauri %s commands", async (_name, args, shouldPrepare) => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tauri-command-"));
+    const binDirectory = path.join(directory, "bin");
+    const fakeBash = path.join(binDirectory, "bash");
+    const preparationLog = path.join(directory, "prepare.log");
+
+    try {
+      await mkdir(binDirectory);
+      await writeFile(
+        fakeBash,
+        [
+          "#!/bin/bash",
+          'script="${1##*/}"',
+          'case "$script" in',
+          '  tauri-command.sh) exec /bin/bash "$@" ;;',
+          "  with-cargo-host-target.sh) exit 0 ;;",
+          '  prepare-ocr.sh) printf "prepared\\n" >> "$OCR_PREP_LOG" ;;',
+          '  *) exec /bin/bash "$@" ;;',
+          "esac",
+          "",
+        ].join("\n"),
+      );
+      await chmod(fakeBash, 0o755);
+
+      await execFile("bash", [path.join(repoRoot, "scripts/tauri.sh"), ...args], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          PATH: `${binDirectory}${path.delimiter}${process.env.PATH}`,
+          OCR_PREP_LOG: preparationLog,
+        },
+      });
+
+      const preparation = await readFile(preparationLog, "utf8").catch((error) => {
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "ENOENT"
+        ) {
+          return "";
+        }
+        throw error;
+      });
+      expect(preparation).toBe(shouldPrepare ? "prepared\n" : "");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

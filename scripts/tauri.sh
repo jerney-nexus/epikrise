@@ -18,10 +18,12 @@ fi
 
 bash "$repo_root/scripts/with-cargo-host-target.sh" \
 	"${native_guard_args[@]}" --validate-only tauri "$@"
-(
-	unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-	bash "$repo_root/scripts/prepare-ocr.sh"
-)
+if [[ "$tauri_command" == "build" || "$tauri_command" == "dev" ]]; then
+	(
+		unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+		bash "$repo_root/scripts/prepare-ocr.sh"
+	)
+fi
 
 if [[ -n "$signing_private_key_was_set" ]]; then
 	export TAURI_SIGNING_PRIVATE_KEY="$signing_private_key"
