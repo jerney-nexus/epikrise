@@ -1,4 +1,4 @@
-# actionlint 1.7.12 has not added this GA hosted runner label yet.
+# actionlint 1.7.12 does not recognize this runner label or concurrency.queue.
 paths:
   .github/workflows/desktop-builds.yml:
     ignore:
@@ -6,6 +6,7 @@ paths:
   .github/workflows/signed-release.yml:
     ignore:
       - 'label "windows-11-vs2026-arm" is unknown'
+      - 'unexpected key "queue" for "concurrency" section'
   .github/workflows/store-submission.yml:
     ignore:
       - 'label "windows-11-vs2026-arm" is unknown'

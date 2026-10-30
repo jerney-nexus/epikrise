@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: updater-release
+  group: updater-release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -417,7 +417,8 @@ jobs:
           retention-days: 3
           compression-level: 0
 
-  publish:
+  stage:
+    name: Stage signed updater release
     needs: build
     runs-on: ubuntu-22.04
     permissions:
@@ -465,7 +466,7 @@ jobs:
             --artifacts-root release-artifacts \
             --output latest.json
 
-      - name: Create or recover draft, then publish release
+      - name: Create or recover draft and verify release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -500,6 +501,81 @@ jobs:
             --uploaded-root "$uploaded_assets_dir" \
             --release-file "$uploaded_release_file"
 
+      - name: Create immutable release asset evidence
+        run: |
+          node scripts/release-artifacts.mjs asset-evidence \
+            --artifacts-root release-artifacts \
+            --latest-file latest.json \
+            --output release-assets.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: acceptance-evidence-${{ github.run_id }}
+          path: release-assets.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+          overwrite: true
+
+  approve:
+    name: Approve accepted draft release
+    needs: stage
+    runs-on: ubuntu-22.04
+    environment:
+      name: release
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+    steps:
+      - run: echo "Draft release approved for publication."
+
+  publish:
+    name: Publish accepted draft release
+    needs: [stage, approve]
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: updater-release
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.15.0
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: acceptance-evidence-${{ github.run_id }}
+          path: release-evidence
+
+      - name: Publish accepted draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_file="$RUNNER_TEMP/accepted-draft.json"
+          gh release view "$GITHUB_REF_NAME" --json isDraft,tagName,body > "$release_file"
+          node scripts/release-artifacts.mjs validate-draft \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --release-file "$release_file"
+
           latest_file="$RUNNER_TEMP/latest-release.json"
           latest_tag=""
           if gh release view --json tagName > "$latest_file" 2>/dev/null; then
@@ -529,6 +605,41 @@ jobs:
           else
             make_latest=false
           fi
+
+          release_assets_file="$RUNNER_TEMP/release-assets.json"
+          uploaded_assets_dir="$RUNNER_TEMP/accepted-release-assets"
+          mkdir -p "$uploaded_assets_dir"
+          gh release view "$GITHUB_REF_NAME" --json assets > "$release_assets_file"
+          gh release download "$GITHUB_REF_NAME" --dir "$uploaded_assets_dir"
+          node scripts/release-artifacts.mjs verify-uploaded \
+            --evidence-file release-evidence/release-assets.json \
+            --uploaded-root "$uploaded_assets_dir" \
+            --release-file "$release_assets_file"
+
+          tag_ref_file="$RUNNER_TEMP/current-release-tag.json"
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" > "$tag_ref_file"
+          read -r tag_type tag_sha < <(
+            node --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              const { object } = JSON.parse(readFileSync(process.argv[1], "utf8"));
+              process.stdout.write(object.type + " " + object.sha + "\n");
+            ' "$tag_ref_file"
+          )
+          while [[ "$tag_type" == "tag" ]]; do
+            gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_sha" > "$tag_ref_file"
+            read -r tag_type tag_sha < <(
+              node --input-type=module -e '
+                import { readFileSync } from "node:fs";
+                const { object } = JSON.parse(readFileSync(process.argv[1], "utf8"));
+                process.stdout.write(object.type + " " + object.sha + "\n");
+              ' "$tag_ref_file"
+            )
+          done
+          if [[ "$tag_type" != "commit" || "$tag_sha" != "$GITHUB_SHA" ]]; then
+            echo "Release tag no longer points to the workflow commit." >&2
+            exit 1
+          fi
+
           gh api --method PATCH \
             "repos/$GITHUB_REPOSITORY/releases/$release_id" \
             -F draft=false \

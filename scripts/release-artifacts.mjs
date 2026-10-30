@@ -545,17 +545,8 @@ export async function createLatestManifest({
   };
 }
 
-/**
- * @param {{ artifactsRoot: string, latestPath: string, uploadedRoot: string, releaseAssets: unknown }} options
- */
-export async function verifyUploadedReleaseAssets({
-  artifactsRoot,
-  latestPath,
-  uploadedRoot,
-  releaseAssets,
-}) {
-  assert(Array.isArray(releaseAssets), "Release asset metadata is invalid.");
-
+/** @param {{ artifactsRoot: string, latestPath: string }} options */
+async function collectExpectedReleaseAssets({ artifactsRoot, latestPath }) {
   /** @type {Map<string, { size_bytes: number, sha256: string }>} */
   const expected = new Map();
   for (const target of releaseTargets) {
@@ -584,6 +575,72 @@ export async function verifyUploadedReleaseAssets({
     size_bytes: latestEvidence.size_bytes,
     sha256: latestEvidence.sha256,
   });
+  return expected;
+}
+
+/**
+ * @param {{ artifactsRoot: string, latestPath: string }} options
+ */
+export async function createReleaseAssetEvidence(options) {
+  const expected = await collectExpectedReleaseAssets(options);
+  return Object.fromEntries(expected);
+}
+
+/** @param {unknown} evidence */
+function validateReleaseAssetEvidence(evidence) {
+  assert(
+    typeof evidence === "object" && evidence !== null && !Array.isArray(evidence),
+    "Release asset evidence is invalid.",
+  );
+  const expected = new Map();
+  for (const [name, value] of Object.entries(evidence)) {
+    assert(
+      name !== "." && name !== ".." && path.basename(name) === name,
+      `Release asset evidence name is invalid: ${name}.`,
+    );
+    assert(
+      typeof value === "object" && value !== null && !Array.isArray(value),
+      `Release asset evidence is invalid: ${name}.`,
+    );
+    const item = /** @type {Record<string, unknown>} */ (value);
+    assert(
+      Number.isSafeInteger(item.size_bytes) &&
+        Number(item.size_bytes) >= 0 &&
+        typeof item.sha256 === "string" &&
+        /^[\da-f]{64}$/.test(item.sha256),
+      `Release asset evidence is invalid: ${name}.`,
+    );
+    expected.set(name, {
+      size_bytes: Number(item.size_bytes),
+      sha256: item.sha256,
+    });
+  }
+  assert(expected.size > 0, "Release asset evidence is empty.");
+  return expected;
+}
+
+/**
+ * @param {{ artifactsRoot?: string, latestPath?: string, uploadedRoot: string, releaseAssets: unknown, expectedAssets?: unknown }} options
+ */
+export async function verifyUploadedReleaseAssets({
+  artifactsRoot,
+  latestPath,
+  uploadedRoot,
+  releaseAssets,
+  expectedAssets,
+}) {
+  assert(Array.isArray(releaseAssets), "Release asset metadata is invalid.");
+
+  let expected;
+  if (expectedAssets === undefined) {
+    assert(
+      typeof artifactsRoot === "string" && typeof latestPath === "string",
+      "Staged asset paths are required without persisted evidence.",
+    );
+    expected = await collectExpectedReleaseAssets({ artifactsRoot, latestPath });
+  } else {
+    expected = validateReleaseAssetEvidence(expectedAssets);
+  }
 
   /** @type {Map<string, number>} */
   const metadata = new Map();
@@ -668,6 +725,14 @@ async function main() {
     assertRecoverableReleaseDraft(release, options.tag, options.commit);
     return;
   }
+  if (command === "asset-evidence") {
+    const evidence = await createReleaseAssetEvidence({
+      artifactsRoot: options["artifacts-root"],
+      latestPath: options["latest-file"],
+    });
+    await writeFile(options.output, `${JSON.stringify(evidence, null, 2)}\n`);
+    return;
+  }
   if (command === "should-promote-latest") {
     process.stdout.write(
       `${shouldPromoteLatest(options.tag, options["latest-tag"] || undefined)}\n`,
@@ -676,11 +741,15 @@ async function main() {
   }
   if (command === "verify-uploaded") {
     const release = JSON.parse(await readFile(options["release-file"], "utf8"));
+    const expectedAssets = options["evidence-file"]
+      ? JSON.parse(await readFile(options["evidence-file"], "utf8"))
+      : undefined;
     await verifyUploadedReleaseAssets({
       artifactsRoot: options["artifacts-root"],
       latestPath: options["latest-file"],
       uploadedRoot: options["uploaded-root"],
       releaseAssets: release.assets,
+      expectedAssets,
     });
     return;
   }
@@ -716,7 +785,7 @@ async function main() {
   }
   assert(
     command === "latest",
-    "Usage: release-artifacts.mjs validate|validate-draft|should-promote-latest|stage|latest|verify-uploaded [options]",
+    "Usage: release-artifacts.mjs validate|validate-draft|should-promote-latest|stage|latest|asset-evidence|verify-uploaded [options]",
   );
   const manifest = await createLatestManifest({
     tag: options.tag,

@@ -97,6 +97,10 @@ pnpm tauri build
 This creates the macOS app and disk image in
 `src-tauri/target/host-<host-triple>/release/bundle/`.
 
+macOS Intel runtime support is unverified. On Catalina 10.15.7, the app opened
+to a gray window without rendering; Intel runtime testing remains deferred.
+A successful build does not establish runtime compatibility.
+
 ### Linux Installers
 
 Build on Linux after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),
@@ -229,8 +233,7 @@ The installers are written under
 `src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`.
 They include local OCR resources and the offline WebView2 installer. Initial
 tool and asset downloads require network access after the opt-in and setup
-license gate. Native install, launch, and uninstall have been confirmed on
-Windows ARM64; live Windows x64 testing is deferred. See
+license gate. See
 [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
 
 To uninstall an installed Windows build, use **Settings > Apps > Installed
@@ -250,10 +253,10 @@ Actions and release builds never cross-compile.
 workflow for the current pushed commit from either an ARM64 or x64 dev
 container. It builds Linux ARM64/x64 (`.deb`, `.rpm`, AppImage), macOS
 ARM64/x64 (`.dmg`), and Windows ARM64/x64 (NSIS `.exe` with offline WebView2)
-in six isolated jobs. Each native Windows job also uploads a separate unsigned,
-architecture-specific MSIX artifact for manual Microsoft Partner Center
-submission. The workflow must be enabled on GitHub, and the commit must contain
-the workflow. It never commits or pushes changes.
+in six isolated jobs on matching native runners. Each Windows job also uploads
+a separate unsigned, architecture-specific MSIX artifact for manual Partner
+Center submission. The workflow must be enabled on GitHub, and the commit must
+contain the workflow. It never commits or pushes changes.
 
 After a successful tagged signed release, a separate Store submission workflow
 builds only the native Windows x64 and ARM64 Store variants and attaches each
@@ -277,58 +280,14 @@ Windows jobs use native Windows runners; the human-only Linux cross-build setup
 is rejected in CI. The CI builds are unsigned and unnotarized: Windows
 SmartScreen and macOS Gatekeeper may warn or block installation. This workflow
 does not publish releases or use the separate direct-release updater
-configuration. A successful package build is not a substitute for native
-installation and runtime acceptance testing on each target. macOS x64 runtime
-acceptance is deferred until further notice and is not a blocker for ongoing
-development; this does not establish runtime support. Validation evidence as of
-2026-10-28:
-
-- `pnpm build:all` succeeded in
-  [Actions run 40110573454](https://github.com/jerney-nexus/epikrise/actions/runs/40110573454)
-  for commit `66a76e720ea32308d6721580a5b37b2af4a9a1aa`, version `2026.10.0`,
-  and request `1764b6f2-7f78-40db-8472-cb1f621b55ef`. All six native jobs
-  succeeded, and the downloader verified package completeness,
-  request/commit/version/target manifests, and SHA-256 hashes for both Windows
-  package families.
-- Both MSIX archives were checked for ZIP integrity, the reserved
-  `JerneyNexus.Epikrise` identity, publisher, version `2026.10.0.0`, target
-  architecture, and app, Tesseract, PDFium, and German/English language
-  payloads. Packaged PE binaries matched their x64 or ARM64 target. This does
-  not establish Windows App Certification Kit results or Partner Center
-  acceptance; no Store submission or certification has been performed.
-- Users reported native install, launch, and uninstall on Windows ARM64 and
-  macOS Apple Silicon. Windows ARM64 provider flows were also reported; a
-  Linux x64 AppImage launch was tested separately. Live runtime testing on
-  Windows x64, macOS Intel, and Linux ARM64 remains unverified. For macOS Intel,
-  this test is deferred until further notice and is explicitly non-blocking for
-  ongoing development. On Catalina 10.15.7, Epikrise opened to a gray background
-  without rendering the interface. Vite's current default production target is
-  `baseline-widely-available`, which is newer than Catalina's WebKit. A trial
-  build targeting Safari 13.1 syntax still did not render the interface, so
-  lowering the JavaScript syntax target alone is not a fix; the cause remains
-  undiagnosed. Tauri v2's documented
-  [macOS 10.15 framework minimum](https://v2.tauri.app/start/prerequisites/)
-  is not a verified Epikrise minimum. Synthetic German/English OCR, PDFium
-  runtime loading, credentials, clipboard, and isolated offline WebView2
-  readiness acceptance remain open where not explicitly reported.
-- The successful matrix predates the Windows PowerShell execution-policy
-  follow-up on commit `ecb65eb3b600d460ba07a48336f4fd6ff281d6be`. That
-  follow-up has not had a six-target native matrix run; the earlier run is not
-  evidence for that later change.
-
-The MSIX artifact uses the reserved `JerneyNexus.Epikrise` Store identity and
-the `year.month.patch.0` package version. It is an unsigned Store-upload
-artifact, not the local Windows installer and not a supported direct-sideload
-package. Submit it manually through Partner Center; Microsoft signs accepted
-packages and manages Store distribution and updates. The optional
-`previous_store_version` input on a manual Desktop builds dispatch rejects a
-package version that does not advance the last submitted Store version. Store
-certification, public release, and Partner Center submission have not been
-performed. MSIX requires the
-Microsoft Edge WebView2 Evergreen Runtime; it is not bundled in the Store
-package. Use the NSIS `.exe` for local installation, which includes the
-offline WebView2 installer and retains the existing direct-release updater
-separation. See
+configuration. The MSIX artifact uses the reserved `JerneyNexus.Epikrise`
+identity and the `year.month.patch.0` Store package version. It is unsigned and
+intended for Partner Center submission, not local installation or direct
+sideloading. Microsoft signs accepted Store packages and manages Store updates.
+The optional `previous_store_version` input rejects a package version that does
+not advance the last submitted Store version. MSIX requires the Microsoft Edge
+WebView2 Evergreen Runtime; it is not bundled. Use the NSIS `.exe` for local
+installation; it includes the offline WebView2 installer. See
 [CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
 
 On macOS, copy `Epikrise.app` from the mounted image to `/Applications` first.
@@ -347,21 +306,18 @@ Gatekeeper globally. Only use this workaround for an artifact you trust.
 
 The standard application build reports updates as unavailable. The separate
 `src-tauri/tauri.release.conf.json` overlay enables updater code for direct
-release builds; it does not make a production update channel ready. In an
-updater-enabled build, users must opt in under General settings and manually
-request each check; there are no background or startup checks. Administrator
-policy can prohibit opt-in, checks, and installs. Installing an update requires
-a separate confirmation and is blocked while a case or generation is active.
-Update requests use the fixed GitHub Releases endpoint and do not send case or
-template content.
+release builds. In an updater-enabled build, users must opt in under General
+settings and manually request each check; there are no background or startup
+checks. Administrator policy can prohibit opt-in, checks, and installs.
+Installing an update requires a separate confirmation and is blocked while a
+case or generation is active. Update requests use the fixed GitHub Releases
+endpoint and do not send case or template content.
 
 Tauri updater artifacts require their own signature. This signature verifies
 the update payload; it is not Authenticode, Apple Developer ID signing,
-notarization, or Linux package signing. The release overlay contains a public
-key and a signed-release workflow, but matching private-key ownership, backup,
-and a synthetic signature proof have not been confirmed. It is not ready for
-production updates. See [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-readiness)
-for implementation and release constraints.
+notarization, or Linux package signing. See
+[CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-workflow) for release
+configuration details.
 
 Tauri must be able to find `cargo` on `PATH`. If the build fails while running
 `cargo metadata` with “No such file or directory”, see the [local Rust setup

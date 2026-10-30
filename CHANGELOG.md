@@ -51,9 +51,9 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
   for commit `66a76e720ea32308d6721580a5b37b2af4a9a1aa`; `pnpm build:all`
   verified the downloaded manifests and hashes, including both Windows
   package families. User-reported install, launch, and uninstall checks cover
-  Windows ARM64 and macOS Apple Silicon; remaining native runtime and Store
-  certification gates are documented in README and CONTRIBUTING. Live testing
-  on the other platform targets is deferred.
+  Windows ARM64 and macOS Apple Silicon. Current platform acceptance and Store
+  certification evidence is tracked in related issues and PRs; reusable native
+  runtime validation steps are documented in CONTRIBUTING.
 - `pnpm build:all` now downloads and verifies Windows NSIS and Store MSIX as
   separate package families. Artifact manifests bind each package to its
   request, commit, version, native runner, Rust target, and SHA-256.
@@ -97,13 +97,16 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
   explicit checks and install confirmation, target/version/URL validation,
   approved HTTPS host checks for every redirect, progress reporting, and
   exclusion during active case work. The release configuration now supplies
-  its updater public key; native installation and update acceptance remain
-  outstanding.
+  its updater public key. Release-asset verification and native two-version
+  update/tamper acceptance are documented in CONTRIBUTING; current evidence is
+  tracked in related issues and PRs.
 - Added a padded-CalVer-tag release workflow for signed Linux AppImage, macOS,
   and Windows x64/ARM64 NSIS updater bundles, signatures, generated
   `latest.json`, and GitHub release publication. Linux deb/rpm packages are
   built without updater support, and signing jobs use the protected `release`
-  environment. Publication verifies updater signatures and uploaded bytes,
+  environment. The workflow stages and verifies a draft before a protected
+  publication approval; package and runtime acceptance can be completed against
+  the draft. Publication verifies updater signatures and uploaded bytes,
   recovers only matching drafts, and prevents retries from promoting an older
   version as latest.
 - Added synthetic Playwright and axe browser tests, `pnpm test:e2e` and

@@ -41,6 +41,7 @@ import {
 } from "../scripts/desktop-builds.mjs";
 import {
   assertRecoverableReleaseDraft,
+  createReleaseAssetEvidence,
   createLatestManifest,
   releaseTargets,
   shouldPromoteLatest,
@@ -2352,6 +2353,52 @@ describe("signed release artifacts", () => {
       "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}",
     );
     expect(releaseWorkflow).toContain("environment: release");
+    const stageJobStart = releaseWorkflow.indexOf("\n  stage:");
+    const approveJobStart = releaseWorkflow.indexOf("\n  approve:");
+    const publishJobStart = releaseWorkflow.indexOf("\n  publish:");
+    expect(stageJobStart).toBeGreaterThan(-1);
+    expect(approveJobStart).toBeGreaterThan(stageJobStart);
+    expect(publishJobStart).toBeGreaterThan(stageJobStart);
+    expect(publishJobStart).toBeGreaterThan(approveJobStart);
+    const stageJob = releaseWorkflow.slice(stageJobStart, approveJobStart);
+    const approveJob = releaseWorkflow.slice(approveJobStart, publishJobStart);
+    const publishJob = releaseWorkflow.slice(publishJobStart);
+    expect(stageJob).toContain("needs: build");
+    expect(stageJob).toContain("Create or recover draft and verify release assets");
+    expect(stageJob).toContain("verify-uploaded");
+    expect(stageJob).not.toContain("-F draft=false");
+    expect(stageJob).toContain("asset-evidence");
+    expect(stageJob).toContain("name: acceptance-evidence-${{ github.run_id }}");
+    expect(stageJob).toContain("overwrite: true");
+    expect(approveJob).toContain("needs: stage");
+    expect(approveJob).toContain("environment:\n      name: release");
+    expect(approveJob).not.toContain("concurrency:");
+    expect(publishJob).toContain("needs: [stage, approve]");
+    expect(publishJob).not.toContain("environment:");
+    expect(publishJob).toContain("validate-draft");
+    expect(publishJob).toContain("actions/download-artifact@v8");
+    expect(publishJob).toContain("name: acceptance-evidence-${{ github.run_id }}");
+    expect(publishJob).toContain(
+      "--evidence-file release-evidence/release-assets.json",
+    );
+    expect(publishJob.indexOf("--evidence-file")).toBeLessThan(
+      publishJob.indexOf("-F draft=false"),
+    );
+    expect(publishJob).toContain("-F draft=false");
+    expect(releaseWorkflow).toContain("group: updater-release-${{ github.ref_name }}");
+    expect(publishJob).toMatch(
+      /concurrency:\s+group: updater-release\s+queue: max\s+cancel-in-progress: false/,
+    );
+    expect(publishJob).toContain(
+      'gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME"',
+    );
+    expect(publishJob).toContain('gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_sha"');
+    expect(publishJob).toContain(
+      '[[ "$tag_type" != "commit" || "$tag_sha" != "$GITHUB_SHA" ]]',
+    );
+    expect(publishJob.indexOf("Release tag no longer points")).toBeLessThan(
+      publishJob.indexOf("-F draft=false"),
+    );
     expect(releaseWorkflow).toContain("--bundles appimage");
     expect(releaseWorkflow).toContain("--bundles deb rpm");
     expect(releaseWorkflow).toContain('"features":[]');
@@ -2404,7 +2451,6 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toMatch(
       /verify-uploaded[\s\S]*should-promote-latest[\s\S]*gh api --method PATCH/,
     );
-    expect(releaseWorkflow).toContain("group: updater-release");
     expect(releaseWorkflow).not.toContain("--draft=false --latest");
     expect(releaseWorkflow).toContain("gh api --method PATCH");
     expect(releaseWorkflow).toContain("contents: write");
@@ -2721,12 +2767,29 @@ describe("signed release artifacts", () => {
         name: "latest.json",
         size: (await lstat(path.join(uploadedRoot, "latest.json"))).size,
       });
+      const releaseAssetEvidence = await createReleaseAssetEvidence({
+        artifactsRoot,
+        latestPath,
+      });
+      await expect(
+        verifyUploadedReleaseAssets({
+          uploadedRoot,
+          releaseAssets,
+        }),
+      ).rejects.toThrow("Staged asset paths are required without persisted evidence.");
       await expect(
         verifyUploadedReleaseAssets({
           artifactsRoot,
           latestPath,
           uploadedRoot,
           releaseAssets,
+        }),
+      ).resolves.toBeUndefined();
+      await expect(
+        verifyUploadedReleaseAssets({
+          uploadedRoot,
+          releaseAssets,
+          expectedAssets: releaseAssetEvidence,
         }),
       ).resolves.toBeUndefined();
 
@@ -2736,13 +2799,17 @@ describe("signed release artifacts", () => {
       expect(uploadedBundleName).toBeDefined();
       const uploadedBundle = path.join(uploadedRoot, uploadedBundleName!);
       const uploadedContents = await readFile(uploadedBundle, "utf8");
-      await writeFile(uploadedBundle, "altered after upload");
+      const tamperedContents = Buffer.from(uploadedContents);
+      tamperedContents[0] = tamperedContents[0]! ^ 1;
+      await writeFile(uploadedBundle, tamperedContents);
+      expect((await lstat(uploadedBundle)).size).toBe(
+        Buffer.byteLength(uploadedContents),
+      );
       await expect(
         verifyUploadedReleaseAssets({
-          artifactsRoot,
-          latestPath,
           uploadedRoot,
           releaseAssets,
+          expectedAssets: releaseAssetEvidence,
         }),
       ).rejects.toThrow("does not match staged bytes");
       await writeFile(uploadedBundle, uploadedContents);
