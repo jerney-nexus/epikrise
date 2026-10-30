@@ -985,9 +985,10 @@ describe("CalVer release versions", () => {
 
       await formatReleaseArtifacts(directory);
 
-      for (const filePath of [changelogPath, configPath]) {
+      for (const relativePath of ["CHANGELOG.md", "src-tauri/tauri.conf.json"]) {
+        const filePath = path.join(directory, relativePath);
         const content = await readFile(filePath, "utf8");
-        const config = await prettier.resolveConfig(filePath);
+        const config = await prettier.resolveConfig(path.join(repoRoot, relativePath));
         expect(
           await prettier.check(content, {
             ...(config ?? {}),

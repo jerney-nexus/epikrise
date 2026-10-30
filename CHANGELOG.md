@@ -11,6 +11,7 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 - Release preparation now formats generated release metadata and uses a GitHub
   release link for the first release instead of comparing against a missing tag.
+  Its formatting test now checks against the repository's Prettier configuration.
 
 ### Fixed
 
