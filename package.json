@@ -1,6 +1,6 @@
 {
   "name": "epikrise",
-  "version": "2026.10.0",
+  "version": "2026.10.1",
   "description": "Local-only assistant that turns anonymized clinical material into a structured diagnosis and findings list",
   "type": "module",
   "private": true,

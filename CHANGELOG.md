@@ -7,6 +7,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+## [2026.10.1] - 2026-10-30
+
 ### Added
 
 - Documented the unresolved Catalina/macOS Intel compatibility limitation and
@@ -192,4 +194,281 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
   provider on startup, and changing providers selects the first model allowed
   for the selected provider.
 
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/HEAD
+### 🚀 Features
+
+- Initialize Tauri project with SvelteKit integration
+- Add GitHub CLI feature to devcontainer configuration
+- Add devcontainer configuration, Prettier setup, and Vitest testing framework
+- Integrate Specta for TypeScript bindings and add greet command
+- Add specta integration and create_case_session command with TypeScript bindings
+- Update devcontainer configuration to enable GitHub Copilot and add config mounts
+- Integrate specta and uuid for input extraction and add extract_raw_text command
+- Add extract_text_file command and enhance error handling in ingest pipeline
+- Add PDF extraction capabilities and enhance error handling in ingest pipeline
+- Add DOCX extraction support and enhance error handling in ingest pipeline
+- Add XLSX extraction support and enhance error handling in ingest pipeline
+- Add HTML and RTF extraction support with enhanced error handling in ingest pipeline
+- Add GitHub Copilot CLI feature to devcontainer configuration
+- Enhance PDF extraction with OCR requirement handling and update IngestError type
+- Add ripgrep feature to devcontainer configuration
+- Add src-tauri/resources/ocr/ to .gitignore
+- Implement OCR support for PDF extraction and enhance error handling
+- Add src-tauri/src-tauri/resources/ocr/ to .gitignore
+- Implement LLM generation commands and events, update UI for draft workspace
+- Add ripgrep feature to devcontainer configuration
+- Add ClinicalTemplate validation and integrate with Tauri commands
+- Integrate template management and rendering functionality
+- Implement template section rendering and validation, enhance user interface for template management
+- Enhance case session management and output review features
+- Add model listing functionality and UI integration
+- Enhance OCR setup with Tesseract installation instructions and PDFium asset preparation
+- Improve error handling by refactoring HTTP error mapping and adding webc error handling
+- Refactor model adapter selection and add support for OpenAI responses API
+- Enhance error handling for provider rejections with detailed status messages
+- Add TODO for Gemini Interactions API support upon genai v0.7.0 release
+- Add template values and generation state to CaseSession and update related components
+- Add rules to forbid bullet characters and parenthesized dates in output linter
+- Add date formatting feature via template strings/localization to TODO
+- Add reasoning effort configuration and output token limit to generation parameters
+- Add project guidance documentation to AGENTS.md
+- Add image extraction and URL handling capabilities
+- Update Node.js feature to version 2 and add Prettier feature with integrity
+- Enhance project guidance and add Rust check commands in package.json
+- Enhance PDF vision processing and credential management
+- Enhance model request handling for Groq adapter and add unit test
+- Add eslint-config-prettier and update bindings for consistent formatting
+- Add support for OpenRouter provider and refactor test for model endpoint resolution
+- Migrate template storage from JSON to TOML format
+- Enhance formatting scripts for specific file checks and formatting
+- Implement clipboard prevention for unreviewed output copying
+- Add Rust formatting script to package.json
+- Complete Phase 6 clinical drafting workspace
+- Add keyring-search and async-fs dependencies, enhance credential management, and update UI styles
+- Enhance provider credential management with dialogs and state handling
+- Add confirmation dialog for provider credential removal with state management
+- Add styles for credential action buttons in the template editor
+- Add margin to empty template in provider rail for improved spacing
+- Update icons and add epikrise-mark.svg for improved branding and UI consistency
+- Fix spacing for active-template picker and ensure safe cloning of reactive Svelte state
+- Restructure AGENTS.md for clarity and improved project guidance
+- Enhance template editor with section management features
+- Add output rules management to template editor
+- Add responsive layout and styling for template discard action in editor
+- Add internationalization test script to package.json and AGENTS.md
+- Add general settings dialog and localization options in Svelte component
+- Add vitest explorer extension to devcontainer configuration
+- Implement Windows cross-compilation setup with NSIS installers and OCR support
+- Add NSIS Restart Manager include provisioning and update setup instructions
+- Add clang-xwin script for improved Clang integration and error handling
+- Update TODO with tasks for institutional template and MiniJinja integration
+- Update VSCode settings and extensions for improved formatting support
+- Add ESLint configuration and validation settings to VSCode
+- Add .editorconfig for consistent coding style and formatting
+- Update README and localization tests for improved clarity and structure
+- Enhance AGENTS.md and package.json with detailed testing and command instructions
+- Implement egress policy management and provider authorization
+- Add VSCode tasks for development, testing, and linting
+- Add Rust and pnpm audit tasks to improve dependency security checks
+- Enhance Rust and pnpm audit tasks for improved security checks and clarity
+- Update TODO.md to include handling of formatted text in UI
+- Add margin to button for improved spacing in UI
+- Implement administrator policy restrictions for template actions and model usage
+- Implement administrator policy controls for credential management and fixed endpoints
+- Update and reorganize TODO.md to categorize bugs and enhancements by urgency
+- Update TODO.md to remove high urgency bugs and improve error handling for policy loading
+- Add UI coverage testing command and update documentation for coverage reports
+- Update TODO.md to refine changelog entry and add cookie version override in pnpm files
+- Enhance error handling for generation configuration and update localization strings
+- Implement CalVer versioning and automate release preparation with changelog generation
+- Update project identifiers and enhance release preparation scripts
+- Add Rust formatting task and update contributing guidelines
+- Enhance template editing and importing based on policy status
+- Add host-triple-specific directory for Rust artifacts and update build scripts
+- Update rust-analyzer test command to include host target script
+- Update pnpm version and enhance post-create command for Vite integration
+- Add Rust code coverage implementation to high urgency tasks in TODO
+- Implement Rust code coverage with cargo-llvm-cov and update identifiers to jerney-nexus
+- Add llvm-tools-preview to Rust components and install cargo-llvm-cov
+- Add cargo-deny installation to dependencies
+- Update CONTRIBUTING.md and README.md with Rust tool installation instructions
+- Add installation instructions for macOS and Linux in README.md
+- Add support for native Windows build to TODO.md
+- Add .gitignore entry for root-level plan prompts
+- Update TODO.md to include Linux x64 host build support
+- Add GitHub Copilot and Claude code instructions for testing
+- Enhance accessibility tests for general settings dialog and update checks
+- Enhance template settings dialog behavior and add related test
+- Implement template export functionality with native save dialog and related tests
+- Update template export/import button labels for clarity and consistency
+- Reorder template settings controls to place import before export and add related tests
+- Enhance template section handling and styling in settings dialog
+- Update Playwright config to include type definitions and process import
+- Add Dev Container section with environment details and usage instructions
+- Add files.watcherExclude setting to ignore target directory
+- Add high urgency bug fix for viewport layout issues on medium-sized windows
+- Enhance Playwright setup with CI configuration and cache exclusions
+- Update devcontainer configuration with additional features and dependencies
+- Enhance Playwright setup with cross-browser support and reporting features
+- Update template settings layout for better visibility on medium screens
+- Refactor Playwright reporter configuration and improve accessibility tests with reduced motion setting
+- Improve template settings layout for better responsiveness and alignment
+- Enhance responsiveness of settings dialogs and template editor across various viewport widths
+- Update testing instructions and scripts to include Playwright tests in the full test suite
+- Add skills for full suite execution and issue investigation
+- Add investigation note for Playwright Test Explorer E2E run cleanup
+- Implement signed release workflow and validation for updater artifacts
+- Add changelog update skill for documenting recent changes
+- Update changelog with new release workflow and public key configuration
+- Split template creation and deletion policies
+- Add issue-worker and parallel-investigate workflows for focused bug resolution
+- Enhance signed release workflow with environment and bundle configurations
+- Add approved_redirect_chain function for secure URL redirection validation
+- Update portable package implementation details and verification process
+- *(release)* Verify signed artifact integrity
+- Add native host builds for Tauri and OCR (#97)
+- Enable manual Linux NSIS cross-builds (#111)
+- Add safe image OCR diagnostics (#113)
+- Standardize unpadded CalVer (#130)
+- Add task issue template (#133)
+
+### 🐛 Bug Fixes
+
+- Correct argument usage in Pdfium library binding
+- Enable debug assertions for TypeScript generation
+- Set temperature to null in generation configuration for improved model behavior
+- Correct JSON formatting in settings and ensure newline at end of TODO.md
+- Update commands from npm to pnpm in scripts and configuration
+- Downgrade windows-sys version to 0.60.2 and update tauri-plugin-opener to 2.6.0, remove CI flag (probably not necessary)
+- Update max_tokens in provider profile to improve output budget handling
+- Ensure consistent formatting in AGENTS.md and TODO.md
+- Correct spelling and formatting in German localization strings
+- Rename generationMessage to copyReviewMessage for clarity in clipboard operations
+- Update pnpm version to 12.8.1 in package.json and pnpm-lock.yaml
+- Refactor template editor layout to use flexbox and improve responsiveness
+- Update SDK and CRT versions in setup scripts and add validation test
+- Update dependency versions in Cargo.lock and refine advisory reasons in deny.toml
+- Prevent template settings horizontal overflow
+- Improve TODO.md entry organization for actionable issues in full suite and investigate skills
+- Include identifier in release config overlay
+- Update pubkey in release config for updater plugin
+- Honor updater key from release config
+- Clarify blocker for native install and two-version update acceptance
+- *(release)* Enforce version and updater target contracts
+- *(ci)* Summarize cargo deny output
+- *(ci)* Use supported git-cliff version input
+- *(devcontainer)* Create optional bind sources
+- *(devcontainer)* Keep CLI runtime state writable
+- *(devcontainer)* Add protected SSH volume
+- *(TODO)* Mark blocked tasks for Playwright Test Explorer and portable package implementation
+- *(release)* Recover verified draft releases
+- *(release)* Keep latest promotion monotonic
+- *(release)* Verify uploaded draft assets
+- *(release)* Satisfy artifact validation types
+- *(release)* Enhance Windows setup script for noninteractive CI mode and retain interactive acceptance
+- *(release)* Fail closed on latest lookup errors
+- *(updater)* Require signed artifact version
+- *(release)* Send make_latest as string
+- *(ci)* Install NSIS package for desktop builds
+- *(security)* Strip remote images from clipboard HTML
+- *(vscode)* Use correct Rust format task script
+- *(release)* Accept already-normalized versions
+- *(output)* Annotate standalone code block lines
+- *(release)* Update source Cargo lock versions
+- *(release)* Generate notes from unreleased commits
+- *(updater)* Align Windows NSIS manifest targets
+- *(ci)* Remove invalid makensis package
+- Use supported gh workflow listing
+- *(deps)* Resolve source-map-js audit finding
+- Make release lock test cache-independent (#50)
+- *(template)* Reject blank template names (#63)
+- Resolve Linux credential listing in desktop sessions (#110)
+- Update provider order and add tests for restricted policies (#137)
+- Allow document selection in Linux file picker (#140)
+
+### 💼 Other
+
+- Add workflow for version bumping and changelog generation
+- *(devcontainer)* Isolate GitHub CLI auth
+
+### 🚜 Refactor
+
+- Streamline output token limit validation and enhance error messaging
+- Reorganize TODO entries for clarity and prioritize high urgency tasks
+
+### 📚 Documentation
+
+- Update local setup instructions for macOS regarding Cargo and Rust
+- Update changelog and contributing guidelines for clarity and detail
+- Close updater key backup follow-up
+- Finalize initial changelog categories
+- Remove resolved Rustup warning TODO
+- Add security section for SSH key volume mounting in TODO
+- Update release integrity changelog
+- Clarify native acceptance blockers
+- *(todo)* Track signed release NSIS dependency issue
+- *(todo)* Track blocked items as issues
+- *(todo)* Keep PR scope focused
+- *(workflows)* Improve GitHub issue tracking
+- *(skills)* Update allowed-tools and clarify issue handling in agent skills
+- *(skills)* Address review feedback
+- *(skills)* Safeguard GitHub issue reports
+- *(skills)* Keep full-suite issues open until delivery
+- Remove completed TODO ledger
+- Add private vulnerability reporting policy (#64)
+- Correct Windows installer output paths (#65)
+- Add macOS OCR build prerequisites (#66)
+- Update changelog and contributing guidelines for macOS Intel compatibility (#136)
+- Streamline build and release guidance (#141)
+- Refine Copilot instructions and contributing guidelines for tool discovery and session management (#143)
+
+### 🧪 Testing
+
+- Cover updater service races and failures
+- Align artifact action version assertion
+- Guard updater feature isolation
+- Allow cold release compile to finish
+- Use synthetic template fixtures
+- Avoid duplicate i18n suite
+- Include i18n in coverage
+- Exercise updater feature paths
+
+### ⚙️ Miscellaneous Tasks
+
+- Implement cross-platform desktop builds and native OCR support
+- Update action versions in workflow files to v7 and v6
+- Separate UI, browser, and Rust tests
+- Containerize UI and i18n tests
+- Avoid duplicate cargo deny check
+- Recommend GitHub Actions extension
+- Containerize security audit workflow
+- Add cargo-audit installation to dependencies
+- Allow skill workflow tools
+- Add Rust audit commands to development setup
+- Gate signed releases on exact-commit checks
+- Extract release quality checks
+- Align reusable workflow triggers
+- Rename Playwright workflow
+- Install Rust tools in test workflows
+- Fetch Rust dependencies before UI tests
+- Stage native app dependencies in test jobs
+- Create sidecar directory in test jobs
+- Add placeholder OCR resources for checks
+- Keep pnpm store on workspace mount
+- Pin Playwright runner to Ubuntu 24.04
+- Speed up rust cache compression
+- Migrate to pnpm setup action
+- Use pnpm setup v2
+- Align rust job home with container user
+- Silence git init default branch hint
+- Scope rustup home override to setup
+- Remove explicit HOME override from Rust toolchain setup
+- Update actionlint feature version and integrity in devcontainer configuration
+- Add actionlint workflow check
+- Use rust image for UI workflow
+- Update TODO with new VS Code issues and confirm Rustup home mismatch resolution
+- Install dependencies in release prep workflow
+- Run actionlint in quality checks
+- Install actionlint from pinned release
+
+[2026.10.1]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.0...v2026.10.1
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.1...HEAD
