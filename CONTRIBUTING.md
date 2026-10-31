@@ -573,6 +573,8 @@ with the version) from the clean, synchronized `main` branch. The tag command
 checks the version and local/remote tag state, asks for an interactive `PUSH`
 confirmation, then creates an annotated tag and pushes only that tag ref. It
 never force-updates a tag. Both commands are also available as VS Code tasks.
+The tag task has its own version prompt: leave it blank to use the current
+`package.json` version, not to select the next release version.
 
 ### Release and update workflow
 

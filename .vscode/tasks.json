@@ -251,7 +251,7 @@
       "detail": "Creates and pushes an annotated release tag after confirmation.",
       "type": "process",
       "command": "pnpm",
-      "args": ["release:tag", "${input:releaseVersion}"],
+      "args": ["release:tag", "${input:releaseTagVersion}"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     }
@@ -261,6 +261,12 @@
       "id": "releaseVersion",
       "type": "promptString",
       "description": "CalVer YYYY.M.MICRO; leave blank to select the next version",
+      "default": ""
+    },
+    {
+      "id": "releaseTagVersion",
+      "type": "promptString",
+      "description": "CalVer YYYY.M.MICRO; leave blank to use the current package.json version",
       "default": ""
     }
   ]

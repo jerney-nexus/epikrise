@@ -8,17 +8,18 @@ import { deriveReleaseVersions, validateCalverVersion } from "./prepare-release.
 
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const gitOptions = { cwd: repoRoot, maxBuffer: 1024 * 1024 };
-
-/** @param {string[]} args */
-async function git(args) {
-  const { stdout } = await execFile("git", args, gitOptions);
+/** @param {string[]} args @param {string} root */
+async function git(args, root = repoRoot) {
+  const { stdout } = await execFile("git", args, {
+    cwd: root,
+    maxBuffer: 1024 * 1024,
+  });
   return stdout.trimEnd();
 }
 
-/** @param {string} tag */
-async function hasLocalTag(tag) {
-  const output = await git(["tag", "--list", tag]);
+/** @param {string} tag @param {string} root */
+async function hasLocalTag(tag, root = repoRoot) {
+  const output = await git(["tag", "--list", tag], root);
   return output.split(/\r?\n/).includes(tag);
 }
 
@@ -88,36 +89,40 @@ export function assertReleaseTagAvailable(tag, localExists, remoteExists) {
   if (remoteExists) throw new Error(`Tag ${tag} already exists on origin.`);
 }
 
-async function assertRepositoryRoot() {
-  const actualRoot = path.resolve(await git(["rev-parse", "--show-toplevel"]));
-  if (actualRoot !== repoRoot) {
-    throw new Error(`Run this command from the Epikrise repository at ${repoRoot}.`);
+/** @param {string} root */
+async function assertRepositoryRoot(root = repoRoot) {
+  const actualRoot = path.resolve(await git(["rev-parse", "--show-toplevel"], root));
+  if (actualRoot !== root) {
+    throw new Error(`Run this command from the Epikrise repository at ${root}.`);
   }
 }
 
-async function readProjectVersion() {
+/** @param {string} root */
+async function readProjectVersion(root = repoRoot) {
   const packageJson = JSON.parse(
-    await readFile(path.join(repoRoot, "package.json"), "utf8"),
+    await readFile(path.join(root, "package.json"), "utf8"),
   );
   return validateCalverVersion(packageJson.version);
 }
 
-/** @param {string} tag */
-async function readRemoteTagExists(tag) {
+/** @param {string} tag @param {string} root */
+async function readRemoteTagExists(tag, root = repoRoot) {
   const ref = `refs/tags/${tag}`;
-  const output = await git(["ls-remote", "--tags", "--refs", "origin", ref]);
+  const output = await git(["ls-remote", "--tags", "--refs", "origin", ref], root);
   return output.split(/\r?\n/).some((line) => line.split("\t")[1] === ref);
 }
 
-async function ensureWorktreeIsClean() {
-  const status = await git(["status", "--porcelain", "--untracked-files=all"]);
+/** @param {string} root */
+async function ensureWorktreeIsClean(root = repoRoot) {
+  const status = await git(["status", "--porcelain", "--untracked-files=all"], root);
   assertCleanReleaseWorktree(status);
 }
 
-async function ensureMainIsSynchronized() {
-  const branch = await git(["branch", "--show-current"]);
-  const head = await git(["rev-parse", "HEAD"]);
-  const remoteHead = await git(["rev-parse", "refs/remotes/origin/main"]);
+/** @param {string} root */
+async function ensureMainIsSynchronized(root = repoRoot) {
+  const branch = await git(["branch", "--show-current"], root);
+  const head = await git(["rev-parse", "HEAD"], root);
+  const remoteHead = await git(["rev-parse", "refs/remotes/origin/main"], root);
   assertReleaseMainIsSynchronized(branch, head, remoteHead);
 }
 
@@ -178,45 +183,52 @@ async function confirmTagPush(tag, version) {
   }
 }
 
-/** @param {string} requestedVersion */
-async function createAndPushReleaseTag(requestedVersion) {
-  await assertRepositoryRoot();
-  await ensureWorktreeIsClean();
-  const branch = await git(["branch", "--show-current"]);
+/**
+ * @param {string} requestedVersion
+ * @param {{ root?: string, confirm?: typeof confirmTagPush }} options
+ */
+export async function createAndPushReleaseTag(requestedVersion, options = {}) {
+  const root = path.resolve(options.root ?? repoRoot);
+  const confirm = options.confirm ?? confirmTagPush;
+  await assertRepositoryRoot(root);
+  await ensureWorktreeIsClean(root);
+  const branch = await git(["branch", "--show-current"], root);
   if (branch !== "main") {
     throw new Error(`Release tagging requires main; current branch is ${branch}.`);
   }
 
-  const projectVersion = await readProjectVersion();
+  const projectVersion = await readProjectVersion(root);
   const version = resolveReleaseTagVersion(projectVersion, requestedVersion);
   const tag = `v${version}`;
-  assertReleaseTagAvailable(tag, await hasLocalTag(tag), false);
+  assertReleaseTagAvailable(tag, await hasLocalTag(tag, root), false);
 
-  await git(["fetch", "origin", "--tags"]);
-  await ensureMainIsSynchronized();
-  const remoteExists = await readRemoteTagExists(tag);
-  const localExists = await hasLocalTag(tag);
+  await git(["fetch", "origin", "--tags"], root);
+  await ensureMainIsSynchronized(root);
+  const remoteExists = await readRemoteTagExists(tag, root);
+  const localExists = await hasLocalTag(tag, root);
   assertReleaseTagAvailable(tag, localExists, remoteExists);
-  const checkedHead = await git(["rev-parse", "HEAD"]);
+  const checkedHead = await git(["rev-parse", "HEAD"], root);
 
-  if (!(await confirmTagPush(tag, version))) {
+  if (!(await confirm(tag, version))) {
     process.stdout.write("Tag creation cancelled.\n");
     return;
   }
 
-  await git(["fetch", "origin", "refs/heads/main:refs/remotes/origin/main"]);
-  const branchAfterConfirmation = await git(["branch", "--show-current"]);
-  const headAfterConfirmation = await git(["rev-parse", "HEAD"]);
-  const remoteHeadAfterConfirmation = await git([
-    "rev-parse",
-    "refs/remotes/origin/main",
-  ]);
-  const worktreeStatusAfterConfirmation = await git([
-    "status",
-    "--porcelain",
-    "--untracked-files=all",
-  ]);
-  const projectVersionAfterConfirmation = await readProjectVersion();
+  await git(
+    ["fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main"],
+    root,
+  );
+  const branchAfterConfirmation = await git(["branch", "--show-current"], root);
+  const headAfterConfirmation = await git(["rev-parse", "HEAD"], root);
+  const remoteHeadAfterConfirmation = await git(
+    ["rev-parse", "refs/remotes/origin/main"],
+    root,
+  );
+  const worktreeStatusAfterConfirmation = await git(
+    ["status", "--porcelain", "--untracked-files=all"],
+    root,
+  );
+  const projectVersionAfterConfirmation = await readProjectVersion(root);
   assertReleaseTagContextIsUnchanged(
     branchAfterConfirmation,
     headAfterConfirmation,
@@ -227,16 +239,16 @@ async function createAndPushReleaseTag(requestedVersion) {
     projectVersionAfterConfirmation,
   );
 
-  const remoteTagExistsAfterConfirmation = await readRemoteTagExists(tag);
-  const localTagExistsAfterConfirmation = await hasLocalTag(tag);
+  const remoteTagExistsAfterConfirmation = await readRemoteTagExists(tag, root);
+  const localTagExistsAfterConfirmation = await hasLocalTag(tag, root);
   assertReleaseTagAvailable(
     tag,
     localTagExistsAfterConfirmation,
     remoteTagExistsAfterConfirmation,
   );
 
-  await git(["tag", "-a", tag, checkedHead, "-m", `Release ${version}`]);
-  await git(["push", "--no-follow-tags", "origin", `refs/tags/${tag}`]);
+  await git(["tag", "-a", tag, checkedHead, "-m", `Release ${version}`], root);
+  await git(["push", "--no-follow-tags", "origin", `refs/tags/${tag}`], root);
   process.stdout.write(`Created and pushed ${tag}.\n`);
 }
 
