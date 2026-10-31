@@ -7,6 +7,17 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+### Added
+
+- Added guarded `pnpm` and VS Code tasks for release preflight and explicitly
+  confirmed annotated-tag creation and push; revalidate the release context
+  afterward, enforce bounded release versions, refresh `origin/main`, and push
+  only the confirmed tag. Recheck local and remote tag availability immediately
+  before creating the tag. The VS Code tag task now describes its current-version
+  default correctly, and integration tests verify tag creation and pushing
+  against a disposable Git remote. The final `origin/main` refresh no longer
+  imports concurrent remote tags into the local checkout.
+
 ### Changed
 
 - Release preparation now formats generated release metadata and uses a GitHub

@@ -34,6 +34,14 @@ import {
 } from "../scripts/prepare-release.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
 import {
+  createAndPushReleaseTag,
+  assertCleanReleaseWorktree,
+  assertReleaseMainIsSynchronized,
+  assertReleaseTagContextIsUnchanged,
+  assertReleaseTagAvailable,
+  resolveReleaseTagVersion,
+} from "../scripts/release-start.mjs";
+import {
   assertDispatchPreconditions,
   assertSuccessfulJobs,
   desktopTargets,
@@ -1086,6 +1094,245 @@ describe("release workspace preparation", () => {
         }),
       ).rejects.toBe(preparationError);
       await expect(lstat(workspace)).rejects.toMatchObject({ code: "ENOENT" });
+    });
+  });
+});
+
+describe("release start shortcuts", () => {
+  it("rejects a dirty worktree", () => {
+    expect(() => assertCleanReleaseWorktree(" M package.json\n")).toThrow(
+      "worktree is dirty",
+    );
+    expect(() => assertCleanReleaseWorktree("")).not.toThrow();
+  });
+
+  it("requires main to match origin/main exactly", () => {
+    expect(() => assertReleaseMainIsSynchronized("feature", "abc", "abc")).toThrow(
+      "requires main",
+    );
+    expect(() => assertReleaseMainIsSynchronized("main", "abc", "def")).toThrow(
+      "not synchronized",
+    );
+    expect(() => assertReleaseMainIsSynchronized("main", "abc", "abc")).not.toThrow();
+  });
+
+  it("revalidates the release context after confirmation", () => {
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "main",
+        "abc",
+        "abc",
+        "",
+        "abc",
+        "2026.10.2",
+        "2026.10.2",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "main",
+        "def",
+        "def",
+        "",
+        "abc",
+        "2026.10.2",
+        "2026.10.2",
+      ),
+    ).toThrow("HEAD changed during confirmation");
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "main",
+        "abc",
+        "abc",
+        "",
+        "abc",
+        "2026.10.2",
+        "2026.10.3",
+      ),
+    ).toThrow("Project version changed during confirmation");
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "feature",
+        "abc",
+        "abc",
+        "",
+        "abc",
+        "2026.10.2",
+        "2026.10.2",
+      ),
+    ).toThrow("requires main");
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "main",
+        "abc",
+        "abc",
+        " M package.json\n",
+        "abc",
+        "2026.10.2",
+        "2026.10.2",
+      ),
+    ).toThrow("worktree is dirty");
+  });
+
+  it("defaults to the project version and rejects a different requested version", () => {
+    expect(resolveReleaseTagVersion("2026.10.2")).toBe("2026.10.2");
+    expect(resolveReleaseTagVersion("2026.10.2", "2026.10.2")).toBe("2026.10.2");
+    expect(() => resolveReleaseTagVersion("2026.10.2", "2026.10.3")).toThrow(
+      "does not match package.json version",
+    );
+  });
+
+  it("enforces release version bounds before tagging", () => {
+    expect(() => resolveReleaseTagVersion("1999.12.0")).toThrow("at least 2000");
+    expect(() => resolveReleaseTagVersion("2026.1.65536")).toThrow("65535");
+    expect(() => resolveReleaseTagVersion("2026.1.0", "2026.1.65536")).toThrow("65535");
+  });
+
+  it("rejects an origin/main advance during confirmation", () => {
+    expect(() =>
+      assertReleaseTagContextIsUnchanged(
+        "main",
+        "checked-head",
+        "new-remote-head",
+        "",
+        "checked-head",
+        "2026.10.2",
+        "2026.10.2",
+      ),
+    ).toThrow("not synchronized");
+  });
+
+  it("uses distinct version prompts for preparation and tagging", async () => {
+    const tasks = JSON.parse(
+      await readFile(path.join(repoRoot, ".vscode/tasks.json"), "utf8"),
+    );
+    expect(tasks.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          args: ["release:prepare", "${input:releaseVersion}"],
+        }),
+        expect.objectContaining({
+          args: ["release:tag", "${input:releaseTagVersion}"],
+        }),
+      ]),
+    );
+    expect(tasks.inputs).toContainEqual(
+      expect.objectContaining({
+        id: "releaseTagVersion",
+        description: expect.stringContaining("current package.json version"),
+      }),
+    );
+  });
+
+  it.each([
+    [true, false, "locally"],
+    [false, true, "on origin"],
+  ])("rejects an existing tag (%s, %s)", (localExists, remoteExists, location) => {
+    expect(() =>
+      assertReleaseTagAvailable("v2026.10.2", localExists, remoteExists),
+    ).toThrow(location);
+  });
+});
+
+describe("release tag integration", () => {
+  async function withRepository(
+    test: (
+      root: string,
+      remote: string,
+      git: (args: string[], cwd?: string) => Promise<string>,
+    ) => Promise<void>,
+  ) {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-tag-integration-"));
+    const root = path.join(directory, "checkout");
+    const remote = path.join(directory, "origin.git");
+    const git = async (args: string[], cwd = root) =>
+      (
+        await execFile(
+          "git",
+          cwd === remote ? [`--git-dir=${remote}`, ...args] : args,
+          { cwd },
+        )
+      ).stdout.trim();
+    try {
+      await mkdir(root);
+      await git(["init", "--bare", remote]);
+      await git(["init", "--initial-branch=main"]);
+      await git(["config", "user.name", "Epikrise Test"]);
+      await git(["config", "user.email", "epikrise-test@example.invalid"]);
+      await writeFile(path.join(root, "package.json"), '{"version":"2026.10.2"}\n');
+      await git(["add", "package.json"]);
+      await git(["commit", "-m", "fixture"]);
+      await git(["remote", "add", "origin", remote]);
+      await git(["push", "--no-follow-tags", "-u", "origin", "main"]);
+      await test(root, remote, git);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  it("pushes one annotated tag at the confirmed SHA even with followTags enabled", async () => {
+    await withRepository(async (root, remote, git) => {
+      const head = await git(["rev-parse", "HEAD"]);
+      await git(["tag", "-a", "unrelated", "-m", "unrelated"]);
+      await git(["config", "push.followTags", "true"]);
+      const confirm = vi.fn(async () => true);
+      await createAndPushReleaseTag("", { root, confirm });
+
+      expect(confirm).toHaveBeenCalledWith("v2026.10.2", "2026.10.2");
+      expect(await git(["cat-file", "-t", "refs/tags/v2026.10.2"], remote)).toBe("tag");
+      expect(await git(["rev-parse", "v2026.10.2^{}"], remote)).toBe(head);
+      expect(await git(["tag", "--list"], remote)).toBe("v2026.10.2");
+    });
+  });
+
+  it("does not create or push a tag after cancellation", async () => {
+    await withRepository(async (root, remote, git) => {
+      await createAndPushReleaseTag("", { root, confirm: async () => false });
+      expect(await git(["tag", "--list"])).toBe("");
+      expect(await git(["tag", "--list"], remote)).toBe("");
+    });
+  });
+
+  it("rejects a remote tag created during confirmation without leaving a local tag", async () => {
+    await withRepository(async (root, remote, git) => {
+      const head = await git(["rev-parse", "HEAD"]);
+      await expect(
+        createAndPushReleaseTag("", {
+          root,
+          confirm: async () => {
+            await git(["update-ref", "refs/tags/v2026.10.2", head], remote);
+            return true;
+          },
+        }),
+      ).rejects.toThrow("already exists");
+      expect(await git(["tag", "--list"])).toBe("");
+      expect(await git(["rev-parse", "refs/tags/v2026.10.2"], remote)).toBe(head);
+    });
+  });
+
+  it("rejects a changed HEAD before creating any tag", async () => {
+    await withRepository(async (root, remote, git) => {
+      await expect(
+        createAndPushReleaseTag("", {
+          root,
+          confirm: async () => {
+            await git(["commit", "--allow-empty", "-m", "concurrent commit"]);
+            return true;
+          },
+        }),
+      ).rejects.toThrow("not synchronized");
+      expect(await git(["tag", "--list"])).toBe("");
+      expect(await git(["tag", "--list"], remote)).toBe("");
+    });
+  });
+
+  it("propagates a push failure rather than reporting success", async () => {
+    await withRepository(async (root, remote, git) => {
+      await git(["config", "remote.origin.pushurl", path.join(root, "missing.git")]);
+      await expect(
+        createAndPushReleaseTag("", { root, confirm: async () => true }),
+      ).rejects.toThrow();
+      expect(await git(["tag", "--list"], remote)).toBe("");
     });
   });
 });
