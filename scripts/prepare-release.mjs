@@ -268,7 +268,11 @@ export function updateWorkspaceLockVersions(lockText, workspaceNames, version, l
       if (!block.startsWith("[[package]]")) {
         return block;
       }
-      const lockedPackage = TOML.parse(block).package?.[0];
+      const parsedBlock = TOML.parse(block);
+      const lockedPackage =
+        isRecord(parsedBlock) && Array.isArray(parsedBlock.package)
+          ? parsedBlock.package[0]
+          : undefined;
       if (
         !isRecord(lockedPackage) ||
         typeof lockedPackage.name !== "string" ||
@@ -277,8 +281,17 @@ export function updateWorkspaceLockVersions(lockText, workspaceNames, version, l
       ) {
         return block;
       }
+      const versionLine = /^([ \t]*version[ \t]*=[ \t]*)(["'])[^"'\r\n]*\2/m;
+      if (!versionLine.test(block)) {
+        throw new Error(
+          `${label} Cargo.lock has no editable version for ${lockedPackage.name}.`,
+        );
+      }
       updatedNames.add(lockedPackage.name);
-      return block.replace(/^version = "[^"\n]*"$/m, `version = "${version}"`);
+      return block.replace(
+        versionLine,
+        (_, prefix, quote) => `${prefix}${quote}${version}${quote}`,
+      );
     })
     .join("");
   if (updatedNames.size !== workspaceNames.size) {
@@ -413,12 +426,7 @@ export async function assertGitCliffAvailable(options = {}) {
       env: options.env ?? process.env,
     }));
   } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "ENOENT"
-    ) {
+    if (isRecord(error) && error.code === "ENOENT") {
       throw new Error(`git-cliff is not installed or not on PATH. ${installHint}`, {
         cause: error,
       });

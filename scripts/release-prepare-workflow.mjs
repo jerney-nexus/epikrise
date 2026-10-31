@@ -38,17 +38,17 @@ export async function dispatchReleasePreparation(
   try {
     await run("gh", args);
   } catch (error) {
-    const failure =
-      /** @type {{ code?: string, stderr?: string, message?: string } | null | undefined} */ (
+    const commandError =
+      /** @type {{ code?: string, stderr?: string, message?: string } | null} */ (
         error
       );
-    if (failure?.code === "ENOENT") {
+    if (commandError?.code === "ENOENT") {
       throw new Error(
         "GitHub CLI (gh) is not installed or not on PATH. Install it from https://cli.github.com and run `gh auth login`.",
         { cause: error },
       );
     }
-    const detail = String(failure?.stderr || failure?.message || "").trim();
+    const detail = String(commandError?.stderr || commandError?.message || "").trim();
     throw new Error(
       `Could not dispatch the release preparation workflow. Check that gh is authenticated (gh auth status) and has access to this repository.\n${detail}`,
       { cause: error },
