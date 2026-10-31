@@ -66,7 +66,8 @@ async function prepareReleaseWorkflow() {
   process.stdout.write(
     `Dispatched the Release preparation workflow${versionText} on ${workflowRef}.\n` +
       `Watch the run: gh run list --repo=${repository} --workflow=${workflowFile} --limit 3\n` +
-      "The workflow opens a release pull request when it finishes.\n",
+      "The workflow opens a release pull request when it finishes.\n" +
+      `Find it after the run completes: gh pr list --repo=${repository} --state=open --search "head:release/"\n`,
   );
 }
 

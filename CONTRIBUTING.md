@@ -566,7 +566,9 @@ VS Code task **Epikrise: Dispatch Release Preparation Workflow**). The command
 needs an authenticated `gh` CLI and starts the workflow on `main`; it does not
 wait for the run. Enter a `YYYY.M.MICRO` version or leave it blank to select the
 next CalVer version. The workflow updates npm, Cargo, and Tauri metadata,
-generates release notes, and opens a pull request for review.
+generates release notes, and opens a pull request for review. Find that pull
+request with `gh pr list --repo=jerney-nexus/epikrise --state=open --search "head:release/"`
+(its branch is `release/<version>`, and its title is `Release <version>`).
 
 Local `pnpm release:prepare` also requires `git-cliff` at the exact version the
 workflow pins (`2.10.1`). It checks this before writing any file. If it is
