@@ -1071,10 +1071,10 @@ describe("CalVer release versions", () => {
       );
       const before = new Map(
         await Promise.all(
-          releaseFiles.map(async (file) => [
-            file,
-            await readFile(path.join(fixtureRoot, file)),
-          ]),
+          releaseFiles.map(
+            async (file) =>
+              [file, await readFile(path.join(fixtureRoot, file))] as const,
+          ),
         ),
       );
 
@@ -1095,7 +1095,11 @@ describe("CalVer release versions", () => {
 
       for (const file of releaseFiles) {
         const after = await readFile(path.join(fixtureRoot, file));
-        expect(after.equals(before.get(file)), `${file} changed`).toBe(true);
+        const original = before.get(file);
+        if (original === undefined) {
+          throw new Error(`Missing original contents for ${file}`);
+        }
+        expect(after.equals(original), `${file} changed`).toBe(true);
       }
     } finally {
       await rm(fixtureRoot, { recursive: true, force: true });
