@@ -1,6 +1,6 @@
 [package]
 name = "epikrise"
-version = "2026.10.2"
+version = "2026.10.3"
 description = "Local-only assistant that turns anonymized clinical material into a structured diagnosis and findings list"
 authors = ["Pascal Jerney"]
 edition = "2024"
@@ -30,7 +30,7 @@ members = [
 ]
 
 [workspace.package]
-version = "2026.10.2"
+version = "2026.10.3"
 edition = "2024"
 license = "MIT"
 authors = ["Pascal Jerney"]
