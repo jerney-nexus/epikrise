@@ -1078,11 +1078,12 @@ describe("CalVer release versions", () => {
         ),
       );
 
-      const nodeDirectory = path.dirname(process.execPath);
+      const emptyPath = path.join(fixtureRoot, "empty-bin");
+      await mkdir(emptyPath);
       const error = await execFile(
         process.execPath,
         [path.join(fixtureRoot, "scripts/prepare-release.mjs"), "2099.1.1"],
-        { cwd: fixtureRoot, env: { PATH: nodeDirectory } },
+        { cwd: fixtureRoot, env: { PATH: emptyPath } },
       ).then(
         () => {
           throw new Error("prepare-release should fail without git-cliff");
