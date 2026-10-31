@@ -1046,33 +1046,35 @@ describe("CalVer release versions", () => {
     }
   });
 
-  it("rejects a git-cliff binary that does not match the workflow pin", async () => {
-    const binDirectory = await mkdtemp(path.join(tmpdir(), "epikrise-fake-cliff-"));
-    const fakeCliff = path.join(binDirectory, "git-cliff");
-    try {
-      await writeFile(fakeCliff, "#!/bin/sh\necho 'git-cliff 1.0.0'\n");
-      await chmod(fakeCliff, 0o755);
-      await expect(
-        assertGitCliffAvailable({ env: { ...process.env, PATH: binDirectory } }),
-      ).rejects.toThrow(/git-cliff 2\.10\.1 is required, found 1\.0\.0/);
-    } finally {
-      await rm(binDirectory, { recursive: true, force: true });
-    }
-  });
+  if (process.platform !== "win32") {
+    it("rejects a git-cliff binary that does not match the workflow pin", async () => {
+      const binDirectory = await mkdtemp(path.join(tmpdir(), "epikrise-fake-cliff-"));
+      const fakeCliff = path.join(binDirectory, "git-cliff");
+      try {
+        await writeFile(fakeCliff, "#!/bin/sh\necho 'git-cliff 1.0.0'\n");
+        await chmod(fakeCliff, 0o755);
+        await expect(
+          assertGitCliffAvailable({ env: { ...process.env, PATH: binDirectory } }),
+        ).rejects.toThrow(/git-cliff 2\.10\.1 is required, found 1\.0\.0/);
+      } finally {
+        await rm(binDirectory, { recursive: true, force: true });
+      }
+    });
 
-  it("accepts the pinned git-cliff version", async () => {
-    const binDirectory = await mkdtemp(path.join(tmpdir(), "epikrise-pinned-cliff-"));
-    const fakeCliff = path.join(binDirectory, "git-cliff");
-    try {
-      await writeFile(fakeCliff, "#!/bin/sh\necho 'git-cliff 2.10.1'\n");
-      await chmod(fakeCliff, 0o755);
-      await expect(
-        assertGitCliffAvailable({ env: { ...process.env, PATH: binDirectory } }),
-      ).resolves.toBeUndefined();
-    } finally {
-      await rm(binDirectory, { recursive: true, force: true });
-    }
-  });
+    it("accepts the pinned git-cliff version", async () => {
+      const binDirectory = await mkdtemp(path.join(tmpdir(), "epikrise-pinned-cliff-"));
+      const fakeCliff = path.join(binDirectory, "git-cliff");
+      try {
+        await writeFile(fakeCliff, "#!/bin/sh\necho 'git-cliff 2.10.1'\n");
+        await chmod(fakeCliff, 0o755);
+        await expect(
+          assertGitCliffAvailable({ env: { ...process.env, PATH: binDirectory } }),
+        ).resolves.toBeUndefined();
+      } finally {
+        await rm(binDirectory, { recursive: true, force: true });
+      }
+    });
+  }
 });
 
 describe("release workspace preparation", () => {

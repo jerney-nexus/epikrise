@@ -406,14 +406,19 @@ export async function assertGitCliffAvailable(options = {}) {
       env: options.env ?? process.env,
     }));
   } catch (error) {
-    if (error?.code === "ENOENT") {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
       throw new Error(`git-cliff is not installed or not on PATH. ${installHint}`, {
         cause: error,
       });
     }
     throw new Error(`git-cliff could not be run. ${installHint}`, { cause: error });
   }
-  const found = stdout.match(/(\d+\.\d+\.\d+)/)?.[1];
+  const found = stdout.match(/\b(\d+\.\d+\.\d+\S*)/)?.[1];
   if (found !== requiredGitCliffVersion) {
     throw new Error(
       `git-cliff ${requiredGitCliffVersion} is required, found ${found ?? "an unknown version"}. ${installHint}`,
