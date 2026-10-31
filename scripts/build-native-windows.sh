@@ -50,7 +50,6 @@ case "$build_mode" in
       --config '{"build":{"beforeBuildCommand":null}}'
       --config "$windows_config"
       --ci
-      --no-sign
     )
     ;;
   *)
