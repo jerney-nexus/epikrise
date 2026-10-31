@@ -31,6 +31,7 @@
     "test:ui:coverage": "vitest run --coverage",
     "test:i18n": "vitest run tests/i18n.test.ts",
     "release:prepare": "node scripts/prepare-release.mjs",
+    "release:prepare:workflow": "node scripts/release-prepare-workflow.mjs",
     "release:preflight": "node scripts/release-start.mjs preflight",
     "release:tag": "node scripts/release-start.mjs tag",
     "test:rust": "bash scripts/with-cargo-host-target.sh cargo nextest run --manifest-path src-tauri/Cargo.toml --workspace && pnpm test:rust:updater",

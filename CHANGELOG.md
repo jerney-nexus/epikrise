@@ -7,6 +7,12 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+### Added
+
+- Added `pnpm release:prepare:workflow [version]` and a matching VS Code task to
+  start the Release preparation workflow on `main` with the GitHub CLI, without
+  using the GitHub web UI.
+
 ### Fixed
 
 - Local release preparation now checks for the `git-cliff` version pinned by

@@ -36,6 +36,10 @@ import {
 } from "../scripts/prepare-release.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
 import {
+  buildReleasePreparationWorkflowArgs,
+  dispatchReleasePreparation,
+} from "../scripts/release-prepare-workflow.mjs";
+import {
   createAndPushReleaseTag,
   assertCleanReleaseWorktree,
   assertReleaseMainIsSynchronized,
@@ -1328,6 +1332,9 @@ describe("release start shortcuts", () => {
           args: ["release:prepare", "${input:releaseVersion}"],
         }),
         expect.objectContaining({
+          args: ["release:prepare:workflow", "${input:releaseVersion}"],
+        }),
+        expect.objectContaining({
           args: ["release:tag", "${input:releaseTagVersion}"],
         }),
       ]),
@@ -1347,6 +1354,84 @@ describe("release start shortcuts", () => {
     expect(() =>
       assertReleaseTagAvailable("v2026.10.2", localExists, remoteExists),
     ).toThrow(location);
+  });
+});
+
+describe("release preparation workflow dispatch", () => {
+  it("builds the gh workflow run command with an optional version", () => {
+    expect(buildReleasePreparationWorkflowArgs()).toEqual([
+      "workflow",
+      "run",
+      "release-preparation.yml",
+      "--repo",
+      "jerney-nexus/epikrise",
+      "--ref",
+      "main",
+    ]);
+    expect(buildReleasePreparationWorkflowArgs("2026.10.3")).toEqual([
+      "workflow",
+      "run",
+      "release-preparation.yml",
+      "--repo",
+      "jerney-nexus/epikrise",
+      "--ref",
+      "main",
+      "-f",
+      "version=2026.10.3",
+    ]);
+  });
+
+  it("rejects an invalid version before calling gh", async () => {
+    const run = vi.fn();
+    await expect(dispatchReleasePreparation("2026.13.0", run)).rejects.toThrow(
+      "Invalid CalVer version",
+    );
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("dispatches the workflow on main with gh", async () => {
+    const run = vi.fn().mockResolvedValue({ stdout: "" });
+    await dispatchReleasePreparation("", run);
+    expect(run).toHaveBeenCalledWith("gh", [
+      "workflow",
+      "run",
+      "release-preparation.yml",
+      "--repo",
+      "jerney-nexus/epikrise",
+      "--ref",
+      "main",
+    ]);
+  });
+
+  it("explains how to install gh when it is missing", async () => {
+    const run = vi
+      .fn()
+      .mockRejectedValue(
+        Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }),
+      );
+    await expect(dispatchReleasePreparation("", run)).rejects.toThrow(
+      /GitHub CLI \(gh\) is not installed.*gh auth login/,
+    );
+  });
+
+  it("reports gh authentication or permission failures with gh's output", async () => {
+    const run = vi.fn().mockRejectedValue(
+      Object.assign(new Error("exit 1"), {
+        stderr: "HTTP 403: Resource not accessible",
+      }),
+    );
+    await expect(dispatchReleasePreparation("2026.10.3", run)).rejects.toThrow(
+      /gh auth status.*HTTP 403/s,
+    );
+  });
+
+  it("is wired to the pnpm release script", async () => {
+    const packageJson = JSON.parse(
+      await readFile(path.join(repoRoot, "package.json"), "utf8"),
+    );
+    expect(packageJson.scripts["release:prepare:workflow"]).toBe(
+      "node scripts/release-prepare-workflow.mjs",
+    );
   });
 });
 
