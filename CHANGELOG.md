@@ -7,6 +7,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+## [2026.10.4] - 2026-10-31
+
 ### Added
 
 - Added `pnpm release:prepare:workflow [version]` and a matching VS Code task to
@@ -21,6 +23,16 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 - Release preparation no longer re-serializes `src-tauri/Cargo.lock`. Only the
   `version` lines of workspace packages change, so tagging no longer leaves the
   worktree dirty from formatting-only lockfile rewrites.
+
+### 🚀 Features
+
+- Add release preparation workflow shortcut (#168)
+
+### 🐛 Bug Fixes
+
+- _(release)_ Sign Windows updater artifacts in release builds (#165)
+- Check pinned git-cliff before release preparation (#167)
+- Keep Cargo.lock formatting during release preparation (#169)
 
 ## [2026.10.3] - 2026-10-31
 
@@ -528,4 +540,5 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 [2026.10.1]: https://github.com/jerney-nexus/epikrise/releases/tag/v2026.10.1
 [2026.10.2]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.1...v2026.10.2
 [2026.10.3]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.2...v2026.10.3
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.3...HEAD
+[2026.10.4]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.3...v2026.10.4
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.4...HEAD
