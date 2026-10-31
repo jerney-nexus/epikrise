@@ -137,28 +137,12 @@ export async function prepareReleaseBuildInputs(workspaceRoot) {
   }
 
   const cargoLockPath = path.join(buildRoot, "src-tauri/Cargo.lock");
-  const cargoLock = TOML.parse(await readFile(cargoLockPath, "utf8"));
-  if (!isRecord(cargoLock) || !Array.isArray(cargoLock.package)) {
-    throw new Error("Disposable Cargo.lock has no package list.");
-  }
-  const normalizedNames = new Set();
-  for (const lockedPackage of cargoLock.package) {
-    if (!isRecord(lockedPackage)) {
-      throw new Error("Disposable Cargo.lock contains an invalid package.");
-    }
-    const packageName = lockedPackage.name;
-    if (
-      typeof packageName === "string" &&
-      workspaceNames.has(packageName) &&
-      !("source" in lockedPackage)
-    ) {
-      lockedPackage.version = versions.updateProtocolVersion;
-      normalizedNames.add(packageName);
-    }
-  }
-  if (normalizedNames.size !== workspaceNames.size) {
-    throw new Error("Disposable Cargo.lock is missing workspace packages.");
-  }
+  const updatedCargoLock = updateWorkspaceLockVersions(
+    await readFile(cargoLockPath, "utf8"),
+    workspaceNames,
+    versions.updateProtocolVersion,
+    "Disposable",
+  );
 
   cargoManifest = replaceCargoSectionVersion(
     cargoManifest,
@@ -178,7 +162,7 @@ export async function prepareReleaseBuildInputs(workspaceRoot) {
   }
   tauriConfig.version = versions.updateProtocolVersion;
   await writeFile(cargoManifestPath, cargoManifest);
-  await writeFile(cargoLockPath, TOML.stringify(cargoLock));
+  await writeFile(cargoLockPath, updatedCargoLock);
   await writeFile(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`);
 
   const cargoOptions = {
@@ -255,29 +239,52 @@ export async function updateSourceCargoLockVersions(sourceRoot, version) {
   }
 
   const cargoLockPath = path.join(tauriRoot, "Cargo.lock");
-  const cargoLock = TOML.parse(await readFile(cargoLockPath, "utf8"));
-  if (!isRecord(cargoLock) || !Array.isArray(cargoLock.package)) {
-    throw new Error("Source Cargo.lock has no package list.");
+  const updatedCargoLock = updateWorkspaceLockVersions(
+    await readFile(cargoLockPath, "utf8"),
+    workspaceNames,
+    version,
+    "Source",
+  );
+  await writeFile(cargoLockPath, updatedCargoLock);
+}
+
+/**
+ * Rewrites only the `version` line of workspace packages (entries without a
+ * `source`) so the rest of the lockfile keeps its exact bytes and formatting.
+ * @param {string} lockText
+ * @param {Set<string>} workspaceNames
+ * @param {string} version
+ * @param {string} label
+ */
+export function updateWorkspaceLockVersions(lockText, workspaceNames, version, label) {
+  const parsed = TOML.parse(lockText);
+  if (!isRecord(parsed) || !Array.isArray(parsed.package)) {
+    throw new Error(`${label} Cargo.lock has no package list.`);
   }
   const updatedNames = new Set();
-  for (const lockedPackage of cargoLock.package) {
-    if (!isRecord(lockedPackage)) {
-      throw new Error("Source Cargo.lock contains an invalid package.");
-    }
-    const packageName = lockedPackage.name;
-    if (
-      typeof packageName === "string" &&
-      workspaceNames.has(packageName) &&
-      !("source" in lockedPackage)
-    ) {
-      lockedPackage.version = version;
-      updatedNames.add(packageName);
-    }
-  }
+  const blocks = lockText.split(/^(?=\[\[package\]\])/m);
+  const updatedText = blocks
+    .map((block) => {
+      if (!block.startsWith("[[package]]")) {
+        return block;
+      }
+      const lockedPackage = TOML.parse(block).package?.[0];
+      if (
+        !isRecord(lockedPackage) ||
+        typeof lockedPackage.name !== "string" ||
+        !workspaceNames.has(lockedPackage.name) ||
+        "source" in lockedPackage
+      ) {
+        return block;
+      }
+      updatedNames.add(lockedPackage.name);
+      return block.replace(/^version = "[^"\n]*"$/m, `version = "${version}"`);
+    })
+    .join("");
   if (updatedNames.size !== workspaceNames.size) {
-    throw new Error("Source Cargo.lock is missing workspace packages.");
+    throw new Error(`${label} Cargo.lock is missing workspace packages.`);
   }
-  await writeFile(cargoLockPath, TOML.stringify(cargoLock));
+  return updatedText;
 }
 
 /** @param {string} currentVersion @param {Date} [date] */

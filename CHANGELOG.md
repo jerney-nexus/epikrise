@@ -18,6 +18,9 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 - Local release preparation now checks for the `git-cliff` version pinned by
   the release workflow (2.10.1) before changing any file, and reports how to
   install it instead of failing with a raw `spawn git-cliff ENOENT`.
+- Release preparation no longer re-serializes `src-tauri/Cargo.lock`. Only the
+  `version` lines of workspace packages change, so tagging no longer leaves the
+  worktree dirty from formatting-only lockfile rewrites.
 
 ## [2026.10.3] - 2026-10-31
 
