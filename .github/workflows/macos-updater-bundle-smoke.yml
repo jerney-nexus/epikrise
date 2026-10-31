@@ -1,0 +1,107 @@
+name: macOS updater bundle smoke
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/macos-updater-bundle-smoke.yml
+      - .github/workflows/signed-release.yml
+      - scripts/with-cargo-host-target.sh
+      - scripts/validate-native-cargo-target.mjs
+      - scripts/prepare-ocr.sh
+      - scripts/build-native-ocr.sh
+      - src-tauri/Cargo.toml
+      - src-tauri/Cargo.lock
+      - src-tauri/tauri.conf.json
+      - src-tauri/tauri.release.conf.json
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-15
+    env:
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.15.0
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/epikrise/native-ocr
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-macos-updater-smoke-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh', 'scripts/verify-native-build-environment.mjs') }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify native build host and target
+        env:
+          EPIKRISE_RUNNER_OS: ${{ runner.os }}
+          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
+        run: bash scripts/with-cargo-host-target.sh --native-only --validate-only
+
+      - name: Install macOS OCR language data
+        run: brew install ripgrep tesseract tesseract-lang
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Prepare target OCR resources
+        run: bash scripts/prepare-ocr.sh --target "$TARGET"
+
+      - name: Build unsigned updater-enabled app bundle
+        run: |
+          set -euo pipefail
+          bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
+            pnpm exec tauri build \
+              --target "$TARGET" \
+              --config src-tauri/tauri.release.conf.json \
+              --config '{"build":{"beforeBuildCommand":null}}' \
+              --bundles app \
+              --ci \
+              --no-sign
+
+      - name: Verify updater archive generation
+        run: |
+          set -euo pipefail
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          bundle_root="src-tauri/target/host-$host_target/$TARGET/release/bundle"
+          archive_list="$RUNNER_TEMP/updater-archives.txt"
+          find "$bundle_root" -type f -name '*.app.tar.gz' -print > "$archive_list"
+          archive_count="$(wc -l < "$archive_list" | tr -d '[:space:]')"
+          if [[ "$archive_count" != '1' ]]; then
+            printf 'Expected exactly one .app.tar.gz updater archive, found %s.\n' \
+              "$archive_count" >&2
+            exit 1
+          fi
+          IFS= read -r updater_archive < "$archive_list"
+          test -s "$updater_archive"
+          printf 'Generated updater archive: %s\n' "$updater_archive"
