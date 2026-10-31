@@ -1363,6 +1363,8 @@ describe("release preparation workflow dispatch", () => {
       "workflow",
       "run",
       "release-preparation.yml",
+      "--repo",
+      "jerney-nexus/epikrise",
       "--ref",
       "main",
     ]);
@@ -1370,6 +1372,8 @@ describe("release preparation workflow dispatch", () => {
       "workflow",
       "run",
       "release-preparation.yml",
+      "--repo",
+      "jerney-nexus/epikrise",
       "--ref",
       "main",
       "-f",
@@ -1392,6 +1396,8 @@ describe("release preparation workflow dispatch", () => {
       "workflow",
       "run",
       "release-preparation.yml",
+      "--repo",
+      "jerney-nexus/epikrise",
       "--ref",
       "main",
     ]);
