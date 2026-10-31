@@ -394,6 +394,33 @@ export async function formatReleaseArtifacts(workspaceRoot = repoRoot) {
   }
 }
 
+export const requiredGitCliffVersion = "2.10.1";
+
+/** @param {{ env?: NodeJS.ProcessEnv, cwd?: string }} [options] */
+export async function assertGitCliffAvailable(options = {}) {
+  const installHint = `Install it with: cargo install git-cliff --version ${requiredGitCliffVersion} --locked`;
+  let stdout;
+  try {
+    ({ stdout } = await execFile("git-cliff", ["--version"], {
+      cwd: options.cwd ?? repoRoot,
+      env: options.env ?? process.env,
+    }));
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`git-cliff is not installed or not on PATH. ${installHint}`, {
+        cause: error,
+      });
+    }
+    throw new Error(`git-cliff could not be run. ${installHint}`, { cause: error });
+  }
+  const found = stdout.match(/(\d+\.\d+\.\d+)/)?.[1];
+  if (found !== requiredGitCliffVersion) {
+    throw new Error(
+      `git-cliff ${requiredGitCliffVersion} is required, found ${found ?? "an unknown version"}. ${installHint}`,
+    );
+  }
+}
+
 /** @param {string} requestedVersion */
 async function prepareRelease(requestedVersion) {
   const packagePath = path.join(repoRoot, "package.json");
@@ -407,6 +434,7 @@ async function prepareRelease(requestedVersion) {
       `Release version ${version} must be greater than ${previousVersion}.`,
     );
   }
+  await assertGitCliffAvailable();
   const previousReleaseTagExists = await hasGitTag(`v${previousVersion}`);
 
   const { stdout: generatedNotes } = await execFile(
