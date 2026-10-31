@@ -7,6 +7,12 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+## [2026.10.5] - 2026-10-31
+
+### 🐛 Bug Fixes
+
+- _(release)_ Run signed release stage on ubuntu 24.04 (#174)
+
 ## [2026.10.4] - 2026-10-31
 
 ### Added
@@ -541,4 +547,5 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 [2026.10.2]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.1...v2026.10.2
 [2026.10.3]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.2...v2026.10.3
 [2026.10.4]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.3...v2026.10.4
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.4...HEAD
+[2026.10.5]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.4...v2026.10.5
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.5...HEAD
