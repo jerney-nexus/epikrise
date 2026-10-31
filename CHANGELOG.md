@@ -7,6 +7,12 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+### Fixed
+
+- Local release preparation now checks for the `git-cliff` version pinned by
+  the release workflow (2.10.1) before changing any file, and reports how to
+  install it instead of failing with a raw `spawn git-cliff ENOENT`.
+
 ## [2026.10.3] - 2026-10-31
 
 ### Added

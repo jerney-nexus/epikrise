@@ -9,6 +9,7 @@ import {
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -21,6 +22,7 @@ import TOML from "@iarna/toml";
 import * as prettier from "prettier";
 import { describe, expect, it, vi } from "vitest";
 import {
+  assertGitCliffAvailable,
   assertStoreVersionAdvances,
   createReleasedChangelog,
   deriveReleaseVersions,
@@ -1020,6 +1022,120 @@ describe("CalVer release versions", () => {
     expect(invocation).toContain('"--unreleased"');
     expect(invocation).toContain('"--tag"');
   });
+
+  it("checks the pinned git-cliff before any release file is written", async () => {
+    const script = await readFile(
+      path.join(repoRoot, "scripts/prepare-release.mjs"),
+      "utf8",
+    );
+    const body = script.slice(script.indexOf("async function prepareRelease("));
+    const check = body.indexOf("await assertGitCliffAvailable()");
+    expect(check).toBeGreaterThan(0);
+    expect(check).toBeLessThan(body.indexOf("writeFile(packagePath"));
+  });
+
+  it("fails with an actionable error when git-cliff is missing from PATH", async () => {
+    const emptyPath = await mkdtemp(path.join(tmpdir(), "epikrise-no-cliff-"));
+    try {
+      await expect(
+        assertGitCliffAvailable({ env: { PATH: emptyPath } }),
+      ).rejects.toThrow(
+        /git-cliff is not installed.*cargo install git-cliff --version 2\.10\.1 --locked/,
+      );
+    } finally {
+      await rm(emptyPath, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves every release file unchanged when git-cliff is missing", async () => {
+    const fixtureRoot = await mkdtemp(path.join(tmpdir(), "epikrise-prepare-fail-"));
+    const releaseFiles = [
+      "package.json",
+      "CHANGELOG.md",
+      "src-tauri/tauri.conf.json",
+      "src-tauri/Cargo.toml",
+      "src-tauri/Cargo.lock",
+    ];
+    try {
+      await cp(path.join(repoRoot, "scripts"), path.join(fixtureRoot, "scripts"), {
+        recursive: true,
+      });
+      for (const file of releaseFiles) {
+        await mkdir(path.dirname(path.join(fixtureRoot, file)), { recursive: true });
+        await cp(path.join(repoRoot, file), path.join(fixtureRoot, file));
+      }
+      await symlink(
+        path.join(repoRoot, "node_modules"),
+        path.join(fixtureRoot, "node_modules"),
+        "dir",
+      );
+      const before = new Map(
+        await Promise.all(
+          releaseFiles.map(
+            async (file) =>
+              [file, await readFile(path.join(fixtureRoot, file))] as const,
+          ),
+        ),
+      );
+
+      const emptyPath = path.join(fixtureRoot, "empty-bin");
+      await mkdir(emptyPath);
+      const error = await execFile(
+        process.execPath,
+        [path.join(fixtureRoot, "scripts/prepare-release.mjs"), "2099.1.1"],
+        { cwd: fixtureRoot, env: { PATH: emptyPath } },
+      ).then(
+        () => {
+          throw new Error("prepare-release should fail without git-cliff");
+        },
+        (failure) => failure,
+      );
+      expect(`${error.stdout}${error.stderr}`).toMatch(
+        /git-cliff is not installed.*cargo install git-cliff --version 2\.10\.1 --locked/,
+      );
+
+      for (const file of releaseFiles) {
+        const after = await readFile(path.join(fixtureRoot, file));
+        const original = before.get(file);
+        if (original === undefined) {
+          throw new Error(`Missing original contents for ${file}`);
+        }
+        expect(after.equals(original), `${file} changed`).toBe(true);
+      }
+    } finally {
+      await rm(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  if (process.platform !== "win32") {
+    it("rejects a git-cliff binary that does not match the workflow pin", async () => {
+      const binDirectory = await mkdtemp(path.join(tmpdir(), "epikrise-fake-cliff-"));
+      const fakeCliff = path.join(binDirectory, "git-cliff");
+      try {
+        await writeFile(fakeCliff, "#!/bin/sh\necho 'git-cliff 1.0.0'\n");
+        await chmod(fakeCliff, 0o755);
+        await expect(
+          assertGitCliffAvailable({ env: { ...process.env, PATH: binDirectory } }),
+        ).rejects.toThrow(/git-cliff 2\.10\.1 is required, found 1\.0\.0/);
+      } finally {
+        await rm(binDirectory, { recursive: true, force: true });
+      }
+    });
+
+    it("accepts the pinned git-cliff version", async () => {
+      const binDirectory = await mkdtemp(path.join(tmpdir(), "epikrise-pinned-cliff-"));
+      const fakeCliff = path.join(binDirectory, "git-cliff");
+      try {
+        await writeFile(fakeCliff, "#!/bin/sh\necho 'git-cliff 2.10.1'\n");
+        await chmod(fakeCliff, 0o755);
+        await expect(
+          assertGitCliffAvailable({ env: { ...process.env, PATH: binDirectory } }),
+        ).resolves.toBeUndefined();
+      } finally {
+        await rm(binDirectory, { recursive: true, force: true });
+      }
+    });
+  }
 });
 
 describe("release workspace preparation", () => {

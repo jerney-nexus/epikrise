@@ -565,6 +565,11 @@ Actions tab. Enter a `YYYY.M.MICRO` version or leave it blank to select the
 next CalVer version. The workflow updates npm, Cargo, and Tauri metadata,
 generates release notes, and opens a pull request for review.
 
+Local `pnpm release:prepare` also requires `git-cliff` at the exact version the
+workflow pins (`2.10.1`). It checks this before writing any file. If it is
+missing or different, install it with
+`cargo install git-cliff --version 2.10.1 --locked`.
+
 After merging that PR, run `pnpm release:preflight` from a clean worktree. It
 fetches tags, fast-forward updates `main` from `origin/main`, and reports the
 project version and whether its tag exists locally and remotely. If the
