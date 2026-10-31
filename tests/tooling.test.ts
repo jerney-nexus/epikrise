@@ -2523,6 +2523,44 @@ describe("six-target desktop build tooling", () => {
     expect(ocrBuildScript).toContain('-DCMAKE_CXX_COMPILER="$msvc_cl_cmake"');
   });
 
+  it("signs Windows release updater artifacts instead of skipping signing", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-windows-release-sign-"),
+    );
+    const binDir = path.join(directory, "bin");
+    const buildLog = path.join(directory, "build.log");
+
+    try {
+      await mkdir(binDir);
+      await writeExecutable(
+        path.join(binDir, "pnpm"),
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$*" "${TAURI_SIGNING_PRIVATE_KEY:-unset}" > "$BUILD_LOG"\n',
+      );
+
+      await execFile("bash", ["scripts/build-native-windows.sh", "x64", "release"], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+          BUILD_LOG: buildLog,
+          EPIKRISE_WINDOWS_WEBVIEW_MODE: "embedBootstrapper",
+          TAURI_SIGNING_PRIVATE_KEY: "test-private-key",
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "test-password",
+        },
+      });
+
+      const [command, signingKey] = (await readFile(buildLog, "utf8"))
+        .trimEnd()
+        .split(/\r?\n/);
+      expect(command).toContain("tauri build --target x86_64-pc-windows-msvc");
+      expect(command).toContain("--features updater-windows-x86_64-nsis");
+      expect(command).not.toContain("--no-sign");
+      expect(signingKey).toBe("test-private-key");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("uses a lower-memory release profile for native Windows diagnostic builds", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "epikrise-windows-diagnostic-"),
