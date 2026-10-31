@@ -9,6 +9,7 @@ import {
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -1043,6 +1044,61 @@ describe("CalVer release versions", () => {
       );
     } finally {
       await rm(emptyPath, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves every release file unchanged when git-cliff is missing", async () => {
+    const fixtureRoot = await mkdtemp(path.join(tmpdir(), "epikrise-prepare-fail-"));
+    const releaseFiles = [
+      "package.json",
+      "CHANGELOG.md",
+      "src-tauri/tauri.conf.json",
+      "src-tauri/Cargo.toml",
+      "src-tauri/Cargo.lock",
+    ];
+    try {
+      await cp(path.join(repoRoot, "scripts"), path.join(fixtureRoot, "scripts"), {
+        recursive: true,
+      });
+      for (const file of releaseFiles) {
+        await mkdir(path.dirname(path.join(fixtureRoot, file)), { recursive: true });
+        await cp(path.join(repoRoot, file), path.join(fixtureRoot, file));
+      }
+      await symlink(
+        path.join(repoRoot, "node_modules"),
+        path.join(fixtureRoot, "node_modules"),
+        "dir",
+      );
+      const before = new Map(
+        await Promise.all(
+          releaseFiles.map(async (file) => [
+            file,
+            await readFile(path.join(fixtureRoot, file)),
+          ]),
+        ),
+      );
+
+      const nodeDirectory = path.dirname(process.execPath);
+      const error = await execFile(
+        process.execPath,
+        [path.join(fixtureRoot, "scripts/prepare-release.mjs"), "2099.1.1"],
+        { cwd: fixtureRoot, env: { PATH: nodeDirectory } },
+      ).then(
+        () => {
+          throw new Error("prepare-release should fail without git-cliff");
+        },
+        (failure) => failure,
+      );
+      expect(`${error.stdout}${error.stderr}`).toMatch(
+        /git-cliff is not installed.*cargo install git-cliff --version 2\.10\.1 --locked/,
+      );
+
+      for (const file of releaseFiles) {
+        const after = await readFile(path.join(fixtureRoot, file));
+        expect(after.equals(before.get(file)), `${file} changed`).toBe(true);
+      }
+    } finally {
+      await rm(fixtureRoot, { recursive: true, force: true });
     }
   });
 
