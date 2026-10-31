@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         env:
@@ -99,12 +99,12 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             release_target: x86_64-unknown-linux-gnu
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
             platform: linux
             bundles: deb rpm appimage
           - target: aarch64-unknown-linux-gnu
             release_target: aarch64-unknown-linux-gnu
-            runner: ubuntu-22.04-arm
+            runner: ubuntu-24.04-arm
             platform: linux
             bundles: deb rpm appimage
           - target: x86_64-apple-darwin
@@ -215,7 +215,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake curl file libfuse2 libssl-dev libwebkit2gtk-4.1-dev \
+            build-essential cmake curl file libfuse2t64 libssl-dev libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev librsvg2-dev libxdo-dev ninja-build \
             pkg-config patchelf ripgrep rpm tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
 
@@ -511,7 +511,7 @@ jobs:
   approve:
     name: Approve accepted draft release
     needs: stage
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     environment:
       name: release
       url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
@@ -521,7 +521,7 @@ jobs:
   publish:
     name: Publish accepted draft release
     needs: [stage, approve]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     concurrency:
       group: updater-release
       queue: max
