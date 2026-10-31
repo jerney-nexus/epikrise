@@ -561,7 +561,10 @@ formatted output`) and keep each commit focused on one change. User-visible
 changes get an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
 
 To prepare a release, run the **Release preparation** workflow from the GitHub
-Actions tab. Enter a `YYYY.M.MICRO` version or leave it blank to select the
+Actions tab, or run `pnpm release:prepare:workflow [YYYY.M.MICRO]` (also the
+VS Code task **Epikrise: Dispatch Release Preparation Workflow**). The command
+needs an authenticated `gh` CLI and starts the workflow on `main`; it does not
+wait for the run. Enter a `YYYY.M.MICRO` version or leave it blank to select the
 next CalVer version. The workflow updates npm, Cargo, and Tauri metadata,
 generates release notes, and opens a pull request for review.
 

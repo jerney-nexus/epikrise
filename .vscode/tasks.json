@@ -238,6 +238,15 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Dispatch Release Preparation Workflow",
+      "detail": "Starts the Release preparation GitHub workflow on main (requires gh).",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["release:prepare:workflow", "${input:releaseVersion}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Release Preflight",
       "detail": "Safely switches to an up-to-date main and reports release tag status.",
       "type": "process",
