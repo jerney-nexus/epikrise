@@ -10,14 +10,39 @@ on:
       - .github/workflows/macos-updater-bundle-smoke.yml
       - .github/workflows/signed-release.yml
       - scripts/with-cargo-host-target.sh
+      - scripts/detect-windows-os-architecture.sh
+      - scripts/detect-windows-os-architecture.ps1
       - scripts/validate-native-cargo-target.mjs
+      - scripts/verify-native-build-environment.mjs
+      - scripts/verify-linux-host-architecture.mjs
       - scripts/prepare-ocr.sh
       - scripts/build-native-ocr.sh
+      - scripts/build-native-windows-ocr.sh
+      - scripts/build-windows-ocr.sh
+      - scripts/patch-windows-ocr-cmake.sh
+      - scripts/verify-binary-architecture.mjs
+      - scripts/verify-runtime-dependencies.mjs
       - src-tauri/Cargo.toml
       - src-tauri/Cargo.lock
+      - src-tauri/build.rs
+      - src-tauri/src/windows_updater_features.rs
       - src-tauri/tauri.conf.json
       - src-tauri/tauri.release.conf.json
+      - package.json
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .npmrc
+      - .pnpmfile.cjs
+      - vite.config.js
+      - svelte.config.js
+      - rust-toolchain
+      - rust-toolchain.toml
+      - src-tauri/rust-toolchain
+      - src-tauri/rust-toolchain.toml
+      - .cargo/config
+      - .cargo/config.toml
+      - src-tauri/.cargo/config
+      - src-tauri/.cargo/config.toml
   workflow_dispatch:
 
 permissions:

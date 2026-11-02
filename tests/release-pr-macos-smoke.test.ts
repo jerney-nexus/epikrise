@@ -106,6 +106,20 @@ function queueTrustedInputs(fetchImpl: Mock<typeof fetch>): Mock<typeof fetch> {
 }
 
 describe("release PR macOS updater smoke gate", () => {
+  it("starts the smoke workflow for every input the gate trusts", () => {
+    const workflow = readFileSync(
+      new URL("../.github/workflows/macos-updater-bundle-smoke.yml", import.meta.url),
+      "utf8",
+    );
+    const pathsBlock = workflow.match(/^ {4}paths:\n((?: {6}- .+\n)+)/m);
+    expect(pathsBlock).not.toBeNull();
+    const filterPaths = [...pathsBlock![1].matchAll(/^ {6}- (.+)$/gm)].map((match) =>
+      match[1].trim(),
+    );
+    const missing = smokeTrustedPaths.filter((file) => !filterPaths.includes(file));
+    expect(missing).toEqual([]);
+  });
+
   it("keeps the run title format in sync with the smoke workflow run-name", () => {
     const workflow = readFileSync(
       new URL("../.github/workflows/macos-updater-bundle-smoke.yml", import.meta.url),
