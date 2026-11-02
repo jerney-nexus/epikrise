@@ -45,18 +45,19 @@ const trustedRequests = smokeTrustedPaths.length * 2;
 
 const rustPathAttribute = /#\[\s*(?:cfg_attr\([^)]*?,\s*)?path\s*=\s*r?"([^"]+)"/g;
 const rustUnsupportedInclude = /\binclude(?:_bytes|_str)?!\s*\(/;
-const rustModuleDeclaration = /^\s*(?:pub\s+)?mod\s+\w+\s*;/;
+const rustModuleDeclaration =
+  /^\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+\w+\s*;/;
 
 /**
- * True when a Rust file declares a `mod x;` the closure cannot resolve: the
- * declaration has no `#[path]` attribute on the line above it.
+ * True when a Rust file declares a `mod x;` the closure cannot resolve: neither
+ * the declaration line nor the line above it carries a `#[path]` attribute.
  */
 function hasUnpathedModule(source: string): boolean {
   const lines = source.split("\n");
   return lines.some((line, index) => {
     if (!rustModuleDeclaration.test(line)) return false;
     const previous = index > 0 ? lines[index - 1] : "";
-    return !/#\[[^\]]*path\s*=/.test(previous);
+    return !/#\[[^\]]*path\s*=/.test(`${previous}\n${line}`);
   });
 }
 
@@ -856,6 +857,10 @@ describe("release PR macOS updater smoke gate", () => {
 
     expect(hasUnpathedModule('#[path = "a.rs"]\nmod a;\n')).toBe(false);
     expect(hasUnpathedModule("mod helpers;\n")).toBe(true);
+    expect(hasUnpathedModule("pub(crate) mod helpers;\n")).toBe(true);
+    expect(hasUnpathedModule("pub(super) mod helpers;\n")).toBe(true);
+    expect(hasUnpathedModule("#[cfg(test)] mod tests;\n")).toBe(true);
+    expect(hasUnpathedModule('#[path = "a.rs"]\npub(crate) mod a;\n')).toBe(false);
     expect(rustUnsupportedInclude.test('include!("gen.rs");')).toBe(true);
     expect(rustUnsupportedInclude.test('include_str!("data.txt")')).toBe(true);
   });
