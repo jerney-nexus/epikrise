@@ -7,6 +7,11 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+### Added
+
+- Gate release pull request merges on successful Intel and Apple Silicon
+  updater bundle smoke builds.
+
 ## [2026.10.5] - 2026-10-31
 
 ### 🐛 Bug Fixes

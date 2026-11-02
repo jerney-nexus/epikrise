@@ -1,19 +1,79 @@
 name: macOS updater bundle smoke
 
+run-name: >-
+  ${{ github.event_name == 'pull_request' && format('macOS updater bundle smoke | PR #{0} | head {1} | base {2}', github.event.pull_request.number, github.event.pull_request.head.sha, github.event.pull_request.base.sha) || 'macOS updater bundle smoke (manual)' }}
+
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     paths:
       - .github/workflows/macos-updater-bundle-smoke.yml
       - .github/workflows/signed-release.yml
       - scripts/with-cargo-host-target.sh
+      - scripts/detect-windows-os-architecture.sh
+      - scripts/detect-windows-os-architecture.ps1
       - scripts/validate-native-cargo-target.mjs
+      - scripts/verify-native-build-environment.mjs
+      - scripts/verify-linux-host-architecture.mjs
       - scripts/prepare-ocr.sh
       - scripts/build-native-ocr.sh
+      - scripts/build-native-windows-ocr.sh
+      - scripts/build-windows-ocr.sh
+      - scripts/patch-windows-ocr-cmake.sh
+      - scripts/verify-binary-architecture.mjs
+      - scripts/verify-runtime-dependencies.mjs
       - src-tauri/Cargo.toml
       - src-tauri/Cargo.lock
+      - src-tauri/**/Cargo.toml
+      - src-tauri/**/*.rs
+      - src-tauri/build.rs
+      - src-tauri/src/windows_updater_features.rs
       - src-tauri/tauri.conf.json
       - src-tauri/tauri.release.conf.json
+      - src-tauri/tauri.macos.conf.json
+      - package.json
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .npmrc
+      - .pnpmfile.cjs
+      - vite.config.js
+      - svelte.config.js
+      - postcss.config.js
+      - postcss.config.cjs
+      - postcss.config.mjs
+      - postcss.config.ts
+      - postcss.config.mts
+      - postcss.config.cts
+      - .postcssrc
+      - .postcssrc.json
+      - .postcssrc.yaml
+      - .postcssrc.yml
+      - .postcssrc.js
+      - .postcssrc.cjs
+      - .postcssrc.mjs
+      - .postcssrc.ts
+      - .postcssrc.cts
+      - .postcssrc.mts
+      - .env
+      - .env.local
+      - .env.production
+      - .env.production.local
+      - tsconfig.json
+      - rust-toolchain
+      - rust-toolchain.toml
+      - src-tauri/rust-toolchain
+      - src-tauri/rust-toolchain.toml
+      - .cargo/config
+      - .cargo/config.toml
+      - src-tauri/.cargo/config
+      - src-tauri/.cargo/config.toml
+      - src-tauri/Info.plist
+      - src/**/*
+      - static/**/*
+      - locales/**/*
+      - src-tauri/capabilities/**/*
+      - src-tauri/icons/**/*
+      - src-tauri/resources/**/*
   workflow_dispatch:
 
 permissions:
@@ -22,6 +82,13 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.target }}
+    # Only release PRs are gated, so other PRs skip the macOS build. Title and body edits only change the run title; build only on base retargets.
+    if: >-
+      (github.event_name != 'pull_request' ||
+      startsWith(github.head_ref, 'release/')) &&
+      (github.event_name != 'pull_request' ||
+      github.event.action != 'edited' ||
+      github.event.changes.base != null)
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:

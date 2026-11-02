@@ -609,6 +609,70 @@ that the archive is generated. This smoke check does not verify a production
 signature; keep signed-release acceptance pending until a native signed run
 confirms both the archive and its signature.
 
+Every pull request targeting `main` receives the **Release PR macOS updater
+bundle smoke** status check. It passes immediately for non-release branches.
+For `release/*` branches, it waits up to 60 minutes for the macOS updater
+bundle smoke run for the same pull request number, head SHA, and base SHA, and
+requires both `Build x86_64-apple-darwin` and `Build aarch64-apple-darwin` to
+pass. The gate runs trusted code from the PR base and rejects changes to the
+smoke workflow and to the build inputs it executes or reads: every script the
+workflow runs, directly or through another script (cargo-target, OCR,
+native-environment, architecture, and runtime-dependency checks, including
+PowerShell `.ps1` scripts), `src-tauri/build.rs`, every other Rust source and
+Cargo manifest under `src-tauri/` (the only Rust workspace), including any
+build script a manifest names, `src-tauri/tauri.release.conf.json`,
+`pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, `.pnpmfile.cjs`,
+`vite.config.js`, `svelte.config.js`, `tsconfig.json`, PostCSS config files
+(`postcss.config.*` and `.postcssrc*`, which Vite loads automatically), Vite env
+files (`.env`, `.env.local`, `.env.production`, `.env.production.local`), Rust toolchain pins (`rust-toolchain` and
+`rust-toolchain.toml`, at the root and in `src-tauri/`), and Cargo config files
+(`.cargo/config` and `.cargo/config.toml`, at the root and in `src-tauri/`),
+`src-tauri/tauri.macos.conf.json`, `src-tauri/Info.plist`, and every tracked file under `src/`, `static/`,
+`locales/`, `src-tauri/capabilities/`, `src-tauri/icons/`, and
+`src-tauri/resources/`, which the app bundles. Files in those directories, including files a PR adds, are
+compared by blob SHA and file mode at both refs, so any change fails the gate.
+Symlinks in that scope, and blobs at a trusted directory's own name (for example
+a file named `static`), also fail the gate. This scope is
+intentional: a release PR that changes those directories is blocked rather than
+re-verified, because the smoke run tested the bundled content before the change.
+The scope stays unchanged unless the gate is updated to rerun the smoke build on
+the exact head SHA for those changes. The OCR
+runtime assets under `src-tauri/resources/ocr/` are gitignored and fetched by
+`scripts/prepare-ocr.sh` against pinned SHA-256 values instead.
+The gate reads each `src-tauri/` Rust source and Cargo manifest at both refs.
+Rust sources under `src-tauri/` must be identical at both refs. Manifests there
+may change only their `version` under `[package]` and `[workspace.package]`, which
+release preparation sets, and a
+build script that a manifest names is trusted like the other build inputs. The
+gate reads the `build` key in its TOML forms (spaced or quoted headings, quoted
+or dotted keys, and inline `package` tables) and fails closed on any value it
+cannot parse. The repository has no Rust sources or manifests outside `src-tauri/`, so the gate
+does not enumerate them. The smoke workflow path filter includes
+`src-tauri/**/*.rs` and `src-tauri/**/Cargo.toml`, so every trusted Rust input
+starts the smoke run.
+The gate follows script references from the `build` and `prepare` scripts in
+`package.json`, which are the only npm scripts the smoke run executes. A reached
+Rust file that uses `include!` or declares `mod x;` without a `#[path]`
+attribute fails the test suite, because the closure cannot follow it. If a
+required input (the smoke workflow or `src-tauri/build.rs`) is missing at either
+ref, or either commit SHA cannot be resolved, the gate fails rather than passing.
+`package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` may change
+only in their version fields, which release preparation sets. For the lockfile,
+that means the `version` of local (source-less) packages; registry and git
+entries must match the base exactly. Retargeting a release PR triggers both
+workflows. A missing run, a failed job, or a run that does not finish before the timeout
+fails the gate. The smoke workflow's path filter lists every trusted input, so a
+PR that changes one starts the smoke workflow. Its build job runs only for
+`release/*` heads and base retargets, so non-release PRs skip the macOS builds.
+Manual `workflow_dispatch` runs always build, whatever the branch.
+
+To enforce the gate, a repository administrator must add only
+**Release PR macOS updater bundle smoke** to the required status checks in
+Settings → Rules → Rulesets → **Branch default**. Keep the existing five
+required checks (`Rust checks and tests`, `UI and i18n`, `quality`,
+`Playwright browser tests`, and `dependencies`). Do not require the two macOS
+smoke jobs directly; the gate is the only additional required check.
+
 Keep signing keys in the approved GitHub Actions secrets; never commit private
 signing material or generate or replace a production key in CI. A Tauri updater
 signature verifies the update payload and does not replace platform publisher
