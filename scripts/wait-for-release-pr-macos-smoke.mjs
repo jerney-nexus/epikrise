@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { posix, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 /**
@@ -211,6 +211,48 @@ function versionlessJson(payload, path) {
   return JSON.stringify(value);
 }
 
+/** @param {Record<string, unknown> | null} payload @param {string} path */
+function decodeContent(payload, path) {
+  if (
+    !payload ||
+    payload.encoding !== "base64" ||
+    typeof payload.content !== "string"
+  ) {
+    throw new Error(`GitHub API did not return ${path} content.`);
+  }
+  return Buffer.from(payload.content, "base64").toString("utf8");
+}
+
+/** @param {string} contents */
+function versionlessCargoManifest(contents) {
+  let section = "";
+  return contents
+    .split("\n")
+    .map((line) => {
+      const heading = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/);
+      if (heading) section = heading[1];
+      return section === "package" && /^\s*version\s*=/.test(line)
+        ? line.replace(/(\bversion\s*=\s*).*/, "$1<release-version>")
+        : line;
+    })
+    .join("\n");
+}
+
+/** @param {string} contents @param {string} manifestPath */
+function cargoBuildScriptPath(contents, manifestPath) {
+  let section = "";
+  for (const line of contents.split("\n")) {
+    const heading = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/);
+    if (heading) section = heading[1];
+    if (section !== "package") continue;
+    const build = line.match(/^\s*build\s*=\s*["']([^"']+)["']/);
+    if (build) {
+      return posix.normalize(posix.join(posix.dirname(manifestPath), build[1]));
+    }
+  }
+  return null;
+}
+
 /**
  * @param {{
  *   apiBaseUrl: string,
@@ -282,8 +324,53 @@ export async function assertSmokeWorkflowUnmodified({
   await assertCommitResolves("PR base", baseSha);
   await assertCommitResolves("PR head", headSha);
 
+  /** @param {string} sha */
+  async function getCargoInputPaths(sha) {
+    const tree = await requestJson(
+      apiUrl(
+        apiBaseUrl,
+        owner,
+        repo,
+        `/git/trees/${encodeURIComponent(sha)}?recursive=1`,
+      ),
+      token,
+      fetchImpl,
+    );
+    if (!isRecord(tree) || tree.truncated === true || !Array.isArray(tree.tree)) {
+      throw new Error(`GitHub API could not enumerate Cargo inputs at ${sha}.`);
+    }
+    const paths = new Set(
+      tree.tree
+        .filter(
+          (entry) =>
+            isRecord(entry) &&
+            typeof entry.path === "string" &&
+            (entry.path === "Cargo.toml" ||
+              entry.path.endsWith("/Cargo.toml") ||
+              entry.path.endsWith(".rs")),
+        )
+        .map((entry) => /** @type {string} */ (entry.path)),
+    );
+    for (const path of paths) {
+      if (!path.endsWith("Cargo.toml")) continue;
+      const manifest = await getContents(path, sha);
+      if (manifest === null) {
+        throw new Error(`${path} disappeared while checking Cargo inputs at ${sha}.`);
+      }
+      const buildScript = cargoBuildScriptPath(decodeContent(manifest, path), path);
+      if (buildScript) paths.add(buildScript);
+    }
+    return paths;
+  }
+
+  const [baseCargoInputs, headCargoInputs] = await Promise.all([
+    getCargoInputPaths(baseSha),
+    getCargoInputPaths(headSha),
+  ]);
+  const cargoInputPaths = new Set([...baseCargoInputs, ...headCargoInputs]);
+
   // Sequential so each path's base and head requests stay in a deterministic order.
-  for (const path of smokeTrustedPaths) {
+  for (const path of new Set([...smokeTrustedPaths, ...cargoInputPaths])) {
     const base = await getContents(path, baseSha);
     const head = await getContents(path, headSha);
     if (requiredSmokePaths.includes(path) && (base === null || head === null)) {
@@ -293,6 +380,16 @@ export async function assertSmokeWorkflowUnmodified({
     }
     if (base === null && head === null) continue;
     if (base !== null && head !== null && base.sha === head.sha) continue;
+    if (
+      base !== null &&
+      head !== null &&
+      cargoInputPaths.has(path) &&
+      path.endsWith("Cargo.toml") &&
+      versionlessCargoManifest(decodeContent(base, path)) ===
+        versionlessCargoManifest(decodeContent(head, path))
+    ) {
+      continue;
+    }
     if (
       base === null ||
       head === null ||

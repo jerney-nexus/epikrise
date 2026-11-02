@@ -41,7 +41,8 @@ function response(payload: object): Response {
   return new Response(JSON.stringify(payload), { status: 200 });
 }
 
-const trustedRequests = smokeTrustedPaths.length * 2 + 2;
+// Two commit checks, two Cargo tree listings, then base and head for each trusted path.
+const trustedRequests = smokeTrustedPaths.length * 2 + 4;
 
 const rustPathAttribute =
   /#\[[^\]]*?\bpath\s*=\s*r?(?<hashes>#*)"(?<modulePath>[^"]+)"\k<hashes>/g;
@@ -67,6 +68,15 @@ function hasUnpathedModule(source: string): boolean {
   });
 }
 
+/** Contents-API body for a text file such as Cargo.toml. */
+function cargoManifest(text: string): object {
+  return {
+    sha: `sha-${text}`,
+    encoding: "base64",
+    content: Buffer.from(text).toString("base64"),
+  };
+}
+
 /** Contents-API body for a JSON file; the sha changes with the content, as it does in git. */
 function encodedJson(value: object): object {
   const content = JSON.stringify(value);
@@ -77,24 +87,43 @@ function encodedJson(value: object): object {
   };
 }
 
-/** Answers the commit lookups for both refs, then every trusted-path lookup in order, using `changes` for paths whose base and head differ. */
+/**
+ * Answers GitHub API calls by URL rather than call order, so added lookups do not shift fixtures.
+ * `files` maps a path to its [base, head] contents (`null` is absent); `trees` maps a SHA to its file paths.
+ */
+function routedFetch(
+  files: Record<string, [object | null, object | null]> = {},
+  trees: Record<string, string[]> = {},
+): Mock<typeof fetch> {
+  return vi.fn<typeof fetch>(async (input) => {
+    const url = new URL(String(input));
+    const commit = url.pathname.match(/\/git\/commits\/([^/]+)$/);
+    if (commit) return response({ sha: decodeURIComponent(commit[1]) });
+    const tree = url.pathname.match(/\/git\/trees\/([^/]+)$/);
+    if (tree) {
+      const treePaths = trees[decodeURIComponent(tree[1])] ?? [];
+      return response({
+        truncated: false,
+        tree: treePaths.map((treePath) => ({ path: treePath, type: "blob" })),
+      });
+    }
+    const filePath = decodeURIComponent(
+      url.pathname.slice(url.pathname.indexOf("/contents/") + "/contents/".length),
+    );
+    const [base, head] = files[filePath] ?? [
+      { sha: `same-${filePath}` },
+      { sha: `same-${filePath}` },
+    ];
+    return contentsResponse(url.searchParams.get("ref") === "base-sha" ? base : head);
+  });
+}
+
+/** Routes every trusted path (unchanged unless listed in `changes`) and the Cargo tree listings. */
 function trustedContentsFetch(
   changes: Record<string, [object | null, object | null]>,
+  trees: Record<string, string[]> = {},
 ): Mock<typeof fetch> {
-  const fetchImpl = vi.fn<typeof fetch>();
-  fetchImpl
-    .mockResolvedValueOnce(response({ sha: "base-sha" }))
-    .mockResolvedValueOnce(response({ sha: "head-sha" }));
-  for (const path of smokeTrustedPaths) {
-    const [base, head] = changes[path] ?? [
-      { sha: `same-${path}` },
-      { sha: `same-${path}` },
-    ];
-    fetchImpl
-      .mockResolvedValueOnce(contentsResponse(base))
-      .mockResolvedValueOnce(contentsResponse(head));
-  }
-  return fetchImpl;
+  return routedFetch(changes, trees);
 }
 
 /** A `null` payload models a path that does not exist at that ref. */
@@ -105,9 +134,14 @@ function contentsResponse(payload: object | null): Response {
   return response(payload);
 }
 
-/** Queues the trusted-input SHA lookups (base and head for each trusted path) that run before polling. */
+/** Queues the trusted-input lookups that run before polling: two commit checks, two empty tree listings, then base and head for each trusted path. */
 function queueTrustedInputs(fetchImpl: Mock<typeof fetch>): Mock<typeof fetch> {
-  for (let index = 0; index < trustedRequests; index += 1) {
+  fetchImpl
+    .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+    .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+    .mockResolvedValueOnce(response({ truncated: false, tree: [] }))
+    .mockResolvedValueOnce(response({ truncated: false, tree: [] }));
+  for (let index = 0; index < smokeTrustedPaths.length * 2; index += 1) {
     fetchImpl.mockResolvedValueOnce(response({ sha: "workflow-sha" }));
   }
   return fetchImpl;
@@ -240,13 +274,6 @@ describe("release PR macOS updater smoke gate", () => {
   });
 
   it("rejects a smoke workflow modified by the pull request", async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "base-sha" }))
-      .mockResolvedValueOnce(response({ sha: "head-sha" }))
-      .mockResolvedValueOnce(response({ sha: "base-workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "changed-workflow-sha" }));
-
     await expect(
       assertSmokeWorkflowUnmodified({
         apiBaseUrl: "https://api.github.com",
@@ -255,7 +282,12 @@ describe("release PR macOS updater smoke gate", () => {
         baseSha: "base-sha",
         headSha: "head-sha",
         token: "test-token",
-        fetchImpl,
+        fetchImpl: trustedContentsFetch({
+          ".github/workflows/macos-updater-bundle-smoke.yml": [
+            { sha: "base-workflow-sha" },
+            { sha: "changed-workflow-sha" },
+          ],
+        }),
       }),
     ).rejects.toThrow(
       ".github/workflows/macos-updater-bundle-smoke.yml differs from the PR base",
@@ -388,6 +420,98 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow(".cargo/config.toml differs from the PR base");
   });
 
+  it("allows a Cargo manifest that changes only the package version", async () => {
+    const base = '[package]\nname = "epikrise"\nversion = "2026.10.2"\n';
+    const head = '[package]\nname = "epikrise"\nversion = "2026.11.0"\n';
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(
+          { "src-tauri/Cargo.toml": [cargoManifest(base), cargoManifest(head)] },
+          {
+            "base-sha": ["src-tauri/Cargo.toml"],
+            "head-sha": ["src-tauri/Cargo.toml"],
+          },
+        ),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a Cargo manifest change beyond the version", async () => {
+    const base = '[package]\nname = "epikrise"\nversion = "2026.10.2"\n';
+    const head = `${base}\n[dependencies]\nevil = { path = "../evil" }\n`;
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(
+          { "src-tauri/Cargo.toml": [cargoManifest(base), cargoManifest(head)] },
+          {
+            "base-sha": ["src-tauri/Cargo.toml"],
+            "head-sha": ["src-tauri/Cargo.toml"],
+          },
+        ),
+      }),
+    ).rejects.toThrow("src-tauri/Cargo.toml differs from the PR base");
+  });
+
+  it("rejects a build script that a Cargo manifest reads but the pull request adds", async () => {
+    const manifest = '[package]\nname = "epikrise"\nbuild = "build/custom.rs"\n';
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(
+          {
+            "src-tauri/Cargo.toml": [cargoManifest(manifest), cargoManifest(manifest)],
+            "src-tauri/build/custom.rs": [null, { sha: "new-build-script" }],
+          },
+          {
+            "base-sha": ["src-tauri/Cargo.toml"],
+            "head-sha": ["src-tauri/Cargo.toml"],
+          },
+        ),
+      }),
+    ).rejects.toThrow("src-tauri/build/custom.rs differs from the PR base");
+  });
+
+  it("fails closed when a Cargo tree listing is truncated", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "base-sha" }))
+      .mockResolvedValueOnce(response({ sha: "head-sha" }))
+      .mockResolvedValueOnce(response({ truncated: true, tree: [] }))
+      .mockResolvedValueOnce(response({ truncated: false, tree: [] }));
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("GitHub API could not enumerate Cargo inputs at base-sha");
+  });
+
   it("rejects a pull request that deletes a trusted build module", async () => {
     const changes = {
       "src-tauri/src/windows_updater_features.rs": [{ sha: "base-features" }, null] as [
@@ -412,20 +536,6 @@ describe("release PR macOS updater smoke gate", () => {
   });
 
   it("rejects a trusted build script modified by the pull request", async () => {
-    const fetchImpl = vi.fn<typeof fetch>();
-    fetchImpl
-      .mockResolvedValueOnce(response({ sha: "base-sha" }))
-      .mockResolvedValueOnce(response({ sha: "head-sha" }));
-    const changedIndex = smokeTrustedPaths.indexOf("scripts/prepare-ocr.sh");
-    for (let index = 0; index < smokeTrustedPaths.length; index += 1) {
-      const changed = index === changedIndex;
-      fetchImpl
-        .mockResolvedValueOnce(response({ sha: `base-${index}` }))
-        .mockResolvedValueOnce(
-          response({ sha: changed ? "changed-script-sha" : `base-${index}` }),
-        );
-    }
-
     await expect(
       assertSmokeWorkflowUnmodified({
         apiBaseUrl: "https://api.github.com",
@@ -434,12 +544,11 @@ describe("release PR macOS updater smoke gate", () => {
         baseSha: "base-sha",
         headSha: "head-sha",
         token: "test-token",
-        fetchImpl,
+        fetchImpl: trustedContentsFetch({
+          "scripts/prepare-ocr.sh": [{ sha: "base-script" }, { sha: "changed-script" }],
+        }),
       }),
     ).rejects.toThrow("scripts/prepare-ocr.sh differs from the PR base");
-    expect(fetchImpl).toHaveBeenCalledTimes(
-      (smokeTrustedPaths.indexOf("scripts/prepare-ocr.sh") + 1) * 2 + 2,
-    );
   });
 
   it("passes only when both required smoke jobs succeed", () => {
