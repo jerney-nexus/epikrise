@@ -92,7 +92,7 @@ function encodedJson(value: object): object {
 
 /**
  * Answers GitHub API calls by URL rather than call order, so added lookups do not shift fixtures.
- * `files` maps a path to its [base, head] contents (`null` is absent); `trees` maps a SHA to its file paths.
+ * `files` maps a path to its [base, head] contents (`null` is absent); `trees` maps a SHA to its file paths, where a trailing slash marks a directory entry.
  */
 function routedFetch(
   files: Record<string, [object | null, object | null]> = {},
@@ -107,7 +107,11 @@ function routedFetch(
       const treePaths = trees[decodeURIComponent(tree[1])] ?? [];
       return response({
         truncated: false,
-        tree: treePaths.map((treePath) => ({ path: treePath, type: "blob" })),
+        tree: treePaths.map((treePath) =>
+          treePath.endsWith("/")
+            ? { path: treePath.slice(0, -1), type: "tree" }
+            : { path: treePath, type: "blob" },
+        ),
       });
     }
     const filePath = decodeURIComponent(
@@ -587,6 +591,28 @@ describe("release PR macOS updater smoke gate", () => {
         }),
       }),
     ).rejects.toThrow("src-tauri/Cargo.lock differs from the PR base");
+  });
+
+  it("ignores directory entries in the tree listing", async () => {
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(
+          {
+            "src/lib": [
+              [{ name: "a.svelte", type: "file" }],
+              [{ name: "a.svelte", type: "file" }],
+            ],
+          },
+          { "base-sha": ["src/lib/"], "head-sha": ["src/lib/"] },
+        ),
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("rejects a changed Rust source whose path needs URL encoding", async () => {

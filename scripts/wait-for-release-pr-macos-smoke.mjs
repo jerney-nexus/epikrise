@@ -434,7 +434,8 @@ export async function assertSmokeWorkflowUnmodified({
     }
     const paths = new Set();
     for (const entry of tree.tree) {
-      if (!isRecord(entry) || typeof entry.path !== "string") continue;
+      if (!isRecord(entry) || entry.type !== "blob") continue;
+      if (typeof entry.path !== "string") continue;
       const path = entry.path;
       const isRustInput =
         path.startsWith("src-tauri/") &&
