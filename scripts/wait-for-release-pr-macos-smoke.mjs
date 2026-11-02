@@ -510,7 +510,27 @@ export async function waitForMacosSmoke({
         headRef,
         baseSha,
       });
-      latestRun = runs[0];
+      latestRun = undefined;
+      let latestJobs = [];
+      for (const candidate of runs) {
+        const candidateJobs = await listRunJobs({
+          apiBaseUrl,
+          owner,
+          repo,
+          runId: candidate.id,
+          token,
+          fetchImpl,
+        });
+        if (
+          candidateJobs.some(
+            (job) => requiredJobs.includes(job.name) && job.conclusion !== "skipped",
+          )
+        ) {
+          latestRun = candidate;
+          latestJobs = candidateJobs;
+          break;
+        }
+      }
 
       if (!latestRun) {
         const mismatchRun = findBaseMismatchRun(smokeRuns, {
@@ -525,15 +545,7 @@ export async function waitForMacosSmoke({
       }
 
       if (latestRun) {
-        const jobs = await listRunJobs({
-          apiBaseUrl,
-          owner,
-          repo,
-          runId: latestRun.id,
-          token,
-          fetchImpl,
-        });
-        const result = evaluateSmokeRun(latestRun, jobs);
+        const result = evaluateSmokeRun(latestRun, latestJobs);
         if (result.state === "passed") {
           console.log(result.message);
           return;

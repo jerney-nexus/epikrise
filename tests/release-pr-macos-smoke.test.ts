@@ -550,4 +550,40 @@ describe("release PR macOS updater smoke gate", () => {
     expect(sleeps).toEqual([30_000]);
     expect(fetchImpl).toHaveBeenCalledTimes(28);
   });
+
+  it("skips a newer successful run whose required jobs were all skipped", async () => {
+    const skippedJobs = successfulJobs.map((job) => ({
+      ...job,
+      conclusion: "skipped",
+    }));
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
+      .mockResolvedValueOnce(
+        response({
+          workflow_runs: [{ ...successfulRun, id: 130, run_number: 2 }, successfulRun],
+        }),
+      )
+      .mockResolvedValueOnce(response({ jobs: skippedJobs }))
+      .mockResolvedValueOnce(response({ jobs: successfulJobs }));
+
+    await expect(
+      waitForMacosSmoke({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        pullRequestNumber: 42,
+        headSha: "release-sha",
+        headRef: "release/2026.11.0",
+        baseSha: "base-sha",
+        token: "test-token",
+        fetchImpl,
+        now: () => 0,
+        sleep: async () => {
+          throw new Error("should not sleep");
+        },
+        maxWaitMs: 60_000,
+        intervalMs: 30_000,
+      }),
+    ).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(27);
+  });
 });
