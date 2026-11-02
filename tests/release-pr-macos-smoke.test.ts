@@ -200,4 +200,62 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow("GitHub Actions API request failed (403)");
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
+
+  it("retries network failures reported by fetch", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockRejectedValueOnce(
+        new TypeError("fetch failed", { cause: new Error("ECONNRESET") }),
+      )
+      .mockResolvedValueOnce(response({ workflow_runs: [successfulRun] }))
+      .mockResolvedValueOnce(response({ jobs: successfulJobs }));
+    let elapsedMs = 0;
+
+    await expect(
+      waitForMacosSmoke({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        pullRequestNumber: 42,
+        headSha: "release-sha",
+        headRef: "release/2026.11.0",
+        baseSha: "base-sha",
+        token: "test-token",
+        fetchImpl,
+        now: () => elapsedMs,
+        sleep: async (duration) => {
+          elapsedMs += duration;
+        },
+        maxWaitMs: 5_000,
+      }),
+    ).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
+  });
+
+  it("fails immediately on programming errors thrown as TypeError", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockRejectedValueOnce(new TypeError("Cannot read properties of undefined"));
+
+    await expect(
+      waitForMacosSmoke({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        pullRequestNumber: 42,
+        headSha: "release-sha",
+        headRef: "release/2026.11.0",
+        baseSha: "base-sha",
+        token: "test-token",
+        fetchImpl,
+        now: () => 0,
+        maxWaitMs: 5_000,
+      }),
+    ).rejects.toThrow("Cannot read properties of undefined");
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
 });

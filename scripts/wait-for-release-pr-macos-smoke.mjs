@@ -457,10 +457,13 @@ export async function waitForMacosSmoke({
 /** @param {unknown} error @returns {error is Error} */
 function isRetryableApiError(error) {
   if (error instanceof GitHubApiError) return error.retryable;
+  if (error instanceof TypeError) {
+    // fetch reports network failures as TypeError with a cause; other TypeErrors are bugs.
+    return error.cause !== undefined;
+  }
   return (
-    error instanceof TypeError ||
-    (error instanceof Error &&
-      (error.name === "AbortError" || error.name === "TimeoutError"))
+    error instanceof Error &&
+    (error.name === "AbortError" || error.name === "TimeoutError")
   );
 }
 
