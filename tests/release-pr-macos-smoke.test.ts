@@ -54,7 +54,7 @@ function encodedJson(value: object): object {
 
 /** Answers every trusted-path lookup in order, using `changes` for paths whose base and head differ. */
 function trustedContentsFetch(
-  changes: Record<string, [object, object]>,
+  changes: Record<string, [object | null, object | null]>,
 ): Mock<typeof fetch> {
   const fetchImpl = vi.fn<typeof fetch>();
   for (const path of smokeTrustedPaths) {
@@ -63,10 +63,18 @@ function trustedContentsFetch(
       { sha: `same-${path}` },
     ];
     fetchImpl
-      .mockResolvedValueOnce(response(base))
-      .mockResolvedValueOnce(response(head));
+      .mockResolvedValueOnce(contentsResponse(base))
+      .mockResolvedValueOnce(contentsResponse(head));
   }
   return fetchImpl;
+}
+
+/** A `null` payload models a path that does not exist at that ref. */
+function contentsResponse(payload: object | null): Response {
+  if (payload === null) {
+    return new Response('{"message":"Not Found"}', { status: 404 });
+  }
+  return response(payload);
 }
 
 /** Queues the trusted-input SHA lookups (base and head for each trusted path) that run before polling. */
@@ -193,7 +201,7 @@ describe("release PR macOS updater smoke gate", () => {
   });
 
   it("allows a release PR that changes only the version in package.json and tauri.conf.json", async () => {
-    const changes: Record<string, [object, object]> = {
+    const changes: Record<string, [object | null, object | null]> = {
       "package.json": [
         encodedJson({ name: "epikrise", version: "2026.10.2" }),
         encodedJson({ name: "epikrise", version: "2026.11.0" }),
@@ -218,7 +226,7 @@ describe("release PR macOS updater smoke gate", () => {
   });
 
   it("rejects a package.json change beyond the version", async () => {
-    const changes: Record<string, [object, object]> = {
+    const changes: Record<string, [object | null, object | null]> = {
       "package.json": [
         encodedJson({ name: "epikrise", version: "2026.10.2", scripts: {} }),
         encodedJson({
@@ -240,6 +248,66 @@ describe("release PR macOS updater smoke gate", () => {
         fetchImpl: trustedContentsFetch(changes),
       }),
     ).rejects.toThrow("package.json differs from the PR base");
+  });
+
+  it("allows an optional build config that is absent at both base and head", async () => {
+    const changes = { ".npmrc": [null, null] as [null, null] };
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(changes),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a pull request that adds a Cargo config the build reads", async () => {
+    const changes = {
+      ".cargo/config.toml": [null, { sha: "head-cargo", content: "" }] as [
+        null,
+        object,
+      ],
+    };
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(changes),
+      }),
+    ).rejects.toThrow(".cargo/config.toml differs from the PR base");
+  });
+
+  it("rejects a pull request that deletes a trusted build module", async () => {
+    const changes = {
+      "src-tauri/src/windows_updater_features.rs": [{ sha: "base-features" }, null] as [
+        object,
+        null,
+      ],
+    };
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(changes),
+      }),
+    ).rejects.toThrow(
+      "src-tauri/src/windows_updater_features.rs differs from the PR base",
+    );
   });
 
   it("rejects a trusted build script modified by the pull request", async () => {

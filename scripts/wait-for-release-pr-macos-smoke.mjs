@@ -52,10 +52,21 @@ export const smokeTrustedPaths = [
   "src-tauri/tauri.conf.json",
   "package.json",
   "src-tauri/build.rs",
+  "src-tauri/src/windows_updater_features.rs",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
+  ".npmrc",
+  ".pnpmfile.cjs",
   "vite.config.js",
   "svelte.config.js",
+  "rust-toolchain",
+  "rust-toolchain.toml",
+  "src-tauri/rust-toolchain",
+  "src-tauri/rust-toolchain.toml",
+  ".cargo/config",
+  ".cargo/config.toml",
+  "src-tauri/.cargo/config",
+  "src-tauri/.cargo/config.toml",
 ];
 
 class GitHubApiError extends Error {
@@ -217,16 +228,24 @@ export async function assertSmokeWorkflowUnmodified({
   fetchImpl = fetch,
 }) {
   /**
+   * Returns null when the path does not exist at `ref`, so an optional config
+   * file added by a pull request is detected as a change.
    * @param {string} path
    * @param {string} ref
    */
   async function getContents(path, ref) {
     const params = new URLSearchParams({ ref });
-    const payload = await requestJson(
-      apiUrl(apiBaseUrl, owner, repo, `/contents/${path}?${params}`),
-      token,
-      fetchImpl,
-    );
+    let payload;
+    try {
+      payload = await requestJson(
+        apiUrl(apiBaseUrl, owner, repo, `/contents/${path}?${params}`),
+        token,
+        fetchImpl,
+      );
+    } catch (error) {
+      if (error instanceof GitHubApiError && error.status === 404) return null;
+      throw error;
+    }
     if (!isRecord(payload) || typeof payload.sha !== "string") {
       throw new Error(`GitHub API did not return ${path} at ${ref}.`);
     }
@@ -237,8 +256,11 @@ export async function assertSmokeWorkflowUnmodified({
   for (const path of smokeTrustedPaths) {
     const base = await getContents(path, baseSha);
     const head = await getContents(path, headSha);
-    if (base.sha === head.sha) continue;
+    if (base === null && head === null) continue;
+    if (base !== null && head !== null && base.sha === head.sha) continue;
     if (
+      base === null ||
+      head === null ||
       !versionOnlyJsonPaths.has(path) ||
       versionlessJson(base, path) !== versionlessJson(head, path)
     ) {
