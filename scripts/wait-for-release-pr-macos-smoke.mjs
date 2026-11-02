@@ -627,6 +627,15 @@ export async function assertSmokeWorkflowUnmodified({
         `${path} is a symlink at the PR base or head; the gate cannot verify what a symlink resolves to, so it will not trust the smoke result.`,
       );
     }
+    if (
+      baseEntry !== undefined &&
+      headEntry !== undefined &&
+      baseEntry.mode !== headEntry.mode
+    ) {
+      throw new Error(
+        `${path} changes file mode from the PR base; the macOS updater bundle smoke inputs are untrusted and the gate will not trust its results.`,
+      );
+    }
     if (baseBlob !== undefined && baseBlob === headBlob) continue;
     const isVersionNormalizable =
       baseBlob !== undefined &&

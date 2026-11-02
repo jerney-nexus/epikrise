@@ -775,6 +775,40 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow(/src\/link\.svelte is a symlink/);
   });
 
+  it("rejects a mode-only change to a bundled file", async () => {
+    const routed = routedFetch();
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/git/trees/base-sha") || url.includes("/git/trees/head-sha")) {
+        const side = url.includes("/git/trees/base-sha") ? "100644" : "100755";
+        return response({
+          truncated: false,
+          tree: [
+            ...treeEntries(url.includes("base-sha") ? "base-sha" : "head-sha", {}, []),
+            {
+              path: "src-tauri/resources/logo.png",
+              type: "blob",
+              sha: "logo-sha",
+              mode: side,
+            },
+          ],
+        });
+      }
+      return routed(input, init);
+    });
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow(/src-tauri\/resources\/logo\.png changes file mode/);
+  });
+
   it("rejects a head tree with two paths that differ only by case", async () => {
     await expect(
       assertSmokeWorkflowUnmodified({
