@@ -251,6 +251,24 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow("package.json differs from the PR base");
   });
 
+  it("fails closed when a required smoke input cannot be read at either ref", async () => {
+    const fetchImpl = trustedContentsFetch({
+      ".github/workflows/macos-updater-bundle-smoke.yml": [null, null],
+    });
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow(/cannot verify/);
+  });
+
   it("allows an optional build config that is absent at both base and head", async () => {
     const changes = { ".npmrc": [null, null] as [null, null] };
 

@@ -69,6 +69,9 @@ export const smokeTrustedPaths = [
   "src-tauri/.cargo/config.toml",
 ];
 
+/** Inputs that must exist at both refs; a 404 here means the ref or access is broken. */
+export const requiredSmokePaths = [workflowPath, "src-tauri/build.rs"];
+
 class GitHubApiError extends Error {
   /**
    * @param {number} status
@@ -256,6 +259,11 @@ export async function assertSmokeWorkflowUnmodified({
   for (const path of smokeTrustedPaths) {
     const base = await getContents(path, baseSha);
     const head = await getContents(path, headSha);
+    if (requiredSmokePaths.includes(path) && (base === null || head === null)) {
+      throw new Error(
+        `${path} is missing at the PR base or head; the gate cannot verify the macOS updater bundle smoke inputs.`,
+      );
+    }
     if (base === null && head === null) continue;
     if (base !== null && head !== null && base.sha === head.sha) continue;
     if (
