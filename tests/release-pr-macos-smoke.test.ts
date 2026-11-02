@@ -782,6 +782,37 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow(variantPath);
   });
 
+  it("rejects a submodule at an ancestor of a trusted path", async () => {
+    const absent: Record<string, [object | null, object | null]> = {
+      ".cargo/config": [null, null],
+      ".cargo/config.toml": [null, null],
+    };
+    const routed = routedFetch(absent);
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).includes("/git/trees/head-sha")) {
+        return response({
+          truncated: false,
+          tree: [
+            ...treeEntries("head-sha", absent, []),
+            { path: ".cargo", type: "commit", sha: "submodule-sha" },
+          ],
+        });
+      }
+      return routed(input, init);
+    });
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow(".cargo is a submodule at head-sha");
+  });
+
   it("ignores a submodule outside the smoke scope", async () => {
     await expect(
       assertSmokeWorkflowUnmodified({

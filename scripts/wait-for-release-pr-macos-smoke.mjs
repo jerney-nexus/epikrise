@@ -124,6 +124,26 @@ export function isSmokeTrustedInput(path) {
   );
 }
 
+/**
+ * A submodule at a trusted path, a trusted directory, or an ancestor of either
+ * would replace trusted input, so it fails closed too.
+ * @param {string} path
+ * @returns {boolean}
+ */
+export function isSmokeTrustedGitlink(path) {
+  const folded = path.toLowerCase();
+  if (folded === "src-tauri" || folded.startsWith("src-tauri/")) return true;
+  if (isSmokeTrustedInput(path)) return true;
+  return (
+    smokeTrustedPaths.some((trusted) =>
+      trusted.toLowerCase().startsWith(`${folded}/`),
+    ) ||
+    smokeTrustedDirectories.some((directory) =>
+      directory.toLowerCase().startsWith(`${folded}/`),
+    )
+  );
+}
+
 /** Inputs that must exist at both refs; a 404 here means the ref or access is broken. */
 export const requiredSmokePaths = [workflowPath, "src-tauri/build.rs"];
 
@@ -469,8 +489,7 @@ export async function assertSmokeWorkflowUnmodified({
         isRecord(entry) &&
         entry.type === "commit" &&
         typeof entry.path === "string" &&
-        (entry.path.toLowerCase().startsWith("src-tauri/") ||
-          isSmokeTrustedInput(entry.path))
+        isSmokeTrustedGitlink(entry.path)
       ) {
         throw new Error(
           `${entry.path} is a submodule at ${sha}; the gate cannot verify its contents, so it will not trust the smoke result.`,
