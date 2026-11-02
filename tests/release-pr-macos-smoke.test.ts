@@ -737,24 +737,50 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow(/could not enumerate smoke inputs at head-sha/);
   });
 
-  it.each(["src-tauri/vendor", "src/vendor", "static/vendor", "locales/vendor"])(
-    "rejects a submodule inside the smoke scope at %s",
-    async (gitlinkPath) => {
-      await expect(
-        assertSmokeWorkflowUnmodified({
-          apiBaseUrl: "https://api.github.com",
-          owner: "owner",
-          repo: "repo",
-          baseSha: "base-sha",
-          headSha: "head-sha",
-          token: "test-token",
-          fetchImpl: treeOverrideFetch("head-sha", [
-            { path: gitlinkPath, type: "commit", sha: "submodule-sha" },
-          ]),
-        }),
-      ).rejects.toThrow(`${gitlinkPath} is a submodule at head-sha`);
-    },
-  );
+  it.each([
+    "src-tauri/vendor",
+    "src/vendor",
+    "static/vendor",
+    "locales/vendor",
+    "SRC-TAURI/vendor",
+    "Static/vendor",
+  ])("rejects a submodule inside the smoke scope at %s", async (gitlinkPath) => {
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: treeOverrideFetch("head-sha", [
+          { path: gitlinkPath, type: "commit", sha: "submodule-sha" },
+        ]),
+      }),
+    ).rejects.toThrow(`${gitlinkPath} is a submodule at head-sha`);
+  });
+
+  it.each([
+    "STATIC/injected.html",
+    "Src/evil.ts",
+    "SRC-TAURI/src/x.rs",
+    "src-tauri/Cargo.TOML",
+    ".ENV.PRODUCTION",
+  ])("rejects a head-only case variant %s of a smoke input", async (variantPath) => {
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: treeOverrideFetch("head-sha", [
+          { path: variantPath, type: "blob", sha: "variant-sha" },
+        ]),
+      }),
+    ).rejects.toThrow(variantPath);
+  });
 
   it("ignores a submodule outside the smoke scope", async () => {
     await expect(

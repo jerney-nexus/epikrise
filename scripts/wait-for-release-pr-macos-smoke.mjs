@@ -114,9 +114,13 @@ export const smokeTrustedDirectories = [
  * @returns {boolean}
  */
 export function isSmokeTrustedInput(path) {
+  // macOS checkouts fold case, so a case variant of a trusted path lands on the trusted file.
+  const folded = path.toLowerCase();
   return (
-    smokeTrustedPaths.includes(path) ||
-    smokeTrustedDirectories.some((directory) => path.startsWith(directory))
+    smokeTrustedPaths.some((trusted) => trusted.toLowerCase() === folded) ||
+    smokeTrustedDirectories.some((directory) =>
+      folded.startsWith(directory.toLowerCase()),
+    )
   );
 }
 
@@ -465,7 +469,8 @@ export async function assertSmokeWorkflowUnmodified({
         isRecord(entry) &&
         entry.type === "commit" &&
         typeof entry.path === "string" &&
-        (entry.path.startsWith("src-tauri/") || isSmokeTrustedInput(entry.path))
+        (entry.path.toLowerCase().startsWith("src-tauri/") ||
+          isSmokeTrustedInput(entry.path))
       ) {
         throw new Error(
           `${entry.path} is a submodule at ${sha}; the gate cannot verify its contents, so it will not trust the smoke result.`,
@@ -499,13 +504,11 @@ export async function assertSmokeWorkflowUnmodified({
   function listSmokeInputs(blobs) {
     const paths = new Set();
     for (const path of blobs.keys()) {
+      const folded = path.toLowerCase();
       const isRustInput =
-        path.startsWith("src-tauri/") &&
-        (path.endsWith("/Cargo.toml") || path.endsWith(".rs"));
-      const isTrustedDirectoryInput = smokeTrustedDirectories.some((directory) =>
-        path.startsWith(directory),
-      );
-      if (isRustInput || isTrustedDirectoryInput) paths.add(path);
+        folded.startsWith("src-tauri/") &&
+        (folded.endsWith("/cargo.toml") || folded.endsWith(".rs"));
+      if (isRustInput || isSmokeTrustedInput(path)) paths.add(path);
     }
     return paths;
   }
@@ -541,7 +544,7 @@ export async function assertSmokeWorkflowUnmodified({
    */
   async function addBuildScripts(sha, blobs, inputs) {
     for (const path of inputs) {
-      if (!path.endsWith("Cargo.toml")) continue;
+      if (!path.toLowerCase().endsWith("cargo.toml")) continue;
       const blobSha = blobs.get(path);
       if (!blobSha) {
         throw new Error(
