@@ -204,7 +204,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
     name: Attach Store packages to GitHub Release
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:

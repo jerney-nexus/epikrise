@@ -2659,8 +2659,8 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).not.toContain("~/.cache/epikrise/windows\n");
     expect(workflow).toContain("actions/upload-artifact@v7");
     expect(workflow).toContain("${{ runner.arch }}");
-    expect(workflow).toContain("ubuntu-22.04-arm");
-    expect(workflow).toContain("ubuntu-22.04");
+    expect(workflow).toContain("ubuntu-24.04-arm");
+    expect(workflow).toContain("ubuntu-24.04");
     expect(workflow).toContain("macos-15-intel");
     expect(workflow).toContain("macos-15");
     for (const target of desktopTargets) expect(workflow).toContain(target);
