@@ -97,8 +97,11 @@ function isWorkflowJob(value) {
   );
 }
 
-/** @param {Response} response */
-function retryAfterMs(response) {
+/**
+ * @param {Response} response
+ * @param {boolean} isRateLimited
+ */
+function retryAfterMs(response, isRateLimited) {
   const retryAfter = response.headers.get("retry-after");
   if (retryAfter) {
     const seconds = Number(retryAfter);
@@ -107,6 +110,7 @@ function retryAfterMs(response) {
     if (Number.isFinite(date)) return Math.max(0, date - Date.now());
   }
 
+  if (!isRateLimited) return undefined;
   const reset = Number(response.headers.get("x-ratelimit-reset"));
   if (Number.isFinite(reset) && reset > 0) {
     return Math.max(0, reset * 1000 - Date.now());
@@ -139,7 +143,7 @@ async function requestJson(url, token, fetchImpl) {
     throw new GitHubApiError(
       status,
       detail || response.statusText,
-      retryAfterMs(response),
+      retryAfterMs(response, isRateLimited),
       status === 408 || status === 429 || status >= 500 || isRateLimited,
     );
   }

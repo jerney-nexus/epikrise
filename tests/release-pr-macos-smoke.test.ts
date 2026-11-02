@@ -389,6 +389,38 @@ describe("release PR macOS updater smoke gate", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(17);
   });
 
+  it("ignores x-ratelimit-reset on a server error and uses the fallback backoff", async () => {
+    const sleeps: number[] = [];
+    const resetInFortyFiveMinutes = Math.floor(Date.now() / 1000) + 2_700;
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
+      .mockResolvedValueOnce(
+        new Response("bad gateway", {
+          status: 502,
+          headers: { "x-ratelimit-reset": String(resetInFortyFiveMinutes) },
+        }),
+      )
+      .mockResolvedValueOnce(response({ workflow_runs: [successfulRun] }))
+      .mockResolvedValueOnce(response({ jobs: successfulJobs }));
+
+    await waitForMacosSmoke({
+      apiBaseUrl: "https://api.github.com",
+      owner: "owner",
+      repo: "repo",
+      pullRequestNumber: 42,
+      headSha: "release-sha",
+      headRef: "release/2026.11.0",
+      baseSha: "base-sha",
+      token: "test-token",
+      fetchImpl,
+      now: () => 0,
+      sleep: async (duration) => {
+        sleeps.push(duration);
+      },
+      maxWaitMs: 60_000,
+    });
+    expect(sleeps).toEqual([1_000]);
+  });
+
   it("retries request timeouts reported as AbortError or TimeoutError", async () => {
     const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
       .mockRejectedValueOnce(
