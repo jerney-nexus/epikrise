@@ -236,6 +236,7 @@ export async function findMatchingSmokeRuns({
     .filter(
       (run) =>
         run.event === "pull_request" &&
+        run.conclusion !== "skipped" &&
         run.head_sha === headSha &&
         run.head_branch === headRef &&
         run.display_title === smokeRunTitle(pullRequestNumber, headSha, baseSha),

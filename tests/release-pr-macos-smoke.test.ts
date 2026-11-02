@@ -99,6 +99,31 @@ describe("release PR macOS updater smoke gate", () => {
     );
   });
 
+  it("ignores skipped runs created by title or body edits", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      response({
+        workflow_runs: [
+          { ...successfulRun, id: 130, conclusion: "skipped", run_number: 2 },
+          successfulRun,
+        ],
+      }),
+    );
+
+    const runs = await findMatchingSmokeRuns({
+      apiBaseUrl: "https://api.github.com",
+      owner: "owner",
+      repo: "repo",
+      pullRequestNumber: 42,
+      headSha: "release-sha",
+      headRef: "release/2026.11.0",
+      baseSha: "base-sha",
+      token: "test-token",
+      fetchImpl,
+    });
+
+    expect(runs).toEqual([successfulRun]);
+  });
+
   it("rejects a smoke workflow modified by the pull request", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
