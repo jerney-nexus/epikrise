@@ -928,17 +928,30 @@ describe("release PR macOS updater smoke gate", () => {
     expect(scripts).toEqual(["scripts/tool.ps1", "scripts/build.sh"]);
   });
 
-  it("trusts the package-manager and Cargo config files the build reads", () => {
-    for (const configFile of [
-      ".npmrc",
-      ".pnpmfile.cjs",
-      ".cargo/config",
-      ".cargo/config.toml",
-      "src-tauri/.cargo/config.toml",
-      "rust-toolchain.toml",
-      "src-tauri/rust-toolchain.toml",
-    ]) {
-      expect(smokeTrustedPaths).toContain(configFile);
-    }
+  it.each([
+    ".npmrc",
+    ".pnpmfile.cjs",
+    ".cargo/config",
+    ".cargo/config.toml",
+    "src-tauri/.cargo/config.toml",
+    "rust-toolchain.toml",
+    "src-tauri/rust-toolchain.toml",
+  ])("rejects a PR that changes the build config file %s", async (configFile) => {
+    expect(smokeTrustedPaths).toContain(configFile);
+    const changes: Record<string, [object | null, object | null]> = {
+      [configFile]: [{ sha: "base-config" }, { sha: "head-config" }],
+    };
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(changes),
+      }),
+    ).rejects.toThrow(`${configFile} differs from the PR base`);
   });
 });
