@@ -46,6 +46,11 @@ const trustedRequests = smokeTrustedPaths.length * 2;
 const rustPathAttribute =
   /#\[[^\]]*?\bpath\s*=\s*r?(?<hashes>#*)"(?<modulePath>[^"]+)"\k<hashes>/g;
 const rustUnsupportedInclude = /\binclude(?:_bytes|_str)?!\s*\(/;
+/** Script paths named in build inputs; the extension is required so trailing dots are not captured. */
+const scriptReference = /scripts\/[\w./-]*[\w-]\.\w+/g;
+/** Relative module specifiers from `from`, `import(`, bare `import "x"`, and `require(`. */
+const relativeImport =
+  /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\brequire\(\s*)["'](\.{1,2}\/[^"']+)["']/g;
 const rustModuleDeclaration =
   /^\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+\w+\s*;/;
 
@@ -801,8 +806,6 @@ describe("release PR macOS updater smoke gate", () => {
 
   it("trusts every script and Rust module reachable from the trusted build inputs", () => {
     const repoRoot = new URL("../", import.meta.url);
-    const scriptReference = /scripts\/[\w./-]+\.(?:sh|ps1|cmd|mjs|cjs|js|ts)/g;
-    const relativeImport = /(?:from\s+|import\(\s*)["'](\.{1,2}\/[^"']+)["']/g;
     const reached = new Set<string>();
     const unsupportedRust: string[] = [];
     const pending = [
@@ -883,6 +886,20 @@ describe("release PR macOS updater smoke gate", () => {
     expect(hasUnpathedModule('#[path = "a.rs"]\npub(crate) mod a;\n')).toBe(false);
     expect(rustUnsupportedInclude.test('include!("gen.rs");')).toBe(true);
     expect(rustUnsupportedInclude.test('include_str!("data.txt")')).toBe(true);
+  });
+
+  it("follows side-effect imports, require calls, and any script extension", () => {
+    const source = [
+      'import "./setup.mjs";',
+      'import { x } from "./a.mjs";',
+      'const b = require("./b.cjs");',
+      'await import("./c.js");',
+      'run("scripts/tool.ps1"); run("scripts/build.sh.");',
+    ].join("\n");
+    const imports = [...source.matchAll(relativeImport)].map((match) => match[1]);
+    expect(imports).toEqual(["./setup.mjs", "./a.mjs", "./b.cjs", "./c.js"]);
+    const scripts = [...source.matchAll(scriptReference)].map((match) => match[0]);
+    expect(scripts).toEqual(["scripts/tool.ps1", "scripts/build.sh"]);
   });
 
   it("trusts the package-manager and Cargo config files the build reads", () => {
