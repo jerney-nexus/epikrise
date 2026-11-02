@@ -29,7 +29,11 @@ const timeoutMs = 60 * 60 * 1000;
 const pollIntervalMs = 60 * 1000;
 const requestTimeoutMs = 30 * 1000;
 const workflowPath = ".github/workflows/macos-updater-bundle-smoke.yml";
-/** Files the smoke job executes or reads; a PR must not change them. */
+/**
+ * Files the smoke job executes or reads; a PR must not change them. Release
+ * preparation legitimately changes package.json, Cargo.toml, Cargo.lock, and
+ * tauri.conf.json, so those are intentionally excluded.
+ */
 const smokeTrustedPaths = [
   workflowPath,
   "scripts/with-cargo-host-target.sh",
@@ -38,6 +42,11 @@ const smokeTrustedPaths = [
   "scripts/build-native-ocr.sh",
   "scripts/verify-native-build-environment.mjs",
   "src-tauri/tauri.release.conf.json",
+  "src-tauri/build.rs",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "vite.config.js",
+  "svelte.config.js",
 ];
 
 class GitHubApiError extends Error {

@@ -39,9 +39,9 @@ function response(payload: object): Response {
   return new Response(JSON.stringify(payload), { status: 200 });
 }
 
-/** Queues the trusted-input SHA lookups (base and head for seven paths) that run before polling. */
+/** Queues the trusted-input SHA lookups (base and head for twelve paths) that run before polling. */
 function queueTrustedInputs(fetchImpl: Mock<typeof fetch>): Mock<typeof fetch> {
-  for (let index = 0; index < 14; index += 1) {
+  for (let index = 0; index < 24; index += 1) {
     fetchImpl.mockResolvedValueOnce(response({ sha: "workflow-sha" }));
   }
   return fetchImpl;
@@ -244,7 +244,7 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).resolves.toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledTimes(17);
+    expect(fetchImpl).toHaveBeenCalledTimes(27);
     expect(elapsedMs).toBe(1_000);
   });
 
@@ -270,7 +270,7 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).rejects.toThrow("GitHub Actions API request failed (403)");
-    expect(fetchImpl).toHaveBeenCalledTimes(15);
+    expect(fetchImpl).toHaveBeenCalledTimes(25);
   });
 
   it("retries network failures reported by fetch", async () => {
@@ -300,7 +300,7 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).resolves.toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledTimes(17);
+    expect(fetchImpl).toHaveBeenCalledTimes(27);
   });
 
   it("fails immediately on programming errors thrown as TypeError", async () => {
@@ -323,7 +323,7 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).rejects.toThrow("Cannot read properties of undefined");
-    expect(fetchImpl).toHaveBeenCalledTimes(15);
+    expect(fetchImpl).toHaveBeenCalledTimes(25);
   });
 
   it("honors Retry-After when GitHub asks the gate to back off", async () => {
@@ -386,7 +386,7 @@ describe("release PR macOS updater smoke gate", () => {
       maxWaitMs: 60_000,
     });
     expect(sleeps).toEqual([1_000]);
-    expect(fetchImpl).toHaveBeenCalledTimes(17);
+    expect(fetchImpl).toHaveBeenCalledTimes(27);
   });
 
   it("ignores x-ratelimit-reset on a server error and uses the fallback backoff", async () => {
@@ -454,7 +454,7 @@ describe("release PR macOS updater smoke gate", () => {
       maxWaitMs: 60_000,
     });
     expect(sleeps).toEqual([1_000, 2_000]);
-    expect(fetchImpl).toHaveBeenCalledTimes(18);
+    expect(fetchImpl).toHaveBeenCalledTimes(28);
   });
 
   it("times out with the transient cause when retries exhaust the deadline", async () => {
@@ -548,6 +548,6 @@ describe("release PR macOS updater smoke gate", () => {
       intervalMs: 30_000,
     });
     expect(sleeps).toEqual([30_000]);
-    expect(fetchImpl).toHaveBeenCalledTimes(18);
+    expect(fetchImpl).toHaveBeenCalledTimes(28);
   });
 });
