@@ -2887,7 +2887,7 @@ describe("signed release artifacts", () => {
       "utf8",
     );
     const pullRequestPaths = workflow.match(
-      /pull_request:\s*\n\s+paths:\s*\n([\s\S]*?)\n\s+workflow_dispatch:/,
+      /pull_request:\s*\n(?:\s+types:[^\n]*\n)?\s+paths:\s*\n([\s\S]*?)\n\s+workflow_dispatch:/,
     )?.[1];
 
     expect(pullRequestPaths).toBeDefined();
