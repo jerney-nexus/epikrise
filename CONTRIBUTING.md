@@ -627,7 +627,8 @@ build script a manifest names, `src-tauri/tauri.release.conf.json`,
 (`.cargo/config` and `.cargo/config.toml`, at the root and in `src-tauri/`).
 The gate reads each `src-tauri/` Rust source and Cargo manifest at both refs.
 Rust sources under `src-tauri/` must be identical at both refs. Manifests there
-may change only their package `version`, which release preparation sets, and a
+may change only their `version` under `[package]` and `[workspace.package]`, which
+release preparation sets, and a
 build script that a manifest names is trusted like the other build inputs. The
 repository has no Rust sources or manifests outside `src-tauri/`, so the gate
 does not enumerate them. The smoke workflow path filter includes
