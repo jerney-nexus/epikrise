@@ -7,10 +7,16 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+## [2026.11.0] - 2026-11-02
+
 ### Added
 
 - Gate release pull request merges on successful Intel and Apple Silicon
   updater bundle smoke builds.
+
+### ⚙️ Miscellaneous Tasks
+
+- Move Linux runners to ubuntu-24.04 (#176)
 
 ## [2026.10.5] - 2026-10-31
 
@@ -553,4 +559,5 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 [2026.10.3]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.2...v2026.10.3
 [2026.10.4]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.3...v2026.10.4
 [2026.10.5]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.4...v2026.10.5
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.5...HEAD
+[2026.11.0]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.5...v2026.11.0
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.0...HEAD
