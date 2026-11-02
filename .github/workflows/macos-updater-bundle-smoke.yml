@@ -30,6 +30,7 @@ on:
       - src-tauri/src/windows_updater_features.rs
       - src-tauri/tauri.conf.json
       - src-tauri/tauri.release.conf.json
+      - src-tauri/tauri.macos.conf.json
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
@@ -37,6 +38,24 @@ on:
       - .pnpmfile.cjs
       - vite.config.js
       - svelte.config.js
+      - postcss.config.js
+      - postcss.config.cjs
+      - postcss.config.mjs
+      - postcss.config.ts
+      - postcss.config.mts
+      - postcss.config.cts
+      - .postcssrc
+      - .postcssrc.json
+      - .postcssrc.yaml
+      - .postcssrc.yml
+      - .postcssrc.js
+      - .postcssrc.cjs
+      - .postcssrc.mjs
+      - .postcssrc.ts
+      - .env
+      - .env.local
+      - .env.production
+      - .env.production.local
       - tsconfig.json
       - rust-toolchain
       - rust-toolchain.toml

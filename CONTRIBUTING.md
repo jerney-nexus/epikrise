@@ -622,10 +622,12 @@ PowerShell `.ps1` scripts), `src-tauri/build.rs`, every other Rust source and
 Cargo manifest under `src-tauri/` (the only Rust workspace), including any
 build script a manifest names, `src-tauri/tauri.release.conf.json`,
 `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, `.pnpmfile.cjs`,
-`vite.config.js`, `svelte.config.js`, `tsconfig.json`, Rust toolchain pins (`rust-toolchain` and
+`vite.config.js`, `svelte.config.js`, `tsconfig.json`, PostCSS config files
+(`postcss.config.*` and `.postcssrc*`, which Vite loads automatically), Vite env
+files (`.env`, `.env.local`, `.env.production`, `.env.production.local`), Rust toolchain pins (`rust-toolchain` and
 `rust-toolchain.toml`, at the root and in `src-tauri/`), and Cargo config files
 (`.cargo/config` and `.cargo/config.toml`, at the root and in `src-tauri/`),
-`src-tauri/Info.plist`, and every tracked file under `src/`, `static/`,
+`src-tauri/tauri.macos.conf.json`, `src-tauri/Info.plist`, and every tracked file under `src/`, `static/`,
 `locales/`, `src-tauri/capabilities/`, `src-tauri/icons/`, and
 `src-tauri/resources/`, which the app bundles. Files in those directories, including files a PR adds, are
 compared by blob SHA at both refs, so any change fails the gate. The OCR

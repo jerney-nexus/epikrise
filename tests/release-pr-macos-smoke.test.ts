@@ -1386,6 +1386,9 @@ describe("release PR macOS updater smoke gate", () => {
     "src-tauri/.cargo/config.toml",
     "rust-toolchain.toml",
     "src-tauri/rust-toolchain.toml",
+    "src-tauri/tauri.macos.conf.json",
+    "postcss.config.cjs",
+    ".env.production",
   ])("rejects a PR that changes the build config file %s", async (configFile) => {
     expect(smokeTrustedPaths).toContain(configFile);
     const changes: Record<string, [object | null, object | null]> = {
