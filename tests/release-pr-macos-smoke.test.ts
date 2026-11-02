@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { type Mock, describe, expect, it, vi } from "vitest";
 import {
   assertSmokeWorkflowUnmodified,
@@ -747,11 +748,15 @@ describe("release PR macOS updater smoke gate", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 3);
   });
 
-  it("trusts every script reachable from the smoke workflow", () => {
+  it("trusts every script and Rust module reachable from the trusted build inputs", () => {
     const repoRoot = new URL("../", import.meta.url);
-    const scriptReference = /scripts\/[\w./-]+\.(?:sh|mjs)/g;
+    const scriptReference = /scripts\/[\w./-]+\.(?:sh|mjs|cjs|js|ts)/g;
+    const rustPathAttribute = /#\[path = "([^"]+)"\]/g;
     const reached = new Set<string>();
-    const pending = [".github/workflows/macos-updater-bundle-smoke.yml"];
+    const pending = [
+      ".github/workflows/macos-updater-bundle-smoke.yml",
+      "src-tauri/build.rs",
+    ];
 
     while (pending.length > 0) {
       const current = pending.pop() as string;
@@ -763,9 +768,26 @@ describe("release PR macOS updater smoke gate", () => {
       for (const [reference] of contents.matchAll(scriptReference)) {
         pending.push(reference);
       }
+      for (const [, modulePath] of contents.matchAll(rustPathAttribute)) {
+        pending.push(path.posix.join(path.posix.dirname(current), modulePath));
+      }
     }
 
-    const untrusted = [...reached].filter((path) => !smokeTrustedPaths.includes(path));
+    const untrusted = [...reached].filter((file) => !smokeTrustedPaths.includes(file));
     expect(untrusted).toEqual([]);
+  });
+
+  it("trusts the package-manager and Cargo config files the build reads", () => {
+    for (const configFile of [
+      ".npmrc",
+      ".pnpmfile.cjs",
+      ".cargo/config",
+      ".cargo/config.toml",
+      "src-tauri/.cargo/config.toml",
+      "rust-toolchain.toml",
+      "src-tauri/rust-toolchain.toml",
+    ]) {
+      expect(smokeTrustedPaths).toContain(configFile);
+    }
   });
 });
