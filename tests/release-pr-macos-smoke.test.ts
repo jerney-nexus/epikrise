@@ -770,11 +770,29 @@ describe("release PR macOS updater smoke gate", () => {
     const repoRoot = new URL("../", import.meta.url);
     const scriptReference = /scripts\/[\w./-]+\.(?:sh|ps1|cmd|mjs|cjs|js|ts)/g;
     const rustPathAttribute = /#\[path = "([^"]+)"\]/g;
+    const relativeImport = /(?:from\s+|import\(\s*)["'](\.{1,2}\/[^"']+)["']/g;
     const reached = new Set<string>();
     const pending = [
       ".github/workflows/macos-updater-bundle-smoke.yml",
       "src-tauri/build.rs",
+      "src-tauri/tauri.conf.json",
+      "src-tauri/tauri.release.conf.json",
+      "vite.config.js",
+      "svelte.config.js",
+      "package.json",
     ];
+
+    /**
+     * Only the package.json scripts the smoke job runs (`pnpm install` runs
+     * `prepare`, `pnpm build` runs `build`) are followed; the rest are not
+     * executed by this gate.
+     */
+    function inputText(file: string): string {
+      const text = readFileSync(new URL(file, repoRoot), "utf8");
+      if (file !== "package.json") return text;
+      const { scripts } = JSON.parse(text) as Record<string, Record<string, string>>;
+      return [scripts.build, scripts.prepare].join("\n");
+    }
 
     while (pending.length > 0) {
       const current = pending.pop() as string;
@@ -782,15 +800,19 @@ describe("release PR macOS updater smoke gate", () => {
         continue;
       }
       reached.add(current);
-      const contents = readFileSync(new URL(current, repoRoot), "utf8");
+      const contents = inputText(current);
       for (const [reference] of contents.matchAll(scriptReference)) {
         pending.push(reference);
       }
       for (const [, modulePath] of contents.matchAll(rustPathAttribute)) {
         pending.push(path.posix.join(path.posix.dirname(current), modulePath));
       }
+      for (const [, specifier] of contents.matchAll(relativeImport)) {
+        pending.push(path.posix.join(path.posix.dirname(current), specifier));
+      }
     }
 
+    expect(reached).toContain("svelte.config.js");
     const untrusted = [...reached].filter((file) => !smokeTrustedPaths.includes(file));
     expect(untrusted).toEqual([]);
   });
