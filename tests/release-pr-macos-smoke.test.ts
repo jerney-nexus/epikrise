@@ -765,7 +765,6 @@ describe("release PR macOS updater smoke gate", () => {
     "Src/evil.ts",
     "SRC-TAURI/src/x.rs",
     "src-tauri/Cargo.TOML",
-    ".ENV.PRODUCTION",
   ])("rejects a head-only case variant %s of a smoke input", async (variantPath) => {
     await expect(
       assertSmokeWorkflowUnmodified({
@@ -780,6 +779,36 @@ describe("release PR macOS updater smoke gate", () => {
         ]),
       }),
     ).rejects.toThrow(variantPath);
+  });
+
+  it("rejects a head-only case variant of a trusted file absent at base", async () => {
+    const absent: Record<string, [object | null, object | null]> = {
+      ".env.production": [null, null],
+    };
+    const routed = routedFetch(absent);
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).includes("/git/trees/head-sha")) {
+        return response({
+          truncated: false,
+          tree: [
+            ...treeEntries("head-sha", absent, []),
+            { path: ".ENV.PRODUCTION", type: "blob", sha: "variant-sha" },
+          ],
+        });
+      }
+      return routed(input, init);
+    });
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow(".ENV.PRODUCTION differs from the PR base");
   });
 
   it("rejects a submodule at an ancestor of a trusted path", async () => {
