@@ -601,4 +601,26 @@ describe("release PR macOS updater smoke gate", () => {
     ).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 3);
   });
+
+  it("trusts every script reachable from the smoke workflow", () => {
+    const repoRoot = new URL("../", import.meta.url);
+    const scriptReference = /scripts\/[\w./-]+\.(?:sh|mjs)/g;
+    const reached = new Set<string>();
+    const pending = [".github/workflows/macos-updater-bundle-smoke.yml"];
+
+    while (pending.length > 0) {
+      const current = pending.pop() as string;
+      if (reached.has(current)) {
+        continue;
+      }
+      reached.add(current);
+      const contents = readFileSync(new URL(current, repoRoot), "utf8");
+      for (const [reference] of contents.matchAll(scriptReference)) {
+        pending.push(reference);
+      }
+    }
+
+    const untrusted = [...reached].filter((path) => !smokeTrustedPaths.includes(path));
+    expect(untrusted).toEqual([]);
+  });
 });
