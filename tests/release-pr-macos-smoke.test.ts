@@ -43,7 +43,8 @@ function response(payload: object): Response {
 
 const trustedRequests = smokeTrustedPaths.length * 2;
 
-const rustPathAttribute = /#\[\s*(?:cfg_attr\([^)]*?,\s*)?path\s*=\s*r?"([^"]+)"/g;
+const rustPathAttribute =
+  /#\[[^\]]*?\bpath\s*=\s*r?(?<hashes>#*)"(?<modulePath>[^"]+)"\k<hashes>/g;
 const rustUnsupportedInclude = /\binclude(?:_bytes|_str)?!\s*\(/;
 const rustModuleDeclaration =
   /^\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+\w+\s*;/;
@@ -827,8 +828,10 @@ describe("release PR macOS updater smoke gate", () => {
       for (const [reference] of contents.matchAll(scriptReference)) {
         pending.push(reference);
       }
-      for (const [, modulePath] of contents.matchAll(rustPathAttribute)) {
-        pending.push(path.posix.join(path.posix.dirname(current), modulePath));
+      for (const match of contents.matchAll(rustPathAttribute)) {
+        pending.push(
+          path.posix.join(path.posix.dirname(current), match.groups?.modulePath ?? ""),
+        );
       }
       for (const [, specifier] of contents.matchAll(relativeImport)) {
         pending.push(path.posix.join(path.posix.dirname(current), specifier));
@@ -847,10 +850,13 @@ describe("release PR macOS updater smoke gate", () => {
       '#[path="a.rs"]',
       '#[path = r"a.rs"]',
       '#[cfg_attr(unix, path = "a.rs")]',
+      '#[cfg_attr(all(unix, not(target_os = "linux")), path = "a.rs")]',
+      '#[path = r#"a.rs"#]',
+      '#[cfg_attr(all(unix, not(windows)), path = r#"a.rs"#)]',
     ];
     for (const spelling of spellings) {
       const matches = [...spelling.matchAll(rustPathAttribute)].map(
-        (match) => match[1],
+        (match) => match.groups?.modulePath,
       );
       expect(matches).toEqual(["a.rs"]);
     }
