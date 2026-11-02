@@ -58,6 +58,15 @@ describe("release PR macOS updater smoke gate", () => {
     );
     expect(template).not.toBeNull();
 
+    const args = workflow.match(
+      /format\('macOS updater bundle smoke[^']*',\s*([^)]*)\)/,
+    );
+    expect(args?.[1]?.split(",").map((arg) => arg.trim())).toEqual([
+      "github.event.pull_request.number",
+      "github.event.pull_request.head.sha",
+      "github.event.pull_request.base.sha",
+    ]);
+
     const fromWorkflow = template?.[0]
       .replace("format('", "")
       .replace(/'$/, "")
