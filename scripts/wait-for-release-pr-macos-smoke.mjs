@@ -460,6 +460,17 @@ export async function assertSmokeWorkflowUnmodified({
     /** @type {Map<string, string>} */
     const pathsByFolded = new Map();
     for (const entry of tree.tree) {
+      // A gitlink (submodule) has no blob to compare, so it must not hide build input.
+      if (
+        isRecord(entry) &&
+        entry.type === "commit" &&
+        typeof entry.path === "string" &&
+        (entry.path.startsWith("src-tauri/") || isSmokeTrustedInput(entry.path))
+      ) {
+        throw new Error(
+          `${entry.path} is a submodule at ${sha}; the gate cannot verify its contents, so it will not trust the smoke result.`,
+        );
+      }
       if (!isRecord(entry) || entry.type !== "blob") continue;
       if (typeof entry.path !== "string") continue;
       if (typeof entry.sha !== "string") {

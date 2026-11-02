@@ -163,6 +163,18 @@ function trustedContentsFetch(
   return routedFetch(changes, trees);
 }
 
+/** Serves one tree with extra raw entries (for missing shas or gitlinks) appended to the standard listing, and routes everything else as usual. */
+function treeOverrideFetch(treeSha: string, extra: object[]): Mock<typeof fetch> {
+  const routed = routedFetch();
+  return vi.fn<typeof fetch>(async (input, init) => {
+    if (String(input).includes(`/git/trees/${treeSha}`)) {
+      const tree = [...treeEntries(treeSha, {}, []), ...extra];
+      return response({ truncated: false, tree });
+    }
+    return routed(input, init);
+  });
+}
+
 /** A `null` payload models a path that does not exist at that ref. */
 function contentsResponse(payload: object | null): Response {
   if (payload === null) {
@@ -707,6 +719,57 @@ describe("release PR macOS updater smoke gate", () => {
         ),
       }),
     ).rejects.toThrow(/differ only by case/);
+  });
+
+  it("rejects a head tree blob entry without a sha", async () => {
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: treeOverrideFetch("head-sha", [
+          { path: "src-tauri/build.rs", type: "blob" },
+        ]),
+      }),
+    ).rejects.toThrow(/could not enumerate smoke inputs at head-sha/);
+  });
+
+  it.each(["src-tauri/vendor", "src/vendor", "static/vendor", "locales/vendor"])(
+    "rejects a submodule inside the smoke scope at %s",
+    async (gitlinkPath) => {
+      await expect(
+        assertSmokeWorkflowUnmodified({
+          apiBaseUrl: "https://api.github.com",
+          owner: "owner",
+          repo: "repo",
+          baseSha: "base-sha",
+          headSha: "head-sha",
+          token: "test-token",
+          fetchImpl: treeOverrideFetch("head-sha", [
+            { path: gitlinkPath, type: "commit", sha: "submodule-sha" },
+          ]),
+        }),
+      ).rejects.toThrow(`${gitlinkPath} is a submodule at head-sha`);
+    },
+  );
+
+  it("ignores a submodule outside the smoke scope", async () => {
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: treeOverrideFetch("head-sha", [
+          { path: "docs/vendor", type: "commit", sha: "submodule-sha" },
+        ]),
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("rejects a changed trusted input without reading its contents", async () => {
