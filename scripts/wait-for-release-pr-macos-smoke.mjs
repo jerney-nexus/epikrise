@@ -455,12 +455,23 @@ export async function assertSmokeWorkflowUnmodified({
       throw new Error(`GitHub API could not enumerate smoke inputs at ${sha}.`);
     }
     const blobs = new Map();
+    /** @type {Map<string, string>} */
+    const pathsByFolded = new Map();
     for (const entry of tree.tree) {
       if (!isRecord(entry) || entry.type !== "blob") continue;
       if (typeof entry.path !== "string") continue;
       if (typeof entry.sha !== "string") {
         throw new Error(`GitHub API could not enumerate smoke inputs at ${sha}.`);
       }
+      // macOS checkouts fold case, so two paths differing only by case would shadow each other.
+      const folded = entry.path.toLowerCase();
+      const existing = pathsByFolded.get(folded);
+      if (existing !== undefined && existing !== entry.path) {
+        throw new Error(
+          `${existing} and ${entry.path} differ only by case at ${sha}; a case-insensitive checkout would shadow one with the other, so the gate will not trust its results.`,
+        );
+      }
+      pathsByFolded.set(folded, entry.path);
       blobs.set(entry.path, entry.sha);
     }
     return blobs;

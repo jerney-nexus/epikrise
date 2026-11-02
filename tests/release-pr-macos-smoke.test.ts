@@ -689,6 +689,26 @@ describe("release PR macOS updater smoke gate", () => {
     expect(contentsCalls).toEqual([]);
   });
 
+  it("rejects a head tree with two paths that differ only by case", async () => {
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(
+          {},
+          {
+            "base-sha": ["src/App.svelte"],
+            "head-sha": ["src/App.svelte", "SRC/App.svelte"],
+          },
+        ),
+      }),
+    ).rejects.toThrow(/differ only by case/);
+  });
+
   it("rejects a changed trusted input without reading its contents", async () => {
     const fetchImpl = trustedContentsFetch({
       "src-tauri/build.rs": [{ sha: "base-build" }, { sha: "head-build" }],
