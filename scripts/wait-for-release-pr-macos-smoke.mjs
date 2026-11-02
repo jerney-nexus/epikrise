@@ -511,6 +511,7 @@ export async function waitForMacosSmoke({
         baseSha,
       });
       latestRun = undefined;
+      /** @type {WorkflowJob[]} */
       let latestJobs = [];
       for (const candidate of runs) {
         const candidateJobs = await listRunJobs({
