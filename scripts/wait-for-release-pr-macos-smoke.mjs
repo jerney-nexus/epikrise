@@ -144,6 +144,12 @@ export function isSmokeTrustedGitlink(path) {
   );
 }
 
+/** @param {string} path @returns {boolean} */
+function isCargoManifest(path) {
+  const folded = path.toLowerCase();
+  return folded.startsWith("src-tauri/") && folded.endsWith("cargo.toml");
+}
+
 /** Inputs that must exist at both refs; a 404 here means the ref or access is broken. */
 export const requiredSmokePaths = [workflowPath, "src-tauri/build.rs"];
 
@@ -611,7 +617,7 @@ export async function assertSmokeWorkflowUnmodified({
       baseBlob !== undefined &&
       headBlob !== undefined &&
       (versionOnlyJsonPaths.has(path) ||
-        (path.startsWith("src-tauri/") && path.endsWith("Cargo.toml")) ||
+        isCargoManifest(path) ||
         path === "src-tauri/Cargo.lock");
     if (!isVersionNormalizable) {
       throw new Error(
@@ -621,8 +627,7 @@ export async function assertSmokeWorkflowUnmodified({
     const base = await readContents(path, baseSha, baseBlob);
     const head = await readContents(path, headSha, headBlob);
     if (
-      path.startsWith("src-tauri/") &&
-      path.endsWith("Cargo.toml") &&
+      isCargoManifest(path) &&
       versionlessCargoManifest(decodeContent(base, path)) ===
         versionlessCargoManifest(decodeContent(head, path))
     ) {

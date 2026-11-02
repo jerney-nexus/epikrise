@@ -526,6 +526,29 @@ describe("release PR macOS updater smoke gate", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("allows a lowercase Cargo manifest that changes only the package version", async () => {
+    const base = '[package]\nname = "epikrise"\nversion = "2026.10.2"\n';
+    const head = '[package]\nname = "epikrise"\nversion = "2026.11.0"\n';
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(
+          { "src-tauri/cargo.toml": [cargoManifest(base), cargoManifest(head)] },
+          {
+            "base-sha": ["src-tauri/cargo.toml"],
+            "head-sha": ["src-tauri/cargo.toml"],
+          },
+        ),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("rejects a version change under a [[bin]] table", async () => {
     const base =
       '[package]\nname = "epikrise"\nversion = "2026.10.2"\n\n[[bin]]\nname = "tool"\nversion = "1.0.0"\n';
