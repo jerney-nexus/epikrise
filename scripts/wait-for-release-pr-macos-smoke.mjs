@@ -29,6 +29,8 @@ const timeoutMs = 60 * 60 * 1000;
 const pollIntervalMs = 60 * 1000;
 const requestTimeoutMs = 30 * 1000;
 const workflowPath = ".github/workflows/macos-updater-bundle-smoke.yml";
+/** Git tree mode for a symlink; its target is not content that the gate can compare. */
+const symlinkMode = "120000";
 /**
  * Files the smoke job executes or reads; a PR must not change them. Release
  * preparation legitimately changes the version fields of package.json,
@@ -118,9 +120,11 @@ export function isSmokeTrustedInput(path) {
   const folded = path.toLowerCase();
   return (
     smokeTrustedPaths.some((trusted) => trusted.toLowerCase() === folded) ||
-    smokeTrustedDirectories.some((directory) =>
-      folded.startsWith(directory.toLowerCase()),
-    )
+    smokeTrustedDirectories.some((directory) => {
+      const bare = directory.slice(0, -1).toLowerCase();
+      // A blob at the directory's own name (for example a symlink) replaces the directory.
+      return folded === bare || folded.startsWith(`${bare}/`);
+    })
   );
 }
 
@@ -467,10 +471,10 @@ export async function assertSmokeWorkflowUnmodified({
   await assertCommitResolves("PR head", headSha);
 
   /**
-   * Blob shas of every file in the recursive tree at `sha`. Git blob shas are
+   * Blob shas and modes of every file in the recursive tree at `sha`. Git blob shas are
    * content hashes, so equal shas mean equal contents and need no contents request.
    * @param {string} sha
-   * @returns {Promise<Map<string, string>>}
+   * @returns {Promise<Map<string, {sha: string, mode: string}>>}
    */
   async function getTreeBlobs(sha) {
     const tree = await requestJson(
@@ -486,6 +490,7 @@ export async function assertSmokeWorkflowUnmodified({
     if (!isRecord(tree) || tree.truncated === true || !Array.isArray(tree.tree)) {
       throw new Error(`GitHub API could not enumerate smoke inputs at ${sha}.`);
     }
+    /** @type {Map<string, {sha: string, mode: string}>} */
     const blobs = new Map();
     /** @type {Map<string, string>} */
     const pathsByFolded = new Map();
@@ -515,7 +520,10 @@ export async function assertSmokeWorkflowUnmodified({
         );
       }
       pathsByFolded.set(folded, entry.path);
-      blobs.set(entry.path, entry.sha);
+      blobs.set(entry.path, {
+        sha: entry.sha,
+        mode: typeof entry.mode === "string" ? entry.mode : "",
+      });
     }
     return blobs;
   }
@@ -523,7 +531,7 @@ export async function assertSmokeWorkflowUnmodified({
   /**
    * Cargo manifests and Rust sources under src-tauri/, the only Rust workspace,
    * plus every tracked file in the smoke-trusted directories.
-   * @param {Map<string, string>} blobs
+   * @param {Map<string, {sha: string, mode: string}>} blobs
    * @returns {Set<string>}
    */
   function listSmokeInputs(blobs) {
@@ -564,13 +572,13 @@ export async function assertSmokeWorkflowUnmodified({
   /**
    * Adds the build script each Cargo manifest in `inputs` names.
    * @param {string} sha
-   * @param {Map<string, string>} blobs
+   * @param {Map<string, {sha: string, mode: string}>} blobs
    * @param {Set<string>} inputs
    */
   async function addBuildScripts(sha, blobs, inputs) {
     for (const path of inputs) {
       if (!path.toLowerCase().endsWith("cargo.toml")) continue;
-      const blobSha = blobs.get(path);
+      const blobSha = blobs.get(path)?.sha;
       if (!blobSha) {
         throw new Error(
           `${path} is listed in the source tree but could not be read at ${sha}; the gate will not trust its results.`,
@@ -594,8 +602,10 @@ export async function assertSmokeWorkflowUnmodified({
 
   // Sequential so each path's base and head requests stay in a deterministic order.
   for (const path of new Set([...smokeTrustedPaths, ...treeInputPaths])) {
-    const baseBlob = baseBlobs.get(path);
-    const headBlob = headBlobs.get(path);
+    const baseEntry = baseBlobs.get(path);
+    const headEntry = headBlobs.get(path);
+    const baseBlob = baseEntry?.sha;
+    const headBlob = headEntry?.sha;
     if (
       requiredSmokePaths.includes(path) &&
       (baseBlob === undefined || headBlob === undefined)
@@ -611,6 +621,11 @@ export async function assertSmokeWorkflowUnmodified({
         );
       }
       continue;
+    }
+    if (baseEntry?.mode === symlinkMode || headEntry?.mode === symlinkMode) {
+      throw new Error(
+        `${path} is a symlink at the PR base or head; the gate cannot verify what a symlink resolves to, so it will not trust the smoke result.`,
+      );
     }
     if (baseBlob !== undefined && baseBlob === headBlob) continue;
     const isVersionNormalizable =

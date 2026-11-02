@@ -724,6 +724,57 @@ describe("release PR macOS updater smoke gate", () => {
     expect(contentsCalls).toEqual([]);
   });
 
+  it("rejects a head symlink at a bare trusted directory name", async () => {
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: treeOverrideFetch("head-sha", [
+          { path: "static", type: "blob", sha: "link-sha", mode: "120000" },
+        ]),
+      }),
+    ).rejects.toThrow(/static is a symlink/);
+  });
+
+  it.each(["src-tauri/icons", "Static", "SRC-TAURI/Resources"])(
+    "rejects a head blob at trusted directory name %s",
+    async (name) => {
+      await expect(
+        assertSmokeWorkflowUnmodified({
+          apiBaseUrl: "https://api.github.com",
+          owner: "owner",
+          repo: "repo",
+          baseSha: "base-sha",
+          headSha: "head-sha",
+          token: "test-token",
+          fetchImpl: treeOverrideFetch("head-sha", [
+            { path: name, type: "blob", sha: "file-sha", mode: "100644" },
+          ]),
+        }),
+      ).rejects.toThrow(name);
+    },
+  );
+
+  it("rejects a symlink inside a trusted directory", async () => {
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: treeOverrideFetch("head-sha", [
+          { path: "src/link.svelte", type: "blob", sha: "link-sha", mode: "120000" },
+        ]),
+      }),
+    ).rejects.toThrow(/src\/link\.svelte is a symlink/);
+  });
+
   it("rejects a head tree with two paths that differ only by case", async () => {
     await expect(
       assertSmokeWorkflowUnmodified({
