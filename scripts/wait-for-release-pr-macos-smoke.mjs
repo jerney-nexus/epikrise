@@ -435,11 +435,12 @@ export async function assertSmokeWorkflowUnmodified({
   await assertCommitResolves("PR head", headSha);
 
   /**
-   * Cargo manifests and Rust sources under src-tauri/, the only Rust workspace,
-   * plus every tracked file in the smoke-trusted directories.
+   * Blob shas of every file in the recursive tree at `sha`. Git blob shas are
+   * content hashes, so equal shas mean equal contents and need no contents request.
    * @param {string} sha
+   * @returns {Promise<Map<string, string>>}
    */
-  async function getTreeInputPaths(sha) {
+  async function getTreeBlobs(sha) {
     const tree = await requestJson(
       apiUrl(
         apiBaseUrl,
@@ -453,11 +454,27 @@ export async function assertSmokeWorkflowUnmodified({
     if (!isRecord(tree) || tree.truncated === true || !Array.isArray(tree.tree)) {
       throw new Error(`GitHub API could not enumerate smoke inputs at ${sha}.`);
     }
-    const paths = new Set();
+    const blobs = new Map();
     for (const entry of tree.tree) {
       if (!isRecord(entry) || entry.type !== "blob") continue;
       if (typeof entry.path !== "string") continue;
-      const path = entry.path;
+      if (typeof entry.sha !== "string") {
+        throw new Error(`GitHub API could not enumerate smoke inputs at ${sha}.`);
+      }
+      blobs.set(entry.path, entry.sha);
+    }
+    return blobs;
+  }
+
+  /**
+   * Cargo manifests and Rust sources under src-tauri/, the only Rust workspace,
+   * plus every tracked file in the smoke-trusted directories.
+   * @param {Map<string, string>} blobs
+   * @returns {Set<string>}
+   */
+  function listSmokeInputs(blobs) {
+    const paths = new Set();
+    for (const path of blobs.keys()) {
       const isRustInput =
         path.startsWith("src-tauri/") &&
         (path.endsWith("/Cargo.toml") || path.endsWith(".rs"));
@@ -466,34 +483,76 @@ export async function assertSmokeWorkflowUnmodified({
       );
       if (isRustInput || isTrustedDirectoryInput) paths.add(path);
     }
-    for (const path of paths) {
-      if (!path.endsWith("Cargo.toml")) continue;
-      const manifest = await getContents(path, sha);
-      if (manifest === null) {
-        throw new Error(`${path} disappeared while checking smoke inputs at ${sha}.`);
-      }
-      const buildScript = cargoBuildScriptPath(decodeContent(manifest, path), path);
-      if (buildScript) paths.add(buildScript);
-    }
     return paths;
   }
 
-  const [baseTreeInputs, headTreeInputs] = await Promise.all([
-    getTreeInputPaths(baseSha),
-    getTreeInputPaths(headSha),
+  /** Contents keyed by blob sha, so a blob read for discovery is not fetched again for comparison. */
+  const contentsByBlob = new Map();
+  /**
+   * @param {string} path
+   * @param {string} ref
+   * @param {string} blobSha
+   */
+  function readContents(path, ref, blobSha) {
+    let contents = contentsByBlob.get(blobSha);
+    if (!contents) {
+      contents = getContents(path, ref).then((payload) => {
+        if (payload === null) {
+          throw new Error(
+            `${path} is listed in the source tree but could not be read at ${ref}; the gate will not trust its results.`,
+          );
+        }
+        return payload;
+      });
+      contentsByBlob.set(blobSha, contents);
+    }
+    return contents;
+  }
+
+  /**
+   * Adds the build script each Cargo manifest in `inputs` names.
+   * @param {string} sha
+   * @param {Map<string, string>} blobs
+   * @param {Set<string>} inputs
+   */
+  async function addBuildScripts(sha, blobs, inputs) {
+    for (const path of inputs) {
+      if (!path.endsWith("Cargo.toml")) continue;
+      const blobSha = blobs.get(path);
+      if (!blobSha) {
+        throw new Error(
+          `${path} is listed in the source tree but could not be read at ${sha}; the gate will not trust its results.`,
+        );
+      }
+      const manifest = await readContents(path, sha, blobSha);
+      const buildScript = cargoBuildScriptPath(decodeContent(manifest, path), path);
+      if (buildScript) inputs.add(buildScript);
+    }
+  }
+
+  const [baseBlobs, headBlobs] = await Promise.all([
+    getTreeBlobs(baseSha),
+    getTreeBlobs(headSha),
   ]);
-  const treeInputPaths = new Set([...baseTreeInputs, ...headTreeInputs]);
+  const baseInputs = listSmokeInputs(baseBlobs);
+  const headInputs = listSmokeInputs(headBlobs);
+  await addBuildScripts(baseSha, baseBlobs, baseInputs);
+  await addBuildScripts(headSha, headBlobs, headInputs);
+  const treeInputPaths = new Set([...baseInputs, ...headInputs]);
 
   // Sequential so each path's base and head requests stay in a deterministic order.
   for (const path of new Set([...smokeTrustedPaths, ...treeInputPaths])) {
-    const base = await getContents(path, baseSha);
-    const head = await getContents(path, headSha);
-    if (requiredSmokePaths.includes(path) && (base === null || head === null)) {
+    const baseBlob = baseBlobs.get(path);
+    const headBlob = headBlobs.get(path);
+    if (
+      requiredSmokePaths.includes(path) &&
+      (baseBlob === undefined || headBlob === undefined)
+    ) {
       throw new Error(
         `${path} is missing at the PR base or head; the gate cannot verify the macOS updater bundle smoke inputs.`,
       );
     }
-    if (base === null && head === null) {
+    if (baseBlob === undefined && headBlob === undefined) {
       if (treeInputPaths.has(path)) {
         throw new Error(
           `${path} was listed in the source tree but could not be read at either PR commit; the gate will not trust its results.`,
@@ -501,10 +560,21 @@ export async function assertSmokeWorkflowUnmodified({
       }
       continue;
     }
-    if (base !== null && head !== null && base.sha === head.sha) continue;
+    if (baseBlob !== undefined && baseBlob === headBlob) continue;
+    const isVersionNormalizable =
+      baseBlob !== undefined &&
+      headBlob !== undefined &&
+      (versionOnlyJsonPaths.has(path) ||
+        (path.startsWith("src-tauri/") && path.endsWith("Cargo.toml")) ||
+        path === "src-tauri/Cargo.lock");
+    if (!isVersionNormalizable) {
+      throw new Error(
+        `${path} differs from the PR base; the macOS updater bundle smoke inputs are untrusted and the gate will not trust its results.`,
+      );
+    }
+    const base = await readContents(path, baseSha, baseBlob);
+    const head = await readContents(path, headSha, headBlob);
     if (
-      base !== null &&
-      head !== null &&
       path.startsWith("src-tauri/") &&
       path.endsWith("Cargo.toml") &&
       versionlessCargoManifest(decodeContent(base, path)) ===
@@ -513,8 +583,6 @@ export async function assertSmokeWorkflowUnmodified({
       continue;
     }
     if (
-      base !== null &&
-      head !== null &&
       path === "src-tauri/Cargo.lock" &&
       versionlessCargoLock(decodeContent(base, path)) ===
         versionlessCargoLock(decodeContent(head, path))
@@ -522,8 +590,6 @@ export async function assertSmokeWorkflowUnmodified({
       continue;
     }
     if (
-      base === null ||
-      head === null ||
       !versionOnlyJsonPaths.has(path) ||
       versionlessJson(base, path) !== versionlessJson(head, path)
     ) {

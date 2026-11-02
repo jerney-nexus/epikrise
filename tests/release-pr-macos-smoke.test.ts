@@ -7,6 +7,7 @@ import {
   evaluateSmokeRun,
   findMatchingSmokeRuns,
   isSmokeTrustedInput,
+  requiredSmokePaths,
   smokeRunTitle,
   smokeTrustedDirectories,
   smokeTrustedPaths,
@@ -44,8 +45,8 @@ function response(payload: object): Response {
   return new Response(JSON.stringify(payload), { status: 200 });
 }
 
-// Two commit checks, two Cargo tree listings, then base and head for each trusted path.
-const trustedRequests = smokeTrustedPaths.length * 2 + 4;
+// Two commit checks and two tree listings; contents are fetched only for changed or build-script inputs.
+const trustedRequests = 4;
 
 const rustPathAttribute =
   /#\[[^\]]*?\bpath\s*=\s*r?(?<hashes>#*)"(?<modulePath>[^"]+)"\k<hashes>/g;
@@ -91,6 +92,39 @@ function encodedJson(value: object): object {
 }
 
 /**
+ * Recursive-tree entries for the commit `treeSha` (`base-sha` or `head-sha`): every
+ * trusted and required path, every changed file present on that side, and the
+ * explicit listing. Unchanged files share the blob sha `same-<path>`; a changed file
+ * uses the sha of its contents payload.
+ */
+function treeEntries(
+  treeSha: string,
+  files: Record<string, [object | null, object | null]>,
+  explicit: string[],
+): object[] {
+  const side = treeSha === "base-sha" ? 0 : 1;
+  const entries = new Map<string, object>();
+  for (const treePath of explicit.filter((entry) => entry.endsWith("/"))) {
+    const dirPath = treePath.slice(0, -1);
+    entries.set(dirPath, { path: dirPath, type: "tree" });
+  }
+  const blobPaths = new Set([
+    ...smokeTrustedPaths,
+    ...requiredSmokePaths,
+    ...Object.keys(files),
+    ...explicit.filter((entry) => !entry.endsWith("/")),
+  ]);
+  for (const blobPath of blobPaths) {
+    const change = files[blobPath];
+    const payload = change?.[side] ?? null;
+    if (change && (payload === null || Array.isArray(payload))) continue;
+    const sha = payload ? (payload as { sha: string }).sha : `same-${blobPath}`;
+    entries.set(blobPath, { path: blobPath, type: "blob", sha });
+  }
+  return [...entries.values()];
+}
+
+/**
  * Answers GitHub API calls by URL rather than call order, so added lookups do not shift fixtures.
  * `files` maps a path to its [base, head] contents (`null` is absent); `trees` maps a SHA to its file paths, where a trailing slash marks a directory entry.
  */
@@ -104,14 +138,10 @@ function routedFetch(
     if (commit) return response({ sha: decodeURIComponent(commit[1]) });
     const tree = url.pathname.match(/\/git\/trees\/([^/]+)$/);
     if (tree) {
-      const treePaths = trees[decodeURIComponent(tree[1])] ?? [];
+      const treeSha = decodeURIComponent(tree[1]);
       return response({
         truncated: false,
-        tree: treePaths.map((treePath) =>
-          treePath.endsWith("/")
-            ? { path: treePath.slice(0, -1), type: "tree" }
-            : { path: treePath, type: "blob" },
-        ),
+        tree: treeEntries(treeSha, files, trees[treeSha] ?? []),
       });
     }
     const filePath = decodeURIComponent(
@@ -141,16 +171,17 @@ function contentsResponse(payload: object | null): Response {
   return response(payload);
 }
 
-/** Queues the trusted-input lookups that run before polling: two commit checks, two empty tree listings, then base and head for each trusted path. */
+/** Queues the trusted-input lookups that run before polling: two commit checks, then the base and head trees, which list every trusted path unchanged. */
 function queueTrustedInputs(fetchImpl: Mock<typeof fetch>): Mock<typeof fetch> {
   fetchImpl
     .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
     .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-    .mockResolvedValueOnce(response({ truncated: false, tree: [] }))
-    .mockResolvedValueOnce(response({ truncated: false, tree: [] }));
-  for (let index = 0; index < smokeTrustedPaths.length * 2; index += 1) {
-    fetchImpl.mockResolvedValueOnce(response({ sha: "workflow-sha" }));
-  }
+    .mockResolvedValueOnce(
+      response({ truncated: false, tree: treeEntries("base-sha", {}, []) }),
+    )
+    .mockResolvedValueOnce(
+      response({ truncated: false, tree: treeEntries("head-sha", {}, []) }),
+    );
   return fetchImpl;
 }
 
@@ -637,6 +668,48 @@ describe("release PR macOS updater smoke gate", () => {
         ),
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("reads no file contents when every trusted input is unchanged", async () => {
+    const fetchImpl = trustedContentsFetch({});
+
+    await assertSmokeWorkflowUnmodified({
+      apiBaseUrl: "https://api.github.com",
+      owner: "owner",
+      repo: "repo",
+      baseSha: "base-sha",
+      headSha: "head-sha",
+      token: "test-token",
+      fetchImpl,
+    });
+
+    const contentsCalls = fetchImpl.mock.calls.filter(([input]) =>
+      String(input).includes("/contents/"),
+    );
+    expect(contentsCalls).toEqual([]);
+  });
+
+  it("rejects a changed trusted input without reading its contents", async () => {
+    const fetchImpl = trustedContentsFetch({
+      "src-tauri/build.rs": [{ sha: "base-build" }, { sha: "head-build" }],
+    });
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("src-tauri/build.rs differs from the PR base");
+
+    const contentsCalls = fetchImpl.mock.calls.filter(([input]) =>
+      String(input).includes("/contents/"),
+    );
+    expect(contentsCalls).toEqual([]);
   });
 
   it("rejects a changed Rust source whose path needs URL encoding", async () => {
