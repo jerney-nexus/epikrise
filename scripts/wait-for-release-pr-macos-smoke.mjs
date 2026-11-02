@@ -129,6 +129,23 @@ export function isSmokeTrustedInput(path) {
 }
 
 /**
+ * True for a directory that contains a trusted file or directory. The tree lists
+ * no entry for a trusted path beneath a symlink or submodule, so the ancestor
+ * itself must be rejected.
+ * @param {string} path
+ * @returns {boolean}
+ */
+export function isSmokeTrustedAncestor(path) {
+  const prefix = `${path.toLowerCase()}/`;
+  return (
+    smokeTrustedPaths.some((trusted) => trusted.toLowerCase().startsWith(prefix)) ||
+    smokeTrustedDirectories.some((directory) =>
+      directory.toLowerCase().startsWith(prefix),
+    )
+  );
+}
+
+/**
  * A submodule at a trusted path, a trusted directory, or an ancestor of either
  * would replace trusted input, so it fails closed too.
  * @param {string} path
@@ -137,15 +154,7 @@ export function isSmokeTrustedInput(path) {
 export function isSmokeTrustedGitlink(path) {
   const folded = path.toLowerCase();
   if (folded === "src-tauri" || folded.startsWith("src-tauri/")) return true;
-  if (isSmokeTrustedInput(path)) return true;
-  return (
-    smokeTrustedPaths.some((trusted) =>
-      trusted.toLowerCase().startsWith(`${folded}/`),
-    ) ||
-    smokeTrustedDirectories.some((directory) =>
-      directory.toLowerCase().startsWith(`${folded}/`),
-    )
-  );
+  return isSmokeTrustedInput(path) || isSmokeTrustedAncestor(path);
 }
 
 /** @param {string} path @returns {boolean} */
@@ -506,6 +515,18 @@ export async function assertSmokeWorkflowUnmodified({
           `${entry.path} is a submodule at ${sha}; the gate cannot verify its contents, so it will not trust the smoke result.`,
         );
       }
+      // A symlink above trusted input redirects it, and the tree has no entry for the trusted path.
+      if (
+        isRecord(entry) &&
+        entry.type === "blob" &&
+        entry.mode === symlinkMode &&
+        typeof entry.path === "string" &&
+        isSmokeTrustedAncestor(entry.path)
+      ) {
+        throw new Error(
+          `${entry.path} is a symlink at ${sha}; trusted inputs beneath it cannot be verified, so the gate will not trust the smoke result.`,
+        );
+      }
       if (!isRecord(entry) || entry.type !== "blob") continue;
       if (typeof entry.path !== "string") continue;
       if (typeof entry.sha !== "string") {
@@ -694,27 +715,35 @@ async function fetchSmokeRunsForHead({
   token,
   fetchImpl = fetch,
 }) {
-  const params = new URLSearchParams({
-    head_sha: headSha,
-    event: "pull_request",
-    per_page: "100",
-  });
-  const url = apiUrl(
-    apiBaseUrl,
-    owner,
-    repo,
-    `/actions/workflows/${workflowFile}/runs?${params}`,
-  );
-  const payload = await requestJson(url, token, fetchImpl);
-  if (!isRecord(payload) || !Array.isArray(payload.workflow_runs)) {
-    throw new Error("GitHub Actions API response did not contain workflow_runs.");
+  const perPage = 100;
+  /** @type {WorkflowRun[]} */
+  const runs = [];
+  // Every edit to a PR title or body adds a skipped run, so the successful run can sit on a later page.
+  for (let page = 1; ; page += 1) {
+    const params = new URLSearchParams({
+      head_sha: headSha,
+      event: "pull_request",
+      per_page: String(perPage),
+      page: String(page),
+    });
+    const url = apiUrl(
+      apiBaseUrl,
+      owner,
+      repo,
+      `/actions/workflows/${workflowFile}/runs?${params}`,
+    );
+    const payload = await requestJson(url, token, fetchImpl);
+    if (!isRecord(payload) || !Array.isArray(payload.workflow_runs)) {
+      throw new Error("GitHub Actions API response did not contain workflow_runs.");
+    }
+    const rawRuns = payload.workflow_runs;
+    const pageRuns = rawRuns.filter(isWorkflowRun);
+    if (pageRuns.length !== rawRuns.length) {
+      throw new Error("GitHub Actions API returned a malformed workflow run.");
+    }
+    runs.push(...pageRuns);
+    if (rawRuns.length < perPage) return runs;
   }
-  const rawRuns = payload.workflow_runs;
-  const runs = rawRuns.filter(isWorkflowRun);
-  if (runs.length !== rawRuns.length) {
-    throw new Error("GitHub Actions API returned a malformed workflow run.");
-  }
-  return runs;
 }
 
 /**

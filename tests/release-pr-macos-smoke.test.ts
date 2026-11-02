@@ -950,6 +950,37 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow(".cargo is a submodule at head-sha");
   });
 
+  it("rejects a symlink at an ancestor of a trusted path", async () => {
+    const absent: Record<string, [object | null, object | null]> = {
+      ".cargo/config": [null, null],
+      ".cargo/config.toml": [null, null],
+    };
+    const routed = routedFetch(absent);
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      if (String(input).includes("/git/trees/head-sha")) {
+        return response({
+          truncated: false,
+          tree: [
+            ...treeEntries("head-sha", absent, []),
+            { path: ".cargo", type: "blob", mode: "120000", sha: "link-sha" },
+          ],
+        });
+      }
+      return routed(input, init);
+    });
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow(".cargo is a symlink at head-sha");
+  });
+
   it("ignores a submodule outside the smoke scope", async () => {
     await expect(
       assertSmokeWorkflowUnmodified({
@@ -1615,6 +1646,43 @@ describe("release PR macOS updater smoke gate", () => {
         intervalMs: 30_000,
       }),
     ).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 3);
+  });
+
+  it("reads later pages of workflow runs for the head SHA", async () => {
+    const skippedRuns = Array.from({ length: 100 }, (_, index) => ({
+      ...successfulRun,
+      id: 1000 + index,
+      conclusion: "skipped",
+      run_number: index + 2,
+    }));
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
+      .mockResolvedValueOnce(response({ workflow_runs: skippedRuns }))
+      .mockResolvedValueOnce(response({ workflow_runs: [successfulRun] }))
+      .mockResolvedValueOnce(response({ jobs: successfulJobs }));
+
+    await expect(
+      waitForMacosSmoke({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        pullRequestNumber: 42,
+        headSha: "release-sha",
+        headRef: "release/2026.11.0",
+        baseSha: "base-sha",
+        token: "test-token",
+        fetchImpl,
+        now: () => 0,
+        sleep: async () => {
+          throw new Error("should not sleep");
+        },
+        maxWaitMs: 60_000,
+        intervalMs: 30_000,
+      }),
+    ).resolves.toBeUndefined();
+    expect(
+      fetchImpl.mock.calls.some(([input]) => String(input).includes("page=2")),
+    ).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 3);
   });
 
