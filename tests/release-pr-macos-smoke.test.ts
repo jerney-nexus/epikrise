@@ -3,6 +3,7 @@ import path from "node:path";
 import { type Mock, describe, expect, it, vi } from "vitest";
 import {
   assertSmokeWorkflowUnmodified,
+  cargoBuildScriptPath,
   evaluateSmokeRun,
   findMatchingSmokeRuns,
   isSmokeTrustedInput,
@@ -595,6 +596,33 @@ describe("release PR macOS updater smoke gate", () => {
         ),
       }),
     ).rejects.toThrow(`${file} differs from the PR base`);
+  });
+
+  it.each([
+    ['[package]\nbuild = "build.rs"\n', "src-tauri/build.rs"],
+    ['[ package ]\nbuild = "build.rs"\n', "src-tauri/build.rs"],
+    ['["package"]\nbuild = "build.rs"\n', "src-tauri/build.rs"],
+    ['[package]\n"build" = "build.rs"\n', "src-tauri/build.rs"],
+    ["[package]\n'build' = 'build.rs'\n", "src-tauri/build.rs"],
+    ['package.build = "build.rs"\n', "src-tauri/build.rs"],
+    ['[package]\nbuild = "build.rs" # custom\n', "src-tauri/build.rs"],
+    ['package = { name = "x", build = "build.rs" }\n', "src-tauri/build.rs"],
+    ["[package]\nbuild = false\n", null],
+    ['[lib]\nbuild = "not-a-build-script.rs"\n', null],
+    ['[[bin]]\nname = "tool"\n[package]\nname = "epikrise"\n', null],
+    ['[[bin]]\nbuild = "tool.rs"\n', null],
+  ])("resolves the build script from %j", (manifest, expected) => {
+    expect(cargoBuildScriptPath(manifest, "src-tauri/Cargo.toml")).toBe(expected);
+  });
+
+  it.each([
+    "[package]\nbuild = build_script\n",
+    'package = {\n  build = "build.rs"\n}\n',
+    'package = { build = ["a", "b"] }\n',
+  ])("fails closed on an unparseable build value %j", (manifest) => {
+    expect(() => cargoBuildScriptPath(manifest, "src-tauri/Cargo.toml")).toThrow(
+      "src-tauri/Cargo.toml",
+    );
   });
 
   it("rejects a build script that a Cargo manifest reads but the pull request adds", async () => {

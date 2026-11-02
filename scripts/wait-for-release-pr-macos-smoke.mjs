@@ -264,19 +264,59 @@ function versionlessCargoManifest(contents) {
     .join("\n");
 }
 
-/** @param {string} contents @param {string} manifestPath */
-function cargoBuildScriptPath(contents, manifestPath) {
-  let section = "";
+/** @param {string} key */
+function tomlKeySegments(key) {
+  return key.split(".").map((part) => part.trim().replace(/^["']|["']$/g, ""));
+}
+
+/**
+ * Finds the package build script in a Cargo manifest. Fails closed on any
+ * `build` assignment it cannot parse so the smoke inputs are never under-read.
+ * @param {string} contents @param {string} manifestPath
+ */
+export function cargoBuildScriptPath(contents, manifestPath) {
+  /** @type {string[]} */
+  let section = [];
+  /** @type {string | null | undefined} */
+  let buildValue;
   for (const line of contents.split("\n")) {
+    const arrayTable = line.match(/^\s*\[\[([^\]]+)\]\]\s*(?:#.*)?$/);
+    if (arrayTable) {
+      section = [`[[${arrayTable[1]}]]`];
+      continue;
+    }
     const heading = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/);
-    if (heading) section = heading[1];
-    if (section !== "package") continue;
-    const build = line.match(/^\s*build\s*=\s*["']([^"']+)["']/);
-    if (build) {
-      return posix.normalize(posix.join(posix.dirname(manifestPath), build[1]));
+    if (heading) {
+      section = tomlKeySegments(heading[1]);
+      continue;
+    }
+    const assignment = line.match(/^\s*([^=#]+?)\s*=\s*(.*?)\s*(?:#.*)?$/);
+    if (!assignment) continue;
+    const keyPath = [...section, ...tomlKeySegments(assignment[1])];
+    const value = assignment[2];
+    if (keyPath[0] === "package" && keyPath.length === 2 && keyPath[1] === "build") {
+      buildValue = parseCargoBuildValue(value, manifestPath);
+    } else if (keyPath.length === 1 && keyPath[0] === "package") {
+      if (value.startsWith("{") && !value.endsWith("}")) {
+        throw new Error(
+          `${manifestPath} uses an unsupported multi-line package table.`,
+        );
+      }
+      const inline = value.match(/\bbuild\s*=\s*(.*?)\s*(?:,|\}|$)/);
+      if (inline) buildValue = parseCargoBuildValue(inline[1], manifestPath);
     }
   }
-  return null;
+  return buildValue ?? null;
+}
+
+/** @param {string} value @param {string} manifestPath */
+function parseCargoBuildValue(value, manifestPath) {
+  if (value === "false") return null;
+  const quoted = value.match(/^(["'])([^"']+)\1$/);
+  if (!quoted) {
+    throw new Error(`${manifestPath} has an unsupported package build value.`);
+  }
+  return posix.normalize(posix.join(posix.dirname(manifestPath), quoted[2]));
 }
 
 /**

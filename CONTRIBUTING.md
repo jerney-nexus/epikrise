@@ -636,7 +636,9 @@ Rust sources under `src-tauri/` must be identical at both refs. Manifests there
 may change only their `version` under `[package]` and `[workspace.package]`, which
 release preparation sets, and a
 build script that a manifest names is trusted like the other build inputs. The
-repository has no Rust sources or manifests outside `src-tauri/`, so the gate
+gate reads the `build` key in its TOML forms (spaced or quoted headings, quoted
+or dotted keys, and inline `package` tables) and fails closed on any value it
+cannot parse. The repository has no Rust sources or manifests outside `src-tauri/`, so the gate
 does not enumerate them. The smoke workflow path filter includes
 `src-tauri/**/*.rs` and `src-tauri/**/Cargo.toml`, so every trusted Rust input
 starts the smoke run.
