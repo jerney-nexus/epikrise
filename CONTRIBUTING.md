@@ -629,16 +629,18 @@ The gate follows script references from the `build` and `prepare` scripts in
 Rust file that uses `include!` or declares `mod x;` without a `#[path]`
 attribute fails the test suite, because the closure cannot follow it. If a
 required input (the smoke workflow or `src-tauri/build.rs`) is missing at either
-ref, the gate fails rather than passing. `package.json` and
+ref, or either commit SHA cannot be resolved, the gate fails rather than passing.
+`package.json` and
 `src-tauri/tauri.conf.json` may change only in their top-level `version`, which
 release preparation sets. `src-tauri/Cargo.toml` and `src-tauri/Cargo.lock` are
 not blocked because release preparation changes them as well; the gate does not
 verify them, so a release PR can alter Rust manifests and lockfiles without
 tripping it. Retargeting a release PR triggers both workflows. A
 missing run, a failed job, or a run that does not finish before the timeout
-fails the gate. Release preparation changes `src-tauri/Cargo.toml`,
-`src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`, which are included in
-the smoke workflow's path filter so release PRs start the smoke run.
+fails the gate. The smoke workflow's path filter lists every trusted input, so a
+PR that changes one starts the macOS smoke run, including non-release PRs that
+touch `package.json` or the lockfiles; those builds run even though the gate
+itself only applies to `release/*` branches.
 
 To enforce the gate, a repository administrator must add only
 **Release PR macOS updater bundle smoke** to the required status checks in

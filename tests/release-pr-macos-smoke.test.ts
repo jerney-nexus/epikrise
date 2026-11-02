@@ -41,7 +41,7 @@ function response(payload: object): Response {
   return new Response(JSON.stringify(payload), { status: 200 });
 }
 
-const trustedRequests = smokeTrustedPaths.length * 2;
+const trustedRequests = smokeTrustedPaths.length * 2 + 2;
 
 const rustPathAttribute =
   /#\[[^\]]*?\bpath\s*=\s*r?(?<hashes>#*)"(?<modulePath>[^"]+)"\k<hashes>/g;
@@ -77,11 +77,14 @@ function encodedJson(value: object): object {
   };
 }
 
-/** Answers every trusted-path lookup in order, using `changes` for paths whose base and head differ. */
+/** Answers the commit lookups for both refs, then every trusted-path lookup in order, using `changes` for paths whose base and head differ. */
 function trustedContentsFetch(
   changes: Record<string, [object | null, object | null]>,
 ): Mock<typeof fetch> {
   const fetchImpl = vi.fn<typeof fetch>();
+  fetchImpl
+    .mockResolvedValueOnce(response({ sha: "base-sha" }))
+    .mockResolvedValueOnce(response({ sha: "head-sha" }));
   for (const path of smokeTrustedPaths) {
     const [base, head] = changes[path] ?? [
       { sha: `same-${path}` },
@@ -221,6 +224,8 @@ describe("release PR macOS updater smoke gate", () => {
   it("rejects a smoke workflow modified by the pull request", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "base-sha" }))
+      .mockResolvedValueOnce(response({ sha: "head-sha" }))
       .mockResolvedValueOnce(response({ sha: "base-workflow-sha" }))
       .mockResolvedValueOnce(response({ sha: "changed-workflow-sha" }));
 
@@ -287,6 +292,24 @@ describe("release PR macOS updater smoke gate", () => {
         fetchImpl: trustedContentsFetch(changes),
       }),
     ).rejects.toThrow("package.json differs from the PR base");
+  });
+
+  it("fails closed when the PR base commit cannot be resolved", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('{"message":"Not Found"}', { status: 404 }));
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("PR base commit base-sha cannot be resolved");
   });
 
   it("fails closed when a required smoke input cannot be read at either ref", async () => {
@@ -369,6 +392,9 @@ describe("release PR macOS updater smoke gate", () => {
 
   it("rejects a trusted build script modified by the pull request", async () => {
     const fetchImpl = vi.fn<typeof fetch>();
+    fetchImpl
+      .mockResolvedValueOnce(response({ sha: "base-sha" }))
+      .mockResolvedValueOnce(response({ sha: "head-sha" }));
     const changedIndex = smokeTrustedPaths.indexOf("scripts/prepare-ocr.sh");
     for (let index = 0; index < smokeTrustedPaths.length; index += 1) {
       const changed = index === changedIndex;
@@ -391,7 +417,7 @@ describe("release PR macOS updater smoke gate", () => {
       }),
     ).rejects.toThrow("scripts/prepare-ocr.sh differs from the PR base");
     expect(fetchImpl).toHaveBeenCalledTimes(
-      (smokeTrustedPaths.indexOf("scripts/prepare-ocr.sh") + 1) * 2,
+      (smokeTrustedPaths.indexOf("scripts/prepare-ocr.sh") + 1) * 2 + 2,
     );
   });
 

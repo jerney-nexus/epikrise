@@ -256,6 +256,32 @@ export async function assertSmokeWorkflowUnmodified({
     return payload;
   }
 
+  // Confirms both commits exist first, so an unresolvable ref cannot pass as "no inputs changed".
+  /**
+   * @param {string} label
+   * @param {string} sha
+   */
+  async function assertCommitResolves(label, sha) {
+    try {
+      await requestJson(
+        apiUrl(apiBaseUrl, owner, repo, `/commits/${encodeURIComponent(sha)}`),
+        token,
+        fetchImpl,
+      );
+    } catch (error) {
+      if (error instanceof GitHubApiError && error.status === 404) {
+        throw new Error(
+          `${label} commit ${sha} cannot be resolved; the gate cannot verify the macOS updater bundle smoke inputs.`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+  }
+
+  await assertCommitResolves("PR base", baseSha);
+  await assertCommitResolves("PR head", headSha);
+
   // Sequential so each path's base and head requests stay in a deterministic order.
   for (const path of smokeTrustedPaths) {
     const base = await getContents(path, baseSha);
