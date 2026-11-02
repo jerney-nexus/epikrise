@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   assertSmokeWorkflowUnmodified,
   evaluateSmokeRun,
   findMatchingSmokeRuns,
+  smokeRunTitle,
   waitForMacosSmoke,
 } from "../scripts/wait-for-release-pr-macos-smoke.mjs";
 
@@ -38,6 +40,25 @@ function response(payload: object): Response {
 }
 
 describe("release PR macOS updater smoke gate", () => {
+  it("keeps the run title format in sync with the smoke workflow run-name", () => {
+    const workflow = readFileSync(
+      new URL("../.github/workflows/macos-updater-bundle-smoke.yml", import.meta.url),
+      "utf8",
+    );
+    const template = workflow.match(
+      /format\('macOS updater bundle smoke \| PR #\{0\} \| head \{1\} \| base \{2\}'/,
+    );
+    expect(template).not.toBeNull();
+
+    const fromWorkflow = template?.[0]
+      .replace("format('", "")
+      .replace(/'$/, "")
+      .replace("{0}", "42")
+      .replace("{1}", "release-sha")
+      .replace("{2}", "base-sha");
+    expect(fromWorkflow).toBe(smokeRunTitle(42, "release-sha", "base-sha"));
+  });
+
   it("matches the workflow run to the exact PR, head, branch, and base", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       response({

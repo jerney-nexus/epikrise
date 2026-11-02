@@ -238,14 +238,23 @@ export async function findMatchingSmokeRuns({
         run.event === "pull_request" &&
         run.head_sha === headSha &&
         run.head_branch === headRef &&
-        run.display_title ===
-          `macOS updater bundle smoke | PR #${pullRequestNumber} | head ${headSha} | base ${baseSha}`,
+        run.display_title === smokeRunTitle(pullRequestNumber, headSha, baseSha),
     )
     .sort(
       (left, right) =>
         Date.parse(right.created_at) - Date.parse(left.created_at) ||
         right.run_number - left.run_number,
     );
+}
+
+/**
+ * Must match the `run-name` format in macos-updater-bundle-smoke.yml.
+ * @param {number} pullRequestNumber
+ * @param {string} headSha
+ * @param {string} baseSha
+ */
+export function smokeRunTitle(pullRequestNumber, headSha, baseSha) {
+  return `macOS updater bundle smoke | PR #${pullRequestNumber} | head ${headSha} | base ${baseSha}`;
 }
 
 /** @param {WorkflowRun} run @param {WorkflowJob[]} jobs */
