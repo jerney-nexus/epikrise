@@ -1013,11 +1013,15 @@ export async function waitForMacosSmoke({
           token,
           fetchImpl,
         });
-        if (
-          candidateJobs.some(
-            (job) => requiredJobs.includes(job.name) && job.conclusion !== "skipped",
-          )
-        ) {
+        const requiredJobRuns = candidateJobs.filter((job) =>
+          requiredJobs.includes(job.name),
+        );
+        // Title or body edits create runs whose required jobs are all skipped; only those may be passed over.
+        const isEditOnlyRun =
+          requiredJobRuns.length > 0
+            ? requiredJobRuns.every((job) => job.conclusion === "skipped")
+            : candidate.status === "completed" && candidate.conclusion === "success";
+        if (!isEditOnlyRun) {
           latestRun = candidate;
           latestJobs = candidateJobs;
           break;

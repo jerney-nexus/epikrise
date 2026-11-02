@@ -1649,6 +1649,46 @@ describe("release PR macOS updater smoke gate", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 3);
   });
 
+  it("does not accept an older success when a newer run failed before creating jobs", async () => {
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
+      .mockResolvedValueOnce(
+        response({
+          workflow_runs: [
+            {
+              ...successfulRun,
+              id: 130,
+              run_number: 2,
+              created_at: "2026-11-02T01:00:00Z",
+              conclusion: "startup_failure",
+            },
+            successfulRun,
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(response({ jobs: [] }));
+
+    await expect(
+      waitForMacosSmoke({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        pullRequestNumber: 42,
+        headSha: "release-sha",
+        headRef: "release/2026.11.0",
+        baseSha: "base-sha",
+        token: "test-token",
+        fetchImpl,
+        now: () => 0,
+        sleep: async () => {
+          throw new Error("should not sleep");
+        },
+        maxWaitMs: 60_000,
+        intervalMs: 30_000,
+      }),
+    ).rejects.toThrow("Smoke workflow concluded startup_failure");
+    expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 2);
+  });
+
   it("reads later pages of workflow runs for the head SHA", async () => {
     const skippedRuns = Array.from({ length: 100 }, (_, index) => ({
       ...successfulRun,
