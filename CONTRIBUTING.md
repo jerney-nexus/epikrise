@@ -648,13 +648,11 @@ Rust file that uses `include!` or declares `mod x;` without a `#[path]`
 attribute fails the test suite, because the closure cannot follow it. If a
 required input (the smoke workflow or `src-tauri/build.rs`) is missing at either
 ref, or either commit SHA cannot be resolved, the gate fails rather than passing.
-`package.json` and
-`src-tauri/tauri.conf.json` may change only in their top-level `version`, which
-release preparation sets. `src-tauri/Cargo.lock` is not blocked because release
-preparation changes it as well; the gate does not verify it, so a release PR can
-alter the lockfile without tripping it. Retargeting a release PR triggers both
-workflows. A
-missing run, a failed job, or a run that does not finish before the timeout
+`package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.lock` may change
+only in their version fields, which release preparation sets. For the lockfile,
+that means the `version` of local (source-less) packages; registry and git
+entries must match the base exactly. Retargeting a release PR triggers both
+workflows. A missing run, a failed job, or a run that does not finish before the timeout
 fails the gate. The smoke workflow's path filter lists every trusted input, so a
 PR that changes one starts the smoke workflow. Its build job runs only for
 `release/*` heads and base retargets, so non-release PRs skip the macOS builds.

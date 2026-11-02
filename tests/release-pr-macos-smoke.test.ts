@@ -526,6 +526,69 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow("src-tauri/Cargo.toml differs from the PR base");
   });
 
+  it("allows a Cargo.lock that changes only local package versions", async () => {
+    const lock = (version: string) =>
+      `version = 4\n\n[[package]]\nname = "epikrise"\nversion = "${version}"\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\nchecksum = "abc"\n`;
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch({
+          "src-tauri/Cargo.lock": [
+            cargoManifest(lock("2026.10.2")),
+            cargoManifest(lock("2026.11.0")),
+          ],
+        }),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a Cargo.lock change to a registry package version", async () => {
+    const lock = (serde: string) =>
+      `version = 4\n\n[[package]]\nname = "epikrise"\nversion = "2026.10.2"\n\n[[package]]\nname = "serde"\nversion = "${serde}"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\nchecksum = "abc"\n`;
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch({
+          "src-tauri/Cargo.lock": [
+            cargoManifest(lock("1.0.0")),
+            cargoManifest(lock("1.0.1")),
+          ],
+        }),
+      }),
+    ).rejects.toThrow("src-tauri/Cargo.lock differs from the PR base");
+  });
+
+  it("rejects a Cargo.lock that adds a source to a local package", async () => {
+    const base = '[[package]]\nname = "epikrise"\nversion = "2026.10.2"\n';
+    const head = `${base}source = "git+https://example.invalid/evil"\n`;
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch({
+          "src-tauri/Cargo.lock": [cargoManifest(base), cargoManifest(head)],
+        }),
+      }),
+    ).rejects.toThrow("src-tauri/Cargo.lock differs from the PR base");
+  });
+
   it("rejects a changed Rust source whose path needs URL encoding", async () => {
     const path = "src-tauri/src/a#b.rs";
 

@@ -31,8 +31,9 @@ const requestTimeoutMs = 30 * 1000;
 const workflowPath = ".github/workflows/macos-updater-bundle-smoke.yml";
 /**
  * Files the smoke job executes or reads; a PR must not change them. Release
- * preparation legitimately changes package.json, Cargo.toml, Cargo.lock, and
- * tauri.conf.json, so those are intentionally excluded.
+ * preparation legitimately changes the version fields of package.json,
+ * Cargo.toml, Cargo.lock, and tauri.conf.json, so those are compared with
+ * version-only normalization.
  */
 export const smokeTrustedPaths = [
   workflowPath,
@@ -51,6 +52,7 @@ export const smokeTrustedPaths = [
   "scripts/verify-runtime-dependencies.mjs",
   "src-tauri/tauri.release.conf.json",
   "src-tauri/tauri.conf.json",
+  "src-tauri/Cargo.lock",
   "package.json",
   "src-tauri/build.rs",
   "src-tauri/src/windows_updater_features.rs",
@@ -264,6 +266,22 @@ function versionlessCargoManifest(contents) {
     .join("\n");
 }
 
+/**
+ * Normalizes only local (source-less) lock packages, the entries release
+ * preparation rewrites, so registry or git package changes still differ.
+ * @param {string} contents
+ */
+function versionlessCargoLock(contents) {
+  return contents
+    .split(/^(?=\[\[package\]\])/m)
+    .map((block) =>
+      block.startsWith("[[package]]") && !/^\s*source\s*=/m.test(block)
+        ? block.replace(/^(\s*version\s*=\s*).*$/m, "$1<release-version>")
+        : block,
+    )
+    .join("");
+}
+
 /** @param {string} key */
 function tomlKeySegments(key) {
   return key.split(".").map((part) => part.trim().replace(/^["']|["']$/g, ""));
@@ -469,6 +487,15 @@ export async function assertSmokeWorkflowUnmodified({
       path.endsWith("Cargo.toml") &&
       versionlessCargoManifest(decodeContent(base, path)) ===
         versionlessCargoManifest(decodeContent(head, path))
+    ) {
+      continue;
+    }
+    if (
+      base !== null &&
+      head !== null &&
+      path === "src-tauri/Cargo.lock" &&
+      versionlessCargoLock(decodeContent(base, path)) ===
+        versionlessCargoLock(decodeContent(head, path))
     ) {
       continue;
     }
