@@ -264,7 +264,7 @@ export async function assertSmokeWorkflowUnmodified({
   async function assertCommitResolves(label, sha) {
     try {
       await requestJson(
-        apiUrl(apiBaseUrl, owner, repo, `/commits/${encodeURIComponent(sha)}`),
+        apiUrl(apiBaseUrl, owner, repo, `/git/commits/${encodeURIComponent(sha)}`),
         token,
         fetchImpl,
       );

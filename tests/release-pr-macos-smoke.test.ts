@@ -321,6 +321,9 @@ describe("release PR macOS updater smoke gate", () => {
         fetchImpl,
       }),
     ).rejects.toThrow("PR base commit base-sha cannot be resolved");
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      "https://api.github.com/repos/owner/repo/git/commits/base-sha",
+    );
   });
 
   it("fails closed when a required smoke input cannot be read at either ref", async () => {
