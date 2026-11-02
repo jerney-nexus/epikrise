@@ -5,7 +5,9 @@ import {
   assertSmokeWorkflowUnmodified,
   evaluateSmokeRun,
   findMatchingSmokeRuns,
+  isSmokeTrustedInput,
   smokeRunTitle,
+  smokeTrustedDirectories,
   smokeTrustedPaths,
   waitForMacosSmoke,
 } from "../scripts/wait-for-release-pr-macos-smoke.mjs";
@@ -181,6 +183,9 @@ describe("release PR macOS updater smoke gate", () => {
       (file) => !matchesPathFilter(file, filterPaths),
     );
     expect(missing).toEqual([]);
+    for (const directory of smokeTrustedDirectories) {
+      expect(matchesPathFilter(`${directory}nested/file.txt`, filterPaths)).toBe(true);
+    }
     for (const file of [
       "src-tauri/src/lib.rs",
       "src-tauri/crates/epikrise-core/src/policy.rs",
@@ -635,7 +640,7 @@ describe("release PR macOS updater smoke gate", () => {
         token: "test-token",
         fetchImpl,
       }),
-    ).rejects.toThrow("GitHub API could not enumerate Cargo inputs at base-sha");
+    ).rejects.toThrow("GitHub API could not enumerate smoke inputs at base-sha");
   });
 
   it("rejects a pull request that deletes a trusted build module", async () => {
@@ -675,6 +680,42 @@ describe("release PR macOS updater smoke gate", () => {
         }),
       }),
     ).rejects.toThrow("scripts/prepare-ocr.sh differs from the PR base");
+  });
+
+  it("rejects a frontend file that the pull request adds under a trusted directory", async () => {
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(
+          { "src/lib/new-helper.ts": [null, { sha: "new-helper" }] },
+          { "head-sha": ["src/lib/new-helper.ts"] },
+        ),
+      }),
+    ).rejects.toThrow("src/lib/new-helper.ts differs from the PR base");
+  });
+
+  it("rejects a changed Info.plist and a changed static asset", async () => {
+    for (const file of ["src-tauri/Info.plist", "static/tauri.svg"]) {
+      await expect(
+        assertSmokeWorkflowUnmodified({
+          apiBaseUrl: "https://api.github.com",
+          owner: "owner",
+          repo: "repo",
+          baseSha: "base-sha",
+          headSha: "head-sha",
+          token: "test-token",
+          fetchImpl: trustedContentsFetch(
+            { [file]: [{ sha: "base-asset" }, { sha: "changed-asset" }] },
+            { "base-sha": [file], "head-sha": [file] },
+          ),
+        }),
+      ).rejects.toThrow(`${file} differs from the PR base`);
+    }
   });
 
   it("passes only when both required smoke jobs succeed", () => {
@@ -1139,7 +1180,7 @@ describe("release PR macOS updater smoke gate", () => {
 
     expect(reached).toContain("svelte.config.js");
     expect(unsupportedRust).toEqual([]);
-    const untrusted = [...reached].filter((file) => !smokeTrustedPaths.includes(file));
+    const untrusted = [...reached].filter((file) => !isSmokeTrustedInput(file));
     expect(untrusted).toEqual([]);
   });
 

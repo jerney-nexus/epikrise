@@ -45,6 +45,12 @@ on:
       - .cargo/config.toml
       - src-tauri/.cargo/config
       - src-tauri/.cargo/config.toml
+      - src-tauri/Info.plist
+      - src/**/*
+      - static/**/*
+      - locales/**/*
+      - src-tauri/capabilities/**/*
+      - src-tauri/resources/**/*
   workflow_dispatch:
 
 permissions:

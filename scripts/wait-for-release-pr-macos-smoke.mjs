@@ -68,7 +68,32 @@ export const smokeTrustedPaths = [
   ".cargo/config.toml",
   "src-tauri/.cargo/config",
   "src-tauri/.cargo/config.toml",
+  "src-tauri/Info.plist",
 ];
+
+/**
+ * Directories whose tracked files are bundled into the smoke build. Every file
+ * under them is trusted, including files a PR adds. Only blob shas are compared
+ * for them, so binary assets such as icons are safe to hash.
+ */
+export const smokeTrustedDirectories = [
+  "src/",
+  "static/",
+  "locales/",
+  "src-tauri/capabilities/",
+  "src-tauri/resources/",
+];
+
+/**
+ * @param {string} path
+ * @returns {boolean}
+ */
+export function isSmokeTrustedInput(path) {
+  return (
+    smokeTrustedPaths.includes(path) ||
+    smokeTrustedDirectories.some((directory) => path.startsWith(directory))
+  );
+}
 
 /** Inputs that must exist at both refs; a 404 here means the ref or access is broken. */
 export const requiredSmokePaths = [workflowPath, "src-tauri/build.rs"];
@@ -331,10 +356,11 @@ export async function assertSmokeWorkflowUnmodified({
   await assertCommitResolves("PR head", headSha);
 
   /**
-   * Cargo manifests and Rust sources under src-tauri/, the only Rust workspace.
+   * Cargo manifests and Rust sources under src-tauri/, the only Rust workspace,
+   * plus every tracked file in the smoke-trusted directories.
    * @param {string} sha
    */
-  async function getCargoInputPaths(sha) {
+  async function getTreeInputPaths(sha) {
     const tree = await requestJson(
       apiUrl(
         apiBaseUrl,
@@ -346,24 +372,25 @@ export async function assertSmokeWorkflowUnmodified({
       fetchImpl,
     );
     if (!isRecord(tree) || tree.truncated === true || !Array.isArray(tree.tree)) {
-      throw new Error(`GitHub API could not enumerate Cargo inputs at ${sha}.`);
+      throw new Error(`GitHub API could not enumerate smoke inputs at ${sha}.`);
     }
-    const paths = new Set(
-      tree.tree
-        .filter(
-          (entry) =>
-            isRecord(entry) &&
-            typeof entry.path === "string" &&
-            entry.path.startsWith("src-tauri/") &&
-            (entry.path.endsWith("/Cargo.toml") || entry.path.endsWith(".rs")),
-        )
-        .map((entry) => /** @type {string} */ (entry.path)),
-    );
+    const paths = new Set();
+    for (const entry of tree.tree) {
+      if (!isRecord(entry) || typeof entry.path !== "string") continue;
+      const path = entry.path;
+      const isRustInput =
+        path.startsWith("src-tauri/") &&
+        (path.endsWith("/Cargo.toml") || path.endsWith(".rs"));
+      const isTrustedDirectoryInput = smokeTrustedDirectories.some((directory) =>
+        path.startsWith(directory),
+      );
+      if (isRustInput || isTrustedDirectoryInput) paths.add(path);
+    }
     for (const path of paths) {
       if (!path.endsWith("Cargo.toml")) continue;
       const manifest = await getContents(path, sha);
       if (manifest === null) {
-        throw new Error(`${path} disappeared while checking Cargo inputs at ${sha}.`);
+        throw new Error(`${path} disappeared while checking smoke inputs at ${sha}.`);
       }
       const buildScript = cargoBuildScriptPath(decodeContent(manifest, path), path);
       if (buildScript) paths.add(buildScript);
@@ -371,14 +398,14 @@ export async function assertSmokeWorkflowUnmodified({
     return paths;
   }
 
-  const [baseCargoInputs, headCargoInputs] = await Promise.all([
-    getCargoInputPaths(baseSha),
-    getCargoInputPaths(headSha),
+  const [baseTreeInputs, headTreeInputs] = await Promise.all([
+    getTreeInputPaths(baseSha),
+    getTreeInputPaths(headSha),
   ]);
-  const cargoInputPaths = new Set([...baseCargoInputs, ...headCargoInputs]);
+  const treeInputPaths = new Set([...baseTreeInputs, ...headTreeInputs]);
 
   // Sequential so each path's base and head requests stay in a deterministic order.
-  for (const path of new Set([...smokeTrustedPaths, ...cargoInputPaths])) {
+  for (const path of new Set([...smokeTrustedPaths, ...treeInputPaths])) {
     const base = await getContents(path, baseSha);
     const head = await getContents(path, headSha);
     if (requiredSmokePaths.includes(path) && (base === null || head === null)) {
@@ -387,7 +414,7 @@ export async function assertSmokeWorkflowUnmodified({
       );
     }
     if (base === null && head === null) {
-      if (cargoInputPaths.has(path)) {
+      if (treeInputPaths.has(path)) {
         throw new Error(
           `${path} was listed in the source tree but could not be read at either PR commit; the gate will not trust its results.`,
         );
@@ -398,7 +425,7 @@ export async function assertSmokeWorkflowUnmodified({
     if (
       base !== null &&
       head !== null &&
-      cargoInputPaths.has(path) &&
+      path.startsWith("src-tauri/") &&
       path.endsWith("Cargo.toml") &&
       versionlessCargoManifest(decodeContent(base, path)) ===
         versionlessCargoManifest(decodeContent(head, path))
