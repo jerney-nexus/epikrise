@@ -128,6 +128,17 @@ describe("release PR macOS updater smoke gate", () => {
     expect(missing).toEqual([]);
   });
 
+  it("limits the smoke build job to release branch heads and base retargets", () => {
+    const workflow = readFileSync(
+      new URL("../.github/workflows/macos-updater-bundle-smoke.yml", import.meta.url),
+      "utf8",
+    );
+    const jobIf = workflow.match(/^ {4}if: >-\n((?: {6}.+\n)+)/m);
+    expect(jobIf).not.toBeNull();
+    expect(jobIf![1]).toContain("startsWith(github.head_ref, 'release/')");
+    expect(jobIf![1]).toContain("github.event.changes.base != null");
+  });
+
   it("keeps the run title format in sync with the smoke workflow run-name", () => {
     const workflow = readFileSync(
       new URL("../.github/workflows/macos-updater-bundle-smoke.yml", import.meta.url),

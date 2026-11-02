@@ -51,11 +51,13 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.target }}
-    # Title and body edits only change the run title; build only on base retargets.
+    # Only release PRs are gated, so other PRs skip the macOS build. Title and body edits only change the run title; build only on base retargets.
     if: >-
-      github.event_name != 'pull_request' ||
+      (github.event_name != 'pull_request' ||
+      startsWith(github.head_ref, 'release/')) &&
+      (github.event_name != 'pull_request' ||
       github.event.action != 'edited' ||
-      github.event.changes.base != null
+      github.event.changes.base != null)
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:

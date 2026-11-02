@@ -638,9 +638,8 @@ verify them, so a release PR can alter Rust manifests and lockfiles without
 tripping it. Retargeting a release PR triggers both workflows. A
 missing run, a failed job, or a run that does not finish before the timeout
 fails the gate. The smoke workflow's path filter lists every trusted input, so a
-PR that changes one starts the macOS smoke run, including non-release PRs that
-touch `package.json` or the lockfiles; those builds run even though the gate
-itself only applies to `release/*` branches.
+PR that changes one starts the smoke workflow. Its build job runs only for
+`release/*` heads and base retargets, so non-release PRs skip the macOS builds.
 
 To enforce the gate, a repository administrator must add only
 **Release PR macOS updater bundle smoke** to the required status checks in
