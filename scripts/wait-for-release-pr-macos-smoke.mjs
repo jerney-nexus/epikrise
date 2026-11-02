@@ -49,6 +49,8 @@ export const smokeTrustedPaths = [
   "scripts/verify-binary-architecture.mjs",
   "scripts/verify-runtime-dependencies.mjs",
   "src-tauri/tauri.release.conf.json",
+  "src-tauri/tauri.conf.json",
+  "package.json",
   "src-tauri/build.rs",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
@@ -172,6 +174,29 @@ function apiUrl(baseUrl, owner, repo, path) {
 }
 
 /**
+ * Release preparation only rewrites the top-level `version` in these files, so
+ * a release PR may change them as long as nothing else differs.
+ */
+const versionOnlyJsonPaths = new Set(["package.json", "src-tauri/tauri.conf.json"]);
+
+/**
+ * @param {Record<string, unknown>} payload contents API response
+ * @param {string} path
+ * @returns {string} canonical JSON with the top-level `version` removed
+ */
+function versionlessJson(payload, path) {
+  if (payload.encoding !== "base64" || typeof payload.content !== "string") {
+    throw new Error(`GitHub API did not return ${path} content.`);
+  }
+  const value = JSON.parse(Buffer.from(payload.content, "base64").toString("utf8"));
+  if (!isRecord(value)) {
+    throw new Error(`${path} is not a JSON object.`);
+  }
+  delete value.version;
+  return JSON.stringify(value);
+}
+
+/**
  * @param {{
  *   apiBaseUrl: string,
  *   owner: string,
@@ -195,7 +220,7 @@ export async function assertSmokeWorkflowUnmodified({
    * @param {string} path
    * @param {string} ref
    */
-  async function getBlobSha(path, ref) {
+  async function getContents(path, ref) {
     const params = new URLSearchParams({ ref });
     const payload = await requestJson(
       apiUrl(apiBaseUrl, owner, repo, `/contents/${path}?${params}`),
@@ -205,14 +230,18 @@ export async function assertSmokeWorkflowUnmodified({
     if (!isRecord(payload) || typeof payload.sha !== "string") {
       throw new Error(`GitHub API did not return ${path} at ${ref}.`);
     }
-    return payload.sha;
+    return payload;
   }
 
   // Sequential so each path's base and head requests stay in a deterministic order.
   for (const path of smokeTrustedPaths) {
-    const baseBlobSha = await getBlobSha(path, baseSha);
-    const headBlobSha = await getBlobSha(path, headSha);
-    if (baseBlobSha !== headBlobSha) {
+    const base = await getContents(path, baseSha);
+    const head = await getContents(path, headSha);
+    if (base.sha === head.sha) continue;
+    if (
+      !versionOnlyJsonPaths.has(path) ||
+      versionlessJson(base, path) !== versionlessJson(head, path)
+    ) {
       throw new Error(
         `${path} differs from the PR base; the macOS updater bundle smoke inputs are untrusted and the gate will not trust its results.`,
       );

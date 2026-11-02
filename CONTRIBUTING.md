@@ -619,9 +619,12 @@ smoke workflow and to the build inputs it executes or reads: every script the
 workflow runs, directly or through another script (cargo-target, OCR,
 native-environment, architecture, and runtime-dependency checks),
 `src-tauri/build.rs`, `src-tauri/tauri.release.conf.json`, `pnpm-lock.yaml`,
-`pnpm-workspace.yaml`, `vite.config.js`, and `svelte.config.js`. `package.json`, `src-tauri/Cargo.toml`,
-`src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json` are not blocked because
-release preparation changes them. Retargeting a release PR triggers both workflows. A
+`pnpm-workspace.yaml`, `vite.config.js`, and `svelte.config.js`. `package.json` and
+`src-tauri/tauri.conf.json` may change only in their top-level `version`, which
+release preparation sets. `src-tauri/Cargo.toml` and `src-tauri/Cargo.lock` are
+not blocked because release preparation changes them as well; the gate does not
+verify them, so a release PR can alter Rust manifests and lockfiles without
+tripping it. Retargeting a release PR triggers both workflows. A
 missing run, a failed job, or a run that does not finish before the timeout
 fails the gate. Release preparation changes `src-tauri/Cargo.toml`,
 `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`, which are included in
