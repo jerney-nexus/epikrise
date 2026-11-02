@@ -1301,6 +1301,18 @@ describe("release PR macOS updater smoke gate", () => {
     expect(untrusted).toEqual([]);
   });
 
+  it("trusts the tsconfig and every icon the Tauri bundle reads", () => {
+    const repoRoot = new URL("../", import.meta.url);
+    const config = JSON.parse(
+      readFileSync(new URL("src-tauri/tauri.conf.json", repoRoot), "utf8"),
+    ) as { bundle: { icon: string[] } };
+    const icons = config.bundle.icon.map((icon) => path.posix.join("src-tauri", icon));
+
+    expect(icons.length).toBeGreaterThan(0);
+    expect(isSmokeTrustedInput("tsconfig.json")).toBe(true);
+    expect(icons.filter((icon) => !isSmokeTrustedInput(icon))).toEqual([]);
+  });
+
   it("follows every #[path] spelling and flags module forms it cannot resolve", () => {
     const spellings = [
       '#[path = "a.rs"]',

@@ -37,6 +37,7 @@ on:
       - .pnpmfile.cjs
       - vite.config.js
       - svelte.config.js
+      - tsconfig.json
       - rust-toolchain
       - rust-toolchain.toml
       - src-tauri/rust-toolchain
@@ -50,6 +51,7 @@ on:
       - static/**/*
       - locales/**/*
       - src-tauri/capabilities/**/*
+      - src-tauri/icons/**/*
       - src-tauri/resources/**/*
   workflow_dispatch:
 

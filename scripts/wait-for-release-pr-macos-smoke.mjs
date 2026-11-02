@@ -62,6 +62,7 @@ export const smokeTrustedPaths = [
   ".pnpmfile.cjs",
   "vite.config.js",
   "svelte.config.js",
+  "tsconfig.json",
   "rust-toolchain",
   "rust-toolchain.toml",
   "src-tauri/rust-toolchain",
@@ -83,6 +84,7 @@ export const smokeTrustedDirectories = [
   "static/",
   "locales/",
   "src-tauri/capabilities/",
+  "src-tauri/icons/",
   "src-tauri/resources/",
 ];
 
