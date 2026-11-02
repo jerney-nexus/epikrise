@@ -77,6 +77,8 @@ export const smokeTrustedPaths = [
   ".postcssrc.cjs",
   ".postcssrc.mjs",
   ".postcssrc.ts",
+  ".postcssrc.cts",
+  ".postcssrc.mts",
   ".env",
   ".env.local",
   ".env.production",
