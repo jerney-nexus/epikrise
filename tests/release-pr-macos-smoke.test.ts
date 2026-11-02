@@ -731,7 +731,7 @@ describe("release PR macOS updater smoke gate", () => {
         headSha: "head-sha",
         token: "test-token",
         fetchImpl: treeOverrideFetch("head-sha", [
-          { path: "src-tauri/build.rs", type: "blob" },
+          { path: "src/Orphan.svelte", type: "blob" },
         ]),
       }),
     ).rejects.toThrow(/could not enumerate smoke inputs at head-sha/);
