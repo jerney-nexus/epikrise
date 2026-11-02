@@ -620,14 +620,29 @@ mod tests {
     }
 
     #[cfg(feature = "direct-release-updater")]
+    fn newer_candidate_version() -> String {
+        let mut parts: Vec<u32> = env!("CARGO_PKG_VERSION")
+            .split('.')
+            .map(|part| part.parse().expect("package version is numeric"))
+            .collect();
+        parts[2] += 1;
+        parts
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+
+    #[cfg(feature = "direct-release-updater")]
     fn valid_fake_candidate() -> FakeCandidate {
+        let version = newer_candidate_version();
         FakeCandidate {
-            version: "2026.11.0".to_owned(),
-            target: "linux-x86_64".to_owned(),
-            url: Url::parse(
-                "https://github.com/jerney-nexus/epikrise/releases/download/v2026.11.0/app.AppImage",
-            )
+            url: Url::parse(&format!(
+                "https://github.com/jerney-nexus/epikrise/releases/download/v{version}/app.AppImage"
+            ))
             .expect("test URL should parse"),
+            version,
+            target: "linux-x86_64".to_owned(),
             signature: "synthetic-signature".to_owned(),
         }
     }
@@ -754,17 +769,22 @@ mod tests {
     #[cfg(feature = "direct-release-updater")]
     #[test]
     fn release_candidate_preserves_calver_and_rejects_downgrades_or_wrong_targets() {
-        let url = Url::parse(
-            "https://github.com/jerney-nexus/epikrise/releases/download/v2026.11.0/app.AppImage",
-        )
+        let candidate_version = newer_candidate_version();
+        let url = Url::parse(&format!(
+            "https://github.com/jerney-nexus/epikrise/releases/download/v{candidate_version}/app.AppImage"
+        ))
         .expect("test URL should parse");
         assert_eq!(
             release_version_from_protocol("2026.9.4").as_deref(),
             Ok("2026.9.4")
         );
-        assert!(validate_candidate("2026.11.0", "linux-x86_64", &url, "linux-x86_64").is_ok());
+        assert!(
+            validate_candidate(&candidate_version, "linux-x86_64", &url, "linux-x86_64").is_ok()
+        );
         assert!(validate_candidate("2026.9.4", "linux-x86_64", &url, "linux-x86_64").is_err());
-        assert!(validate_candidate("2026.11.0", "linux-aarch64", &url, "linux-x86_64").is_err());
+        assert!(
+            validate_candidate(&candidate_version, "linux-aarch64", &url, "linux-x86_64").is_err()
+        );
         assert!(release_version_from_protocol("2026.09.4").is_err());
         assert!(release_version_from_protocol("2026.13.0").is_err());
     }
