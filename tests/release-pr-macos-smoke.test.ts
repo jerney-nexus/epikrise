@@ -43,6 +43,23 @@ function response(payload: object): Response {
 
 const trustedRequests = smokeTrustedPaths.length * 2;
 
+const rustPathAttribute = /#\[\s*(?:cfg_attr\([^)]*?,\s*)?path\s*=\s*r?"([^"]+)"/g;
+const rustUnsupportedInclude = /\binclude(?:_bytes|_str)?!\s*\(/;
+const rustModuleDeclaration = /^\s*(?:pub\s+)?mod\s+\w+\s*;/;
+
+/**
+ * True when a Rust file declares a `mod x;` the closure cannot resolve: the
+ * declaration has no `#[path]` attribute on the line above it.
+ */
+function hasUnpathedModule(source: string): boolean {
+  const lines = source.split("\n");
+  return lines.some((line, index) => {
+    if (!rustModuleDeclaration.test(line)) return false;
+    const previous = index > 0 ? lines[index - 1] : "";
+    return !/#\[[^\]]*path\s*=/.test(previous);
+  });
+}
+
 /** Contents-API body for a JSON file; the sha changes with the content, as it does in git. */
 function encodedJson(value: object): object {
   const content = JSON.stringify(value);
@@ -769,9 +786,9 @@ describe("release PR macOS updater smoke gate", () => {
   it("trusts every script and Rust module reachable from the trusted build inputs", () => {
     const repoRoot = new URL("../", import.meta.url);
     const scriptReference = /scripts\/[\w./-]+\.(?:sh|ps1|cmd|mjs|cjs|js|ts)/g;
-    const rustPathAttribute = /#\[path = "([^"]+)"\]/g;
     const relativeImport = /(?:from\s+|import\(\s*)["'](\.{1,2}\/[^"']+)["']/g;
     const reached = new Set<string>();
+    const unsupportedRust: string[] = [];
     const pending = [
       ".github/workflows/macos-updater-bundle-smoke.yml",
       "src-tauri/build.rs",
@@ -801,6 +818,11 @@ describe("release PR macOS updater smoke gate", () => {
       }
       reached.add(current);
       const contents = inputText(current);
+      if (current.endsWith(".rs")) {
+        if (rustUnsupportedInclude.test(contents) || hasUnpathedModule(contents)) {
+          unsupportedRust.push(current);
+        }
+      }
       for (const [reference] of contents.matchAll(scriptReference)) {
         pending.push(reference);
       }
@@ -813,8 +835,29 @@ describe("release PR macOS updater smoke gate", () => {
     }
 
     expect(reached).toContain("svelte.config.js");
+    expect(unsupportedRust).toEqual([]);
     const untrusted = [...reached].filter((file) => !smokeTrustedPaths.includes(file));
     expect(untrusted).toEqual([]);
+  });
+
+  it("follows every #[path] spelling and flags module forms it cannot resolve", () => {
+    const spellings = [
+      '#[path = "a.rs"]',
+      '#[path="a.rs"]',
+      '#[path = r"a.rs"]',
+      '#[cfg_attr(unix, path = "a.rs")]',
+    ];
+    for (const spelling of spellings) {
+      const matches = [...spelling.matchAll(rustPathAttribute)].map(
+        (match) => match[1],
+      );
+      expect(matches).toEqual(["a.rs"]);
+    }
+
+    expect(hasUnpathedModule('#[path = "a.rs"]\nmod a;\n')).toBe(false);
+    expect(hasUnpathedModule("mod helpers;\n")).toBe(true);
+    expect(rustUnsupportedInclude.test('include!("gen.rs");')).toBe(true);
+    expect(rustUnsupportedInclude.test('include_str!("data.txt")')).toBe(true);
   });
 
   it("trusts the package-manager and Cargo config files the build reads", () => {
