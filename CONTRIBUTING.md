@@ -618,8 +618,12 @@ pass. The gate runs trusted code from the PR base and rejects changes to the
 smoke workflow and to the build inputs it executes or reads: every script the
 workflow runs, directly or through another script (cargo-target, OCR,
 native-environment, architecture, and runtime-dependency checks),
-`src-tauri/build.rs`, `src-tauri/tauri.release.conf.json`, `pnpm-lock.yaml`,
-`pnpm-workspace.yaml`, `vite.config.js`, and `svelte.config.js`. `package.json` and
+`src-tauri/build.rs` and every Rust module it includes through `#[path]`,
+`src-tauri/tauri.release.conf.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`,
+`.npmrc`, `.pnpmfile.cjs`, `vite.config.js`, `svelte.config.js`, Rust toolchain
+pins (`rust-toolchain` and `rust-toolchain.toml`, at the root and in
+`src-tauri/`), and Cargo config files (`.cargo/config` and `.cargo/config.toml`,
+at the root and in `src-tauri/`). `package.json` and
 `src-tauri/tauri.conf.json` may change only in their top-level `version`, which
 release preparation sets. `src-tauri/Cargo.toml` and `src-tauri/Cargo.lock` are
 not blocked because release preparation changes them as well; the gate does not
