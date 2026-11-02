@@ -258,7 +258,7 @@ function versionlessCargoManifest(contents) {
   return contents
     .split("\n")
     .map((line) => {
-      const heading = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/);
+      const heading = line.match(/^\s*\[\[?([^\]]+)\]\]?\s*(?:#.*)?$/);
       if (heading) section = heading[1];
       return (section === "package" || section === "workspace.package") &&
         /^\s*version\s*=/.test(line)
