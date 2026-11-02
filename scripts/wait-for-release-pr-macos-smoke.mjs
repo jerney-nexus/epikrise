@@ -75,9 +75,9 @@ export const smokeTrustedPaths = [
 ];
 
 /**
- * Directories whose tracked files are bundled into the smoke build. Every file
- * under them is trusted, including files a PR adds. Only blob shas are compared
- * for them, so binary assets such as icons are safe to hash.
+ * Directories whose tracked files are bundled into the smoke build. Any change
+ * under them fails the gate, including files a PR adds. Only blob shas are
+ * compared for them, so binary assets such as icons are safe to hash.
  */
 export const smokeTrustedDirectories = [
   "src/",
