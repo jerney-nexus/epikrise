@@ -258,4 +258,181 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow("Cannot read properties of undefined");
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
+
+  it("honors Retry-After when GitHub asks the gate to back off", async () => {
+    const sleeps: number[] = [];
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(
+        new Response("slow down", {
+          status: 429,
+          headers: { "Retry-After": "7" },
+        }),
+      )
+      .mockResolvedValueOnce(response({ workflow_runs: [successfulRun] }))
+      .mockResolvedValueOnce(response({ jobs: successfulJobs }));
+
+    await waitForMacosSmoke({
+      apiBaseUrl: "https://api.github.com",
+      owner: "owner",
+      repo: "repo",
+      pullRequestNumber: 42,
+      headSha: "release-sha",
+      headRef: "release/2026.11.0",
+      baseSha: "base-sha",
+      token: "test-token",
+      fetchImpl,
+      now: () => 0,
+      sleep: async (duration) => {
+        sleeps.push(duration);
+      },
+      maxWaitMs: 60_000,
+    });
+    expect(sleeps).toEqual([7_000]);
+  });
+
+  it("retries a rate-limited 403 with the fallback backoff", async () => {
+    const sleeps: number[] = [];
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(
+        new Response("API rate limit exceeded", {
+          status: 403,
+          headers: { "x-ratelimit-remaining": "0" },
+        }),
+      )
+      .mockResolvedValueOnce(response({ workflow_runs: [successfulRun] }))
+      .mockResolvedValueOnce(response({ jobs: successfulJobs }));
+
+    await waitForMacosSmoke({
+      apiBaseUrl: "https://api.github.com",
+      owner: "owner",
+      repo: "repo",
+      pullRequestNumber: 42,
+      headSha: "release-sha",
+      headRef: "release/2026.11.0",
+      baseSha: "base-sha",
+      token: "test-token",
+      fetchImpl,
+      now: () => 0,
+      sleep: async (duration) => {
+        sleeps.push(duration);
+      },
+      maxWaitMs: 60_000,
+    });
+    expect(sleeps).toEqual([1_000]);
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
+  });
+
+  it("retries request timeouts reported as AbortError or TimeoutError", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockRejectedValueOnce(
+        Object.assign(new Error("The operation was aborted"), {
+          name: "AbortError",
+        }),
+      )
+      .mockRejectedValueOnce(
+        Object.assign(new Error("The operation timed out"), {
+          name: "TimeoutError",
+        }),
+      )
+      .mockResolvedValueOnce(response({ workflow_runs: [successfulRun] }))
+      .mockResolvedValueOnce(response({ jobs: successfulJobs }));
+    const sleeps: number[] = [];
+
+    await waitForMacosSmoke({
+      apiBaseUrl: "https://api.github.com",
+      owner: "owner",
+      repo: "repo",
+      pullRequestNumber: 42,
+      headSha: "release-sha",
+      headRef: "release/2026.11.0",
+      baseSha: "base-sha",
+      token: "test-token",
+      fetchImpl,
+      now: () => 0,
+      sleep: async (duration) => {
+        sleeps.push(duration);
+      },
+      maxWaitMs: 60_000,
+    });
+    expect(sleeps).toEqual([1_000, 2_000]);
+    expect(fetchImpl).toHaveBeenCalledTimes(6);
+  });
+
+  it("times out with the transient cause when retries exhaust the deadline", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(new Response("unavailable", { status: 503 }));
+
+    await expect(
+      waitForMacosSmoke({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        pullRequestNumber: 42,
+        headSha: "release-sha",
+        headRef: "release/2026.11.0",
+        baseSha: "base-sha",
+        token: "test-token",
+        fetchImpl,
+        now: () => 1_000,
+        maxWaitMs: 0,
+      }),
+    ).rejects.toThrow(
+      "Timed out waiting for macOS updater bundle smoke results on release/2026.11.0 at release-sha after a transient GitHub API failure",
+    );
+  });
+
+  it("keeps polling a pending run until both jobs pass", async () => {
+    const sleeps: number[] = [];
+    const pendingJobs = successfulJobs.map((job) => ({
+      ...job,
+      status: "in_progress",
+      conclusion: null,
+    }));
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(
+        response({
+          workflow_runs: [
+            { ...successfulRun, status: "in_progress", conclusion: null },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(response({ jobs: pendingJobs }))
+      .mockResolvedValueOnce(response({ workflow_runs: [successfulRun] }))
+      .mockResolvedValueOnce(response({ jobs: successfulJobs }));
+
+    await waitForMacosSmoke({
+      apiBaseUrl: "https://api.github.com",
+      owner: "owner",
+      repo: "repo",
+      pullRequestNumber: 42,
+      headSha: "release-sha",
+      headRef: "release/2026.11.0",
+      baseSha: "base-sha",
+      token: "test-token",
+      fetchImpl,
+      now: () => 0,
+      sleep: async (duration) => {
+        sleeps.push(duration);
+      },
+      maxWaitMs: 60_000,
+      intervalMs: 30_000,
+    });
+    expect(sleeps).toEqual([30_000]);
+    expect(fetchImpl).toHaveBeenCalledTimes(6);
+  });
 });
