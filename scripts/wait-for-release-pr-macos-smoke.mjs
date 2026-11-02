@@ -29,6 +29,16 @@ const timeoutMs = 60 * 60 * 1000;
 const pollIntervalMs = 60 * 1000;
 const requestTimeoutMs = 30 * 1000;
 const workflowPath = ".github/workflows/macos-updater-bundle-smoke.yml";
+/** Files the smoke job executes or reads; a PR must not change them. */
+const smokeTrustedPaths = [
+  workflowPath,
+  "scripts/with-cargo-host-target.sh",
+  "scripts/validate-native-cargo-target.mjs",
+  "scripts/prepare-ocr.sh",
+  "scripts/build-native-ocr.sh",
+  "scripts/verify-native-build-environment.mjs",
+  "src-tauri/tauri.release.conf.json",
+];
 
 class GitHubApiError extends Error {
   /**
@@ -161,28 +171,32 @@ export async function assertSmokeWorkflowUnmodified({
   token,
   fetchImpl = fetch,
 }) {
-  /** @param {string} ref */
-  async function getBlobSha(ref) {
+  /**
+   * @param {string} path
+   * @param {string} ref
+   */
+  async function getBlobSha(path, ref) {
     const params = new URLSearchParams({ ref });
     const payload = await requestJson(
-      apiUrl(apiBaseUrl, owner, repo, `/contents/${workflowPath}?${params}`),
+      apiUrl(apiBaseUrl, owner, repo, `/contents/${path}?${params}`),
       token,
       fetchImpl,
     );
     if (!isRecord(payload) || typeof payload.sha !== "string") {
-      throw new Error(`GitHub API did not return the smoke workflow at ${ref}.`);
+      throw new Error(`GitHub API did not return ${path} at ${ref}.`);
     }
     return payload.sha;
   }
 
-  const [baseBlobSha, headBlobSha] = await Promise.all([
-    getBlobSha(baseSha),
-    getBlobSha(headSha),
-  ]);
-  if (baseBlobSha !== headBlobSha) {
-    throw new Error(
-      "The macOS updater bundle smoke workflow differs from the PR base; the gate will not trust its results.",
-    );
+  // Sequential so each path's base and head requests stay in a deterministic order.
+  for (const path of smokeTrustedPaths) {
+    const baseBlobSha = await getBlobSha(path, baseSha);
+    const headBlobSha = await getBlobSha(path, headSha);
+    if (baseBlobSha !== headBlobSha) {
+      throw new Error(
+        `${path} differs from the PR base; the macOS updater bundle smoke inputs are untrusted and the gate will not trust its results.`,
+      );
+    }
   }
 }
 

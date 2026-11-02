@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { type Mock, describe, expect, it, vi } from "vitest";
 import {
   assertSmokeWorkflowUnmodified,
   evaluateSmokeRun,
@@ -37,6 +37,14 @@ const successfulJobs = [
 
 function response(payload: object): Response {
   return new Response(JSON.stringify(payload), { status: 200 });
+}
+
+/** Queues the trusted-input SHA lookups (base and head for seven paths) that run before polling. */
+function queueTrustedInputs(fetchImpl: Mock<typeof fetch>): Mock<typeof fetch> {
+  for (let index = 0; index < 14; index += 1) {
+    fetchImpl.mockResolvedValueOnce(response({ sha: "workflow-sha" }));
+  }
+  return fetchImpl;
 }
 
 describe("release PR macOS updater smoke gate", () => {
@@ -140,7 +148,34 @@ describe("release PR macOS updater smoke gate", () => {
         token: "test-token",
         fetchImpl,
       }),
-    ).rejects.toThrow("smoke workflow differs from the PR base");
+    ).rejects.toThrow(
+      ".github/workflows/macos-updater-bundle-smoke.yml differs from the PR base",
+    );
+  });
+
+  it("rejects a trusted build script modified by the pull request", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    for (let index = 0; index < 7; index += 1) {
+      const changed = index === 3;
+      fetchImpl
+        .mockResolvedValueOnce(response({ sha: `base-${index}` }))
+        .mockResolvedValueOnce(
+          response({ sha: changed ? "changed-script-sha" : `base-${index}` }),
+        );
+    }
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("scripts/prepare-ocr.sh differs from the PR base");
+    expect(fetchImpl).toHaveBeenCalledTimes(8);
   });
 
   it("passes only when both required smoke jobs succeed", () => {
@@ -163,11 +198,9 @@ describe("release PR macOS updater smoke gate", () => {
   });
 
   it("fails clearly when no matching smoke run appears before the deadline", async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ workflow_runs: [] }));
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>()).mockResolvedValueOnce(
+      response({ workflow_runs: [] }),
+    );
 
     await expect(
       waitForMacosSmoke({
@@ -187,10 +220,7 @@ describe("release PR macOS updater smoke gate", () => {
   });
 
   it("retries transient API errors before continuing to poll", async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
       .mockResolvedValueOnce(new Response("temporary failure", { status: 503 }))
       .mockResolvedValueOnce(response({ workflow_runs: [successfulRun] }))
       .mockResolvedValueOnce(response({ jobs: successfulJobs }));
@@ -214,20 +244,16 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).resolves.toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledTimes(5);
+    expect(fetchImpl).toHaveBeenCalledTimes(17);
     expect(elapsedMs).toBe(1_000);
   });
 
   it("fails promptly for permanent API permission errors", async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(
-        new Response('{"message":"Resource not accessible by integration"}', {
-          status: 403,
-        }),
-      );
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>()).mockResolvedValueOnce(
+      new Response('{"message":"Resource not accessible by integration"}', {
+        status: 403,
+      }),
+    );
 
     await expect(
       waitForMacosSmoke({
@@ -244,14 +270,11 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).rejects.toThrow("GitHub Actions API request failed (403)");
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(15);
   });
 
   it("retries network failures reported by fetch", async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
       .mockRejectedValueOnce(
         new TypeError("fetch failed", { cause: new Error("ECONNRESET") }),
       )
@@ -277,15 +300,13 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).resolves.toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledTimes(5);
+    expect(fetchImpl).toHaveBeenCalledTimes(17);
   });
 
   it("fails immediately on programming errors thrown as TypeError", async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockRejectedValueOnce(new TypeError("Cannot read properties of undefined"));
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>()).mockRejectedValueOnce(
+      new TypeError("Cannot read properties of undefined"),
+    );
 
     await expect(
       waitForMacosSmoke({
@@ -302,15 +323,12 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).rejects.toThrow("Cannot read properties of undefined");
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(15);
   });
 
   it("honors Retry-After when GitHub asks the gate to back off", async () => {
     const sleeps: number[] = [];
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
       .mockResolvedValueOnce(
         new Response("slow down", {
           status: 429,
@@ -341,10 +359,7 @@ describe("release PR macOS updater smoke gate", () => {
 
   it("retries a rate-limited 403 with the fallback backoff", async () => {
     const sleeps: number[] = [];
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
       .mockResolvedValueOnce(
         new Response("API rate limit exceeded", {
           status: 403,
@@ -371,14 +386,11 @@ describe("release PR macOS updater smoke gate", () => {
       maxWaitMs: 60_000,
     });
     expect(sleeps).toEqual([1_000]);
-    expect(fetchImpl).toHaveBeenCalledTimes(5);
+    expect(fetchImpl).toHaveBeenCalledTimes(17);
   });
 
   it("retries request timeouts reported as AbortError or TimeoutError", async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
       .mockRejectedValueOnce(
         Object.assign(new Error("The operation was aborted"), {
           name: "AbortError",
@@ -410,15 +422,13 @@ describe("release PR macOS updater smoke gate", () => {
       maxWaitMs: 60_000,
     });
     expect(sleeps).toEqual([1_000, 2_000]);
-    expect(fetchImpl).toHaveBeenCalledTimes(6);
+    expect(fetchImpl).toHaveBeenCalledTimes(18);
   });
 
   it("times out with the transient cause when retries exhaust the deadline", async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(new Response("unavailable", { status: 503 }));
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>()).mockResolvedValueOnce(
+      new Response("unavailable", { status: 503 }),
+    );
 
     await expect(
       waitForMacosSmoke({
@@ -440,21 +450,17 @@ describe("release PR macOS updater smoke gate", () => {
   });
 
   it("names a base mismatch when the smoke run was built for an older base", async () => {
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(
-        response({
-          workflow_runs: [
-            {
-              ...successfulRun,
-              display_title:
-                "macOS updater bundle smoke | PR #42 | head release-sha | base old-base",
-            },
-          ],
-        }),
-      );
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>()).mockResolvedValueOnce(
+      response({
+        workflow_runs: [
+          {
+            ...successfulRun,
+            display_title:
+              "macOS updater bundle smoke | PR #42 | head release-sha | base old-base",
+          },
+        ],
+      }),
+    );
 
     await expect(
       waitForMacosSmoke({
@@ -480,10 +486,7 @@ describe("release PR macOS updater smoke gate", () => {
       status: "in_progress",
       conclusion: null,
     }));
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
-      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+    const fetchImpl = queueTrustedInputs(vi.fn<typeof fetch>())
       .mockResolvedValueOnce(
         response({
           workflow_runs: [
@@ -513,6 +516,6 @@ describe("release PR macOS updater smoke gate", () => {
       intervalMs: 30_000,
     });
     expect(sleeps).toEqual([30_000]);
-    expect(fetchImpl).toHaveBeenCalledTimes(6);
+    expect(fetchImpl).toHaveBeenCalledTimes(18);
   });
 });
