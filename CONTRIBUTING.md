@@ -618,12 +618,21 @@ pass. The gate runs trusted code from the PR base and rejects changes to the
 smoke workflow and to the build inputs it executes or reads: every script the
 workflow runs, directly or through another script (cargo-target, OCR,
 native-environment, architecture, and runtime-dependency checks, including
-PowerShell `.ps1` scripts), `src-tauri/build.rs` and every Rust module it
-reaches through a `#[path]` attribute, `src-tauri/tauri.release.conf.json`,
+PowerShell `.ps1` scripts), `src-tauri/build.rs`, every other Rust source and
+Cargo manifest under `src-tauri/` (the only Rust workspace), including any
+build script a manifest names, `src-tauri/tauri.release.conf.json`,
 `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, `.pnpmfile.cjs`,
 `vite.config.js`, `svelte.config.js`, Rust toolchain pins (`rust-toolchain` and
 `rust-toolchain.toml`, at the root and in `src-tauri/`), and Cargo config files
 (`.cargo/config` and `.cargo/config.toml`, at the root and in `src-tauri/`).
+The gate reads each `src-tauri/` Rust source and Cargo manifest at both refs.
+Rust sources under `src-tauri/` must be identical at both refs. Manifests there
+may change only their package `version`, which release preparation sets, and a
+build script that a manifest names is trusted like the other build inputs. The
+repository has no Rust sources or manifests outside `src-tauri/`, so the gate
+does not enumerate them. The smoke workflow path filter includes
+`src-tauri/**/*.rs` and `src-tauri/**/Cargo.toml`, so every trusted Rust input
+starts the smoke run.
 The gate follows script references from the `build` and `prepare` scripts in
 `package.json`, which are the only npm scripts the smoke run executes. A reached
 Rust file that uses `include!` or declares `mod x;` without a `#[path]`
@@ -632,10 +641,10 @@ required input (the smoke workflow or `src-tauri/build.rs`) is missing at either
 ref, or either commit SHA cannot be resolved, the gate fails rather than passing.
 `package.json` and
 `src-tauri/tauri.conf.json` may change only in their top-level `version`, which
-release preparation sets. `src-tauri/Cargo.toml` and `src-tauri/Cargo.lock` are
-not blocked because release preparation changes them as well; the gate does not
-verify them, so a release PR can alter Rust manifests and lockfiles without
-tripping it. Retargeting a release PR triggers both workflows. A
+release preparation sets. `src-tauri/Cargo.lock` is not blocked because release
+preparation changes it as well; the gate does not verify it, so a release PR can
+alter the lockfile without tripping it. Retargeting a release PR triggers both
+workflows. A
 missing run, a failed job, or a run that does not finish before the timeout
 fails the gate. The smoke workflow's path filter lists every trusted input, so a
 PR that changes one starts the smoke workflow. Its build job runs only for

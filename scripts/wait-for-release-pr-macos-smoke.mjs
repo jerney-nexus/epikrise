@@ -324,7 +324,10 @@ export async function assertSmokeWorkflowUnmodified({
   await assertCommitResolves("PR base", baseSha);
   await assertCommitResolves("PR head", headSha);
 
-  /** @param {string} sha */
+  /**
+   * Cargo manifests and Rust sources under src-tauri/, the only Rust workspace.
+   * @param {string} sha
+   */
   async function getCargoInputPaths(sha) {
     const tree = await requestJson(
       apiUrl(
@@ -345,9 +348,8 @@ export async function assertSmokeWorkflowUnmodified({
           (entry) =>
             isRecord(entry) &&
             typeof entry.path === "string" &&
-            (entry.path === "Cargo.toml" ||
-              entry.path.endsWith("/Cargo.toml") ||
-              entry.path.endsWith(".rs")),
+            entry.path.startsWith("src-tauri/") &&
+            (entry.path.endsWith("/Cargo.toml") || entry.path.endsWith(".rs")),
         )
         .map((entry) => /** @type {string} */ (entry.path)),
     );

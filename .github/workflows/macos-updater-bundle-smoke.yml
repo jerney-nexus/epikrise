@@ -24,6 +24,8 @@ on:
       - scripts/verify-runtime-dependencies.mjs
       - src-tauri/Cargo.toml
       - src-tauri/Cargo.lock
+      - src-tauri/**/Cargo.toml
+      - src-tauri/**/*.rs
       - src-tauri/build.rs
       - src-tauri/src/windows_updater_features.rs
       - src-tauri/tauri.conf.json

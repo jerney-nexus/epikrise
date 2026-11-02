@@ -147,6 +147,25 @@ function queueTrustedInputs(fetchImpl: Mock<typeof fetch>): Mock<typeof fetch> {
   return fetchImpl;
 }
 
+/**
+ * Whether a workflow path filter entry (literal, `*`, or `**\/`) matches a file.
+ */
+function matchesPathFilter(file: string, filterPaths: string[]): boolean {
+  return filterPaths.some((pattern) => {
+    if (!pattern.includes("*")) return pattern === file;
+    const source = pattern
+      .split("**/")
+      .map((segment: string) =>
+        segment
+          .split("*")
+          .map((literal: string) => literal.replace(/[.+^${}()|[\]\\]/g, "\\$&"))
+          .join("[^/]*"),
+      )
+      .join("(?:.*/)?");
+    return new RegExp(`^${source}$`).test(file);
+  });
+}
+
 describe("release PR macOS updater smoke gate", () => {
   it("starts the smoke workflow for every input the gate trusts", () => {
     const workflow = readFileSync(
@@ -158,8 +177,19 @@ describe("release PR macOS updater smoke gate", () => {
     const filterPaths = [...pathsBlock![1].matchAll(/^ {6}- (.+)$/gm)].map((match) =>
       match[1].trim(),
     );
-    const missing = smokeTrustedPaths.filter((file) => !filterPaths.includes(file));
+    const missing = smokeTrustedPaths.filter(
+      (file) => !matchesPathFilter(file, filterPaths),
+    );
     expect(missing).toEqual([]);
+    for (const file of [
+      "src-tauri/src/lib.rs",
+      "src-tauri/crates/epikrise-core/src/policy.rs",
+      "src-tauri/crates/epikrise-core/Cargo.toml",
+      "src-tauri/Cargo.toml",
+    ]) {
+      expect(matchesPathFilter(file, filterPaths)).toBe(true);
+    }
+    expect(matchesPathFilter("tools/helper.rs", filterPaths)).toBe(false);
   });
 
   it("limits the smoke build job to release branch heads and base retargets", () => {
@@ -464,6 +494,54 @@ describe("release PR macOS updater smoke gate", () => {
         ),
       }),
     ).rejects.toThrow("src-tauri/Cargo.toml differs from the PR base");
+  });
+
+  it("ignores a Rust source outside src-tauri that the pull request changes", async () => {
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(
+          {
+            "tools/helper.rs": [
+              cargoManifest("fn a() {}\n"),
+              cargoManifest("fn b() {}\n"),
+            ],
+          },
+          {
+            "base-sha": ["tools/helper.rs"],
+            "head-sha": ["tools/helper.rs"],
+          },
+        ),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a Rust source under src-tauri that the pull request changes", async () => {
+    const file = "src-tauri/crates/epikrise-core/src/policy.rs";
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(
+          {
+            [file]: [
+              cargoManifest("fn a() {}\n"),
+              cargoManifest("fn a() { evil(); }\n"),
+            ],
+          },
+          { "base-sha": [file], "head-sha": [file] },
+        ),
+      }),
+    ).rejects.toThrow(`${file} differs from the PR base`);
   });
 
   it("rejects a build script that a Cargo manifest reads but the pull request adds", async () => {
