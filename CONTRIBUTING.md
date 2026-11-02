@@ -609,6 +609,23 @@ that the archive is generated. This smoke check does not verify a production
 signature; keep signed-release acceptance pending until a native signed run
 confirms both the archive and its signature.
 
+Every pull request targeting `main` receives the **Release PR macOS updater
+bundle smoke** status check. It passes immediately for non-release branches.
+For `release/*` branches, it waits up to 60 minutes for the macOS updater
+bundle smoke workflow run on the exact pull request head SHA and requires both
+`Build x86_64-apple-darwin` and `Build aarch64-apple-darwin` to pass. A missing
+run, a failed job, or a run that does not finish before the timeout fails the
+gate. Release preparation changes `src-tauri/Cargo.toml`,
+`src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`, which are included in
+the smoke workflow's path filter so release PRs start the smoke run.
+
+To enforce the gate, a repository administrator must add only
+**Release PR macOS updater bundle smoke** to the required status checks in
+Settings → Rules → Rulesets → **Branch default**. Keep the existing five
+required checks (`Rust checks and tests`, `UI and i18n`, `quality`,
+`Playwright browser tests`, and `dependencies`). Do not require the two macOS
+smoke jobs directly; the gate is the only additional required check.
+
 Keep signing keys in the approved GitHub Actions secrets; never commit private
 signing material or generate or replace a production key in CI. A Tauri updater
 signature verifies the update payload and does not replace platform publisher
