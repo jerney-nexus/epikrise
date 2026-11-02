@@ -5,6 +5,7 @@ import {
   evaluateSmokeRun,
   findMatchingSmokeRuns,
   smokeRunTitle,
+  smokeTrustedPaths,
   waitForMacosSmoke,
 } from "../scripts/wait-for-release-pr-macos-smoke.mjs";
 
@@ -39,9 +40,11 @@ function response(payload: object): Response {
   return new Response(JSON.stringify(payload), { status: 200 });
 }
 
-/** Queues the trusted-input SHA lookups (base and head for twelve paths) that run before polling. */
+const trustedRequests = smokeTrustedPaths.length * 2;
+
+/** Queues the trusted-input SHA lookups (base and head for each trusted path) that run before polling. */
 function queueTrustedInputs(fetchImpl: Mock<typeof fetch>): Mock<typeof fetch> {
-  for (let index = 0; index < 24; index += 1) {
+  for (let index = 0; index < trustedRequests; index += 1) {
     fetchImpl.mockResolvedValueOnce(response({ sha: "workflow-sha" }));
   }
   return fetchImpl;
@@ -164,8 +167,9 @@ describe("release PR macOS updater smoke gate", () => {
 
   it("rejects a trusted build script modified by the pull request", async () => {
     const fetchImpl = vi.fn<typeof fetch>();
-    for (let index = 0; index < 7; index += 1) {
-      const changed = index === 3;
+    const changedIndex = smokeTrustedPaths.indexOf("scripts/prepare-ocr.sh");
+    for (let index = 0; index < smokeTrustedPaths.length; index += 1) {
+      const changed = index === changedIndex;
       fetchImpl
         .mockResolvedValueOnce(response({ sha: `base-${index}` }))
         .mockResolvedValueOnce(
@@ -184,7 +188,9 @@ describe("release PR macOS updater smoke gate", () => {
         fetchImpl,
       }),
     ).rejects.toThrow("scripts/prepare-ocr.sh differs from the PR base");
-    expect(fetchImpl).toHaveBeenCalledTimes(8);
+    expect(fetchImpl).toHaveBeenCalledTimes(
+      (smokeTrustedPaths.indexOf("scripts/prepare-ocr.sh") + 1) * 2,
+    );
   });
 
   it("passes only when both required smoke jobs succeed", () => {
@@ -253,7 +259,7 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).resolves.toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledTimes(27);
+    expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 3);
     expect(elapsedMs).toBe(1_000);
   });
 
@@ -279,7 +285,7 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).rejects.toThrow("GitHub Actions API request failed (403)");
-    expect(fetchImpl).toHaveBeenCalledTimes(25);
+    expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 1);
   });
 
   it("retries network failures reported by fetch", async () => {
@@ -309,7 +315,7 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).resolves.toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledTimes(27);
+    expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 3);
   });
 
   it("fails immediately on programming errors thrown as TypeError", async () => {
@@ -332,7 +338,7 @@ describe("release PR macOS updater smoke gate", () => {
         maxWaitMs: 5_000,
       }),
     ).rejects.toThrow("Cannot read properties of undefined");
-    expect(fetchImpl).toHaveBeenCalledTimes(25);
+    expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 1);
   });
 
   it("honors Retry-After when GitHub asks the gate to back off", async () => {
@@ -395,7 +401,7 @@ describe("release PR macOS updater smoke gate", () => {
       maxWaitMs: 60_000,
     });
     expect(sleeps).toEqual([1_000]);
-    expect(fetchImpl).toHaveBeenCalledTimes(27);
+    expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 3);
   });
 
   it("ignores x-ratelimit-reset on a server error and uses the fallback backoff", async () => {
@@ -463,7 +469,7 @@ describe("release PR macOS updater smoke gate", () => {
       maxWaitMs: 60_000,
     });
     expect(sleeps).toEqual([1_000, 2_000]);
-    expect(fetchImpl).toHaveBeenCalledTimes(28);
+    expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 4);
   });
 
   it("times out with the transient cause when retries exhaust the deadline", async () => {
@@ -557,7 +563,7 @@ describe("release PR macOS updater smoke gate", () => {
       intervalMs: 30_000,
     });
     expect(sleeps).toEqual([30_000]);
-    expect(fetchImpl).toHaveBeenCalledTimes(28);
+    expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 4);
   });
 
   it("skips a newer successful run whose required jobs were all skipped", async () => {
@@ -593,6 +599,6 @@ describe("release PR macOS updater smoke gate", () => {
         intervalMs: 30_000,
       }),
     ).resolves.toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledTimes(27);
+    expect(fetchImpl).toHaveBeenCalledTimes(trustedRequests + 3);
   });
 });

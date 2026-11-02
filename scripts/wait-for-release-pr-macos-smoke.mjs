@@ -34,13 +34,20 @@ const workflowPath = ".github/workflows/macos-updater-bundle-smoke.yml";
  * preparation legitimately changes package.json, Cargo.toml, Cargo.lock, and
  * tauri.conf.json, so those are intentionally excluded.
  */
-const smokeTrustedPaths = [
+export const smokeTrustedPaths = [
   workflowPath,
   "scripts/with-cargo-host-target.sh",
+  "scripts/detect-windows-os-architecture.sh",
   "scripts/validate-native-cargo-target.mjs",
+  "scripts/verify-native-build-environment.mjs",
+  "scripts/verify-linux-host-architecture.mjs",
   "scripts/prepare-ocr.sh",
   "scripts/build-native-ocr.sh",
-  "scripts/verify-native-build-environment.mjs",
+  "scripts/build-native-windows-ocr.sh",
+  "scripts/build-windows-ocr.sh",
+  "scripts/patch-windows-ocr-cmake.sh",
+  "scripts/verify-binary-architecture.mjs",
+  "scripts/verify-runtime-dependencies.mjs",
   "src-tauri/tauri.release.conf.json",
   "src-tauri/build.rs",
   "pnpm-lock.yaml",

@@ -615,10 +615,11 @@ For `release/*` branches, it waits up to 60 minutes for the macOS updater
 bundle smoke run for the same pull request number, head SHA, and base SHA, and
 requires both `Build x86_64-apple-darwin` and `Build aarch64-apple-darwin` to
 pass. The gate runs trusted code from the PR base and rejects changes to the
-smoke workflow and to the build inputs it executes or reads: the workflow's
-cargo-target, OCR, and native-environment scripts, `src-tauri/build.rs`,
-`src-tauri/tauri.release.conf.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`,
-`vite.config.js`, and `svelte.config.js`. `package.json`, `src-tauri/Cargo.toml`,
+smoke workflow and to the build inputs it executes or reads: every script the
+workflow runs, directly or through another script (cargo-target, OCR,
+native-environment, architecture, and runtime-dependency checks),
+`src-tauri/build.rs`, `src-tauri/tauri.release.conf.json`, `pnpm-lock.yaml`,
+`pnpm-workspace.yaml`, `vite.config.js`, and `svelte.config.js`. `package.json`, `src-tauri/Cargo.toml`,
 `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json` are not blocked because
 release preparation changes them. Retargeting a release PR triggers both workflows. A
 missing run, a failed job, or a run that does not finish before the timeout
