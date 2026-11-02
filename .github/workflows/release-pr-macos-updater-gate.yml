@@ -1,8 +1,9 @@
 name: Release PR macOS updater bundle gate
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   actions: read
@@ -21,12 +22,15 @@ jobs:
       - uses: actions/checkout@v7
         if: ${{ startsWith(github.head_ref, 'release/') }}
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
 
       - name: Wait for macOS updater bundle smoke
         if: ${{ startsWith(github.head_ref, 'release/') }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_REF: ${{ github.head_ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: node scripts/wait-for-release-pr-macos-smoke.mjs

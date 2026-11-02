@@ -612,10 +612,12 @@ confirms both the archive and its signature.
 Every pull request targeting `main` receives the **Release PR macOS updater
 bundle smoke** status check. It passes immediately for non-release branches.
 For `release/*` branches, it waits up to 60 minutes for the macOS updater
-bundle smoke workflow run on the exact pull request head SHA and requires both
-`Build x86_64-apple-darwin` and `Build aarch64-apple-darwin` to pass. A missing
-run, a failed job, or a run that does not finish before the timeout fails the
-gate. Release preparation changes `src-tauri/Cargo.toml`,
+bundle smoke run for the same pull request number, head SHA, and base SHA, and
+requires both `Build x86_64-apple-darwin` and `Build aarch64-apple-darwin` to
+pass. The gate runs trusted code from the PR base and rejects changes to the
+smoke workflow itself. Retargeting a release PR triggers both workflows. A
+missing run, a failed job, or a run that does not finish before the timeout
+fails the gate. Release preparation changes `src-tauri/Cargo.toml`,
 `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`, which are included in
 the smoke workflow's path filter so release PRs start the smoke run.
 

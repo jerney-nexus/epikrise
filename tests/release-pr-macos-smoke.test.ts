@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  assertSmokeWorkflowUnmodified,
   evaluateSmokeRun,
   findMatchingSmokeRuns,
   waitForMacosSmoke,
@@ -10,6 +11,8 @@ const successfulRun = {
   event: "pull_request",
   head_sha: "release-sha",
   head_branch: "release/2026.11.0",
+  display_title:
+    "macOS updater bundle smoke | PR #42 | head release-sha | base base-sha",
   status: "completed",
   conclusion: "success",
   html_url: "https://github.com/owner/repo/actions/runs/123",
@@ -35,13 +38,24 @@ function response(payload: object): Response {
 }
 
 describe("release PR macOS updater smoke gate", () => {
-  it("finds the workflow run for the exact release head SHA and branch", async () => {
+  it("matches the workflow run to the exact PR, head, branch, and base", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       response({
         workflow_runs: [
           successfulRun,
           { ...successfulRun, id: 122, head_sha: "old-sha" },
-          { ...successfulRun, id: 121, head_branch: "release/other" },
+          {
+            ...successfulRun,
+            id: 121,
+            display_title:
+              "macOS updater bundle smoke | PR #41 | head release-sha | base base-sha",
+          },
+          {
+            ...successfulRun,
+            id: 120,
+            display_title:
+              "macOS updater bundle smoke | PR #42 | head release-sha | base old-base",
+          },
         ],
       }),
     );
@@ -50,8 +64,10 @@ describe("release PR macOS updater smoke gate", () => {
       apiBaseUrl: "https://api.github.com",
       owner: "owner",
       repo: "repo",
+      pullRequestNumber: 42,
       headSha: "release-sha",
       headRef: "release/2026.11.0",
+      baseSha: "base-sha",
       token: "test-token",
       fetchImpl,
     });
@@ -60,6 +76,25 @@ describe("release PR macOS updater smoke gate", () => {
     expect(fetchImpl.mock.calls[0][0]).toContain(
       "head_sha=release-sha&event=pull_request",
     );
+  });
+
+  it("rejects a smoke workflow modified by the pull request", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "base-workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "changed-workflow-sha" }));
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("smoke workflow differs from the PR base");
   });
 
   it("passes only when both required smoke jobs succeed", () => {
@@ -84,20 +119,85 @@ describe("release PR macOS updater smoke gate", () => {
   it("fails clearly when no matching smoke run appears before the deadline", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(response({ workflow_runs: [] }));
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ workflow_runs: [] }));
 
     await expect(
       waitForMacosSmoke({
         apiBaseUrl: "https://api.github.com",
         owner: "owner",
         repo: "repo",
+        pullRequestNumber: 42,
         headSha: "release-sha",
         headRef: "release/2026.11.0",
+        baseSha: "base-sha",
         token: "test-token",
         fetchImpl,
         now: () => 1_000,
         maxWaitMs: 0,
       }),
     ).rejects.toThrow("no matching smoke workflow run has appeared");
+  });
+
+  it("retries transient API errors before continuing to poll", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(new Response("temporary failure", { status: 503 }))
+      .mockResolvedValueOnce(response({ workflow_runs: [successfulRun] }))
+      .mockResolvedValueOnce(response({ jobs: successfulJobs }));
+    let elapsedMs = 0;
+
+    await expect(
+      waitForMacosSmoke({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        pullRequestNumber: 42,
+        headSha: "release-sha",
+        headRef: "release/2026.11.0",
+        baseSha: "base-sha",
+        token: "test-token",
+        fetchImpl,
+        now: () => elapsedMs,
+        sleep: async (duration) => {
+          elapsedMs += duration;
+        },
+        maxWaitMs: 5_000,
+      }),
+    ).resolves.toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
+    expect(elapsedMs).toBe(1_000);
+  });
+
+  it("fails promptly for permanent API permission errors", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(
+        new Response('{"message":"Resource not accessible by integration"}', {
+          status: 403,
+        }),
+      );
+
+    await expect(
+      waitForMacosSmoke({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        pullRequestNumber: 42,
+        headSha: "release-sha",
+        headRef: "release/2026.11.0",
+        baseSha: "base-sha",
+        token: "test-token",
+        fetchImpl,
+        now: () => 0,
+        maxWaitMs: 5_000,
+      }),
+    ).rejects.toThrow("GitHub Actions API request failed (403)");
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 });

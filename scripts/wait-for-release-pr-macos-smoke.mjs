@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
  *   event: string,
  *   head_sha: string,
  *   head_branch: string,
+ *   display_title: string,
  *   status: string,
  *   conclusion: string | null,
  *   html_url: string,
@@ -27,6 +28,23 @@ const workflowFile = "macos-updater-bundle-smoke.yml";
 const timeoutMs = 60 * 60 * 1000;
 const pollIntervalMs = 60 * 1000;
 const requestTimeoutMs = 30 * 1000;
+const workflowPath = ".github/workflows/macos-updater-bundle-smoke.yml";
+
+class GitHubApiError extends Error {
+  /**
+   * @param {number} status
+   * @param {string} detail
+   * @param {number | undefined} retryAfterMs
+   * @param {boolean} retryable
+   */
+  constructor(status, detail, retryAfterMs, retryable) {
+    super(`GitHub Actions API request failed (${status}): ${detail}`);
+    this.name = "GitHubApiError";
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+    this.retryable = retryable;
+  }
+}
 
 /** @param {string} name */
 function requiredEnv(name) {
@@ -50,6 +68,7 @@ function isWorkflowRun(value) {
     typeof value.event === "string" &&
     typeof value.head_sha === "string" &&
     typeof value.head_branch === "string" &&
+    typeof value.display_title === "string" &&
     typeof value.status === "string" &&
     (typeof value.conclusion === "string" || value.conclusion === null) &&
     typeof value.html_url === "string" &&
@@ -66,6 +85,23 @@ function isWorkflowJob(value) {
     typeof value.status === "string" &&
     (typeof value.conclusion === "string" || value.conclusion === null)
   );
+}
+
+/** @param {Response} response */
+function retryAfterMs(response) {
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+    const date = Date.parse(retryAfter);
+    if (Number.isFinite(date)) return Math.max(0, date - Date.now());
+  }
+
+  const reset = Number(response.headers.get("x-ratelimit-reset"));
+  if (Number.isFinite(reset) && reset > 0) {
+    return Math.max(0, reset * 1000 - Date.now());
+  }
+  return undefined;
 }
 
 /**
@@ -85,8 +121,16 @@ async function requestJson(url, token, fetchImpl) {
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(
-      `GitHub Actions API request failed (${response.status}): ${detail || response.statusText}`,
+    const isRateLimited =
+      response.status === 403 &&
+      (response.headers.get("x-ratelimit-remaining") === "0" ||
+        /rate limit/i.test(detail));
+    const status = response.status;
+    throw new GitHubApiError(
+      status,
+      detail || response.statusText,
+      retryAfterMs(response),
+      status === 408 || status === 429 || status >= 500 || isRateLimited,
     );
   }
   return response.json();
@@ -102,8 +146,55 @@ function apiUrl(baseUrl, owner, repo, path) {
  *   apiBaseUrl: string,
  *   owner: string,
  *   repo: string,
+ *   baseSha: string,
+ *   headSha: string,
+ *   token: string,
+ *   fetchImpl?: typeof fetch,
+ * }} options
+ */
+export async function assertSmokeWorkflowUnmodified({
+  apiBaseUrl,
+  owner,
+  repo,
+  baseSha,
+  headSha,
+  token,
+  fetchImpl = fetch,
+}) {
+  /** @param {string} ref */
+  async function getBlobSha(ref) {
+    const params = new URLSearchParams({ ref });
+    const payload = await requestJson(
+      apiUrl(apiBaseUrl, owner, repo, `/contents/${workflowPath}?${params}`),
+      token,
+      fetchImpl,
+    );
+    if (!isRecord(payload) || typeof payload.sha !== "string") {
+      throw new Error(`GitHub API did not return the smoke workflow at ${ref}.`);
+    }
+    return payload.sha;
+  }
+
+  const [baseBlobSha, headBlobSha] = await Promise.all([
+    getBlobSha(baseSha),
+    getBlobSha(headSha),
+  ]);
+  if (baseBlobSha !== headBlobSha) {
+    throw new Error(
+      "The macOS updater bundle smoke workflow differs from the PR base; the gate will not trust its results.",
+    );
+  }
+}
+
+/**
+ * @param {{
+ *   apiBaseUrl: string,
+ *   owner: string,
+ *   repo: string,
+ *   pullRequestNumber: number,
  *   headSha: string,
  *   headRef: string,
+ *   baseSha: string,
  *   token: string,
  *   fetchImpl?: typeof fetch,
  * }} options
@@ -113,8 +204,10 @@ export async function findMatchingSmokeRuns({
   apiBaseUrl,
   owner,
   repo,
+  pullRequestNumber,
   headSha,
   headRef,
+  baseSha,
   token,
   fetchImpl = fetch,
 }) {
@@ -144,7 +237,9 @@ export async function findMatchingSmokeRuns({
       (run) =>
         run.event === "pull_request" &&
         run.head_sha === headSha &&
-        run.head_branch === headRef,
+        run.head_branch === headRef &&
+        run.display_title ===
+          `macOS updater bundle smoke | PR #${pullRequestNumber} | head ${headSha} | base ${baseSha}`,
     )
     .sort(
       (left, right) =>
@@ -240,8 +335,10 @@ async function listRunJobs({ apiBaseUrl, owner, repo, runId, token, fetchImpl })
  *   apiBaseUrl: string,
  *   owner: string,
  *   repo: string,
+ *   pullRequestNumber: number,
  *   headSha: string,
  *   headRef: string,
+ *   baseSha: string,
  *   token: string,
  *   fetchImpl?: typeof fetch,
  *   now?: () => number,
@@ -254,8 +351,10 @@ export async function waitForMacosSmoke({
   apiBaseUrl,
   owner,
   repo,
+  pullRequestNumber,
   headSha,
   headRef,
+  baseSha,
   token,
   fetchImpl = fetch,
   now = Date.now,
@@ -266,37 +365,83 @@ export async function waitForMacosSmoke({
   const deadline = now() + maxWaitMs;
   let latestRun;
   let lastPendingMessage = "no matching smoke workflow run has appeared";
+  let consecutiveApiFailures = 0;
+  let smokeWorkflowVerified = false;
 
   while (true) {
-    const runs = await findMatchingSmokeRuns({
-      apiBaseUrl,
-      owner,
-      repo,
-      headSha,
-      headRef,
-      token,
-      fetchImpl,
-    });
-    latestRun = runs[0];
+    try {
+      if (!smokeWorkflowVerified) {
+        await assertSmokeWorkflowUnmodified({
+          apiBaseUrl,
+          owner,
+          repo,
+          baseSha,
+          headSha,
+          token,
+          fetchImpl,
+        });
+        smokeWorkflowVerified = true;
+      }
 
-    if (latestRun) {
-      const jobs = await listRunJobs({
+      const runs = await findMatchingSmokeRuns({
         apiBaseUrl,
         owner,
         repo,
-        runId: latestRun.id,
+        pullRequestNumber,
+        headSha,
+        headRef,
+        baseSha,
         token,
         fetchImpl,
       });
-      const result = evaluateSmokeRun(latestRun, jobs);
-      if (result.state === "passed") {
-        console.log(result.message);
-        return;
+      latestRun = runs[0];
+
+      if (latestRun) {
+        const jobs = await listRunJobs({
+          apiBaseUrl,
+          owner,
+          repo,
+          runId: latestRun.id,
+          token,
+          fetchImpl,
+        });
+        const result = evaluateSmokeRun(latestRun, jobs);
+        if (result.state === "passed") {
+          console.log(result.message);
+          return;
+        }
+        if (result.state === "failed") {
+          throw new Error(result.message);
+        }
+        lastPendingMessage = `${result.message}: ${latestRun.html_url}`;
       }
-      if (result.state === "failed") {
-        throw new Error(result.message);
+
+      consecutiveApiFailures = 0;
+    } catch (error) {
+      if (!isRetryableApiError(error)) throw error;
+
+      const remainingMs = deadline - now();
+      if (remainingMs <= 0) {
+        throw new Error(
+          `Timed out waiting for macOS updater bundle smoke results on ${headRef} at ${headSha} after a transient GitHub API failure: ${error.message}`,
+          { cause: error },
+        );
       }
-      lastPendingMessage = `${result.message}: ${latestRun.html_url}`;
+      const fallbackDelay = Math.min(
+        pollIntervalMs,
+        1000 * 2 ** Math.min(consecutiveApiFailures, 6),
+      );
+      const requestedDelay =
+        error instanceof GitHubApiError && error.retryAfterMs !== undefined
+          ? error.retryAfterMs
+          : fallbackDelay;
+      const delayMs = Math.min(Math.max(requestedDelay, 1000), remainingMs);
+      consecutiveApiFailures += 1;
+      console.warn(
+        `Transient GitHub API failure; retrying in ${delayMs} ms: ${error.message}`,
+      );
+      await sleep(delayMs);
+      continue;
     }
 
     const remainingMs = deadline - now();
@@ -309,19 +454,35 @@ export async function waitForMacosSmoke({
   }
 }
 
+/** @param {unknown} error @returns {error is Error} */
+function isRetryableApiError(error) {
+  if (error instanceof GitHubApiError) return error.retryable;
+  return (
+    error instanceof TypeError ||
+    (error instanceof Error &&
+      (error.name === "AbortError" || error.name === "TimeoutError"))
+  );
+}
+
 /** @returns {Promise<void>} */
 async function main() {
   const [owner, repo, ...extra] = requiredEnv("GITHUB_REPOSITORY").split("/");
   if (!owner || !repo || extra.length > 0) {
     throw new Error("GITHUB_REPOSITORY must be in owner/repository format.");
   }
+  const pullRequestNumber = Number(requiredEnv("PR_NUMBER"));
+  if (!Number.isSafeInteger(pullRequestNumber) || pullRequestNumber < 1) {
+    throw new Error("PR_NUMBER must be a positive integer.");
+  }
 
   await waitForMacosSmoke({
     apiBaseUrl: process.env.GITHUB_API_URL || "https://api.github.com",
     owner,
     repo,
+    pullRequestNumber,
     headSha: requiredEnv("PR_HEAD_SHA"),
     headRef: requiredEnv("PR_HEAD_REF"),
+    baseSha: requiredEnv("PR_BASE_SHA"),
     token: requiredEnv("GITHUB_TOKEN"),
   });
 }

@@ -1,7 +1,11 @@
 name: macOS updater bundle smoke
 
+run-name: >-
+  ${{ github.event_name == 'pull_request' && format('macOS updater bundle smoke | PR #{0} | head {1} | base {2}', github.event.pull_request.number, github.event.pull_request.head.sha, github.event.pull_request.base.sha) || 'macOS updater bundle smoke (manual)' }}
+
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     paths:
       - .github/workflows/macos-updater-bundle-smoke.yml
       - .github/workflows/signed-release.yml
