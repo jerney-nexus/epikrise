@@ -38,6 +38,7 @@ export const smokeTrustedPaths = [
   workflowPath,
   "scripts/with-cargo-host-target.sh",
   "scripts/detect-windows-os-architecture.sh",
+  "scripts/detect-windows-os-architecture.ps1",
   "scripts/validate-native-cargo-target.mjs",
   "scripts/verify-native-build-environment.mjs",
   "scripts/verify-linux-host-architecture.mjs",

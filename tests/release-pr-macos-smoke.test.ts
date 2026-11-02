@@ -768,7 +768,7 @@ describe("release PR macOS updater smoke gate", () => {
 
   it("trusts every script and Rust module reachable from the trusted build inputs", () => {
     const repoRoot = new URL("../", import.meta.url);
-    const scriptReference = /scripts\/[\w./-]+\.(?:sh|mjs|cjs|js|ts)/g;
+    const scriptReference = /scripts\/[\w./-]+\.(?:sh|ps1|cmd|mjs|cjs|js|ts)/g;
     const rustPathAttribute = /#\[path = "([^"]+)"\]/g;
     const reached = new Set<string>();
     const pending = [
