@@ -640,6 +640,7 @@ missing run, a failed job, or a run that does not finish before the timeout
 fails the gate. The smoke workflow's path filter lists every trusted input, so a
 PR that changes one starts the smoke workflow. Its build job runs only for
 `release/*` heads and base retargets, so non-release PRs skip the macOS builds.
+Manual `workflow_dispatch` runs always build, whatever the branch.
 
 To enforce the gate, a repository administrator must add only
 **Release PR macOS updater bundle smoke** to the required status checks in
