@@ -285,7 +285,12 @@ export async function assertSmokeWorkflowUnmodified({
     let payload;
     try {
       payload = await requestJson(
-        apiUrl(apiBaseUrl, owner, repo, `/contents/${path}?${params}`),
+        apiUrl(
+          apiBaseUrl,
+          owner,
+          repo,
+          `/contents/${path.split("/").map(encodeURIComponent).join("/")}?${params}`,
+        ),
         token,
         fetchImpl,
       );
@@ -381,7 +386,14 @@ export async function assertSmokeWorkflowUnmodified({
         `${path} is missing at the PR base or head; the gate cannot verify the macOS updater bundle smoke inputs.`,
       );
     }
-    if (base === null && head === null) continue;
+    if (base === null && head === null) {
+      if (cargoInputPaths.has(path)) {
+        throw new Error(
+          `${path} was listed in the source tree but could not be read at either PR commit; the gate will not trust its results.`,
+        );
+      }
+      continue;
+    }
     if (base !== null && head !== null && base.sha === head.sha) continue;
     if (
       base !== null &&

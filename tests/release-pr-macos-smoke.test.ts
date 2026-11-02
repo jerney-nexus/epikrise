@@ -520,6 +520,30 @@ describe("release PR macOS updater smoke gate", () => {
     ).rejects.toThrow("src-tauri/Cargo.toml differs from the PR base");
   });
 
+  it("rejects a changed Rust source whose path needs URL encoding", async () => {
+    const path = "src-tauri/src/a#b.rs";
+
+    await expect(
+      assertSmokeWorkflowUnmodified({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        baseSha: "base-sha",
+        headSha: "head-sha",
+        token: "test-token",
+        fetchImpl: trustedContentsFetch(
+          {
+            [path]: [
+              cargoManifest("fn a() {}\n"),
+              cargoManifest("fn a() { evil(); }\n"),
+            ],
+          },
+          { "base-sha": [path], "head-sha": [path] },
+        ),
+      }),
+    ).rejects.toThrow(`${path} differs from the PR base`);
+  });
+
   it("ignores a Rust source outside src-tauri that the pull request changes", async () => {
     await expect(
       assertSmokeWorkflowUnmodified({
