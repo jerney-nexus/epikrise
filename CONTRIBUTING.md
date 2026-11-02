@@ -630,7 +630,9 @@ files (`.env`, `.env.local`, `.env.production`, `.env.production.local`), Rust t
 `src-tauri/tauri.macos.conf.json`, `src-tauri/Info.plist`, and every tracked file under `src/`, `static/`,
 `locales/`, `src-tauri/capabilities/`, `src-tauri/icons/`, and
 `src-tauri/resources/`, which the app bundles. Files in those directories, including files a PR adds, are
-compared by blob SHA at both refs, so any change fails the gate. This scope is
+compared by blob SHA and file mode at both refs, so any change fails the gate.
+Symlinks in that scope, and blobs at a trusted directory's own name (for example
+a file named `static`), also fail the gate. This scope is
 intentional: a release PR that changes those directories is blocked rather than
 re-verified, because the smoke run tested the bundled content before the change.
 The scope stays unchanged unless the gate is updated to rerun the smoke build on
