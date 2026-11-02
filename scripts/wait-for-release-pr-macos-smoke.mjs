@@ -191,25 +191,19 @@ export async function assertSmokeWorkflowUnmodified({
  *   apiBaseUrl: string,
  *   owner: string,
  *   repo: string,
- *   pullRequestNumber: number,
  *   headSha: string,
- *   headRef: string,
- *   baseSha: string,
  *   token: string,
  *   fetchImpl?: typeof fetch,
  * }} options
  * @returns {Promise<WorkflowRun[]>}
  */
-export async function findMatchingSmokeRuns({
+async function fetchSmokeRunsForHead({
   apiBaseUrl,
   owner,
   repo,
-  pullRequestNumber,
   headSha,
-  headRef,
-  baseSha,
   token,
-  fetchImpl = fetch,
+  fetchImpl,
 }) {
   const params = new URLSearchParams({
     head_sha: headSha,
@@ -231,7 +225,23 @@ export async function findMatchingSmokeRuns({
   if (runs.length !== rawRuns.length) {
     throw new Error("GitHub Actions API returned a malformed workflow run.");
   }
+  return runs;
+}
 
+/**
+ * @param {WorkflowRun[]} runs
+ * @param {{
+ *   pullRequestNumber: number,
+ *   headSha: string,
+ *   headRef: string,
+ *   baseSha: string,
+ * }} expected
+ * @returns {WorkflowRun[]}
+ */
+function selectMatchingSmokeRuns(
+  runs,
+  { pullRequestNumber, headSha, headRef, baseSha },
+) {
   return runs
     .filter(
       (run) =>
@@ -246,6 +256,72 @@ export async function findMatchingSmokeRuns({
         Date.parse(right.created_at) - Date.parse(left.created_at) ||
         right.run_number - left.run_number,
     );
+}
+
+/**
+ * Finds a smoke run for the same PR head whose base SHA differs from the
+ * expected one, which happens when the base moved after the release commit.
+ * @param {WorkflowRun[]} runs
+ * @param {{
+ *   pullRequestNumber: number,
+ *   headSha: string,
+ *   headRef: string,
+ *   baseSha: string,
+ * }} expected
+ * @returns {WorkflowRun | undefined}
+ */
+function findBaseMismatchRun(runs, { pullRequestNumber, headSha, headRef, baseSha }) {
+  const prefix = `${smokeRunTitle(pullRequestNumber, headSha, "")}`;
+  return runs.find(
+    (run) =>
+      run.event === "pull_request" &&
+      run.conclusion !== "skipped" &&
+      run.head_sha === headSha &&
+      run.head_branch === headRef &&
+      run.display_title.startsWith(prefix) &&
+      run.display_title !== smokeRunTitle(pullRequestNumber, headSha, baseSha),
+  );
+}
+
+/**
+ * @param {{
+ *   apiBaseUrl: string,
+ *   owner: string,
+ *   repo: string,
+ *   pullRequestNumber: number,
+ *   headSha: string,
+ *   headRef: string,
+ *   baseSha: string,
+ *   token: string,
+ *   fetchImpl?: typeof fetch,
+ * }} options
+ * @returns {Promise<WorkflowRun[]>}
+ */
+export async function findMatchingSmokeRuns({
+  apiBaseUrl,
+  owner,
+  repo,
+  pullRequestNumber,
+  headSha,
+  headRef,
+  baseSha,
+  token,
+  fetchImpl = fetch,
+}) {
+  const runs = await fetchSmokeRunsForHead({
+    apiBaseUrl,
+    owner,
+    repo,
+    headSha,
+    token,
+    fetchImpl,
+  });
+  return selectMatchingSmokeRuns(runs, {
+    pullRequestNumber,
+    headSha,
+    headRef,
+    baseSha,
+  });
 }
 
 /**
@@ -393,18 +469,33 @@ export async function waitForMacosSmoke({
         smokeWorkflowVerified = true;
       }
 
-      const runs = await findMatchingSmokeRuns({
+      const smokeRuns = await fetchSmokeRunsForHead({
         apiBaseUrl,
         owner,
         repo,
+        headSha,
+        token,
+        fetchImpl,
+      });
+      const runs = selectMatchingSmokeRuns(smokeRuns, {
         pullRequestNumber,
         headSha,
         headRef,
         baseSha,
-        token,
-        fetchImpl,
       });
       latestRun = runs[0];
+
+      if (!latestRun) {
+        const mismatchRun = findBaseMismatchRun(smokeRuns, {
+          pullRequestNumber,
+          headSha,
+          headRef,
+          baseSha,
+        });
+        if (mismatchRun) {
+          lastPendingMessage = `a smoke run exists for head ${headSha} but was created for a different base (${mismatchRun.display_title}); the PR base likely moved after the release commit, so re-run the gate on the current base: ${mismatchRun.html_url}`;
+        }
+      }
 
       if (latestRun) {
         const jobs = await listRunJobs({

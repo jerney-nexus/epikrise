@@ -439,6 +439,40 @@ describe("release PR macOS updater smoke gate", () => {
     );
   });
 
+  it("names a base mismatch when the smoke run was built for an older base", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(response({ sha: "workflow-sha" }))
+      .mockResolvedValueOnce(
+        response({
+          workflow_runs: [
+            {
+              ...successfulRun,
+              display_title:
+                "macOS updater bundle smoke | PR #42 | head release-sha | base old-base",
+            },
+          ],
+        }),
+      );
+
+    await expect(
+      waitForMacosSmoke({
+        apiBaseUrl: "https://api.github.com",
+        owner: "owner",
+        repo: "repo",
+        pullRequestNumber: 42,
+        headSha: "release-sha",
+        headRef: "release/2026.11.0",
+        baseSha: "base-sha",
+        token: "test-token",
+        fetchImpl,
+        now: () => 1_000,
+        maxWaitMs: 0,
+      }),
+    ).rejects.toThrow("created for a different base");
+  });
+
   it("keeps polling a pending run until both jobs pass", async () => {
     const sleeps: number[] = [];
     const pendingJobs = successfulJobs.map((job) => ({
