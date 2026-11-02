@@ -193,7 +193,7 @@ describe("release PR macOS updater smoke gate", () => {
   });
 
   it("allows a release PR that changes only the version in package.json and tauri.conf.json", async () => {
-    const changes = {
+    const changes: Record<string, [object, object]> = {
       "package.json": [
         encodedJson({ name: "epikrise", version: "2026.10.2" }),
         encodedJson({ name: "epikrise", version: "2026.11.0" }),
@@ -218,7 +218,7 @@ describe("release PR macOS updater smoke gate", () => {
   });
 
   it("rejects a package.json change beyond the version", async () => {
-    const changes = {
+    const changes: Record<string, [object, object]> = {
       "package.json": [
         encodedJson({ name: "epikrise", version: "2026.10.2", scripts: {} }),
         encodedJson({
