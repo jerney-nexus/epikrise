@@ -217,7 +217,7 @@ async function fetchSmokeRunsForHead({
   repo,
   headSha,
   token,
-  fetchImpl,
+  fetchImpl = fetch,
 }) {
   const params = new URLSearchParams({
     head_sha: headSha,
