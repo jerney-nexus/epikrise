@@ -630,7 +630,11 @@ files (`.env`, `.env.local`, `.env.production`, `.env.production.local`), Rust t
 `src-tauri/tauri.macos.conf.json`, `src-tauri/Info.plist`, and every tracked file under `src/`, `static/`,
 `locales/`, `src-tauri/capabilities/`, `src-tauri/icons/`, and
 `src-tauri/resources/`, which the app bundles. Files in those directories, including files a PR adds, are
-compared by blob SHA at both refs, so any change fails the gate. The OCR
+compared by blob SHA at both refs, so any change fails the gate. This scope is
+intentional: a release PR that changes those directories is blocked rather than
+re-verified, because the smoke run tested the bundled content before the change.
+The scope stays unchanged unless the gate is updated to rerun the smoke build on
+the exact head SHA for those changes. The OCR
 runtime assets under `src-tauri/resources/ocr/` are gitignored and fetched by
 `scripts/prepare-ocr.sh` against pinned SHA-256 values instead.
 The gate reads each `src-tauri/` Rust source and Cargo manifest at both refs.
