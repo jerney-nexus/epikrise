@@ -319,6 +319,12 @@ notarization, or Linux package signing. See
 [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-workflow) for release
 configuration details.
 
+On Linux, only the AppImage supports direct-release updates. Debian (`.deb`)
+and RPM packages are built without the updater, so they report updates as
+unavailable. Package-managed installs are owned by dpkg or rpm; replacing their
+files in place would bypass the package database. Update those installs through
+the system package manager or a future package repository.
+
 Tauri must be able to find `cargo` on `PATH`. If the build fails while running
 `cargo metadata` with “No such file or directory”, see the [local Rust setup
 instructions](CONTRIBUTING.md#local-setup).
