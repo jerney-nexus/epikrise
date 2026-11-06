@@ -2891,7 +2891,7 @@ describe("signed release artifacts", () => {
     )?.[1];
 
     expect(pullRequestTrigger).toBeDefined();
-    expect(pullRequestTrigger).not.toMatch(/^ {4}paths:/m);
+    expect(pullRequestTrigger).not.toMatch(/^ {4}paths(-ignore)?:/m);
   });
 
   it("requests updater-enabled app bundles for both macOS release targets", async () => {

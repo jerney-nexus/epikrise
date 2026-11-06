@@ -206,7 +206,7 @@ describe("release PR macOS updater smoke gate", () => {
       /^on:\n {2}pull_request:\n((?: {4}.+\n)+)/m,
     );
     expect(pullRequestTrigger).not.toBeNull();
-    expect(pullRequestTrigger![1]).not.toMatch(/^ {4}paths:/m);
+    expect(pullRequestTrigger![1]).not.toMatch(/^ {4}paths(-ignore)?:/m);
   });
 
   it("limits the smoke build job to release branch heads and base retargets", () => {
