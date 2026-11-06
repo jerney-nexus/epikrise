@@ -7,6 +7,15 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+### Changed
+
+- README and CONTRIBUTING now explain that only the AppImage supports direct
+  in-app updates on Linux. The Debian (`.deb`) and RPM packages are built
+  without the updater so that dpkg and rpm remain the owners of their files.
+- README now states that only connections through the providers' APIs are
+  supported, so an API key is required for each provider, except Ollama and
+  other local endpoints.
+
 ### Security
 
 - Upgraded the XLSX parser (`calamine`) to 0.38.0 to fix RUSTSEC-2026-0436, a
