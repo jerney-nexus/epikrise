@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
 import * as prettier from "prettier";
 import { describe, expect, it, vi } from "vitest";
+import { parse as parseYaml } from "yaml";
 import {
   assertGitCliffAvailable,
   assertStoreVersionAdvances,
@@ -2886,14 +2887,13 @@ describe("signed release artifacts", () => {
       path.join(repoRoot, ".github/workflows/macos-updater-bundle-smoke.yml"),
       "utf8",
     );
-    const pullRequestTrigger = workflow.match(
-      /^on:\n {2}pull_request:\n([\s\S]*?)(?=^ {0,3}[^ \t#\r\n]|(?![\s\S]))/m,
-    )?.[1];
+    const pullRequestTrigger = (
+      parseYaml(workflow) as { on?: { pull_request?: object | null } }
+    ).on?.pull_request;
 
-    expect(pullRequestTrigger).toBeDefined();
-    expect(pullRequestTrigger).not.toMatch(
-      /^[ \t]*(["']?)paths(-ignore)?\1[ \t]*:/m,
-    );
+    expect(pullRequestTrigger).not.toBeUndefined();
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("paths");
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("paths-ignore");
   });
 
   it("requests updater-enabled app bundles for both macOS release targets", async () => {

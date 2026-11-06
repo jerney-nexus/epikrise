@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { type Mock, describe, expect, it, vi } from "vitest";
+import { parse as parseYaml } from "yaml";
 import {
   assertSmokeWorkflowUnmodified,
   cargoBuildScriptPath,
@@ -202,13 +203,12 @@ describe("release PR macOS updater smoke gate", () => {
       new URL("../.github/workflows/macos-updater-bundle-smoke.yml", import.meta.url),
       "utf8",
     );
-    const pullRequestTrigger = workflow.match(
-      /^on:\n {2}pull_request:\n([\s\S]*?)(?=^ {0,3}[^ \t#\r\n]|(?![\s\S]))/m,
-    );
-    expect(pullRequestTrigger).not.toBeNull();
-    expect(pullRequestTrigger![1]).not.toMatch(
-      /^[ \t]*(["']?)paths(-ignore)?\1[ \t]*:/m,
-    );
+    const pullRequestTrigger = (
+      parseYaml(workflow) as { on?: { pull_request?: object | null } }
+    ).on?.pull_request;
+    expect(pullRequestTrigger).not.toBeUndefined();
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("paths");
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("paths-ignore");
   });
 
   it("limits the smoke build job to release branch heads and base retargets", () => {
