@@ -68,7 +68,10 @@ git ls-remote origin HEAD
 
 `gh auth status` masks the token by default; do not add `--show-token`. The
 `git config` command should print the GitHub CLI helper. `git ls-remote` reads
-the remote without changing it, so it confirms that Git can authenticate.
+the remote without changing it, but this repository is public, so it succeeds
+without credentials and only shows that the remote is reachable. To confirm
+that Git can authenticate, run `git push --dry-run` on a branch you can push
+to, or run `git ls-remote` against a private repository you can access.
 
 ### Copilot tools, models, and session sync
 
