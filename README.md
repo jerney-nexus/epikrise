@@ -25,6 +25,9 @@ draft, and cancel generation. Findings can be added in several rounds and
 integrated cumulatively. Template-defined output checks are shown as warnings,
 with an option to regenerate with corrections.
 
+Only connections through the providers' APIs are supported, so an API key is
+required for each provider you use, except Ollama and other local endpoints.
+
 The desktop workspace separates clinical inputs, generated output, and draft
 controls. Input rows show provenance, extraction method, round, content type,
 and character count. Provider credentials and endpoint settings are managed in
