@@ -7,6 +7,8 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+## [2026.11.1] - 2026-11-06
+
 ### Changed
 
 - README and CONTRIBUTING now explain that only the AppImage supports direct
@@ -20,6 +22,16 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 - Upgraded the XLSX parser (`calamine`) to 0.38.0 to fix RUSTSEC-2026-0436, a
   panic and out-of-memory condition on malformed workbooks.
+
+### 🐛 Bug Fixes
+
+- Upgrade calamine to 0.38.0 for RUSTSEC-2026-0436 (#192)
+- Run macOS updater smoke for every pull request (#189)
+
+### 📚 Documentation
+
+- Clarify Linux updater scope and API key requirements (#188)
+- Add changelog entries for Linux updater scope and API keys (#191)
 
 ## [2026.11.0] - 2026-11-02
 
@@ -574,4 +586,5 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 [2026.10.4]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.3...v2026.10.4
 [2026.10.5]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.4...v2026.10.5
 [2026.11.0]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.5...v2026.11.0
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.0...HEAD
+[2026.11.1]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.0...v2026.11.1
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.1...HEAD
