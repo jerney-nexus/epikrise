@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import { resolve } from "$app/paths";
   import { isTauri } from "@tauri-apps/api/core";
-  import { renderOutputHtml } from "$lib/output-format";
+  import { renderOutputHtml } from "#lib/output-format.ts";
   import {
     defaultLocale,
     initializeLocale,
@@ -11,7 +11,7 @@
     setLocale,
     supportedLocales,
     translate,
-  } from "$lib/i18n";
+  } from "#lib/i18n.ts";
   import {
     readText as readClipboardText,
     writeHtml as writeClipboardHtml,
