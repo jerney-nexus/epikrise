@@ -2898,6 +2898,9 @@ describe("signed release artifacts", () => {
     expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("<<");
     expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("branches");
     expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("branches-ignore");
+    expect((pullRequestTrigger as { types?: string[] } | null)?.types ?? []).toEqual(
+      expect.arrayContaining(["opened", "synchronize", "reopened", "edited"]),
+    );
   });
 
   it("requests updater-enabled app bundles for both macOS release targets", async () => {
