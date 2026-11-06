@@ -40,6 +40,36 @@ back up and explicitly migrate the old data into the named volume. Do not copy
 live session databases. Verify that sessions reopen after a rebuild before
 removing any old copy.
 
+#### GitHub CLI and Git credentials
+
+`gh auth login` signs the GitHub CLI in to GitHub. It does not by itself make
+`git` use those credentials, because Git's HTTPS credential helper is set up
+separately. A `git fetch` or `git push` over HTTPS can fail with
+`unable to get password from user` even when `gh auth status` reports a valid
+login.
+
+After `gh auth login`, run this once in the dev container:
+
+```bash
+gh auth setup-git
+```
+
+The command registers GitHub CLI as Git's credential helper for each
+authenticated host. Run it again after logging in to a new host, or if the
+container's Git configuration has been reset.
+
+To check the setup without printing tokens:
+
+```bash
+gh auth status
+git config --get-all credential.https://github.com.helper
+git ls-remote origin HEAD
+```
+
+`gh auth status` masks the token by default; do not add `--show-token`. The
+`git config` command should print the GitHub CLI helper. `git ls-remote` reads
+the remote without changing it, so it confirms that Git can authenticate.
+
 ### Copilot tools, models, and session sync
 
 The shared assistant rules are in [AGENTS.md](AGENTS.md); Copilot-specific tool
