@@ -209,6 +209,8 @@ describe("release PR macOS updater smoke gate", () => {
     expect(pullRequestTrigger).not.toBeUndefined();
     expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("paths");
     expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("paths-ignore");
+    // The YAML merge key is not expanded by default, so a path filter could hide under it.
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("<<");
   });
 
   it("limits the smoke build job to release branch heads and base retargets", () => {

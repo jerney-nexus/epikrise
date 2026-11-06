@@ -2894,6 +2894,8 @@ describe("signed release artifacts", () => {
     expect(pullRequestTrigger).not.toBeUndefined();
     expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("paths");
     expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("paths-ignore");
+    // The YAML merge key is not expanded by default, so a path filter could hide under it.
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("<<");
   });
 
   it("requests updater-enabled app bundles for both macOS release targets", async () => {
