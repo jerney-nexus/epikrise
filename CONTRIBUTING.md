@@ -602,6 +602,13 @@ uses the public key configured in `src-tauri/tauri.release.conf.json` and
 requires the matching `TAURI_SIGNING_PRIVATE_KEY` GitHub Actions secret (and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key is encrypted).
 
+Only the Linux AppImage is an updater target. The `.deb` and `.rpm` packages
+are built separately with `features: []` and `--no-sign`, so the
+`direct-release-updater` feature is compiled out and they have no `.sig`. This
+is intentional: package-managed installs are owned by dpkg or rpm, and an
+in-place update would bypass the package database. Do not add `.deb` or `.rpm`
+to updater acceptance checks.
+
 Changes to macOS updater bundle generation run the **macOS updater bundle
 smoke** workflow on native Intel and Apple Silicon runners. It builds the
 updater-enabled `.app.tar.gz` without production signing secrets and verifies

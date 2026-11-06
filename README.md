@@ -25,6 +25,9 @@ draft, and cancel generation. Findings can be added in several rounds and
 integrated cumulatively. Template-defined output checks are shown as warnings,
 with an option to regenerate with corrections.
 
+Only connections through the providers' APIs are supported, so an API key is
+required for each provider you use, except Ollama and other local endpoints.
+
 The desktop workspace separates clinical inputs, generated output, and draft
 controls. Input rows show provenance, extraction method, round, content type,
 and character count. Provider credentials and endpoint settings are managed in
@@ -318,6 +321,12 @@ the update payload; it is not Authenticode, Apple Developer ID signing,
 notarization, or Linux package signing. See
 [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-workflow) for release
 configuration details.
+
+On Linux, only the AppImage supports direct-release updates. Debian (`.deb`)
+and RPM packages are built without the updater, so they report updates as
+unavailable. Package-managed installs are owned by dpkg or rpm; replacing their
+files in place would bypass the package database. Update those installs through
+the system package manager or a future package repository.
 
 Tauri must be able to find `cargo` on `PATH`. If the build fails while running
 `cargo metadata` with “No such file or directory”, see the [local Rust setup
