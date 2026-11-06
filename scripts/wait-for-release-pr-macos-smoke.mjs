@@ -64,7 +64,6 @@ export const smokeTrustedPaths = [
   ".npmrc",
   ".pnpmfile.cjs",
   "vite.config.js",
-  "svelte.config.js",
   "postcss.config.js",
   "postcss.config.cjs",
   "postcss.config.mjs",
