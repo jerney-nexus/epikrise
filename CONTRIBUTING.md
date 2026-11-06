@@ -42,13 +42,13 @@ removing any old copy.
 
 #### GitHub CLI and Git credentials
 
-`gh auth login` signs the GitHub CLI in to GitHub. It does not by itself make
-`git` use those credentials, because Git's HTTPS credential helper is set up
-separately. A `git fetch` or `git push` over HTTPS can fail with
-`unable to get password from user` even when `gh auth status` reports a valid
-login.
+`gh auth login` signs the GitHub CLI in to GitHub. If you accept its prompt to
+authenticate Git over HTTPS, it configures Git too. If you skipped that prompt,
+or Git's credential helper configuration was lost, a `git fetch` or `git push`
+over HTTPS can fail with `unable to get password from user` even when
+`gh auth status` reports a valid login.
 
-After `gh auth login`, run this once in the dev container:
+To set up or repair Git's credential helper, run this in the dev container:
 
 ```bash
 gh auth setup-git
