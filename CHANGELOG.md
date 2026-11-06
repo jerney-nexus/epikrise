@@ -7,6 +7,11 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+### Security
+
+- Upgraded the XLSX parser (`calamine`) to 0.38.0 to fix RUSTSEC-2026-0436, a
+  panic and out-of-memory condition on malformed workbooks.
+
 ## [2026.11.0] - 2026-11-02
 
 ### Added
