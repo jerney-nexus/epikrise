@@ -9,7 +9,6 @@ import {
   isSmokeTrustedInput,
   requiredSmokePaths,
   smokeRunTitle,
-  smokeTrustedDirectories,
   smokeTrustedPaths,
   waitForMacosSmoke,
 } from "../scripts/wait-for-release-pr-macos-smoke.mjs";
@@ -197,52 +196,17 @@ function queueTrustedInputs(fetchImpl: Mock<typeof fetch>): Mock<typeof fetch> {
   return fetchImpl;
 }
 
-/**
- * Whether a workflow path filter entry (literal, `*`, or `**\/`) matches a file.
- */
-function matchesPathFilter(file: string, filterPaths: string[]): boolean {
-  return filterPaths.some((pattern) => {
-    if (!pattern.includes("*")) return pattern === file;
-    const source = pattern
-      .split("**/")
-      .map((segment: string) =>
-        segment
-          .split("*")
-          .map((literal: string) => literal.replace(/[.+^${}()|[\]\\]/g, "\\$&"))
-          .join("[^/]*"),
-      )
-      .join("(?:.*/)?");
-    return new RegExp(`^${source}$`).test(file);
-  });
-}
-
 describe("release PR macOS updater smoke gate", () => {
-  it("starts the smoke workflow for every input the gate trusts", () => {
+  it("runs the smoke workflow for every pull request so a path filter never skips a release head", () => {
     const workflow = readFileSync(
       new URL("../.github/workflows/macos-updater-bundle-smoke.yml", import.meta.url),
       "utf8",
     );
-    const pathsBlock = workflow.match(/^ {4}paths:\n((?: {6}- .+\n)+)/m);
-    expect(pathsBlock).not.toBeNull();
-    const filterPaths = [...pathsBlock![1].matchAll(/^ {6}- (.+)$/gm)].map((match) =>
-      match[1].trim(),
+    const pullRequestTrigger = workflow.match(
+      /^on:\n {2}pull_request:\n((?: {4}.+\n)+)/m,
     );
-    const missing = smokeTrustedPaths.filter(
-      (file) => !matchesPathFilter(file, filterPaths),
-    );
-    expect(missing).toEqual([]);
-    for (const directory of smokeTrustedDirectories) {
-      expect(matchesPathFilter(`${directory}nested/file.txt`, filterPaths)).toBe(true);
-    }
-    for (const file of [
-      "src-tauri/src/lib.rs",
-      "src-tauri/crates/epikrise-core/src/policy.rs",
-      "src-tauri/crates/epikrise-core/Cargo.toml",
-      "src-tauri/Cargo.toml",
-    ]) {
-      expect(matchesPathFilter(file, filterPaths)).toBe(true);
-    }
-    expect(matchesPathFilter("tools/helper.rs", filterPaths)).toBe(false);
+    expect(pullRequestTrigger).not.toBeNull();
+    expect(pullRequestTrigger![1]).not.toMatch(/^ {4}paths:/m);
   });
 
   it("limits the smoke build job to release branch heads and base retargets", () => {
