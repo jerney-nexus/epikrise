@@ -2887,7 +2887,7 @@ describe("signed release artifacts", () => {
       "utf8",
     );
     const pullRequestTrigger = workflow.match(
-      /^on:\n {2}pull_request:\n((?: {4}.+\n)+)/m,
+      /^on:\n {2}pull_request:\n((?:(?: {4}.*)?\n)*)/m,
     )?.[1];
 
     expect(pullRequestTrigger).toBeDefined();
