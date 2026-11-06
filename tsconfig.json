@@ -1,6 +1,6 @@
 {
   "extends": "$app/tsconfig",
-  "include": ["src", "tests", "*.ts", "*.js", ".svelte-kit/ambient.d.ts"],
+  "include": ["src", "tests", "*.ts", "*.js"],
   "exclude": ["src/service-worker"],
   "compilerOptions": {
     "sourceMap": true,
