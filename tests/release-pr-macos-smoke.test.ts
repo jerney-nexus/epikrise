@@ -203,10 +203,12 @@ describe("release PR macOS updater smoke gate", () => {
       "utf8",
     );
     const pullRequestTrigger = workflow.match(
-      /^on:\n {2}pull_request:\n((?:(?: {4}.*)?\n)*)/m,
+      /^on:\n {2}pull_request:\n([\s\S]*?)(?=^ {0,3}[^ \t#\r\n]|(?![\s\S]))/m,
     );
     expect(pullRequestTrigger).not.toBeNull();
-    expect(pullRequestTrigger![1]).not.toMatch(/^ {4}paths(-ignore)?:/m);
+    expect(pullRequestTrigger![1]).not.toMatch(
+      /^[ \t]*(["']?)paths(-ignore)?\1[ \t]*:/m,
+    );
   });
 
   it("limits the smoke build job to release branch heads and base retargets", () => {

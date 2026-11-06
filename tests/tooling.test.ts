@@ -2887,11 +2887,13 @@ describe("signed release artifacts", () => {
       "utf8",
     );
     const pullRequestTrigger = workflow.match(
-      /^on:\n {2}pull_request:\n((?:(?: {4}.*)?\n)*)/m,
+      /^on:\n {2}pull_request:\n([\s\S]*?)(?=^ {0,3}[^ \t#\r\n]|(?![\s\S]))/m,
     )?.[1];
 
     expect(pullRequestTrigger).toBeDefined();
-    expect(pullRequestTrigger).not.toMatch(/^ {4}paths(-ignore)?:/m);
+    expect(pullRequestTrigger).not.toMatch(
+      /^[ \t]*(["']?)paths(-ignore)?\1[ \t]*:/m,
+    );
   });
 
   it("requests updater-enabled app bundles for both macOS release targets", async () => {
