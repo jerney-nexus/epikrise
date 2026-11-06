@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import TOML from "@iarna/toml";
 import * as prettier from "prettier";
 import { describe, expect, it, vi } from "vitest";
+import { parse as parseYaml } from "yaml";
 import {
   assertGitCliffAvailable,
   assertStoreVersionAdvances,
@@ -2881,18 +2882,25 @@ describe("signed release artifacts", () => {
   };
   const releaseCommit = "0123456789abcdef0123456789abcdef01234567";
 
-  it("runs the macOS updater smoke check when its Cargo guards change", async () => {
+  it("runs the macOS updater smoke check for every pull request", async () => {
     const workflow = await readFile(
       path.join(repoRoot, ".github/workflows/macos-updater-bundle-smoke.yml"),
       "utf8",
     );
-    const pullRequestPaths = workflow.match(
-      /pull_request:\s*\n(?:\s+types:[^\n]*\n)?\s+paths:\s*\n([\s\S]*?)\n\s+workflow_dispatch:/,
-    )?.[1];
+    const pullRequestTrigger = (
+      parseYaml(workflow) as { on?: { pull_request?: object | null } }
+    ).on?.pull_request;
 
-    expect(pullRequestPaths).toBeDefined();
-    expect(pullRequestPaths).toContain("- scripts/with-cargo-host-target.sh");
-    expect(pullRequestPaths).toContain("- scripts/validate-native-cargo-target.mjs");
+    expect(pullRequestTrigger).not.toBeUndefined();
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("paths");
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("paths-ignore");
+    // The YAML merge key is not expanded by default, so a path filter could hide under it.
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("<<");
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("branches");
+    expect(Object.keys(pullRequestTrigger ?? {})).not.toContain("branches-ignore");
+    expect((pullRequestTrigger as { types?: string[] } | null)?.types ?? []).toEqual(
+      expect.arrayContaining(["opened", "synchronize", "reopened", "edited"]),
+    );
   });
 
   it("requests updater-enabled app bundles for both macOS release targets", async () => {

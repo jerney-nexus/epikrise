@@ -654,9 +654,8 @@ build script that a manifest names is trusted like the other build inputs. The
 gate reads the `build` key in its TOML forms (spaced or quoted headings, quoted
 or dotted keys, and inline `package` tables) and fails closed on any value it
 cannot parse. The repository has no Rust sources or manifests outside `src-tauri/`, so the gate
-does not enumerate them. The smoke workflow path filter includes
-`src-tauri/**/*.rs` and `src-tauri/**/Cargo.toml`, so every trusted Rust input
-starts the smoke run.
+does not enumerate them. The smoke workflow runs for every pull request without
+a path filter, so every trusted Rust input starts the smoke run for a release head.
 The gate follows script references from the `build` and `prepare` scripts in
 `package.json`, which are the only npm scripts the smoke run executes. A reached
 Rust file that uses `include!` or declares `mod x;` without a `#[path]`
@@ -668,9 +667,11 @@ only in their version fields, which release preparation sets. For the lockfile,
 that means the `version` of local (source-less) packages; registry and git
 entries must match the base exactly. Retargeting a release PR triggers both
 workflows. A missing run, a failed job, or a run that does not finish before the timeout
-fails the gate. The smoke workflow's path filter lists every trusted input, so a
-PR that changes one starts the smoke workflow. Its build job runs only for
-`release/*` heads and base retargets, so non-release PRs skip the macOS builds.
+fails the gate. The smoke workflow has no path filter and runs for every pull
+request, so a `release/*` head always gets a smoke run for its exact head and
+base SHA, even when it changes only files the smoke build does not read. Its
+build job runs only for `release/*` heads and base retargets, so non-release PRs
+skip the macOS builds.
 Manual `workflow_dispatch` runs always build, whatever the branch.
 
 To enforce the gate, a repository administrator must add only
