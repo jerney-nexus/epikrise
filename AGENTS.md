@@ -20,32 +20,20 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 
 ## Native Builds and Packaging
 
-- Local `pnpm tauri build` compiles Epikrise and OCR for the physical host
-  operating system and architecture. Native host/target mismatches fail closed.
-- All six GitHub Actions desktop targets build natively on matching runners.
-  Cross-compilation is never an Actions or release path.
-- The only cross-build exception is an explicit human Linux x64/ARM64 build of
-  the diagnostic Windows NSIS installer. MSI and MSIX are not cross-built.
-- Windows NSIS is the local installer. The unsigned Store MSIX is a
-  Partner Center submission input; Microsoft manages Store signing and updates.
-  Package creation is not Store certification.
-- See `README.md` and `CONTRIBUTING.md` for prerequisites, exact commands, and
-  current acceptance evidence.
+- Local `pnpm tauri build` compiles Epikrise and OCR for the physical host operating system and architecture. Native host/target mismatches fail closed.
+- All six GitHub Actions desktop targets build natively on matching runners. Cross-compilation is never an Actions or release path.
+- The only cross-build exception is an explicit human Linux x64/ARM64 build of the diagnostic Windows NSIS installer. MSI and MSIX are not cross-built.
+- Windows NSIS is the local installer. The unsigned Store MSIX is a Partner Center submission input; Microsoft manages Store signing and updates. Package creation is not Store certification.
+- See `README.md` and `CONTRIBUTING.md` for prerequisites, exact commands, and current acceptance evidence.
 
 ## Global Rules
 
 - Never commit secrets or API keys.
-- Before retrying a failed write through another tool, check whether it already
-  succeeded. Never bypass approvals, repository permissions, or organization
-  policy to make a tool work.
-- For GitHub work, use native `git` commands first when they can do the task
-  (using VS Code authentication). For operations `git` cannot perform, try MCP
-  first; if MCP is unavailable or fails, use GitHub CLI, starting with
-  high-level `gh issue` or `gh pr` commands. Use `gh api` only as a last resort.
+- Before retrying a failed write through another tool, check whether it already succeeded. Never bypass approvals, repository permissions, or organization policy to make a tool work.
+- For GitHub work, use native `git` commands first when they can do the task (using VS Code authentication). For operations `git` cannot perform, try MCP first; if MCP is unavailable or fails, use GitHub CLI, starting with high-level `gh issue` or `gh pr` commands. Use `gh api` only as a last resort.
 - Do not add telemetry or commit real patient data, prompts, or generated clinical output.
 - All PRs require passing tests before merge.
-- For Git stack operations, use `gh stack`; it requires an authenticated
-  GitHub CLI session.
+- For Git stack operations, use `gh stack`; it requires an authenticated GitHub CLI session.
 - Use the commands listed in the "Commands" section below for development, testing, and formatting tasks.
 - When working in the dev container, use `/workspaces/epikrise` as the project root.
 - Follow nearby patterns and keep changes focused.
@@ -62,9 +50,7 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 
 ## Agent Diagnostics
 
-- Never upload chat logs, prompts, tool output, or session databases to diagnose
-  an agent issue. Report sanitized error summaries; account, sync, and model
-  configuration changes require the user's approval.
+- Never upload chat logs, prompts, tool output, or session databases to diagnose an agent issue. Report sanitized error summaries; account, sync, and model configuration changes require the user's approval.
 
 ## Code Style
 
