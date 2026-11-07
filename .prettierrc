@@ -2,5 +2,13 @@
   "plugins": ["prettier-plugin-svelte"],
   "printWidth": 88,
   "singleQuote": false,
-  "trailingComma": "all"
+  "trailingComma": "all",
+  "overrides": [
+    {
+      "files": "*.md",
+      "options": {
+        "proseWrap": "never"
+      }
+    }
+  ]
 }

@@ -1,85 +1,44 @@
 # Epikrise
 
-A desktop drafting aid that turns user-supplied clinical material into a
-structured draft for review and manual use in a clinic information system.
-Epikrise does not anonymize input; remove identifying details before use.
+A desktop drafting aid that turns user-supplied clinical material into a structured draft for review and manual use in a clinic information system. Epikrise does not anonymize input; remove identifying details before use.
 
+<!-- prettier-ignore -->
 > [!IMPORTANT]
-> Epikrise is a **drafting aid**, not a medical device and not a diagnostic
-> tool. Every generated text must be reviewed by the responsible clinician
-> before use. See [Safety and scope](#safety-and-scope).
+> Epikrise is a **drafting aid**, not a medical device and not a diagnostic tool. Every generated text must be reviewed by the responsible clinician before use. See [Safety and scope](#safety-and-scope).
 
 ## What it does
 
-Paste text or images, import documents, or provide a URL. Epikrise extracts
-text from plain-text files, PDF, DOCX, XLSX, RTF and HTML. PNG/JPEG images and
-sparse PDF pages can use local OCR or, when enabled and supported by the
-selected model, vision analysis. URLs are fetched and converted to readable
-text. Text clipboard access uses Tauri's clipboard plugin; image paste is
-handled by the webview and sent to Rust over IPC.
+Paste text or images, import documents, or provide a URL. Epikrise extracts text from plain-text files, PDF, DOCX, XLSX, RTF and HTML. PNG/JPEG images and sparse PDF pages can use local OCR or, when enabled and supported by the selected model, vision analysis. URLs are fetched and converted to readable text. Text clipboard access uses Tauri's clipboard plugin; image paste is handled by the webview and sent to Rust over IPC.
 
-The extracted material and your template are sent to the selected model. The
-app supports OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints,
-OpenRouter, xAI and Groq. It can discover models, check a connection, stream a
-draft, and cancel generation. Findings can be added in several rounds and
-integrated cumulatively. Template-defined output checks are shown as warnings,
-with an option to regenerate with corrections.
+The extracted material and your template are sent to the selected model. The app supports OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI and Groq. It can discover models, check a connection, stream a draft, and cancel generation. Findings can be added in several rounds and integrated cumulatively. Template-defined output checks are shown as warnings, with an option to regenerate with corrections.
 
-Only connections through the providers' APIs are supported, so an API key is
-required for each provider you use, except Ollama and other local endpoints.
+Only connections through the providers' APIs are supported, so an API key is required for each provider you use, except Ollama and other local endpoints.
 
-The desktop workspace separates clinical inputs, generated output, and draft
-controls. Input rows show provenance, extraction method, round, content type,
-and character count. Provider credentials and endpoint settings are managed in
-a dialog; templates can be edited with a live rendered MiniJinja preview.
-Output has plain and formatted preview modes.
+The desktop workspace separates clinical inputs, generated output, and draft controls. Input rows show provenance, extraction method, round, content type, and character count. Provider credentials and endpoint settings are managed in a dialog; templates can be edited with a live rendered MiniJinja preview. Output has plain and formatted preview modes.
 
-The result can be copied to the clipboard only after the clinician reviews and
-acknowledges the current output. Copy writes formatted HTML with the approved
-text as a plain-text fallback. It is pasted manually into the target system;
-Epikrise does not connect to a hospital information system.
+The result can be copied to the clipboard only after the clinician reviews and acknowledges the current output. Copy writes formatted HTML with the approved text as a plain-text fallback. It is pasted manually into the target system; Epikrise does not connect to a hospital information system.
 
 ## Privacy posture
 
-- **No hosted backend, telemetry or account.** The desktop app processes input
-  locally except for requests sent to the configured model endpoint.
-- **Case content is not saved as history.** Case inputs and generated output
-  are held in process memory; Rust-owned case state is cleared when a case is
-  discarded or the app exits. OCR may create temporary image files in private
-  temporary directories; those files are overwritten before removal, and
-  abandoned directories are cleaned up on a later launch. The OS and runtime
-  may retain copies, so forensic erasure cannot be guaranteed.
-- **Templates and credentials persist separately.** Imported templates are
-  stored by the app; API keys are stored in the OS keychain. Provider choice,
-  model, endpoint, output limit and reasoning settings are not persisted by the
-  current UI.
-- **Remote endpoints receive your input.** OpenAI, Anthropic, Gemini, xAI,
-  Groq, OpenRouter and any remote OpenAI-compatible or Ollama endpoint receive
-  the material included in a request. Ollama is local only when its configured
-  endpoint is local. The active provider and endpoint are shown in the controls
-  rail. Before the first remote generation in each case, Epikrise asks you to
-  confirm the provider and endpoint that will receive the case and template.
-- **Anonymization is your responsibility.** Epikrise does not de-identify
-  anything and does not attempt to detect identifying data.
+- **No hosted backend, telemetry or account.** The desktop app processes input locally except for requests sent to the configured model endpoint.
+- **Case content is not saved as history.** Case inputs and generated output are held in process memory; Rust-owned case state is cleared when a case is discarded or the app exits. OCR may create temporary image files in private temporary directories; those files are overwritten before removal, and abandoned directories are cleaned up on a later launch. The OS and runtime may retain copies, so forensic erasure cannot be guaranteed.
+- **Templates and credentials persist separately.** Imported templates are stored by the app; API keys are stored in the OS keychain. Provider choice, model, endpoint, output limit and reasoning settings are not persisted by the current UI.
+- **Remote endpoints receive your input.** OpenAI, Anthropic, Gemini, xAI, Groq, OpenRouter and any remote OpenAI-compatible or Ollama endpoint receive the material included in a request. Ollama is local only when its configured endpoint is local. The active provider and endpoint are shown in the controls rail. Before the first remote generation in each case, Epikrise asks you to confirm the provider and endpoint that will receive the case and template.
+- **Anonymization is your responsibility.** Epikrise does not de-identify anything and does not attempt to detect identifying data.
 
 ## Requirements
 
-| Tool          | Version | Notes                                                                |
-| ------------- | ------- | -------------------------------------------------------------------- |
-| Rust          | 1.98+   | stable toolchain, edition 2024                                       |
-| Node.js       | 22+     | pnpm 12.15.0, activated through Corepack                             |
-| Platform deps | —       | see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
+| Tool | Version | Notes |
+| --- | --- | --- |
+| Rust | 1.98+ | stable toolchain, edition 2024 |
+| Node.js | 22+ | pnpm 12.15.0, activated through Corepack |
+| Platform deps | — | see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
 
-A [dev container](.devcontainer/devcontainer.json) with everything preinstalled
-is included; see [CONTRIBUTING.md](CONTRIBUTING.md).
+A [dev container](.devcontainer/devcontainer.json) with everything preinstalled is included; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Getting started
 
-Before building, complete the operating-system-specific prerequisites in
-[Local native setup](CONTRIBUTING.md#local-native-setup). In particular, a
-native build needs Tesseract and both German (`deu`) and English (`eng`)
-language data. The build compiles its own Tesseract sidecar, but uses the
-installed Tesseract command to locate that data.
+Before building, complete the operating-system-specific prerequisites in [Local native setup](CONTRIBUTING.md#local-native-setup). In particular, a native build needs Tesseract and both German (`deu`) and English (`eng`) language data. The build compiles its own Tesseract sidecar, but uses the installed Tesseract command to locate that data.
 
 ```sh
 corepack enable pnpm
@@ -89,75 +48,43 @@ pnpm tauri dev
 
 ### macOS Installers
 
-Build on macOS after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
-and Tesseract with German and English language data. See [Local setup in
-CONTRIBUTING.md](CONTRIBUTING.md#local-setup) for OCR setup details:
+Build on macOS after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) and Tesseract with German and English language data. See [Local setup in CONTRIBUTING.md](CONTRIBUTING.md#local-setup) for OCR setup details:
 
 ```sh
 pnpm tauri build
 ```
 
-This creates the macOS app and disk image in
-`src-tauri/target/host-<host-triple>/release/bundle/`.
+This creates the macOS app and disk image in `src-tauri/target/host-<host-triple>/release/bundle/`.
 
-macOS Intel runtime support is unverified. On Catalina 10.15.7, the app opened
-to a gray window without rendering; Intel runtime testing remains deferred.
-A successful build does not establish runtime compatibility.
+macOS Intel runtime support is unverified. On Catalina 10.15.7, the app opened to a gray window without rendering; Intel runtime testing remains deferred. A successful build does not establish runtime compatibility.
 
 ### Linux Installers
 
-Build on Linux after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),
-Tesseract, and German and English language data. The dev container includes
-these dependencies. Run:
+Build on Linux after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), Tesseract, and German and English language data. The dev container includes these dependencies. Run:
 
 ```sh
 pnpm tauri build
 ```
 
-This creates AppImage, Debian (`.deb`), and RPM packages under
-`src-tauri/target/host-<host-triple>/release/bundle/`.
+This creates AppImage, Debian (`.deb`), and RPM packages under `src-tauri/target/host-<host-triple>/release/bundle/`.
 
 #### Linux Credential Storage
 
-Epikrise stores provider credentials in the desktop's Secret Service keyring.
-Some lightweight desktop installations, including Lubuntu, may not include a
-keyring service by default. On Debian or Ubuntu, install GNOME Keyring and
-Seahorse if needed:
+Epikrise stores provider credentials in the desktop's Secret Service keyring. Some lightweight desktop installations, including Lubuntu, may not include a keyring service by default. On Debian or Ubuntu, install GNOME Keyring and Seahorse if needed:
 
 ```sh
 sudo apt install gnome-keyring seahorse
 ```
 
-GNOME Keyring provides the Secret Service backend; Seahorse is the graphical
-tool for managing its stored passwords. Make sure the keyring service starts
-with your desktop session before using credential storage in Epikrise.
+GNOME Keyring provides the Secret Service backend; Seahorse is the graphical tool for managing its stored passwords. Make sure the keyring service starts with your desktop session before using credential storage in Epikrise.
 
 ### Windows Installers
 
 #### Local Windows build
 
-Use a normal PowerShell window at the repository root. The wrapper initializes
-Visual Studio itself, so a Developer shell is not required. Windows x64 builds
-x64; Windows ARM64 builds ARM64. Cross-target builds are not supported by this
-native command.
+Use a normal PowerShell window at the repository root. The wrapper initializes Visual Studio itself, so a Developer shell is not required. Windows x64 builds x64; Windows ARM64 builds ARM64. Cross-target builds are not supported by this native command.
 
-Prerequisites are Node.js 22, Corepack/pnpm `12.15.0`, Rust for the native
-Windows architecture, Visual Studio's **Desktop development with C++**
-workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`,
-`cl`, `dumpbin`, `curl`, `tar`, and `rg` on `PATH`. On ARM64, include native
-ARM64 C++ tools.
-In Visual Studio Installer, add **C++ CMake tools for Windows** and
-**Ninja: build system** under **Individual components** if CMake or Ninja is
-missing. If CMake remains missing, install it with
-`winget install --id Kitware.CMake --exact --source winget`. Install missing
-Ninja separately with
-`winget install --id Ninja-build.Ninja --exact --source winget`. See the
-[Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
-and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact
-steps.
-Provide Tesseract's German and English language data either through an
-installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder
-containing `deu.traineddata` and `eng.traineddata`.
+Prerequisites are Node.js 22, Corepack/pnpm `12.15.0`, Rust for the native Windows architecture, Visual Studio's **Desktop development with C++** workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`, `cl`, `dumpbin`, `curl`, `tar`, and `rg` on `PATH`. On ARM64, include native ARM64 C++ tools. In Visual Studio Installer, add **C++ CMake tools for Windows** and **Ninja: build system** under **Individual components** if CMake or Ninja is missing. If CMake remains missing, install it with `winget install --id Kitware.CMake --exact --source winget`. Install missing Ninja separately with `winget install --id Ninja-build.Ninja --exact --source winget`. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact steps. Provide Tesseract's German and English language data either through an installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder containing `deu.traineddata` and `eng.traineddata`.
 
 From the repository root:
 
@@ -176,21 +103,9 @@ Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'deu.traineddata')
 Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'eng.traineddata')
 ```
 
-If Corepack cannot write under `C:\Program Files`, this user-local shim keeps
-pnpm in your profile and avoids changing PowerShell's execution policy. The
-version commands should report Node 22 and pnpm 12.15.0. Both `Test-Path`
-commands must print `True`; if not, see the language-data setup in
-[Contributing](CONTRIBUTING.md#native-build-from-windows). Run one build
-command matching the host architecture.
+If Corepack cannot write under `C:\Program Files`, this user-local shim keeps pnpm in your profile and avoids changing PowerShell's execution policy. The version commands should report Node 22 and pnpm 12.15.0. Both `Test-Path` commands must print `True`; if not, see the language-data setup in [Contributing](CONTRIBUTING.md#native-build-from-windows). Run one build command matching the host architecture.
 
-If CMake remains missing after installing **C++ CMake tools for Windows** in
-Visual Studio Installer, install it with
-`winget install --id Kitware.CMake --exact --source winget`. Install missing
-Ninja separately with
-`winget install --id Ninja-build.Ninja --exact --source winget`. See the
-[Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows)
-and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact
-steps.
+If CMake remains missing after installing **C++ CMake tools for Windows** in Visual Studio Installer, install it with `winget install --id Kitware.CMake --exact --source winget`. Install missing Ninja separately with `winget install --id Ninja-build.Ninja --exact --source winget`. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact steps.
 
 Windows ARM64:
 
@@ -204,23 +119,13 @@ Windows x64:
 .\scripts\build-native-windows.cmd x64 diagnostic
 ```
 
-The command produces an unsigned diagnostic installer under
-`src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The first build
-needs network access to download and verify OCR sources and PDFium. See
-[Contributing: native Windows build](CONTRIBUTING.md#native-build-from-windows)
-for full prerequisites, the x64 command, verification, and troubleshooting.
+The command produces an unsigned diagnostic installer under `src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The first build needs network access to download and verify OCR sources and PDFium. See [Contributing: native Windows build](CONTRIBUTING.md#native-build-from-windows) for full prerequisites, the x64 command, verification, and troubleshooting.
 
 #### Dev Container cross-build
 
-From the native Linux ARM64 Dev Container (not Linux x64 or CPU emulation), run
-`pnpm windows:setup` interactively. The setup script installs `cargo-xwin` if
-needed, then prompts you to review the Microsoft SDK/CRT license. Typing
-`ACCEPT` gates downloading the pinned SDK/CRT; it is not required to install
-`cargo-xwin`. The manual setup path is for local interactive use, not CI; the
-approved CI setup path is described below.
+From the native Linux ARM64 Dev Container (not Linux x64 or CPU emulation), run `pnpm windows:setup` interactively. The setup script installs `cargo-xwin` if needed, then prompts you to review the Microsoft SDK/CRT license. Typing `ACCEPT` gates downloading the pinned SDK/CRT; it is not required to install `cargo-xwin`. The manual setup path is for local interactive use, not CI; the approved CI setup path is described below.
 
-Then explicitly opt in for the current shell and build diagnostic NSIS
-installers:
+Then explicitly opt in for the current shell and build diagnostic NSIS installers:
 
 ```sh
 export EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD=true
@@ -229,116 +134,43 @@ pnpm windows:build:arm64
 pnpm windows:build
 ```
 
-This exception is limited to unsigned diagnostic NSIS builds. Release builds,
-MSI/MSIX, other package selections, generic `pnpm tauri build`, and Actions
-cross-builds are not supported; normal and release builds remain native.
-The installers are written under
-`src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`.
-They include local OCR resources and the offline WebView2 installer. Initial
-tool and asset downloads require network access after the opt-in and setup
-license gate. See
-[CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
+This exception is limited to unsigned diagnostic NSIS builds. Release builds, MSI/MSIX, other package selections, generic `pnpm tauri build`, and Actions cross-builds are not supported; normal and release builds remain native. The installers are written under `src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`. They include local OCR resources and the offline WebView2 installer. Initial tool and asset downloads require network access after the opt-in and setup license gate. See [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
 
-To uninstall an installed Windows build, use **Settings > Apps > Installed
-apps > Epikrise > Uninstall**. The NSIS setup executable's same-version
-maintenance page currently runs the uninstaller and then continues into setup,
-so do not select its Uninstall option when you intend to remove the app and
-close the installer.
+To uninstall an installed Windows build, use **Settings > Apps > Installed apps > Epikrise > Uninstall**. The NSIS setup executable's same-version maintenance page currently runs the uninstaller and then continues into setup, so do not select its Uninstall option when you intend to remove the app and close the installer.
 
-Local `pnpm tauri build` compiles Epikrise and OCR for the physical host OS and
-architecture; native host/target mismatches fail closed. The only cross-build
-exception is an explicit human Linux x64/ARM64 Windows NSIS build. GitHub
-Actions and release builds never cross-compile.
+Local `pnpm tauri build` compiles Epikrise and OCR for the physical host OS and architecture; native host/target mismatches fail closed. The only cross-build exception is an explicit human Linux x64/ARM64 Windows NSIS build. GitHub Actions and release builds never cross-compile.
 
 ### Cross-platform Actions builds
 
-`pnpm build:all` dispatches the manual **Desktop builds** GitHub Actions
-workflow for the current pushed commit from either an ARM64 or x64 dev
-container. It builds Linux ARM64/x64 (`.deb`, `.rpm`, AppImage), macOS
-ARM64/x64 (`.dmg`), and Windows ARM64/x64 (NSIS `.exe` with offline WebView2)
-in six isolated jobs on matching native runners. Each Windows job also uploads
-a separate unsigned, architecture-specific MSIX artifact for manual Partner
-Center submission. The workflow must be enabled on GitHub, and the commit must
-contain the workflow. It never commits or pushes changes.
+`pnpm build:all` dispatches the manual **Desktop builds** GitHub Actions workflow for the current pushed commit from either an ARM64 or x64 dev container. It builds Linux ARM64/x64 (`.deb`, `.rpm`, AppImage), macOS ARM64/x64 (`.dmg`), and Windows ARM64/x64 (NSIS `.exe` with offline WebView2) in six isolated jobs on matching native runners. Each Windows job also uploads a separate unsigned, architecture-specific MSIX artifact for manual Partner Center submission. The workflow must be enabled on GitHub, and the commit must contain the workflow. It never commits or pushes changes.
 
-After a successful tagged signed release, a separate Store submission workflow
-builds only the native Windows x64 and ARM64 Store variants and attaches each
-unsigned MSIX, plus its SHA-256 and build-provenance manifest, as an individual
-asset on that same GitHub Release. This avoids running the six-target
-diagnostic workflow to obtain Partner Center packages. The packages are not
-uploaded to Partner Center automatically.
+After a successful tagged signed release, a separate Store submission workflow builds only the native Windows x64 and ARM64 Store variants and attaches each unsigned MSIX, plus its SHA-256 and build-provenance manifest, as an individual asset on that same GitHub Release. This avoids running the six-target diagnostic workflow to obtain Partner Center packages. The packages are not uploaded to Partner Center automatically.
 
-The command requires a clean worktree, the current branch or tag pushed to
-`origin` at exactly `HEAD`, the GitHub CLI authenticated with Actions dispatch
-and artifact-read permissions, and network access to GitHub Actions. It waits
-for all six jobs, then verifies the request ID, commit, version, target, package
-completeness and SHA-256 values. Windows NSIS and Store MSIX artifacts are
-downloaded and verified as separate package families, with manifests binding
-each package to its runner architecture and Rust target. Verified manifests and
-packages are written to `.artifacts/desktop-builds/<request-id>/`; partial,
-stale, wrong-target or modified artifacts are rejected. Each artifact expires
-after 14 days.
+The command requires a clean worktree, the current branch or tag pushed to `origin` at exactly `HEAD`, the GitHub CLI authenticated with Actions dispatch and artifact-read permissions, and network access to GitHub Actions. It waits for all six jobs, then verifies the request ID, commit, version, target, package completeness and SHA-256 values. Windows NSIS and Store MSIX artifacts are downloaded and verified as separate package families, with manifests binding each package to its runner architecture and Rust target. Verified manifests and packages are written to `.artifacts/desktop-builds/<request-id>/`; partial, stale, wrong-target or modified artifacts are rejected. Each artifact expires after 14 days.
 
-Windows jobs use native Windows runners; the human-only Linux cross-build setup
-is rejected in CI. The CI builds are unsigned and unnotarized: Windows
-SmartScreen and macOS Gatekeeper may warn or block installation. This workflow
-does not publish releases or use the separate direct-release updater
-configuration. The MSIX artifact uses the reserved `JerneyNexus.Epikrise`
-identity and the `year.month.patch.0` Store package version. It is unsigned and
-intended for Partner Center submission, not local installation or direct
-sideloading. Microsoft signs accepted Store packages and manages Store updates.
-The optional `previous_store_version` input rejects a package version that does
-not advance the last submitted Store version. MSIX requires the Microsoft Edge
-WebView2 Evergreen Runtime; it is not bundled. Use the NSIS `.exe` for local
-installation; it includes the offline WebView2 installer. See
-[CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
+Windows jobs use native Windows runners; the human-only Linux cross-build setup is rejected in CI. The CI builds are unsigned and unnotarized: Windows SmartScreen and macOS Gatekeeper may warn or block installation. This workflow does not publish releases or use the separate direct-release updater configuration. The MSIX artifact uses the reserved `JerneyNexus.Epikrise` identity and the `year.month.patch.0` Store package version. It is unsigned and intended for Partner Center submission, not local installation or direct sideloading. Microsoft signs accepted Store packages and manages Store updates. The optional `previous_store_version` input rejects a package version that does not advance the last submitted Store version. MSIX requires the Microsoft Edge WebView2 Evergreen Runtime; it is not bundled. Use the NSIS `.exe` for local installation; it includes the offline WebView2 installer. See [CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
 
-On macOS, copy `Epikrise.app` from the mounted image to `/Applications` first.
-If Gatekeeper then reports that the app is damaged and refuses to open, and you
-trust the artifact's source (verify its published SHA-256 checksum when
-available), remove the quarantine attribute from this app bundle:
+On macOS, copy `Epikrise.app` from the mounted image to `/Applications` first. If Gatekeeper then reports that the app is damaged and refuses to open, and you trust the artifact's source (verify its published SHA-256 checksum when available), remove the quarantine attribute from this app bundle:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/Epikrise.app
 ```
 
-This removes download quarantine only from Epikrise; it does not disable
-Gatekeeper globally. Only use this workaround for an artifact you trust.
+This removes download quarantine only from Epikrise; it does not disable Gatekeeper globally. Only use this workaround for an artifact you trust.
 
 ## Software updates
 
-The standard application build reports updates as unavailable. The separate
-`src-tauri/tauri.release.conf.json` overlay enables updater code for direct
-release builds. In an updater-enabled build, users must opt in under General
-settings and manually request each check; there are no background or startup
-checks. Administrator policy can prohibit opt-in, checks, and installs.
-Installing an update requires a separate confirmation and is blocked while a
-case or generation is active. Update requests use the fixed GitHub Releases
-endpoint and do not send case or template content.
+The standard application build reports updates as unavailable. The separate `src-tauri/tauri.release.conf.json` overlay enables updater code for direct release builds. In an updater-enabled build, users must opt in under General settings and manually request each check; there are no background or startup checks. Administrator policy can prohibit opt-in, checks, and installs. Installing an update requires a separate confirmation and is blocked while a case or generation is active. Update requests use the fixed GitHub Releases endpoint and do not send case or template content.
 
-Tauri updater artifacts require their own signature. This signature verifies
-the update payload; it is not Authenticode, Apple Developer ID signing,
-notarization, or Linux package signing. See
-[CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-workflow) for release
-configuration details.
+Tauri updater artifacts require their own signature. This signature verifies the update payload; it is not Authenticode, Apple Developer ID signing, notarization, or Linux package signing. See [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-workflow) for release configuration details.
 
-On Linux, only the AppImage supports direct-release updates. Debian (`.deb`)
-and RPM packages are built without the updater, so they report updates as
-unavailable. Package-managed installs are owned by dpkg or rpm; replacing their
-files in place would bypass the package database. Update those installs through
-the system package manager or a future package repository.
+On Linux, only the AppImage supports direct-release updates. Debian (`.deb`) and RPM packages are built without the updater, so they report updates as unavailable. Package-managed installs are owned by dpkg or rpm; replacing their files in place would bypass the package database. Update those installs through the system package manager or a future package repository.
 
-Tauri must be able to find `cargo` on `PATH`. If the build fails while running
-`cargo metadata` with “No such file or directory”, see the [local Rust setup
-instructions](CONTRIBUTING.md#local-setup).
+Tauri must be able to find `cargo` on `PATH`. If the build fails while running `cargo metadata` with “No such file or directory”, see the [local Rust setup instructions](CONTRIBUTING.md#local-setup).
 
 ## Testing
 
-For Rust tool prerequisites, including `cargo-deny` required by `pnpm check`,
-see [Quality gates in CONTRIBUTING.md](CONTRIBUTING.md#quality-gates). Run the
-full test suite from the project root with `pnpm test` (UI, i18n, Rust, and
-Playwright browser tests). Use these commands for coverage or focused browser
-runs:
+For Rust tool prerequisites, including `cargo-deny` required by `pnpm check`, see [Quality gates in CONTRIBUTING.md](CONTRIBUTING.md#quality-gates). Run the full test suite from the project root with `pnpm test` (UI, i18n, Rust, and Playwright browser tests). Use these commands for coverage or focused browser runs:
 
 ```sh
 pnpm test:coverage
@@ -346,31 +178,15 @@ pnpm test:e2e
 pnpm test:a11y
 ```
 
-The combined coverage command runs UI tests with V8 coverage and the Rust
-workspace with `cargo-llvm-cov`. It writes an HTML report to
-`coverage/index.html` and an LCOV report to `lcov.info`, which is read by the
-recommended Coverage Gutters VS Code extension. Use `pnpm test:ui:coverage` or
-`pnpm test:rust:coverage` for a targeted coverage run.
-Rust tests, Clippy, and Tauri builds keep Cargo artifacts in a host-triple-specific
-directory under `src-tauri/target`, so macOS builds and dev-container builds do
-not share incompatible host artifacts.
+The combined coverage command runs UI tests with V8 coverage and the Rust workspace with `cargo-llvm-cov`. It writes an HTML report to `coverage/index.html` and an LCOV report to `lcov.info`, which is read by the recommended Coverage Gutters VS Code extension. Use `pnpm test:ui:coverage` or `pnpm test:rust:coverage` for a targeted coverage run. Rust tests, Clippy, and Tauri builds keep Cargo artifacts in a host-triple-specific directory under `src-tauri/target`, so macOS builds and dev-container builds do not share incompatible host artifacts.
 
-Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`,
-`pnpm lint:actions` (GitHub Actions workflows), and `pnpm format:check`.
+Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`, `pnpm lint:actions` (GitHub Actions workflows), and `pnpm format:check`.
 
 ## Templates
 
-No clinical templates ship with Epikrise. The formatting rules used in a
-hospital encode institutional know-how and stay with the institution, so the
-app ships only a minimal generic starter template.
+No clinical templates ship with Epikrise. The formatting rules used in a hospital encode institutional know-how and stay with the institution, so the app ships only a minimal generic starter template.
 
-On first run you can import your own template as an `.epitpl` file or start
-from the generic template. `.epitpl` files and the app's `templates.toml`
-library use versioned TOML; template objects cross the Rust/UI boundary as
-JSON. A template defines the system prompt, its variables, toggleable sections
-and output rules. The app validates and previews a template before saving it.
-Older JSON `.epitpl` files and an existing `templates.json` library are migrated
-when read.
+On first run you can import your own template as an `.epitpl` file or start from the generic template. `.epitpl` files and the app's `templates.toml` library use versioned TOML; template objects cross the Rust/UI boundary as JSON. A template defines the system prompt, its variables, toggleable sections and output rules. The app validates and previews a template before saving it. Older JSON `.epitpl` files and an existing `templates.json` library are migrated when read.
 
 To convert a plain-text prompt locally, provide section labels explicitly:
 
@@ -380,103 +196,39 @@ To convert a plain-text prompt locally, provide section labels explicitly:
   --section diagnoses=Diagnosen --section findings=Befunde
 ```
 
-The converter preserves the prompt text, writes TOML, and creates enabled
-sections from the labels you provide. It refuses to overwrite an existing output unless `--force`
-is supplied. Specialty/category examples are not required defaults; the
-converter does not infer sections or template variables, and
-prompts containing MiniJinja expressions must be converted manually. Both
-`templates/` and `.epitpl` files are ignored by Git.
+The converter preserves the prompt text, writes TOML, and creates enabled sections from the labels you provide. It refuses to overwrite an existing output unless `--force` is supplied. Specialty/category examples are not required defaults; the converter does not infer sections or template variables, and prompts containing MiniJinja expressions must be converted manually. Both `templates/` and `.epitpl` files are ignored by Git.
 
 ## Provider generation settings
 
-The provider settings include an output-token limit, defaulting to 8,192 tokens
-and configurable from 1 to 1,000,000. This is a ceiling, not a promise that a
-provider will return that many tokens; model and provider limits may be lower.
-Reasoning tokens can use part of this same output budget, depending on the
-provider, so raise the limit or choose a lower reasoning effort if the report
-is cut short.
+The provider settings include an output-token limit, defaulting to 8,192 tokens and configurable from 1 to 1,000,000. This is a ceiling, not a promise that a provider will return that many tokens; model and provider limits may be lower. Reasoning tokens can use part of this same output budget, depending on the provider, so raise the limit or choose a lower reasoning effort if the report is cut short.
 
-Reasoning effort can be left at the provider default or set to none, minimal,
-low, medium, high, extra high, or maximum. These are provider hints: supported
-values and their effect vary by provider and model, and unsupported settings may
-be ignored or rejected.
+Reasoning effort can be left at the provider default or set to none, minimal, low, medium, high, extra high, or maximum. These are provider hints: supported values and their effect vary by provider and model, and unsupported settings may be ignored or rejected.
 
 ## Interface language
 
-The interface defaults to German (Switzerland) and also supports English. On
-first launch, Epikrise uses the operating-system language when it is supported;
-otherwise it uses the default. Choose a language in General settings to save
-an override on this device. Template names, field labels and clinical content
-continue to use the locale defined by each template.
+The interface defaults to German (Switzerland) and also supports English. On first launch, Epikrise uses the operating-system language when it is supported; otherwise it uses the default. Choose a language in General settings to save an override on this device. Template names, field labels and clinical content continue to use the locale defined by each template.
 
-Interface messages live in `locales/<locale>/app.ftl`. Keep message IDs aligned
-between shipped catalogs and run `pnpm test:i18n` after editing
-them. During development, the settings dialog also offers a temporary
-pseudo-localized preview to expose untranslated or layout-sensitive text.
+Interface messages live in `locales/<locale>/app.ftl`. Keep message IDs aligned between shipped catalogs and run `pnpm test:i18n` after editing them. During development, the settings dialog also offers a temporary pseudo-localized preview to expose untranslated or layout-sensitive text.
 
 ## Safety and scope
 
-Epikrise sends material and a template to the selected language model to create
-a draft. The model may interpret findings or suggest diagnoses, and its output
-may be incomplete or incorrect. Epikrise does not independently validate
-clinical correctness and makes no claim of conformity with MDR, IVDR or any
-comparable regulation. Output cannot be copied until you explicitly confirm
-that you have reviewed it; that confirmation is reset when the output or case
-changes.
+Epikrise sends material and a template to the selected language model to create a draft. The model may interpret findings or suggest diagnoses, and its output may be incomplete or incorrect. Epikrise does not independently validate clinical correctness and makes no claim of conformity with MDR, IVDR or any comparable regulation. Output cannot be copied until you explicitly confirm that you have reviewed it; that confirmation is reset when the output or case changes.
 
-Material you ingest — especially fetched web pages — is untrusted input that
-may contain text crafted to influence the model. Epikrise labels and delimits
-every block to mitigate this, but the mitigation is not a guarantee. Review the
-output.
+Material you ingest — especially fetched web pages — is untrusted input that may contain text crafted to influence the model. Epikrise labels and delimits every block to mitigate this, but the mitigation is not a guarantee. Review the output.
 
 ## Administrator Egress Policy
 
-IT can install a machine-wide `policy.toml` to restrict providers and URL
-ingestion. The app reads it once at startup; the UI cannot loosen it. A malformed
-policy prevents startup rather than silently disabling the restrictions.
-Supported locations are `/etc/epikrise/policy.toml` on Linux,
-`/Library/Application Support/Epikrise/policy.toml` on macOS, and
-`%ProgramData%\Epikrise\policy.toml` on Windows. The file and containing
-directory should be administrator-owned and not writable by standard users.
-Epikrise warns when it cannot verify that protection.
-On Linux and macOS, use a root-owned directory (mode `0755`) and policy file
-(mode `0644`). On Windows, grant write/modify access only to Administrators
-and SYSTEM; standard users should have read access only.
+IT can install a machine-wide `policy.toml` to restrict providers and URL ingestion. The app reads it once at startup; the UI cannot loosen it. A malformed policy prevents startup rather than silently disabling the restrictions. Supported locations are `/etc/epikrise/policy.toml` on Linux, `/Library/Application Support/Epikrise/policy.toml` on macOS, and `%ProgramData%\Epikrise\policy.toml` on Windows. The file and containing directory should be administrator-owned and not writable by standard users. Epikrise warns when it cannot verify that protection. On Linux and macOS, use a root-owned directory (mode `0755`) and policy file (mode `0644`). On Windows, grant write/modify access only to Administrators and SYSTEM; standard users should have read access only.
 
-Start from [`policy.example.toml`](policy.example.toml). `allowed_providers`
-uses adapter IDs (`open_ai`, `anthropic`, `gemini`, `ollama`,
-`open_ai_compatible`, `open_router`, `xai`, `groq`); omitted means all
-providers. `local_only = true` additionally restricts endpoints to `localhost`
-or a loopback IP, regardless of the allowlist. `allow_url_ingestion = false`
-disables URL extraction. In updater-enabled builds, `allow_updater = false`
-prevents opting in, checking, or installing updates; standard builds report the
-updater as unavailable. Set `allow_template_import`, `allow_template_export`,
-`allow_template_edit`, `allow_template_creation`, or `allow_template_deletion`
-to `false` to independently block template imports, exports, edits, direct
-creation, or deletion from settings. These restrictions are enforced by the
-backend as well as the settings UI.
+Start from [`policy.example.toml`](policy.example.toml). `allowed_providers` uses adapter IDs (`open_ai`, `anthropic`, `gemini`, `ollama`, `open_ai_compatible`, `open_router`, `xai`, `groq`); omitted means all providers. `local_only = true` additionally restricts endpoints to `localhost` or a loopback IP, regardless of the allowlist. `allow_url_ingestion = false` disables URL extraction. In updater-enabled builds, `allow_updater = false` prevents opting in, checking, or installing updates; standard builds report the updater as unavailable. Set `allow_template_import`, `allow_template_export`, `allow_template_edit`, `allow_template_creation`, or `allow_template_deletion` to `false` to independently block template imports, exports, edits, direct creation, or deletion from settings. These restrictions are enforced by the backend as well as the settings UI.
 
-`allowed_models` optionally lists exact, case-sensitive model identifiers scoped
-by provider, for example `[{ adapter = "ollama", model = "llama3.2" }]`;
-omitting it allows every model under the provider policy. `max_output_tokens`
-sets a hard ceiling on generated output tokens. `max_reasoning_effort` caps the
-selected reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `x_high`,
-or `max`); a provider-default selection is also capped. `fixed_endpoint` forces
-all provider operations to use one validated HTTP(S) endpoint, overriding the
-endpoint entered in settings. `allow_credential_management = false` prevents
-adding or removing credentials from the OS keychain. The review gate remains
-mandatory even if a policy sets `require_review_gate = false`.
+`allowed_models` optionally lists exact, case-sensitive model identifiers scoped by provider, for example `[{ adapter = "ollama", model = "llama3.2" }]`; omitting it allows every model under the provider policy. `max_output_tokens` sets a hard ceiling on generated output tokens. `max_reasoning_effort` caps the selected reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `x_high`, or `max`); a provider-default selection is also capped. `fixed_endpoint` forces all provider operations to use one validated HTTP(S) endpoint, overriding the endpoint entered in settings. `allow_credential_management = false` prevents adding or removing credentials from the OS keychain. The review gate remains mandatory even if a policy sets `require_review_gate = false`.
 
-The webview CSP restricts network connections to Tauri IPC. The app does not
-configure clinical-content logging; debug representations of case, extraction,
-image and chat payloads redact their contents. Production devtools and the
-context menu are disabled.
+The webview CSP restricts network connections to Tauri IPC. The app does not configure clinical-content logging; debug representations of case, extraction, image and chat payloads redact their contents. Production devtools and the context menu are disabled.
 
 ## Versioning
 
-Epikrise uses [Calendar Versioning](https://calver.org). Versions follow
-**`YYYY.M.MICRO`**; for example, `2026.10.0` is the first release of October
-2026, and the final number counts fixes within that month.
+Epikrise uses [Calendar Versioning](https://calver.org). Versions follow **`YYYY.M.MICRO`**; for example, `2026.10.0` is the first release of October 2026, and the final number counts fixes within that month.
 
 ## Documentation
 
