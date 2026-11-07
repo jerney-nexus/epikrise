@@ -3962,6 +3962,100 @@ describe("signed release artifacts", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("stages deterministic collision-free NSIS names for x64 and ARM64", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-nsis-names-"));
+    const artifactsRoot = path.join(directory, "artifacts");
+    const latestPath = path.join(directory, "latest.json");
+    const nsisTargets = [
+      ["x86_64-pc-windows-msvc", "windows-x86_64-nsis"],
+      ["aarch64-pc-windows-msvc", "windows-aarch64-nsis"],
+    ] as const;
+    const expectedNames = (platform: string) =>
+      [
+        `${platform}-bootstrapper.exe`,
+        `${platform}-bootstrapper.exe.sig`,
+        `${platform}-offline.exe`,
+        `${platform}-offline.exe.sig`,
+      ].sort();
+
+    try {
+      await writeFile(latestPath, "{}");
+      for (const [target, platform] of nsisTargets) {
+        const targetRoot = path.join(directory, target);
+        const bundleRoot = path.join(targetRoot, "offline");
+        const bootstrapperRoot = path.join(targetRoot, "bootstrapper");
+        await mkdir(bundleRoot, { recursive: true });
+        await mkdir(bootstrapperRoot, { recursive: true });
+        for (const root of [bundleRoot, bootstrapperRoot]) {
+          await writeFile(path.join(root, "epikrise.exe"), createBinaryHeader(target));
+          await writeFile(path.join(root, "epikrise.exe.sig"), `signature-${target}`);
+        }
+        await writeWebViewModeRecord(bundleRoot, "offlineInstaller", "epikrise.exe");
+        await writeWebViewModeRecord(
+          bootstrapperRoot,
+          "embedBootstrapper",
+          "epikrise.exe",
+        );
+        const { resourceRoot, binaryRoot } = await createOcrFixture(targetRoot, target);
+        await stageReleaseArtifacts({
+          target,
+          bundleRoot,
+          bootstrapperRoot,
+          stageRoot: path.join(artifactsRoot, `release-${target}`),
+          commit: releaseCommit,
+          version: "2026.9.4",
+          resourceRoot,
+          binaryRoot,
+          nativeBuild: nativeBuildEvidence(target, "signed-release"),
+          sourceArchiveSha256: "b".repeat(64),
+          cacheKey: `synthetic-${target}-cache`,
+          cacheRestored: false,
+        });
+        const stagedNames = (
+          await readdir(path.join(artifactsRoot, `release-${target}`))
+        )
+          .filter((name) => name.startsWith(`${platform}-`))
+          .sort();
+        expect(stagedNames).toEqual(expectedNames(platform));
+      }
+
+      for (const target of releaseTargets) {
+        await mkdir(path.join(artifactsRoot, `release-${target}`), { recursive: true });
+      }
+      const evidence = await createReleaseAssetEvidence({ artifactsRoot, latestPath });
+      expect(
+        Object.keys(evidence)
+          .filter((name) => name.startsWith("windows-"))
+          .sort(),
+      ).toEqual(
+        [
+          ...expectedNames("windows-aarch64-nsis"),
+          ...expectedNames("windows-x86_64-nsis"),
+        ].sort(),
+      );
+
+      await cp(
+        path.join(
+          artifactsRoot,
+          "release-x86_64-pc-windows-msvc",
+          "windows-x86_64-nsis-offline.exe",
+        ),
+        path.join(
+          artifactsRoot,
+          "release-aarch64-pc-windows-msvc",
+          "windows-x86_64-nsis-offline.exe",
+        ),
+      );
+      await expect(
+        createReleaseAssetEvidence({ artifactsRoot, latestPath }),
+      ).rejects.toThrow(
+        "Duplicate staged release asset name: windows-x86_64-nsis-offline.exe.",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("Windows release installer configuration", () => {
