@@ -18,6 +18,7 @@ import { promisify } from "node:util";
 import { deriveReleaseVersions } from "./prepare-release.mjs";
 import { assertBuildProvenance, createBuildProvenance } from "./build-provenance.mjs";
 import { assertNativeBuildMetadata } from "./verify-native-build-environment.mjs";
+import { verifyBinaryArchitecture } from "./verify-binary-architecture.mjs";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const execFile = promisify(execFileCallback);
@@ -297,6 +298,14 @@ export async function stageReleaseArtifacts({
         `Expected exactly one ${suffix} artifact for ${target}, found ${matches.length}.`,
       );
       selected.push({ sourcePath: matches[0], prefix: "" });
+    }
+  }
+
+  if (config.family) {
+    for (const { sourcePath } of selected) {
+      if (sourcePath.endsWith(config.packageExtension)) {
+        await verifyBinaryArchitecture(target, sourcePath);
+      }
     }
   }
 

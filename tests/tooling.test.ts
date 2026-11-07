@@ -3284,14 +3284,18 @@ describe("signed release artifacts", () => {
         for (const suffix of sourceSuffixes) {
           await writeFile(
             path.join(bundleRoot, `epikrise${suffix}`),
-            suffix.endsWith(".sig") ? `signature-${target}` : `bundle-${target}`,
+            suffix.endsWith(".sig")
+              ? `signature-${target}`
+              : isWindows
+                ? createBinaryHeader(target)
+                : `bundle-${target}`,
           );
           if (isWindows) {
             await writeFile(
               path.join(bootstrapperRoot, `epikrise${suffix}`),
               suffix.endsWith(".sig")
                 ? `bootstrapper-signature-${target}`
-                : `bootstrapper-${target}`,
+                : createBinaryHeader(target),
             );
           }
         }
@@ -3495,6 +3499,27 @@ describe("signed release artifacts", () => {
           signatureVerifier: async () => {},
         }),
       ).rejects.toThrow("WebView2 installer modes do not match");
+      await writeFile(
+        windowsIntegrityPath,
+        JSON.stringify({
+          ...windowsIntegrity,
+          webview_modes: {
+            ...windowsIntegrity.webview_modes,
+            alternate: "offlineInstaller",
+          },
+        }),
+      );
+      await expect(
+        createLatestManifest({
+          tag: "v2026.9.4",
+          packageVersion: "2026.9.4",
+          repository: "owner/repo",
+          artifactsRoot,
+          commit: releaseCommit,
+          pubDate,
+          signatureVerifier: async () => {},
+        }),
+      ).rejects.toThrow("WebView2 installer modes do not match");
       await writeFile(windowsIntegrityPath, windowsIntegrityContents);
 
       const latestPath = path.join(directory, "latest.json");
@@ -3671,6 +3696,48 @@ describe("signed release artifacts", () => {
           cacheRestored: false,
         }),
       ).rejects.toThrow(".AppImage.sig");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a Windows installer built for the wrong architecture", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-arch-"));
+    const offlineRoot = path.join(directory, "offline");
+    const bootstrapperRoot = path.join(directory, "bootstrapper");
+    const target = "aarch64-pc-windows-msvc";
+    try {
+      await mkdir(offlineRoot, { recursive: true });
+      await mkdir(bootstrapperRoot, { recursive: true });
+      await writeFile(
+        path.join(offlineRoot, "offline.exe"),
+        createBinaryHeader("x86_64-pc-windows-msvc"),
+      );
+      await writeFile(path.join(offlineRoot, "offline.exe.sig"), "offline-signature");
+      await writeFile(
+        path.join(bootstrapperRoot, "bootstrapper.exe"),
+        createBinaryHeader(target),
+      );
+      await writeFile(
+        path.join(bootstrapperRoot, "bootstrapper.exe.sig"),
+        "bootstrapper-signature",
+      );
+      await expect(
+        stageReleaseArtifacts({
+          target,
+          bundleRoot: offlineRoot,
+          bootstrapperRoot,
+          stageRoot: path.join(directory, "staged"),
+          commit: releaseCommit,
+          version: "2026.9.4",
+          resourceRoot: path.join(directory, "resources", "ocr"),
+          binaryRoot: path.join(directory, "binaries"),
+          nativeBuild: nativeBuildEvidence(target, "signed-release"),
+          sourceArchiveSha256: "b".repeat(64),
+          cacheKey: `synthetic-${target}-cache`,
+          cacheRestored: false,
+        }),
+      ).rejects.toThrow("expects PE arm64; found PE x86_64");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
