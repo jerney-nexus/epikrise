@@ -1709,7 +1709,6 @@ describe("release PR macOS updater smoke gate", () => {
       "src-tauri/tauri.conf.json",
       "src-tauri/tauri.release.conf.json",
       "vite.config.js",
-      "svelte.config.js",
       "package.json",
     ];
 
@@ -1750,7 +1749,7 @@ describe("release PR macOS updater smoke gate", () => {
       }
     }
 
-    expect(reached).toContain("svelte.config.js");
+    expect(reached).toContain("vite.config.js");
     expect(unsupportedRust).toEqual([]);
     const untrusted = [...reached].filter((file) => !isSmokeTrustedInput(file));
     expect(untrusted).toEqual([]);
