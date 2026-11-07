@@ -3771,23 +3771,49 @@ describe("signed release artifacts", () => {
     }
   });
 
+  it("rejects a Windows bootstrapper built for the wrong architecture", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-boot-arch-"));
+    const offlineRoot = path.join(directory, "offline");
+    const bootstrapperRoot = path.join(directory, "bootstrapper");
+    const target = "aarch64-pc-windows-msvc";
+    try {
+      await mkdir(offlineRoot, { recursive: true });
+      await mkdir(bootstrapperRoot, { recursive: true });
+      await writeFile(
+        path.join(offlineRoot, "offline.exe"),
+        createBinaryHeader(target),
+      );
+      await writeFile(path.join(offlineRoot, "offline.exe.sig"), "offline-signature");
+      await writeFile(
+        path.join(bootstrapperRoot, "bootstrapper.exe"),
+        createBinaryHeader("x86_64-pc-windows-msvc"),
+      );
+      await writeFile(
+        path.join(bootstrapperRoot, "bootstrapper.exe.sig"),
+        "bootstrapper-signature",
+      );
+      await expect(
+        stageReleaseArtifacts({
+          target,
+          bundleRoot: offlineRoot,
+          bootstrapperRoot,
+          stageRoot: path.join(directory, "staged"),
+          commit: releaseCommit,
+          version: "2026.9.4",
+          resourceRoot: path.join(directory, "resources", "ocr"),
+          binaryRoot: path.join(directory, "binaries"),
+          nativeBuild: nativeBuildEvidence(target, "signed-release"),
+          sourceArchiveSha256: "b".repeat(64),
+          cacheKey: `synthetic-${target}-cache`,
+          cacheRestored: false,
+        }),
+      ).rejects.toThrow("expects PE arm64; found PE x86_64");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("writes Windows WebView2 mode records that the staging verifier accepts", async () => {
-    const workflow = await readFile(
-      path.join(repoRoot, ".github/workflows/signed-release.yml"),
-      "utf8",
-    );
-    const recordStart = workflow.indexOf("            $package = $packages");
-    const recordWrite = workflow.indexOf('"webview-mode.json"', recordStart);
-    const recordClose = "\n            )\n";
-    const recordEnd = workflow.indexOf(recordClose, recordWrite) + recordClose.length;
-    expect(recordStart).toBeGreaterThan(-1);
-    expect(recordEnd).toBeGreaterThan(recordWrite);
-    const recordScript = workflow
-      .slice(recordStart, recordEnd)
-      .split("\n")
-      .map((line) => line.replace(/^ {12}/, ""))
-      .join("\n");
-    const psQuote = (value: string) => `'${value.replaceAll("'", "''")}'`;
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-webview-mode-pwsh-"));
 
     try {
@@ -3805,21 +3831,19 @@ describe("signed release artifacts", () => {
         createBinaryHeader("x86_64-pc-windows-msvc"),
       );
       await writeFile(path.join(bundleRoot, "epikrise.exe.sig"), "signature");
-      const scriptPath = path.join(directory, "write-webview-mode-record.ps1");
-      await writeFile(
-        scriptPath,
-        [
-          `$mode = "offlineInstaller"`,
-          `$bundleRoot = ${psQuote(bundleRoot)}`,
-          `$variantDirectory = ${psQuote(variantDirectory)}`,
-          "New-Item -ItemType Directory -Path $variantDirectory -Force | Out-Null",
-          "$packages = @(Get-ChildItem -LiteralPath $bundleRoot -File | Where-Object { $_.Name -match '\\.(exe|msi)(\\.sig)?$' })",
-          "Copy-Item -LiteralPath $packages.FullName -Destination $variantDirectory",
-          recordScript,
-        ].join("\n"),
-      );
 
-      await execFile("pwsh", ["-NoProfile", "-NonInteractive", "-File", scriptPath]);
+      await execFile("pwsh", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        path.join(repoRoot, "scripts/write-nsis-webview-record.ps1"),
+        "-BundleRoot",
+        bundleRoot,
+        "-VariantDirectory",
+        variantDirectory,
+        "-WebViewMode",
+        "offlineInstaller",
+      ]);
 
       const recordText = await readFile(
         path.join(variantDirectory, "webview-mode.json"),
