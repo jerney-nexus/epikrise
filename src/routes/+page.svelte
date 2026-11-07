@@ -2182,6 +2182,7 @@
     );
   }
 </script>
+
 <svelte:head>
   <title>{t("Epikrise | Draft workspace")}</title>
   <meta name="theme-color" content="#f2f5f1" />
@@ -2382,6 +2383,8 @@
       class="settings-dialog general-settings-dialog"
       bind:this={generalSettingsDialog}
       aria-labelledby="general-settings-title"
+      onkeydown={handleDialogKeydown}
+      onclose={restoreOrdinaryDialogFocus}
       oncancel={(event) => {
         event.preventDefault();
         generalSettingsDialog?.close();
