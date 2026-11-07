@@ -113,6 +113,40 @@ async function sha256(filePath) {
   return digest.digest("hex");
 }
 
+const webViewModeRecordName = "webview-mode.json";
+
+/** @param {{ packagePath: string, expectedMode: string }} options */
+async function verifyWebViewModeRecord({ packagePath, expectedMode }) {
+  const packageName = path.basename(packagePath);
+  const recordPath = path.join(path.dirname(packagePath), webViewModeRecordName);
+  let recordText;
+  try {
+    recordText = await readFile(recordPath, "utf8");
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      throw new Error(`Missing WebView2 mode record beside ${packageName}.`, {
+        cause: error,
+      });
+    }
+    throw error;
+  }
+  const record = JSON.parse(recordText);
+  assert(record.schema_version === 1, "Unsupported WebView2 mode record schema.");
+  assert(
+    record.webview_mode === expectedMode,
+    `WebView2 mode record for ${packageName} does not match ${expectedMode}.`,
+  );
+  assert(
+    record.package === packageName,
+    `WebView2 mode record does not name ${packageName}.`,
+  );
+  assert(
+    record.package_sha256 === (await sha256(packagePath)),
+    `WebView2 mode record hash does not match ${packageName}.`,
+  );
+  return record.webview_mode;
+}
+
 /** @param {string} filePath @param {string} relativePath */
 async function fileEvidence(filePath, relativePath) {
   const metadata = await lstat(filePath);
@@ -301,6 +335,8 @@ export async function stageReleaseArtifacts({
     }
   }
 
+  /** @type {Record<string, string>} */
+  const webviewModes = {};
   if (config.family) {
     assert(
       typeof config.packageExtension === "string",
@@ -309,6 +345,19 @@ export async function stageReleaseArtifacts({
     for (const { sourcePath } of selected) {
       if (sourcePath.endsWith(config.packageExtension)) {
         await verifyBinaryArchitecture(target, sourcePath);
+      }
+    }
+    /** @type {Record<string, string>} */
+    const expectedModes = {
+      offline: "offlineInstaller",
+      bootstrapper: "embedBootstrapper",
+    };
+    for (const { sourcePath, prefix } of selected) {
+      if (sourcePath.endsWith(config.packageExtension)) {
+        webviewModes[prefix] = await verifyWebViewModeRecord({
+          packagePath: sourcePath,
+          expectedMode: expectedModes[prefix],
+        });
       }
     }
   }
@@ -370,8 +419,8 @@ export async function stageReleaseArtifacts({
       ? {
           package_family: config.family,
           webview_modes: {
-            updater: "offlineInstaller",
-            alternate: "embedBootstrapper",
+            updater: webviewModes.offline,
+            alternate: webviewModes.bootstrapper,
           },
         }
       : {}),

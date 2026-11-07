@@ -247,6 +247,9 @@ jobs:
           $bundleRoot = Join-Path $PWD "src-tauri/target/host-$hostTarget/$env:TARGET/release/bundle/nsis"
           foreach ($mode in @("embedBootstrapper", "offlineInstaller")) {
             $env:EPIKRISE_WINDOWS_WEBVIEW_MODE = $mode
+            if (Test-Path -LiteralPath $bundleRoot) {
+              Remove-Item -LiteralPath $bundleRoot -Recurse -Force
+            }
             & cmd /c "scripts\build-native-windows.cmd $env:WINDOWS_ARCH release"
             if ($LASTEXITCODE -ne 0) {
               throw "Windows NSIS $mode build failed with exit code $LASTEXITCODE."
@@ -258,6 +261,19 @@ jobs:
               throw "Expected one signed package and signature in $bundleRoot, found $($packages.Count)."
             }
             Copy-Item -LiteralPath $packages.FullName -Destination $variantDirectory
+            $package = $packages | Where-Object { $_.Name -like '*.exe' }
+            $packageHash = (Get-FileHash -LiteralPath (Join-Path $variantDirectory $package.Name) -Algorithm SHA256).Hash.ToLowerInvariant()
+            $record = [ordered]@{
+              schema_version = 1
+              webview_mode = $mode
+              package = $package.Name
+              package_sha256 = $packageHash
+            }
+            [System.IO.File]::WriteAllText(
+              (Join-Path $variantDirectory "webview-mode.json"),
+              (($record | ConvertTo-Json) + "`n"),
+              [System.Text.UTF8Encoding]::new($false)
+            )
           }
 
       - name: Build signed Linux or macOS updater bundles

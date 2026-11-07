@@ -121,6 +121,25 @@ function createBinaryHeader(target: string) {
   return binary;
 }
 
+async function writeWebViewModeRecord(
+  directory: string,
+  webviewMode: string,
+  packageName: string,
+) {
+  const packageSha256 = createHash("sha256")
+    .update(await readFile(path.join(directory, packageName)))
+    .digest("hex");
+  await writeFile(
+    path.join(directory, "webview-mode.json"),
+    `${JSON.stringify({
+      schema_version: 1,
+      webview_mode: webviewMode,
+      package: packageName,
+      package_sha256: packageSha256,
+    })}\n`,
+  );
+}
+
 function nativeBuildEvidence(
   target: string,
   buildMode: "diagnostic" | "signed-release" = "diagnostic",
@@ -3299,6 +3318,14 @@ describe("signed release artifacts", () => {
             );
           }
         }
+        if (isWindows) {
+          await writeWebViewModeRecord(bundleRoot, "offlineInstaller", "epikrise.exe");
+          await writeWebViewModeRecord(
+            bootstrapperRoot,
+            "embedBootstrapper",
+            "epikrise.exe",
+          );
+        }
         const { resourceRoot, binaryRoot } = await createOcrFixture(directory, target);
         await stageReleaseArtifacts({
           target,
@@ -3738,6 +3765,74 @@ describe("signed release artifacts", () => {
           cacheRestored: false,
         }),
       ).rejects.toThrow("expects PE arm64; found PE x86_64");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects Windows WebView2 mode records that do not match the staged installer", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-windows-mode-record-"),
+    );
+    const offlineRoot = path.join(directory, "offline");
+    const bootstrapperRoot = path.join(directory, "bootstrapper");
+    const target = "x86_64-pc-windows-msvc";
+    const offlineRecordPath = path.join(offlineRoot, "webview-mode.json");
+    const offlineExePath = path.join(offlineRoot, "epikrise.exe");
+    const stageOptions = {
+      target,
+      bundleRoot: offlineRoot,
+      bootstrapperRoot,
+      stageRoot: path.join(directory, "staged"),
+      commit: releaseCommit,
+      version: "2026.9.4",
+      resourceRoot: path.join(directory, "resources", "ocr"),
+      binaryRoot: path.join(directory, "binaries"),
+      nativeBuild: nativeBuildEvidence(target, "signed-release"),
+      sourceArchiveSha256: "b".repeat(64),
+      cacheKey: `synthetic-${target}-cache`,
+      cacheRestored: false,
+    };
+
+    try {
+      await mkdir(offlineRoot, { recursive: true });
+      await mkdir(bootstrapperRoot, { recursive: true });
+      await writeFile(offlineExePath, createBinaryHeader(target));
+      await writeFile(path.join(offlineRoot, "epikrise.exe.sig"), "offline-signature");
+      await writeFile(
+        path.join(bootstrapperRoot, "epikrise.exe"),
+        createBinaryHeader(target),
+      );
+      await writeFile(
+        path.join(bootstrapperRoot, "epikrise.exe.sig"),
+        "bootstrapper-signature",
+      );
+      await writeWebViewModeRecord(
+        bootstrapperRoot,
+        "embedBootstrapper",
+        "epikrise.exe",
+      );
+
+      await writeWebViewModeRecord(offlineRoot, "embedBootstrapper", "epikrise.exe");
+      await expect(stageReleaseArtifacts(stageOptions)).rejects.toThrow(
+        "WebView2 mode record for epikrise.exe does not match offlineInstaller",
+      );
+
+      await writeWebViewModeRecord(offlineRoot, "offlineInstaller", "epikrise.exe");
+      await writeFile(
+        offlineExePath,
+        Buffer.concat([createBinaryHeader(target), Buffer.from("replaced")]),
+      );
+      await expect(stageReleaseArtifacts(stageOptions)).rejects.toThrow(
+        "WebView2 mode record hash does not match epikrise.exe",
+      );
+
+      await writeFile(offlineExePath, createBinaryHeader(target));
+      await writeWebViewModeRecord(offlineRoot, "offlineInstaller", "epikrise.exe");
+      await rm(offlineRecordPath);
+      await expect(stageReleaseArtifacts(stageOptions)).rejects.toThrow(
+        "Missing WebView2 mode record beside epikrise.exe",
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
