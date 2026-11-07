@@ -302,6 +302,10 @@ export async function stageReleaseArtifacts({
   }
 
   if (config.family) {
+    assert(
+      typeof config.packageExtension === "string",
+      `Missing package extension for ${target}.`,
+    );
     for (const { sourcePath } of selected) {
       if (sourcePath.endsWith(config.packageExtension)) {
         await verifyBinaryArchitecture(target, sourcePath);
