@@ -6,9 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2026.11.2] - 2026-11-07
+
 ### 🐛 Bug Fixes
 
 - The General settings dialog grows to fit the Software updates section, so enabling updates no longer shows an unnecessary scrollbar (#178)
+
+### 📚 Documentation
+
+- Document Git credential setup in the dev container (#196)
+- Move personal workflow preferences out of agent instructions (#202)
+
+### 🎨 Styling
+
+- Wrap Markdown prose on single lines (#204)
 
 ## [2026.11.1] - 2026-11-06
 
@@ -438,4 +449,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 [2026.10.5]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.4...v2026.10.5
 [2026.11.0]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.5...v2026.11.0
 [2026.11.1]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.0...v2026.11.1
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.1...HEAD
+[2026.11.2]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.1...v2026.11.2
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.2...HEAD
