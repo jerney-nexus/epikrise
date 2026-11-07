@@ -5947,6 +5947,7 @@
     }
 
     .dialog-heading p:not(.eyebrow),
+    .update-settings .update-settings-title,
     .preview-heading span {
       color: #a7b7ad;
     }
