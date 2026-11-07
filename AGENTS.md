@@ -35,6 +35,7 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 ## Global Rules
 
 - Never commit secrets or API keys.
+- Never bypass approvals, repository permissions, or organization policy to make a tool work.
 - Do not add telemetry or commit real patient data, prompts, or generated clinical output.
 - All PRs require passing tests before merge.
 - For Git stack operations, use `gh stack`; it requires an authenticated
