@@ -3729,14 +3729,15 @@ describe("signed release artifacts", () => {
     }
   });
 
-  it("rejects a Windows installer built for the wrong architecture", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-arch-"));
+  it("does not judge NSIS launcher architecture during staging", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-launcher-"));
     const offlineRoot = path.join(directory, "offline");
     const bootstrapperRoot = path.join(directory, "bootstrapper");
     const target = "aarch64-pc-windows-msvc";
     try {
       await mkdir(offlineRoot, { recursive: true });
       await mkdir(bootstrapperRoot, { recursive: true });
+      // Tauri NSIS launchers are x86 stubs even for ARM64 payloads.
       await writeFile(
         path.join(offlineRoot, "offline.exe"),
         createBinaryHeader("x86_64-pc-windows-msvc"),
@@ -3744,69 +3745,39 @@ describe("signed release artifacts", () => {
       await writeFile(path.join(offlineRoot, "offline.exe.sig"), "offline-signature");
       await writeFile(
         path.join(bootstrapperRoot, "bootstrapper.exe"),
-        createBinaryHeader(target),
+        createBinaryHeader("x86_64-pc-windows-msvc"),
       );
       await writeFile(
         path.join(bootstrapperRoot, "bootstrapper.exe.sig"),
         "bootstrapper-signature",
       );
-      await expect(
-        stageReleaseArtifacts({
-          target,
-          bundleRoot: offlineRoot,
-          bootstrapperRoot,
-          stageRoot: path.join(directory, "staged"),
-          commit: releaseCommit,
-          version: "2026.9.4",
-          resourceRoot: path.join(directory, "resources", "ocr"),
-          binaryRoot: path.join(directory, "binaries"),
-          nativeBuild: nativeBuildEvidence(target, "signed-release"),
-          sourceArchiveSha256: "b".repeat(64),
-          cacheKey: `synthetic-${target}-cache`,
-          cacheRestored: false,
-        }),
-      ).rejects.toThrow("expects PE arm64; found PE x86_64");
+      const result = await stageReleaseArtifacts({
+        target,
+        bundleRoot: offlineRoot,
+        bootstrapperRoot,
+        stageRoot: path.join(directory, "staged"),
+        commit: releaseCommit,
+        version: "2026.9.4",
+        resourceRoot: path.join(directory, "resources", "ocr"),
+        binaryRoot: path.join(directory, "binaries"),
+        nativeBuild: nativeBuildEvidence(target, "signed-release"),
+        sourceArchiveSha256: "b".repeat(64),
+        cacheKey: `synthetic-${target}-cache`,
+        cacheRestored: false,
+      }).catch((error: unknown) => error);
+      expect(String(result)).not.toContain("expects PE");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
 
-  it("rejects a Windows bootstrapper built for the wrong architecture", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-boot-arch-"));
-    const offlineRoot = path.join(directory, "offline");
-    const bootstrapperRoot = path.join(directory, "bootstrapper");
-    const target = "aarch64-pc-windows-msvc";
+  it("rejects an NSIS app payload built for the wrong architecture", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-payload-arch-"));
     try {
-      await mkdir(offlineRoot, { recursive: true });
-      await mkdir(bootstrapperRoot, { recursive: true });
-      await writeFile(
-        path.join(offlineRoot, "offline.exe"),
-        createBinaryHeader(target),
-      );
-      await writeFile(path.join(offlineRoot, "offline.exe.sig"), "offline-signature");
-      await writeFile(
-        path.join(bootstrapperRoot, "bootstrapper.exe"),
-        createBinaryHeader("x86_64-pc-windows-msvc"),
-      );
-      await writeFile(
-        path.join(bootstrapperRoot, "bootstrapper.exe.sig"),
-        "bootstrapper-signature",
-      );
+      const payload = path.join(directory, "epikrise.exe");
+      await writeFile(payload, createBinaryHeader("x86_64-pc-windows-msvc"));
       await expect(
-        stageReleaseArtifacts({
-          target,
-          bundleRoot: offlineRoot,
-          bootstrapperRoot,
-          stageRoot: path.join(directory, "staged"),
-          commit: releaseCommit,
-          version: "2026.9.4",
-          resourceRoot: path.join(directory, "resources", "ocr"),
-          binaryRoot: path.join(directory, "binaries"),
-          nativeBuild: nativeBuildEvidence(target, "signed-release"),
-          sourceArchiveSha256: "b".repeat(64),
-          cacheKey: `synthetic-${target}-cache`,
-          cacheRestored: false,
-        }),
+        verifyBinaryArchitecture("aarch64-pc-windows-msvc", payload),
       ).rejects.toThrow("expects PE arm64; found PE x86_64");
     } finally {
       await rm(directory, { recursive: true, force: true });

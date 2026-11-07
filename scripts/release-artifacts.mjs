@@ -18,7 +18,6 @@ import { promisify } from "node:util";
 import { deriveReleaseVersions } from "./prepare-release.mjs";
 import { assertBuildProvenance, createBuildProvenance } from "./build-provenance.mjs";
 import { assertNativeBuildMetadata } from "./verify-native-build-environment.mjs";
-import { verifyBinaryArchitecture } from "./verify-binary-architecture.mjs";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const execFile = promisify(execFileCallback);
@@ -342,11 +341,8 @@ export async function stageReleaseArtifacts({
       typeof config.packageExtension === "string",
       `Missing package extension for ${target}.`,
     );
-    for (const { sourcePath } of selected) {
-      if (sourcePath.endsWith(config.packageExtension)) {
-        await verifyBinaryArchitecture(target, sourcePath);
-      }
-    }
+    // NSIS launchers are x86 stubs for every target; the payload architecture
+    // is verified on the app binary before packaging in signed-release.yml.
     /** @type {Record<string, string>} */
     const expectedModes = {
       offline: "offlineInstaller",

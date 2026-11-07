@@ -254,6 +254,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "Windows NSIS $mode build failed with exit code $LASTEXITCODE."
             }
+            node scripts/verify-binary-architecture.mjs $env:TARGET "src-tauri/target/host-$hostTarget/$env:TARGET/release/epikrise.exe"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Windows NSIS $mode app payload architecture check failed with exit code $LASTEXITCODE."
+            }
             $variantDirectory = Join-Path $PWD "release-bundles/nsis/$mode"
             ./scripts/write-nsis-webview-record.ps1 -BundleRoot $bundleRoot -VariantDirectory $variantDirectory -WebViewMode $mode
             if ($LASTEXITCODE -ne 0) {
