@@ -116,7 +116,7 @@ async function sha256(filePath) {
 const webViewModeRecordName = "webview-mode.json";
 
 /** @param {{ packagePath: string, expectedMode: string }} options */
-async function verifyWebViewModeRecord({ packagePath, expectedMode }) {
+export async function verifyWebViewModeRecord({ packagePath, expectedMode }) {
   const packageName = path.basename(packagePath);
   const recordPath = path.join(path.dirname(packagePath), webViewModeRecordName);
   let recordText;

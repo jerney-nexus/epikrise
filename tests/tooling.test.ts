@@ -68,6 +68,7 @@ import {
   stageReleaseArtifacts,
   validateReleaseTag,
   verifyUploadedReleaseAssets,
+  verifyWebViewModeRecord,
 } from "../scripts/release-artifacts.mjs";
 import { createWindowsReleaseConfig } from "../scripts/windows-release-config.mjs";
 import { resolveLinuxSessionBusAddress, runTauri } from "../scripts/tauri.mjs";
@@ -3769,6 +3770,86 @@ describe("signed release artifacts", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("writes Windows WebView2 mode records that the staging verifier accepts", async () => {
+    const workflow = await readFile(
+      path.join(repoRoot, ".github/workflows/signed-release.yml"),
+      "utf8",
+    );
+    const recordStart = workflow.indexOf("            $package = $packages");
+    const recordWrite = workflow.indexOf('"webview-mode.json"', recordStart);
+    const recordClose = "\n            )\n";
+    const recordEnd = workflow.indexOf(recordClose, recordWrite) + recordClose.length;
+    expect(recordStart).toBeGreaterThan(-1);
+    expect(recordEnd).toBeGreaterThan(recordWrite);
+    const recordScript = workflow
+      .slice(recordStart, recordEnd)
+      .split("\n")
+      .map((line) => line.replace(/^ {12}/, ""))
+      .join("\n");
+    const psQuote = (value: string) => `'${value.replaceAll("'", "''")}'`;
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-webview-mode-pwsh-"));
+
+    try {
+      const bundleRoot = path.join(directory, "bundle");
+      const variantDirectory = path.join(
+        directory,
+        "release-bundles",
+        "nsis",
+        "offlineInstaller",
+      );
+      const exePath = path.join(variantDirectory, "epikrise.exe");
+      await mkdir(bundleRoot, { recursive: true });
+      await writeFile(
+        path.join(bundleRoot, "epikrise.exe"),
+        createBinaryHeader("x86_64-pc-windows-msvc"),
+      );
+      await writeFile(path.join(bundleRoot, "epikrise.exe.sig"), "signature");
+      const scriptPath = path.join(directory, "write-webview-mode-record.ps1");
+      await writeFile(
+        scriptPath,
+        [
+          `$mode = "offlineInstaller"`,
+          `$bundleRoot = ${psQuote(bundleRoot)}`,
+          `$variantDirectory = ${psQuote(variantDirectory)}`,
+          "New-Item -ItemType Directory -Path $variantDirectory -Force | Out-Null",
+          "$packages = @(Get-ChildItem -LiteralPath $bundleRoot -File | Where-Object { $_.Name -match '\\.(exe|msi)(\\.sig)?$' })",
+          "Copy-Item -LiteralPath $packages.FullName -Destination $variantDirectory",
+          recordScript,
+        ].join("\n"),
+      );
+
+      await execFile("pwsh", ["-NoProfile", "-NonInteractive", "-File", scriptPath]);
+
+      const recordText = await readFile(
+        path.join(variantDirectory, "webview-mode.json"),
+        "utf8",
+      );
+      expect(recordText.startsWith("\uFEFF")).toBe(false);
+      expect(JSON.parse(recordText)).toEqual({
+        schema_version: 1,
+        webview_mode: "offlineInstaller",
+        package: "epikrise.exe",
+        package_sha256: createHash("sha256")
+          .update(await readFile(exePath))
+          .digest("hex"),
+      });
+      await expect(
+        verifyWebViewModeRecord({
+          packagePath: exePath,
+          expectedMode: "offlineInstaller",
+        }),
+      ).resolves.toBe("offlineInstaller");
+      await expect(
+        verifyWebViewModeRecord({
+          packagePath: exePath,
+          expectedMode: "embedBootstrapper",
+        }),
+      ).rejects.toThrow("does not match embedBootstrapper");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("rejects Windows WebView2 mode records that do not match the staged installer", async () => {
     const directory = await mkdtemp(
