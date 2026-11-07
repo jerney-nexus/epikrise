@@ -35,7 +35,13 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 ## Global Rules
 
 - Never commit secrets or API keys.
-- Never bypass approvals, repository permissions, or organization policy to make a tool work.
+- Before retrying a failed write through another tool, check whether it already
+  succeeded. Never bypass approvals, repository permissions, or organization
+  policy to make a tool work.
+- For GitHub work, use native `git` commands first when they can do the task
+  (using VS Code authentication). For operations `git` cannot perform, try MCP
+  first; if MCP is unavailable or fails, use GitHub CLI, starting with
+  high-level `gh issue` or `gh pr` commands. Use `gh api` only as a last resort.
 - Do not add telemetry or commit real patient data, prompts, or generated clinical output.
 - All PRs require passing tests before merge.
 - For Git stack operations, use `gh stack`; it requires an authenticated

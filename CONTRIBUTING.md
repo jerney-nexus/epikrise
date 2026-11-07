@@ -75,8 +75,8 @@ to, or run `git ls-remote` against a private repository you can access.
 
 ### Copilot tools, models, and session sync
 
-The shared assistant rules are in [AGENTS.md](AGENTS.md); Copilot-specific tool
-discovery and failure handling are in
+The shared assistant rules, including GitHub routing and failure handling, are in
+[AGENTS.md](AGENTS.md). Copilot-specific session-history guidance is in
 [`.github/copilot-instructions.md`](.github/copilot-instructions.md).
 Repository instructions guide behavior, but cannot repair an MCP connection,
 override organization policy, or guarantee a particular model or price.
