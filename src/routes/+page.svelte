@@ -2421,69 +2421,79 @@
             <option value={pseudoLocale}>{t("language-pseudo")}</option>
           {/if}
         </select>
-        <fieldset class="update-settings">
-          <legend>{t("Software updates")}</legend>
-          <label class="update-opt-in">
-            <input
-              type="checkbox"
-              checked={updateSettings?.enabled ?? false}
-              disabled={!updateSettings?.available ||
-                !updateSettings.policyAllowed ||
-                updateBusy}
-              onchange={(event) => setUpdaterEnabled(event.currentTarget.checked)}
-            />
-            <span>{t("Enable direct-release updates")}</span>
-          </label>
-          {#if updateSettings === null}
-            <p role="status">{t("Update settings are loading...")}</p>
-          {:else if !updateSettings.available}
-            <p role="status">{t("Updates are unavailable for this build.")}</p>
-          {:else if !updateSettings.policyAllowed}
-            <p role="status">{t("Updates are disabled by administrator policy.")}</p>
-          {:else}
-            <p>{t("Update checks contact GitHub Releases only when requested.")}</p>
-            <button
-              class="connection-button"
-              type="button"
-              disabled={!updateSettings.enabled || updateBusy}
-              onclick={checkForUpdate}
-            >
-              {updateStatus === "checking" ? t("Checking...") : t("Check for updates")}
-            </button>
-          {/if}
-          {#if updateMessage}
-            <p class="model-list-message" role="status" aria-live="polite">
-              {t(updateMessage)}
-            </p>
-          {/if}
-          {#if updateStatus === "installing"}
-            <progress
-              max="100"
-              value={updateTotalBytes && updateTotalBytes > 0
-                ? Math.min(100, (updateDownloadedBytes / updateTotalBytes) * 100)
-                : undefined}
-              aria-label={t("Update download progress")}
-            ></progress>
-          {/if}
-          {#if updateCandidate}
-            <div class="update-candidate">
-              <p><strong>{t("Update version")}: {updateCandidate.version}</strong></p>
-              {#if updateCandidate.notes}
-                <p>{updateCandidate.notes}</p>
-              {/if}
+        <div
+          class="update-settings"
+          role="group"
+          aria-labelledby="update-settings-title"
+        >
+          <p class="update-settings-title" id="update-settings-title">
+            {t("Software updates")}
+          </p>
+          <div class="update-settings-body">
+            <label class="update-opt-in">
+              <input
+                type="checkbox"
+                checked={updateSettings?.enabled ?? false}
+                disabled={!updateSettings?.available ||
+                  !updateSettings.policyAllowed ||
+                  updateBusy}
+                onchange={(event) => setUpdaterEnabled(event.currentTarget.checked)}
+              />
+              <span>{t("Enable direct-release updates")}</span>
+            </label>
+            {#if updateSettings === null}
+              <p role="status">{t("Update settings are loading...")}</p>
+            {:else if !updateSettings.available}
+              <p role="status">{t("Updates are unavailable for this build.")}</p>
+            {:else if !updateSettings.policyAllowed}
+              <p role="status">{t("Updates are disabled by administrator policy.")}</p>
+            {:else}
+              <p>{t("Update checks contact GitHub Releases only when requested.")}</p>
               <button
                 class="connection-button"
                 type="button"
-                disabled={updateBusy ||
-                  Boolean(caseSessionId) ||
-                  Boolean(activeRequestId)}
-                onclick={() => updateConfirmationDialog?.showModal()}
+                disabled={!updateSettings.enabled || updateBusy}
+                onclick={checkForUpdate}
               >
-                {t("Install update")}
+                {updateStatus === "checking"
+                  ? t("Checking...")
+                  : t("Check for updates")}
               </button>
-            </div>
-          {/if}
-        </fieldset>
+            {/if}
+            {#if updateMessage}
+              <p class="model-list-message" role="status" aria-live="polite">
+                {t(updateMessage)}
+              </p>
+            {/if}
+            {#if updateStatus === "installing"}
+              <progress
+                max="100"
+                value={updateTotalBytes && updateTotalBytes > 0
+                  ? Math.min(100, (updateDownloadedBytes / updateTotalBytes) * 100)
+                  : undefined}
+                aria-label={t("Update download progress")}
+              ></progress>
+            {/if}
+            {#if updateCandidate}
+              <div class="update-candidate">
+                <p><strong>{t("Update version")}: {updateCandidate.version}</strong></p>
+                {#if updateCandidate.notes}
+                  <p>{updateCandidate.notes}</p>
+                {/if}
+                <button
+                  class="connection-button"
+                  type="button"
+                  disabled={updateBusy ||
+                    Boolean(caseSessionId) ||
+                    Boolean(activeRequestId)}
+                  onclick={() => updateConfirmationDialog?.showModal()}
+                >
+                  {t("Install update")}
+                </button>
+              </div>
+            {/if}
+          </div>
+        </div>
       </section>
     </dialog>
 
@@ -4248,7 +4258,7 @@
   }
 
   .settings-dialog.general-settings-dialog {
-    height: 19rem;
+    min-height: 19rem;
     max-height: calc(100vh - 2rem);
   }
 
@@ -4348,14 +4358,19 @@
     gap: 9px;
     min-width: 0;
     margin: 12px 0 0;
-    padding: 12px 0 0;
-    border: 0;
-    border-top: 1px solid #dce4de;
   }
 
-  .update-settings legend {
-    padding: 0;
-    font-weight: 700;
+  .update-settings-body {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .update-settings .update-settings-title {
+    margin: 7px 0 0;
+    color: #495a53;
+    font-size: 12px;
+    font-weight: 650;
   }
 
   .update-settings p {
@@ -5932,6 +5947,7 @@
     }
 
     .dialog-heading p:not(.eyebrow),
+    .update-settings .update-settings-title,
     .preview-heading span {
       color: #a7b7ad;
     }

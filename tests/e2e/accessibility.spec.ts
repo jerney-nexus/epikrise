@@ -191,3 +191,21 @@ test("@a11y supports de-CH and pseudo-locale layouts at minimum width", async ({
   }));
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
 });
+
+test("general settings dialog fits its content with updates enabled", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "General settings" }).click();
+  const settingsDialog = page.getByRole("dialog", { name: "General settings" });
+  await expect(settingsDialog).toBeVisible();
+
+  await page.getByRole("checkbox", { name: "Enable direct-release updates" }).check();
+  await expect(page.getByRole("button", { name: "Check for updates" })).toBeEnabled();
+
+  const overflow = await settingsDialog.evaluate((element) => ({
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+  }));
+  expect(overflow.scrollHeight).toBeLessThanOrEqual(overflow.clientHeight);
+});

@@ -7,6 +7,11 @@ and this project uses [CalVer](https://calver.org) in `YYYY.M.MICRO` format.
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- The General settings dialog grows to fit the Software updates section, so
+  enabling updates no longer shows an unnecessary scrollbar (#178)
+
 ## [2026.11.1] - 2026-11-06
 
 ### Changed
