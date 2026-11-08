@@ -354,9 +354,13 @@ describe("Store MSIX layout validation", () => {
           version: result.version,
         }),
       ).resolves.toBeUndefined();
-      expect(
-        await readFile(path.join(fixture.stageDirectory, "AppxManifest.xml"), "utf8"),
-      ).toContain('Name="JerneyNexus.Epikrise"');
+      const manifest = await readFile(
+        path.join(fixture.stageDirectory, "AppxManifest.xml"),
+        "utf8",
+      );
+      expect(manifest).toContain('Name="JerneyNexus.Epikrise"');
+      expect(manifest).toContain('<Resource Language="de-CH" />');
+      expect(manifest).toContain('<Resource Language="en-US" />');
     } finally {
       await fixture.cleanup();
     }
@@ -452,7 +456,7 @@ describe("Store MSIX layout validation", () => {
       "missing Resources element",
       (manifest: string) =>
         manifest.replace(
-          '  <Resources>\n    <Resource Language="en-US" />\n  </Resources>\n',
+          '  <Resources>\n    <Resource Language="de-CH" />\n    <Resource Language="en-US" />\n  </Resources>\n',
           "",
         ),
     ],

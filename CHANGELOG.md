@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- The Store package declares German (de-CH) as a supported language alongside English, so Partner Center lists both (#226)
+
 ## [2026.11.3] - 2026-11-08
 
 ### 🐛 Bug Fixes
