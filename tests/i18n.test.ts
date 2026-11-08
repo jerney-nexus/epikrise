@@ -296,12 +296,12 @@ describe("locale state and fallbacks", () => {
 
   it("resolves null, exact, underscore, and language-only OS locales", () => {
     expect(resolveLocale(null)).toBe(defaultLocale);
-    expect(resolveLocale("DE_ch")).toBe(defaultLocale);
+    expect(resolveLocale("EN_us")).toBe("en");
     expect(resolveLocale("en-US")).toBe("en");
     expect(resolveLocale("zz")).toBe(defaultLocale);
   });
 
-  it("falls back to the default locale for unknown locales", () => {
+  it("returns the source text for locales without a bundle", () => {
     expect(translate("fr", "Settings")).toBe("Settings");
     expect(translate("zz", "Settings")).toBe("Settings");
   });
