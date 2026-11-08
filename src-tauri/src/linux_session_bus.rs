@@ -386,6 +386,15 @@ mod tests {
     }
 
     #[test]
+    fn validates_percent_escapes_before_decoding_addresses() {
+        assert!(super::has_valid_percent_encoding("plain-address"));
+        assert!(super::has_valid_percent_encoding("a%20b%5C"));
+        assert!(!super::has_valid_percent_encoding("a%2"));
+        assert!(!super::has_valid_percent_encoding("a%zz"));
+        assert!(!super::has_valid_percent_encoding("%"));
+    }
+
+    #[test]
     fn rejects_a_stale_socket_path() {
         let directory = tempdir().expect("temporary directory");
         let socket_path = directory.path().join("stale-bus");

@@ -2557,6 +2557,48 @@ author = "Tests"
     }
 
     #[test]
+    fn render_command_converts_values_and_validates_section_selection() {
+        let mut template = synthetic_template();
+        template.system_prompt = "Case: {{ case }}".to_owned();
+        template.variables.push(TemplateVariable {
+            name: "case".to_owned(),
+            kind: TemplateVariableKind::Text,
+            labels: BTreeMap::new(),
+            default: None,
+            required: true,
+            options: Vec::new(),
+        });
+        template.variables.push(TemplateVariable {
+            name: "flag".to_owned(),
+            kind: TemplateVariableKind::Boolean,
+            labels: BTreeMap::new(),
+            default: None,
+            required: false,
+            options: Vec::new(),
+        });
+        let values = BTreeMap::from([
+            (
+                "case".to_owned(),
+                TemplateValue::Text("synthetic".to_owned()),
+            ),
+            ("flag".to_owned(), TemplateValue::Boolean(true)),
+        ]);
+
+        assert_eq!(
+            super::render_template_system_prompt(template.clone(), values.clone(), Vec::new()),
+            Ok("Case: synthetic".to_owned())
+        );
+        assert_eq!(
+            super::render_template_system_prompt(template.clone(), BTreeMap::new(), Vec::new()),
+            Err(TemplateError::MissingRequiredVariable("case".to_owned()))
+        );
+        assert_eq!(
+            super::render_template_system_prompt(template, values, vec!["unknown".to_owned()]),
+            Err(TemplateError::InvalidSectionSelection)
+        );
+    }
+
+    #[test]
     fn legacy_json_template_store_migrates_to_versioned_toml() {
         let template = synthetic_template();
         let directory = tempfile::tempdir().expect("temporary directory should be created");
