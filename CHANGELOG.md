@@ -6,9 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2026.11.4] - 2026-11-08
+
 ### 🐛 Bug Fixes
 
 - The Store package declares German (de-CH) as a supported language alongside English, so Partner Center lists both (#226)
+
+### 🐛 Bug Fixes
+
+- _(ci)_ Harden actionlint install and lint shell scripts (#214)
+- _(ci)_ Pin audit tools and bound their install in security audit (#217)
+- _(release)_ Retry OCR dependency downloads on transient errors (#220)
+- _(msix)_ Declare de-CH package resource (#227)
+
+### 📚 Documentation
+
+- Add German and English privacy policies (#225)
+
+### ⚙️ Miscellaneous Tasks
+
+- _(release)_ Open release PRs with a GitHub App token (#229)
 
 ## [2026.11.3] - 2026-11-08
 
@@ -461,4 +478,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 [2026.11.1]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.0...v2026.11.1
 [2026.11.2]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.1...v2026.11.2
 [2026.11.3]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.2...v2026.11.3
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.3...HEAD
+[2026.11.4]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.3...v2026.11.4
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.4...HEAD
