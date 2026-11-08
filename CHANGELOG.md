@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2026.11.3] - 2026-11-08
+
+### 🐛 Bug Fixes
+
+- _(windows)_ Verify NSIS installer architecture and WebView2 modes (#206)
+
 ## [2026.11.2] - 2026-11-07
 
 ### 🐛 Bug Fixes
@@ -450,4 +456,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 [2026.11.0]: https://github.com/jerney-nexus/epikrise/compare/v2026.10.5...v2026.11.0
 [2026.11.1]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.0...v2026.11.1
 [2026.11.2]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.1...v2026.11.2
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.2...HEAD
+[2026.11.3]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.2...v2026.11.3
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.3...HEAD
