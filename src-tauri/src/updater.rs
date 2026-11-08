@@ -592,13 +592,16 @@ pub async fn install_update(
 
 #[cfg(test)]
 mod tests {
-    use super::{StoredSettings, UpdateInstallGate, UpdaterError, authorize, persist_settings};
+    use super::{
+        StoredSettings, UpdateInstallGate, UpdaterError, UpdaterState, authorize, persist_settings,
+    };
     #[cfg(feature = "direct-release-updater")]
     use super::{
         UpdateCandidate, UpdateService, approved_https_url, approved_redirect_chain,
         check_with_service, install_with_service, release_version_from_protocol,
         validate_candidate,
     };
+    use crate::policy::{EgressPolicy, LoadedPolicy, PolicyState};
     #[cfg(feature = "direct-release-updater")]
     use std::{
         collections::VecDeque,
@@ -755,6 +758,52 @@ mod tests {
     #[test]
     fn update_actions_require_a_available_opted_in_policy_state() {
         assert_eq!(authorize(true, true, true), Ok(()));
+    }
+
+    #[test]
+    fn authorize_current_combines_stored_opt_in_and_policy_flags() {
+        for enabled in [false, true] {
+            for policy_allowed in [false, true] {
+                let updater = UpdaterState::default();
+                updater.settings.lock().expect("settings lock").enabled = enabled;
+                let policy = EgressPolicy {
+                    allow_updater: policy_allowed,
+                    ..EgressPolicy::default()
+                };
+                let policy = PolicyState(LoadedPolicy::from_policy(policy, true, false));
+                assert_eq!(
+                    super::authorize_current(&updater, &policy),
+                    authorize(
+                        cfg!(feature = "direct-release-updater"),
+                        enabled,
+                        policy_allowed
+                    )
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn poisoned_settings_lock_reports_settings_failure() {
+        let updater = UpdaterState::default();
+        std::thread::scope(|scope| {
+            let _ = scope
+                .spawn(|| {
+                    let _guard = updater.settings.lock().expect("settings lock");
+                    panic!("poison the settings lock");
+                })
+                .join();
+        });
+        let policy = PolicyState(LoadedPolicy::from_policy(
+            EgressPolicy::default(),
+            false,
+            false,
+        ));
+        assert_eq!(
+            super::authorize_current(&updater, &policy),
+            Err(UpdaterError::SettingsFailed)
+        );
+        assert!(matches!(updater.lock(), Err(UpdaterError::SettingsFailed)));
     }
 
     #[test]

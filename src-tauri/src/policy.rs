@@ -160,7 +160,11 @@ impl LoadedPolicy {
         Ok(Self::from_policy(policy, true, permissions_warning))
     }
 
-    fn from_policy(policy: EgressPolicy, active: bool, permissions_warning: bool) -> Self {
+    pub(crate) fn from_policy(
+        policy: EgressPolicy,
+        active: bool,
+        permissions_warning: bool,
+    ) -> Self {
         let status = PolicyStatus {
             active,
             local_only: policy.local_only,
