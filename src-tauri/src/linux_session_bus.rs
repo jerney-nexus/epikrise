@@ -22,19 +22,27 @@ fn resolve_linux_session_bus_address() -> Option<String> {
     }
 
     let display = env::var("DISPLAY").ok()?;
+    let machine_id = fs::read_to_string("/etc/machine-id").ok()?;
+    let home_directory = env::var_os("HOME")?;
+    resolve_autolaunch_record(&display, &machine_id, &home_directory)
+}
+
+fn resolve_autolaunch_record(
+    display: &str,
+    machine_id: &str,
+    home_directory: &std::ffi::OsStr,
+) -> Option<String> {
     let display_number = display.rsplit(':').next()?.split('.').next()?;
     if display_number.is_empty() || !display_number.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
 
-    let machine_id = fs::read_to_string("/etc/machine-id").ok()?;
     let machine_id = machine_id.trim();
     if machine_id.len() != 32 || !machine_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
     }
 
-    let home_directory = env::var_os("HOME")?;
-    let record_path = Path::new(&home_directory)
+    let record_path = Path::new(home_directory)
         .join(".dbus")
         .join("session-bus")
         .join(format!("{machine_id}-{display_number}"));
@@ -232,8 +240,9 @@ mod tests {
     use epikrise_llm::KeyringCredentialStore;
 
     use super::{
-        SESSION_BUS_ADDRESS, contains_listening_unix_socket, exec_with_resolved_address,
-        resolve_address_from_record, resolve_linux_session_bus_address,
+        SESSION_BUS_ADDRESS, contains_listening_unix_socket, decode_percent_encoding,
+        exec_with_resolved_address, has_valid_percent_encoding, matches_socket_entry,
+        resolve_address_from_record, resolve_autolaunch_record, resolve_linux_session_bus_address,
     };
 
     const STARTUP_TEST_MODE: &str = "EPIKRISE_LINUX_STARTUP_TEST_MODE";
@@ -501,5 +510,176 @@ mod tests {
             "path",
             b"/run/dbus/session"
         ));
+    }
+
+    #[test]
+    fn reads_unquoted_and_double_quoted_record_values() {
+        let directory = tempdir().expect("temporary directory");
+        let socket_path = directory.path().join("record-bus");
+        let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
+        let address = format!(
+            "unix:path={},guid=0123456789abcdef0123456789abcdef",
+            socket_path.display()
+        );
+
+        assert_eq!(
+            resolve_address_from_record(&format!("DBUS_SESSION_BUS_ADDRESS={address}\n")),
+            Some(address.clone())
+        );
+        assert_eq!(
+            resolve_address_from_record(&format!("DBUS_SESSION_BUS_ADDRESS=\"{address}\"\n")),
+            Some(address.clone())
+        );
+        assert_eq!(
+            resolve_address_from_record(&format!("DBUS_SESSION_BUS_ADDRESS=\"{address}\n")),
+            None
+        );
+        assert_eq!(resolve_address_from_record("# no address recorded\n"), None);
+    }
+
+    #[test]
+    fn rejects_malformed_transport_and_empty_parameter_sources() {
+        for address in [
+            ":path=/run/dbus/session,guid=0123456789abcdef0123456789abcdef",
+            "bad transport:path=/run/dbus/session,guid=0123456789abcdef0123456789abcdef",
+            "unix:",
+            "unix",
+        ] {
+            let record = format!("DBUS_SESSION_BUS_ADDRESS='{address}'\n");
+            assert_eq!(resolve_address_from_record(&record), None, "{address}");
+        }
+    }
+
+    #[test]
+    fn rejects_duplicate_socket_type_parameters() {
+        let record = "DBUS_SESSION_BUS_ADDRESS='unix:path=/run/dbus/a,abstract=b,guid=0123456789abcdef0123456789abcdef'\n";
+
+        assert_eq!(resolve_address_from_record(record), None);
+    }
+
+    #[test]
+    fn skips_non_unix_transports_and_unix_entries_without_socket_names() {
+        let directory = tempdir().expect("temporary directory");
+        let socket_path = directory.path().join("mixed-bus");
+        let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
+        let guid = "guid=0123456789abcdef0123456789abcdef";
+        let live = format!("unix:path={},{guid}", socket_path.display());
+
+        let mixed = format!("tcp:host=localhost,port=1234;unix:{guid};{live}");
+        assert_eq!(
+            resolve_address_from_record(&format!("DBUS_SESSION_BUS_ADDRESS='{mixed}'\n")),
+            Some(mixed.clone())
+        );
+
+        let unusable = format!("tcp:host=localhost,port=1234;unix:{guid}");
+        assert_eq!(
+            resolve_address_from_record(&format!("DBUS_SESSION_BUS_ADDRESS='{unusable}'\n")),
+            None
+        );
+    }
+
+    #[test]
+    fn rejects_regular_files_at_the_socket_path() {
+        let directory = tempdir().expect("temporary directory");
+        let file_path = directory.path().join("not-a-socket");
+        fs::write(&file_path, b"plain file").expect("regular file");
+        let record = format!(
+            "DBUS_SESSION_BUS_ADDRESS='unix:path={},guid=0123456789abcdef0123456789abcdef'\n",
+            file_path.display()
+        );
+
+        assert_eq!(resolve_address_from_record(&record), None);
+    }
+
+    #[test]
+    fn resolves_the_autolaunch_record_from_home_display_and_machine_id() {
+        let home = tempdir().expect("temporary home directory");
+        let socket_path = home.path().join("display-bus");
+        let _listener = UnixListener::bind(&socket_path).expect("session bus listener");
+        let machine_id = "0123456789abcdef0123456789abcdef";
+        let address = format!("unix:path={},guid={machine_id}", socket_path.display());
+        let record_directory = home.path().join(".dbus").join("session-bus");
+        fs::create_dir_all(&record_directory).expect("session-bus record directory");
+        fs::write(
+            record_directory.join(format!("{machine_id}-1")),
+            format!("DBUS_SESSION_BUS_ADDRESS='{address}'\n"),
+        )
+        .expect("write session-bus record");
+
+        assert_eq!(
+            resolve_autolaunch_record(":1.0", &format!("{machine_id}\n"), home.path().as_os_str()),
+            Some(address)
+        );
+        assert_eq!(
+            resolve_autolaunch_record("localhost:0", machine_id, home.path().as_os_str()),
+            None
+        );
+        assert_eq!(
+            resolve_autolaunch_record(":2", machine_id, home.path().as_os_str()),
+            None
+        );
+        assert_eq!(
+            resolve_autolaunch_record(":x", machine_id, home.path().as_os_str()),
+            None
+        );
+        assert_eq!(
+            resolve_autolaunch_record(":1", "not-a-machine-id", home.path().as_os_str()),
+            None
+        );
+    }
+
+    #[test]
+    fn matches_only_listening_entries_with_single_space_separators() {
+        let listening =
+            b"0000000000000001: 00000002 00000000 00010000 0001 01 1234 /run/dbus/session";
+        let tab_before_path =
+            b"0000000000000002: 00000002 00000000 00010000 0001 01 1235\t/run/dbus/session";
+        let connected =
+            b"0000000000000003: 00000002 00000000 00000000 0001 03 1236 /run/dbus/session";
+
+        assert!(matches_socket_entry(
+            listening,
+            "path",
+            b"/run/dbus/session"
+        ));
+        assert!(!matches_socket_entry(
+            tab_before_path,
+            "path",
+            b"/run/dbus/session"
+        ));
+        assert!(!matches_socket_entry(
+            connected,
+            "path",
+            b"/run/dbus/session"
+        ));
+        assert!(!matches_socket_entry(listening, "path", b"/run/dbus/other"));
+    }
+
+    #[test]
+    fn matches_abstract_entries_by_at_prefixed_name_only() {
+        let listening = b"0000000000000004: 00000002 00000000 00010000 0001 01 1237 @session-bus";
+
+        assert!(matches_socket_entry(listening, "abstract", b"session-bus"));
+        assert!(!matches_socket_entry(
+            listening,
+            "abstract",
+            b"@session-bus"
+        ));
+        assert!(!matches_socket_entry(listening, "unknown", b"session-bus"));
+    }
+
+    #[test]
+    fn percent_encoding_requires_two_hex_digits_and_decodes_escapes() {
+        assert!(has_valid_percent_encoding("plain%20value"));
+        assert!(!has_valid_percent_encoding("truncated%2"));
+        assert!(!has_valid_percent_encoding("trailing%"));
+        assert!(!has_valid_percent_encoding("not%GGhex"));
+
+        assert_eq!(
+            decode_percent_encoding("session%20bus%5C%41"),
+            Some(b"session bus\\A".to_vec())
+        );
+        assert_eq!(decode_percent_encoding("bad%2"), None);
+        assert_eq!(decode_percent_encoding("bad%ZZ"), None);
     }
 }
