@@ -47,7 +47,7 @@ jobs:
       - name: Install pinned tools from crates.io
         if: steps.release_install.outcome == 'failure'
         run: |
-          cargo install --locked cargo-audit --version 0.22.2
-          cargo install --locked cargo-deny --version 0.20.2
+          cargo install --locked --force cargo-audit --version 0.22.2
+          cargo install --locked --force cargo-deny --version 0.20.2
       - run: pnpm audit:rust
       - run: pnpm check:rust:deny
