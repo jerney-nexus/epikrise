@@ -655,8 +655,8 @@ mod tests {
         AuthSource, ChatMessage, GenaiLlmClient, GenerationParams, KeyringCredentialStore,
         LlmClient, LlmError, MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile,
         ReasoningEffort, credential_account_id, credential_entry, credential_store_error,
-        genai_adapter, map_http_status, parse_credential_account, prepare_request,
-        should_fallback_to_completion, validate_endpoint,
+        genai_adapter, map_genai_error, map_http_status, map_webc_error, parse_credential_account,
+        prepare_request, should_fallback_to_completion, validate_endpoint,
     };
     use std::sync::Arc;
 
@@ -1721,6 +1721,213 @@ mod tests {
                 .stream(&profile, &messages, cancellation, &mut on_delta)
                 .await,
             Err(LlmError::Cancelled)
+        );
+    }
+
+    fn profile_for_listing(auth: AuthSource, endpoint: Option<&str>) -> ProviderProfile {
+        ProviderProfile {
+            id: "list-test".to_owned(),
+            display_name: "List test".to_owned(),
+            adapter: ProviderAdapter::OpenAi,
+            model: "gpt-4o".to_owned(),
+            endpoint: endpoint.map(str::to_owned),
+            auth,
+            capabilities: ModelCapabilities {
+                vision: false,
+                streaming: false,
+                max_context: None,
+            },
+            generation: GenerationParams {
+                temperature: None,
+                max_tokens: None,
+                reasoning_effort: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn list_models_requires_stored_credential_before_network() {
+        struct MissingCredential;
+
+        impl super::CredentialStore for MissingCredential {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let client = GenaiLlmClient::new(Arc::new(MissingCredential));
+        let profile = profile_for_listing(
+            AuthSource::Keychain {
+                credential_id: "missing".to_owned(),
+            },
+            None,
+        );
+
+        assert_eq!(
+            client.list_models(&profile).await,
+            Err(LlmError::Authentication)
+        );
+    }
+
+    #[tokio::test]
+    async fn list_models_rejects_invalid_endpoint_before_network() {
+        struct NoCredentials;
+
+        impl super::CredentialStore for NoCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let client = GenaiLlmClient::new(std::sync::Arc::new(NoCredentials));
+        let profile = profile_for_listing(AuthSource::None, Some("file:///etc/passwd"));
+
+        assert_eq!(
+            client.list_models(&profile).await,
+            Err(LlmError::InvalidProfile)
+        );
+    }
+
+    #[test]
+    fn genai_auth_and_resolver_errors_map_to_authentication() {
+        use genai::ModelIden;
+        use genai::adapter::AdapterKind;
+
+        let model_iden = || ModelIden::new(AdapterKind::OpenAI, "gpt-4o");
+
+        for error in [
+            genai::Error::RequiresApiKey {
+                model_iden: model_iden(),
+            },
+            genai::Error::NoAuthData {
+                model_iden: model_iden(),
+            },
+            genai::Error::NoAuthResolver {
+                model_iden: model_iden(),
+            },
+            genai::Error::Resolver {
+                model_iden: model_iden(),
+                resolver_error: genai::resolver::Error::Custom("bad".to_owned()),
+            },
+        ] {
+            assert_eq!(map_genai_error(error), LlmError::Authentication);
+        }
+    }
+
+    #[test]
+    fn genai_model_and_stream_errors_map_to_model_failures() {
+        use genai::ModelIden;
+        use genai::adapter::AdapterKind;
+
+        let model_iden = || ModelIden::new(AdapterKind::OpenAI, "gpt-4o");
+        let serde_error = serde_json::from_str::<u8>("x").unwrap_err();
+
+        for error in [
+            genai::Error::NoChatResponse {
+                model_iden: model_iden(),
+            },
+            genai::Error::ChatResponse {
+                model_iden: model_iden(),
+                body: serde_json::json!({}),
+            },
+            genai::Error::ChatResponseGeneration {
+                model_iden: model_iden(),
+                request_payload: Box::new(serde_json::json!({})),
+                response_body: Box::new(serde_json::json!({})),
+                cause: "bad".to_owned(),
+            },
+            genai::Error::StreamParse {
+                model_iden: model_iden(),
+                serde_error,
+            },
+        ] {
+            assert_eq!(map_genai_error(error), LlmError::Model);
+        }
+    }
+
+    #[test]
+    fn genai_http_and_web_call_errors_keep_their_status_category() {
+        use genai::ModelIden;
+        use genai::adapter::AdapterKind;
+        use genai::webc;
+
+        let model_iden = || ModelIden::new(AdapterKind::OpenAI, "gpt-4o");
+        let http_error = |status: reqwest::StatusCode| genai::Error::HttpError {
+            status,
+            canonical_reason: String::new(),
+            body: String::new(),
+            headers: Box::new(reqwest::header::HeaderMap::new()),
+        };
+
+        assert_eq!(
+            map_genai_error(http_error(reqwest::StatusCode::UNAUTHORIZED)),
+            LlmError::Authentication
+        );
+        assert_eq!(
+            map_genai_error(http_error(reqwest::StatusCode::TOO_MANY_REQUESTS)),
+            LlmError::Quota
+        );
+        assert_eq!(
+            map_genai_error(http_error(reqwest::StatusCode::NOT_FOUND)),
+            LlmError::ProviderRejected { status: 404 }
+        );
+        assert_eq!(
+            map_genai_error(genai::Error::WebModelCall {
+                model_iden: model_iden(),
+                webc_error: webc::Error::ResponseFailedStatus {
+                    status: reqwest::StatusCode::FORBIDDEN,
+                    body: String::new(),
+                    headers: Box::new(reqwest::header::HeaderMap::new()),
+                },
+            }),
+            LlmError::Authentication
+        );
+        assert_eq!(
+            map_genai_error(genai::Error::WebAdapterCall {
+                adapter_kind: AdapterKind::OpenAI,
+                webc_error: webc::Error::ResponseFailedNotJson {
+                    content_type: "text/html".to_owned(),
+                    body: String::new(),
+                },
+            }),
+            LlmError::Model
+        );
+        assert_eq!(
+            map_genai_error(genai::Error::WebStream {
+                model_iden: model_iden(),
+                cause: "dropped".to_owned(),
+                error: "dropped".into(),
+            }),
+            LlmError::Network
+        );
+    }
+
+    #[test]
+    fn webc_errors_map_to_model_or_status_categories() {
+        use genai::webc;
+
+        assert_eq!(
+            map_webc_error(webc::Error::ResponseFailedInvalidJson {
+                body: "{".to_owned(),
+                cause: "eof".to_owned(),
+            }),
+            LlmError::Model
+        );
+        assert_eq!(
+            map_webc_error(webc::Error::ResponseFailedStatus {
+                status: reqwest::StatusCode::TOO_MANY_REQUESTS,
+                body: String::new(),
+                headers: Box::new(reqwest::header::HeaderMap::new()),
+            }),
+            LlmError::Quota
+        );
+        assert_eq!(
+            map_webc_error(webc::Error::ResponseFailedStatus {
+                status: reqwest::StatusCode::BAD_GATEWAY,
+                body: String::new(),
+                headers: Box::new(reqwest::header::HeaderMap::new()),
+            }),
+            LlmError::Network
         );
     }
 
