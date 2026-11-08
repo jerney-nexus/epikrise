@@ -778,6 +778,48 @@ mod tests {
     }
 
     #[test]
+    fn predefined_labels_map_default_text_to_their_localized_fields() {
+        let labels = NativeMenuLabels::english();
+        let cases = [
+            ("&Undo", NativeMenuLabel::Undo, &labels.undo_action),
+            ("Redo", NativeMenuLabel::Redo, &labels.redo_action),
+            ("Cut", NativeMenuLabel::Cut, &labels.cut_action),
+            ("Copy", NativeMenuLabel::Copy, &labels.copy_action),
+            ("Paste", NativeMenuLabel::Paste, &labels.paste_action),
+            (
+                "Paste and Match Style",
+                NativeMenuLabel::PasteAndMatchStyle,
+                &labels.paste_and_match_style_action,
+            ),
+            ("Delete", NativeMenuLabel::Delete, &labels.delete_action),
+            (
+                "Select All",
+                NativeMenuLabel::SelectAll,
+                &labels.select_all_action,
+            ),
+            (
+                "Start Dictation…",
+                NativeMenuLabel::StartDictation,
+                &labels.start_dictation_action,
+            ),
+            (
+                "Emoji & Symbols",
+                NativeMenuLabel::EmojiAndSymbols,
+                &labels.emoji_and_symbols_action,
+            ),
+        ];
+
+        for (default_text, label, localized) in cases {
+            assert_eq!(
+                NativeMenuLabel::from_default_text(default_text),
+                Some(label)
+            );
+            assert_eq!(label.text(&labels), localized.as_str());
+        }
+        assert_eq!(NativeMenuLabel::from_default_text("Unknown Action"), None);
+    }
+
+    #[test]
     fn syncing_an_unavailable_menu_reports_an_error() {
         assert!(
             sync(
