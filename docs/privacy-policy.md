@@ -5,7 +5,9 @@ title: Datenschutzrichtlinie für Epikrise
 # Datenschutzrichtlinie für Epikrise
 
 Stand: 2026-11-08
+
 Herausgeber: Pascal Jerney, Unterdorfstrasse 7, 3322 Urtenen-Schönbühl, Schweiz
+
 Kontakt für Datenschutzfragen: admin@jerney.nexus
 
 ## 1. Geltungsbereich
