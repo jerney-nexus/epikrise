@@ -154,12 +154,7 @@ pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError>
                 .get(reqwest::header::LOCATION)
                 .and_then(|value| value.to_str().ok())
                 .ok_or(IngestError::UrlRequestFailed)?;
-            current_url = validate_url(
-                current_url
-                    .join(location)
-                    .map_err(|_| IngestError::InvalidUrl)?
-                    .as_str(),
-            )?;
+            current_url = resolve_redirect(&current_url, location)?;
             continue;
         }
         if !response.status().is_success() {
@@ -176,11 +171,7 @@ pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError>
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .unwrap_or("")
-            .split(';')
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_ascii_lowercase();
+            .to_owned();
         let mut bytes = Vec::new();
         while let Some(chunk) = response
             .chunk()
@@ -193,16 +184,7 @@ pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError>
             bytes.extend_from_slice(&chunk);
         }
 
-        let text = match content_type.as_str() {
-            "text/html" | "application/xhtml+xml" => {
-                extract_readable_html(&bytes, current_url.as_str())?
-            }
-            "text/plain" => String::from_utf8(bytes).map_err(|_| IngestError::InvalidUtf8)?,
-            _ => return Err(IngestError::UnsupportedUrlContent),
-        };
-        if text.trim().is_empty() {
-            return Err(IngestError::NoHtmlText);
-        }
+        let text = extract_fetched_text(&content_type, bytes, current_url.as_str())?;
         return Ok(ExtractedBlock::new(
             uuid::Uuid::new_v4().to_string(),
             InputProvenance::Url {
@@ -212,6 +194,35 @@ pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError>
         ));
     }
     Err(IngestError::TooManyUrlRedirects)
+}
+
+fn resolve_redirect(current_url: &url::Url, location: &str) -> Result<url::Url, IngestError> {
+    let next = current_url
+        .join(location)
+        .map_err(|_| IngestError::InvalidUrl)?;
+    validate_url(next.as_str())
+}
+
+fn extract_fetched_text(
+    content_type_header: &str,
+    bytes: Vec<u8>,
+    document_url: &str,
+) -> Result<String, IngestError> {
+    let content_type = content_type_header
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let text = match content_type.as_str() {
+        "text/html" | "application/xhtml+xml" => extract_readable_html(&bytes, document_url)?,
+        "text/plain" => String::from_utf8(bytes).map_err(|_| IngestError::InvalidUtf8)?,
+        _ => return Err(IngestError::UnsupportedUrlContent),
+    };
+    if text.trim().is_empty() {
+        return Err(IngestError::NoHtmlText);
+    }
+    Ok(text)
 }
 
 fn extract_readable_html(bytes: &[u8], document_url: &str) -> Result<String, IngestError> {
@@ -687,10 +698,10 @@ pub fn extract_raw_text(text: String) -> Result<ExtractedBlock, IngestError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        IngestError, MAX_DOCX_DOCUMENT_XML_BYTES, MAX_IMAGE_INPUT_BYTES, extract_file,
-        extract_file_with_ocr, extract_image_for_vision, extract_image_with_ocr, extract_raw_text,
-        extract_readable_html, extract_text_file, extract_url, is_public_ip,
-        pdf_page_texts_and_ocr_targets, validate_url,
+        IngestError, MAX_DOCX_DOCUMENT_XML_BYTES, MAX_IMAGE_INPUT_BYTES, extract_fetched_text,
+        extract_file, extract_file_with_ocr, extract_image_for_vision, extract_image_with_ocr,
+        extract_raw_text, extract_readable_html, extract_text_file, extract_url, is_public_ip,
+        pdf_page_texts_and_ocr_targets, resolve_redirect, validate_url,
     };
     use epikrise_core::{ExtractionMethod, InputProvenance};
     use std::{
@@ -1451,6 +1462,59 @@ mod tests {
         assert_eq!(
             extract_text_file("blank.txt".to_owned(), "\u{feff}   \n".as_bytes().to_vec()).err(),
             Some(IngestError::EmptyInput)
+        );
+    }
+
+    #[test]
+    fn redirects_resolve_relative_locations_and_reject_unsafe_schemes() {
+        let current = url::Url::parse("https://example.org/a/start").expect("valid URL");
+
+        assert_eq!(
+            resolve_redirect(&current, "/next?x=1")
+                .expect("root-relative redirect should resolve")
+                .as_str(),
+            "https://example.org/next?x=1"
+        );
+        assert_eq!(
+            resolve_redirect(&current, "../b")
+                .expect("relative redirect should resolve")
+                .as_str(),
+            "https://example.org/b"
+        );
+        assert_eq!(
+            resolve_redirect(&current, "ftp://example.org/file").err(),
+            Some(IngestError::InvalidUrl)
+        );
+    }
+
+    #[test]
+    fn fetched_text_is_selected_by_media_type_and_validated() {
+        let html = b"<html><head><title>Note</title></head><body><article><p>The fetched article body describes a stable clinical course with enough words to be retained by readability extraction.</p></article></body></html>".to_vec();
+        let text = extract_fetched_text("Text/HTML; charset=utf-8", html, "https://example.org/n")
+            .expect("HTML with parameters should be extracted");
+        assert!(text.contains("stable clinical course"));
+
+        assert_eq!(
+            extract_fetched_text(
+                "text/plain",
+                b"  plain body ".to_vec(),
+                "https://example.org/p"
+            )
+            .expect("plain text should be returned as-is"),
+            "  plain body "
+        );
+        assert_eq!(
+            extract_fetched_text("text/plain", vec![0xff, 0xfe], "https://example.org/p").err(),
+            Some(IngestError::InvalidUtf8)
+        );
+        assert_eq!(
+            extract_fetched_text("application/pdf", b"%PDF".to_vec(), "https://example.org/p")
+                .err(),
+            Some(IngestError::UnsupportedUrlContent)
+        );
+        assert_eq!(
+            extract_fetched_text("text/plain", b" \n\t".to_vec(), "https://example.org/p").err(),
+            Some(IngestError::NoHtmlText)
         );
     }
 }
