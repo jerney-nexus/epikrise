@@ -21,6 +21,7 @@
       MaxVersionTested="10.0.26100.0" />
   </Dependencies>
   <Resources>
+    <Resource Language="de-CH" />
     <Resource Language="en-US" />
   </Resources>
   <Applications>
