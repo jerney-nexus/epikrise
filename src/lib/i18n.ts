@@ -11,18 +11,29 @@ const catalogFiles = import.meta.glob<string>("../../locales/*/app.ftl", {
   import: "default",
 });
 
-const bundles = new Map<string, FluentBundle>();
-for (const [path, source] of Object.entries(catalogFiles)) {
-  const locale = path.split("/").at(-2);
-  if (!locale) continue;
-  const bundle = new FluentBundle(locale);
-  bundle.addResource(new FluentResource(source));
-  bundles.set(locale, bundle);
+export function createBundles(
+  files: Record<string, string>,
+): Map<string, FluentBundle> {
+  const bundles = new Map<string, FluentBundle>();
+  for (const [path, source] of Object.entries(files)) {
+    const locale = path.split("/").at(-2);
+    if (!locale) continue;
+    const bundle = new FluentBundle(locale);
+    bundle.addResource(new FluentResource(source));
+    bundles.set(locale, bundle);
+  }
+  return bundles;
 }
 
-export const supportedLocales = [...bundles.keys()].sort((left, right) =>
-  left === defaultLocale ? -1 : right === defaultLocale ? 1 : left.localeCompare(right),
-);
+const bundles = createBundles(catalogFiles);
+
+export function compareLocales(left: string, right: string): number {
+  if (left === defaultLocale) return -1;
+  if (right === defaultLocale) return 1;
+  return left.localeCompare(right);
+}
+
+export const supportedLocales = [...bundles.keys()].sort(compareLocales);
 export const activeLocale = writable(defaultLocale);
 
 function messageId(source: string): string {
