@@ -121,6 +121,25 @@ function createBinaryHeader(target: string) {
   return binary;
 }
 
+async function writeWebViewModeRecord(
+  directory: string,
+  webviewMode: string,
+  packageName: string,
+) {
+  const packageSha256 = createHash("sha256")
+    .update(await readFile(path.join(directory, packageName)))
+    .digest("hex");
+  await writeFile(
+    path.join(directory, "webview-mode.json"),
+    `${JSON.stringify({
+      schema_version: 1,
+      webview_mode: webviewMode,
+      package: packageName,
+      package_sha256: packageSha256,
+    })}\n`,
+  );
+}
+
 function nativeBuildEvidence(
   target: string,
   buildMode: "diagnostic" | "signed-release" = "diagnostic",
@@ -3284,16 +3303,28 @@ describe("signed release artifacts", () => {
         for (const suffix of sourceSuffixes) {
           await writeFile(
             path.join(bundleRoot, `epikrise${suffix}`),
-            suffix.endsWith(".sig") ? `signature-${target}` : `bundle-${target}`,
+            suffix.endsWith(".sig")
+              ? `signature-${target}`
+              : isWindows
+                ? createBinaryHeader(target)
+                : `bundle-${target}`,
           );
           if (isWindows) {
             await writeFile(
               path.join(bootstrapperRoot, `epikrise${suffix}`),
               suffix.endsWith(".sig")
                 ? `bootstrapper-signature-${target}`
-                : `bootstrapper-${target}`,
+                : createBinaryHeader(target),
             );
           }
+        }
+        if (isWindows) {
+          await writeWebViewModeRecord(bundleRoot, "offlineInstaller", "epikrise.exe");
+          await writeWebViewModeRecord(
+            bootstrapperRoot,
+            "embedBootstrapper",
+            "epikrise.exe",
+          );
         }
         const { resourceRoot, binaryRoot } = await createOcrFixture(directory, target);
         await stageReleaseArtifacts({
@@ -3495,6 +3526,27 @@ describe("signed release artifacts", () => {
           signatureVerifier: async () => {},
         }),
       ).rejects.toThrow("WebView2 installer modes do not match");
+      await writeFile(
+        windowsIntegrityPath,
+        JSON.stringify({
+          ...windowsIntegrity,
+          webview_modes: {
+            ...windowsIntegrity.webview_modes,
+            alternate: "offlineInstaller",
+          },
+        }),
+      );
+      await expect(
+        createLatestManifest({
+          tag: "v2026.9.4",
+          packageVersion: "2026.9.4",
+          repository: "owner/repo",
+          artifactsRoot,
+          commit: releaseCommit,
+          pubDate,
+          signatureVerifier: async () => {},
+        }),
+      ).rejects.toThrow("WebView2 installer modes do not match");
       await writeFile(windowsIntegrityPath, windowsIntegrityContents);
 
       const latestPath = path.join(directory, "latest.json");
@@ -3676,6 +3728,141 @@ describe("signed release artifacts", () => {
     }
   });
 
+  it("does not judge NSIS launcher architecture during staging", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-launcher-"));
+    const offlineRoot = path.join(directory, "offline");
+    const bootstrapperRoot = path.join(directory, "bootstrapper");
+    const target = "aarch64-pc-windows-msvc";
+    try {
+      await mkdir(offlineRoot, { recursive: true });
+      await mkdir(bootstrapperRoot, { recursive: true });
+      // Tauri NSIS launchers are x86 stubs even for ARM64 payloads.
+      await writeFile(
+        path.join(offlineRoot, "offline.exe"),
+        createBinaryHeader("x86_64-pc-windows-msvc"),
+      );
+      await writeFile(path.join(offlineRoot, "offline.exe.sig"), "offline-signature");
+      await writeFile(
+        path.join(bootstrapperRoot, "bootstrapper.exe"),
+        createBinaryHeader("x86_64-pc-windows-msvc"),
+      );
+      await writeFile(
+        path.join(bootstrapperRoot, "bootstrapper.exe.sig"),
+        "bootstrapper-signature",
+      );
+      await writeWebViewModeRecord(offlineRoot, "offlineInstaller", "offline.exe");
+      await writeWebViewModeRecord(
+        bootstrapperRoot,
+        "embedBootstrapper",
+        "bootstrapper.exe",
+      );
+      const { resourceRoot, binaryRoot } = await createOcrFixture(directory, target);
+      const assetNames = await stageReleaseArtifacts({
+        target,
+        bundleRoot: offlineRoot,
+        bootstrapperRoot,
+        stageRoot: path.join(directory, "staged"),
+        commit: releaseCommit,
+        version: "2026.9.4",
+        resourceRoot,
+        binaryRoot,
+        nativeBuild: nativeBuildEvidence(target, "signed-release"),
+        sourceArchiveSha256: "b".repeat(64),
+        cacheKey: `synthetic-${target}-cache`,
+        cacheRestored: false,
+      });
+      expect(assetNames).toEqual(
+        expect.arrayContaining([
+          "windows-aarch64-nsis-offline.exe",
+          "windows-aarch64-nsis-bootstrapper.exe",
+        ]),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects an NSIS app payload built for the wrong architecture", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-payload-arch-"));
+    try {
+      const payload = path.join(directory, "epikrise.exe");
+      await writeFile(payload, createBinaryHeader("x86_64-pc-windows-msvc"));
+      await expect(
+        verifyBinaryArchitecture("aarch64-pc-windows-msvc", payload),
+      ).rejects.toThrow("expects PE arm64; found PE x86_64");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects Windows WebView2 mode records that do not match the staged installer", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-windows-mode-record-"),
+    );
+    const offlineRoot = path.join(directory, "offline");
+    const bootstrapperRoot = path.join(directory, "bootstrapper");
+    const target = "x86_64-pc-windows-msvc";
+    const offlineRecordPath = path.join(offlineRoot, "webview-mode.json");
+    const offlineExePath = path.join(offlineRoot, "epikrise.exe");
+    const stageOptions = {
+      target,
+      bundleRoot: offlineRoot,
+      bootstrapperRoot,
+      stageRoot: path.join(directory, "staged"),
+      commit: releaseCommit,
+      version: "2026.9.4",
+      resourceRoot: path.join(directory, "resources", "ocr"),
+      binaryRoot: path.join(directory, "binaries"),
+      nativeBuild: nativeBuildEvidence(target, "signed-release"),
+      sourceArchiveSha256: "b".repeat(64),
+      cacheKey: `synthetic-${target}-cache`,
+      cacheRestored: false,
+    };
+
+    try {
+      await mkdir(offlineRoot, { recursive: true });
+      await mkdir(bootstrapperRoot, { recursive: true });
+      await writeFile(offlineExePath, createBinaryHeader(target));
+      await writeFile(path.join(offlineRoot, "epikrise.exe.sig"), "offline-signature");
+      await writeFile(
+        path.join(bootstrapperRoot, "epikrise.exe"),
+        createBinaryHeader(target),
+      );
+      await writeFile(
+        path.join(bootstrapperRoot, "epikrise.exe.sig"),
+        "bootstrapper-signature",
+      );
+      await writeWebViewModeRecord(
+        bootstrapperRoot,
+        "embedBootstrapper",
+        "epikrise.exe",
+      );
+
+      await writeWebViewModeRecord(offlineRoot, "embedBootstrapper", "epikrise.exe");
+      await expect(stageReleaseArtifacts(stageOptions)).rejects.toThrow(
+        "WebView2 mode record for epikrise.exe does not match offlineInstaller",
+      );
+
+      await writeWebViewModeRecord(offlineRoot, "offlineInstaller", "epikrise.exe");
+      await writeFile(
+        offlineExePath,
+        Buffer.concat([createBinaryHeader(target), Buffer.from("replaced")]),
+      );
+      await expect(stageReleaseArtifacts(stageOptions)).rejects.toThrow(
+        "WebView2 mode record hash does not match epikrise.exe",
+      );
+
+      await writeFile(offlineExePath, createBinaryHeader(target));
+      await writeWebViewModeRecord(offlineRoot, "offlineInstaller", "epikrise.exe");
+      await rm(offlineRecordPath);
+      await expect(stageReleaseArtifacts(stageOptions)).rejects.toThrow(
+        "Missing WebView2 mode record beside epikrise.exe",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects missing or colliding Windows WebView2 package variants", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-windows-variants-"));
     const offlineRoot = path.join(directory, "offline");
@@ -3714,6 +3901,100 @@ describe("signed release artifacts", () => {
       await writeFile(path.join(bootstrapperRoot, "duplicate.exe"), "duplicate");
       await expect(stageReleaseArtifacts(commonOptions)).rejects.toThrow(
         "Expected exactly one bootstrapper .exe artifact",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("stages deterministic collision-free NSIS names for x64 and ARM64", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-nsis-names-"));
+    const artifactsRoot = path.join(directory, "artifacts");
+    const latestPath = path.join(directory, "latest.json");
+    const nsisTargets = [
+      ["x86_64-pc-windows-msvc", "windows-x86_64-nsis"],
+      ["aarch64-pc-windows-msvc", "windows-aarch64-nsis"],
+    ] as const;
+    const expectedNames = (platform: string) =>
+      [
+        `${platform}-bootstrapper.exe`,
+        `${platform}-bootstrapper.exe.sig`,
+        `${platform}-offline.exe`,
+        `${platform}-offline.exe.sig`,
+      ].sort();
+
+    try {
+      await writeFile(latestPath, "{}");
+      for (const [target, platform] of nsisTargets) {
+        const targetRoot = path.join(directory, target);
+        const bundleRoot = path.join(targetRoot, "offline");
+        const bootstrapperRoot = path.join(targetRoot, "bootstrapper");
+        await mkdir(bundleRoot, { recursive: true });
+        await mkdir(bootstrapperRoot, { recursive: true });
+        for (const root of [bundleRoot, bootstrapperRoot]) {
+          await writeFile(path.join(root, "epikrise.exe"), createBinaryHeader(target));
+          await writeFile(path.join(root, "epikrise.exe.sig"), `signature-${target}`);
+        }
+        await writeWebViewModeRecord(bundleRoot, "offlineInstaller", "epikrise.exe");
+        await writeWebViewModeRecord(
+          bootstrapperRoot,
+          "embedBootstrapper",
+          "epikrise.exe",
+        );
+        const { resourceRoot, binaryRoot } = await createOcrFixture(targetRoot, target);
+        await stageReleaseArtifacts({
+          target,
+          bundleRoot,
+          bootstrapperRoot,
+          stageRoot: path.join(artifactsRoot, `release-${target}`),
+          commit: releaseCommit,
+          version: "2026.9.4",
+          resourceRoot,
+          binaryRoot,
+          nativeBuild: nativeBuildEvidence(target, "signed-release"),
+          sourceArchiveSha256: "b".repeat(64),
+          cacheKey: `synthetic-${target}-cache`,
+          cacheRestored: false,
+        });
+        const stagedNames = (
+          await readdir(path.join(artifactsRoot, `release-${target}`))
+        )
+          .filter((name) => name.startsWith(`${platform}-`))
+          .sort();
+        expect(stagedNames).toEqual(expectedNames(platform));
+      }
+
+      for (const target of releaseTargets) {
+        await mkdir(path.join(artifactsRoot, `release-${target}`), { recursive: true });
+      }
+      const evidence = await createReleaseAssetEvidence({ artifactsRoot, latestPath });
+      expect(
+        Object.keys(evidence)
+          .filter((name) => name.startsWith("windows-"))
+          .sort(),
+      ).toEqual(
+        [
+          ...expectedNames("windows-aarch64-nsis"),
+          ...expectedNames("windows-x86_64-nsis"),
+        ].sort(),
+      );
+
+      await cp(
+        path.join(
+          artifactsRoot,
+          "release-x86_64-pc-windows-msvc",
+          "windows-x86_64-nsis-offline.exe",
+        ),
+        path.join(
+          artifactsRoot,
+          "release-aarch64-pc-windows-msvc",
+          "windows-x86_64-nsis-offline.exe",
+        ),
+      );
+      await expect(
+        createReleaseAssetEvidence({ artifactsRoot, latestPath }),
+      ).rejects.toThrow(
+        "Duplicate staged release asset name: windows-x86_64-nsis-offline.exe.",
       );
     } finally {
       await rm(directory, { recursive: true, force: true });

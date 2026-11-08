@@ -299,6 +299,16 @@ cargo install cargo-audit --locked
 
 `pnpm test` includes the full Playwright browser suite in addition to UI, i18n, and Rust tests.
 
+### Integration tests
+
+`pnpm test:integration` runs `tests/**/*.integration.test.ts`, which need external tools that the unit suites do not require. It is excluded from `pnpm test:ui` and coverage. It currently needs PowerShell 7 (`pwsh`) to run the Windows WebView2 record round-trip. Install PowerShell before running it, then run:
+
+```sh
+pnpm test:integration
+```
+
+CI installs PowerShell and runs this command in the "UI and i18n" workflow after the UI and i18n tests.
+
 ### Browser tests
 
 Run only the Playwright suite with `pnpm test:e2e`, or its focused accessibility selection with `pnpm test:a11y`:
