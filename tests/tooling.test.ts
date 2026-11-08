@@ -3751,21 +3751,33 @@ describe("signed release artifacts", () => {
         path.join(bootstrapperRoot, "bootstrapper.exe.sig"),
         "bootstrapper-signature",
       );
-      const result = await stageReleaseArtifacts({
+      await writeWebViewModeRecord(offlineRoot, "offlineInstaller", "offline.exe");
+      await writeWebViewModeRecord(
+        bootstrapperRoot,
+        "embedBootstrapper",
+        "bootstrapper.exe",
+      );
+      const { resourceRoot, binaryRoot } = await createOcrFixture(directory, target);
+      const assetNames = await stageReleaseArtifacts({
         target,
         bundleRoot: offlineRoot,
         bootstrapperRoot,
         stageRoot: path.join(directory, "staged"),
         commit: releaseCommit,
         version: "2026.9.4",
-        resourceRoot: path.join(directory, "resources", "ocr"),
-        binaryRoot: path.join(directory, "binaries"),
+        resourceRoot,
+        binaryRoot,
         nativeBuild: nativeBuildEvidence(target, "signed-release"),
         sourceArchiveSha256: "b".repeat(64),
         cacheKey: `synthetic-${target}-cache`,
         cacheRestored: false,
-      }).catch((error: unknown) => error);
-      expect(String(result)).not.toContain("expects PE");
+      });
+      expect(assetNames).toEqual(
+        expect.arrayContaining([
+          "windows-aarch64-nsis-offline.exe",
+          "windows-aarch64-nsis-bootstrapper.exe",
+        ]),
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
