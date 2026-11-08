@@ -44,8 +44,20 @@ jobs:
         run: node scripts/prepare-release.mjs "$RELEASE_VERSION"
       - name: Verify release metadata formatting
         run: pnpm format:check:file CHANGELOG.md src-tauri/tauri.conf.json
+      # Pull requests opened with GITHUB_TOKEN do not trigger workflows, which
+      # leaves the release PR macOS updater gate without an opened event.
+      - uses: actions/create-github-app-token@v3
+        id: release-app-token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
       - uses: peter-evans/create-pull-request@v8
         with:
+          token: ${{ steps.release-app-token.outputs.token }}
           base: ${{ github.event.repository.default_branch }}
           branch: release/${{ steps.prepare.outputs.version }}
           commit-message: "chore(release): ${{ steps.prepare.outputs.version }}"
