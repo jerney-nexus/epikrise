@@ -1,6 +1,6 @@
 ---
 title: Privacy Policy for Epikrise
-permalink: /privacy-policy-en/
+permalink: /privacy-policy/en/
 ---
 
 # Privacy Policy for Epikrise
@@ -21,7 +21,7 @@ Epikrise does not operate its own backend. There are no user accounts, no teleme
 
 ## 3. Processing on your device
 
-The app processes the content you enter or import (texts, documents, images, PDF files, tables, and web page content) locally. Cases and generated outputs are held only in memory and are deleted when you discard the case or when the app closes. No history is stored.
+The app processes the content you enter or import (texts, documents, images, PDF files, tables, and web page content) locally. Cases and generated outputs are held only in memory. When you discard a case or close the app, the internal case state is cleared. Not covered by this are form values, such as template field entries, and text you copied to the clipboard yourself; these remain until you change them or the clipboard is overwritten. No history is stored.
 
 For text recognition (OCR), temporary image files may be created in private temporary directories. These are overwritten before deletion. However, the operating system and runtime environment may keep copies, so secure forensic deletion cannot be guaranteed.
 
@@ -44,7 +44,7 @@ Independently of case confirmation, the app can run two functions that contact r
 
 ## 7. No anonymization by the app
 
-Epikrise does not anonymize or pseudonymize content and does not detect identifying information. You are responsible for using only material that you are lawfully permitted to process. Under the revFADP, health data is considered particularly sensitive personal data; under the GDPR, it falls within special categories (Art. 9). Therefore, use only anonymized or synthetic material unless your legal basis provides otherwise.
+Epikrise does not anonymize or pseudonymize content and does not detect identifying information. You are responsible for using only material that you are lawfully permitted to process. Under the revFADP, health data is considered particularly sensitive personal data; under the GDPR, it falls within special categories (Art. 9). Therefore, use only anonymized or synthetic material.
 
 ## 8. Administrator policies
 
@@ -56,4 +56,4 @@ Because the publisher does not collect personal data, requests for access, corre
 
 ## 10. Changes
 
-The publisher may amend this policy. The current version is available at https://jerney-nexus.github.io/epikrise/privacy-policy-en/.
+The publisher may amend this policy. The current version is available at https://jerney-nexus.github.io/epikrise/privacy-policy/en/.

@@ -1,6 +1,6 @@
 ---
 title: Datenschutzrichtlinie für Epikrise
-permalink: /privacy-policy/
+permalink: /privacy-policy/de/
 ---
 
 # Datenschutzrichtlinie für Epikrise
@@ -21,7 +21,7 @@ Epikrise betreibt kein eigenes Backend. Es gibt keine Benutzerkonten, keine Tele
 
 ## 3. Verarbeitung auf Ihrem Gerät
 
-Eingegebene und importierte Inhalte (Texte, Dokumente, Bilder, PDF-Dateien, Tabellen und Webseiten-Inhalte) verarbeitet die App lokal. Fälle und erzeugte Ausgaben werden nur im Arbeitsspeicher gehalten und beim Verwerfen des Falls oder beim Beenden der App gelöscht. Eine Verlaufsspeicherung erfolgt nicht.
+Eingegebene und importierte Inhalte (Texte, Dokumente, Bilder, PDF-Dateien, Tabellen und Webseiten-Inhalte) verarbeitet die App lokal. Fälle und erzeugte Ausgaben werden nur im Arbeitsspeicher gehalten. Beim Verwerfen des Falls oder Beenden der App wird der interne Fallzustand gelöscht. Nicht davon erfasst sind Formularwerte wie eingegebene Vorlagenfelder sowie Texte, die Sie selbst in die Zwischenablage kopiert haben; diese bleiben erhalten, bis Sie sie ändern bzw. die Zwischenablage überschrieben wird. Eine Verlaufsspeicherung erfolgt nicht.
 
 Für die Texterkennung (OCR) können temporäre Bilddateien in privaten temporären Verzeichnissen entstehen. Diese werden vor dem Löschen überschrieben. Betriebssystem und Laufzeitumgebung können jedoch Kopien speichern, eine forensisch sichere Löschung kann daher nicht garantiert werden.
 
@@ -44,7 +44,7 @@ Unabhängig von der Fallbestätigung kann die App zwei Funktionen ausführen, di
 
 ## 7. Keine Anonymisierung durch die App
 
-Epikrise anonymisiert oder pseudonymisiert Inhalte nicht und erkennt keine identifizierenden Angaben. Sie sind dafür verantwortlich, nur Material zu verwenden, das Sie rechtmäßig verarbeiten dürfen. Gesundheitsdaten gelten nach revDSG als besonders schützenswerte Personendaten und nach DSGVO als besondere Kategorien (Art. 9). Verwenden Sie daher nur anonymisiertes oder synthetisches Material, sofern Ihre Rechtsgrundlage nichts anderes vorsieht.
+Epikrise anonymisiert oder pseudonymisiert Inhalte nicht und erkennt keine identifizierenden Angaben. Sie sind dafür verantwortlich, nur Material zu verwenden, das Sie rechtmäßig verarbeiten dürfen. Gesundheitsdaten gelten nach revDSG als besonders schützenswerte Personendaten und nach DSGVO als besondere Kategorien (Art. 9). Verwenden Sie daher nur anonymisiertes oder synthetisches Material.
 
 ## 8. Administratorrichtlinien
 
@@ -56,4 +56,4 @@ Da der Herausgeber keine personenbezogenen Daten erhebt, können Auskunfts-, Ber
 
 ## 10. Änderungen
 
-Der Herausgeber kann diese Richtlinie anpassen. Die aktuelle Fassung ist unter https://jerney-nexus.github.io/epikrise/privacy-policy/ abrufbar.
+Der Herausgeber kann diese Richtlinie anpassen. Die aktuelle Fassung ist unter https://jerney-nexus.github.io/epikrise/privacy-policy/de/ abrufbar.
