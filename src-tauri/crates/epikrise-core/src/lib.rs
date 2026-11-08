@@ -1255,7 +1255,7 @@ mod tests {
     }
 
     #[test]
-    fn clearing_blocks_zeroizes_provenance_and_image_fields() {
+    fn clearing_blocks_empties_provenance_and_image_fields() {
         let mut file_block = ExtractedBlock::new(
             "file-id",
             InputProvenance::File {

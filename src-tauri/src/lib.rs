@@ -1776,15 +1776,15 @@ pub fn run() -> Result<(), tauri::Error> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CaseSessionRegistry, GenerationRegistry, GenerationTask, MAX_PDF_VISION_PAGES,
-        OcrTempSession, SensitiveImageFile, TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile,
-        TesseractError, classify_tesseract_stderr, commit_case_generation,
-        ensure_private_directory, load_template_library_from_paths, map_image_tesseract_error,
-        map_pdf_tesseract_error, ocr_pdf_pages_with, parse_legacy_template_store,
-        parse_template_library, prepare_case_generation, remove_abandoned_ocr_sessions,
-        render_pdf_pages_for_vision, should_fallback_to_vision, strip_windows_verbatim_prefix,
-        tesseract_path_arg, validate_template_changes, validate_template_creation,
-        validate_template_deletion, wipe_directory_contents, write_template_library,
+        GenerationRegistry, GenerationTask, MAX_PDF_VISION_PAGES, OcrTempSession,
+        SensitiveImageFile, TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile, TesseractError,
+        classify_tesseract_stderr, commit_case_generation, ensure_private_directory,
+        load_template_library_from_paths, map_image_tesseract_error, map_pdf_tesseract_error,
+        ocr_pdf_pages_with, parse_legacy_template_store, parse_template_library,
+        prepare_case_generation, remove_abandoned_ocr_sessions, render_pdf_pages_for_vision,
+        should_fallback_to_vision, strip_windows_verbatim_prefix, tesseract_path_arg,
+        validate_template_changes, validate_template_creation, validate_template_deletion,
+        wipe_directory_contents, write_template_library,
     };
     use epikrise_core::{
         CaseSession, ClinicalTemplate, ExtractedBlock, ImageAttachment, InputProvenance,
@@ -2067,12 +2067,15 @@ mod tests {
             templates: vec![synthetic_template()],
         })
         .expect("synthetic library should serialize");
-        fs::write(&templates_path, contents).expect("synthetic library should be written");
+        fs::write(&templates_path, &contents).expect("synthetic library should be written");
         fs::create_dir(&legacy_path).expect("stuck legacy path should be created");
-
         assert_eq!(
             load_template_library_from_paths(&templates_path, &legacy_path),
             Err(TemplateError::StorageFailed)
+        );
+        assert_eq!(
+            fs::read_to_string(&templates_path).expect("current store should remain readable"),
+            contents
         );
     }
 
@@ -2384,7 +2387,7 @@ mod tests {
     }
 
     #[test]
-    fn registries_cancel_and_scrub_state_on_drop() {
+    fn generation_registry_cancels_tasks_on_drop() {
         let token = tokio_util::sync::CancellationToken::new();
         let generations = GenerationRegistry(Mutex::new(std::collections::HashMap::from([(
             "request-1".to_owned(),
@@ -2395,12 +2398,9 @@ mod tests {
         )])));
         drop(generations);
         assert!(token.is_cancelled());
-
-        let mut session = CaseSession::new("case-1", "template-1");
-        session.set_output("Sensitive output");
-        drop(CaseSessionRegistry(Mutex::new(Some(session))));
     }
 
+    #[cfg(unix)]
     #[test]
     fn sensitive_image_files_are_overwritten_before_unlinking() {
         use std::io::{Read, Seek, SeekFrom, Write};
