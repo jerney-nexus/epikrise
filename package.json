@@ -30,6 +30,7 @@
     "test:ui": "vitest run --exclude tests/i18n.test.ts",
     "test:ui:coverage": "vitest run --coverage",
     "test:i18n": "vitest run tests/i18n.test.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "release:prepare": "node scripts/prepare-release.mjs",
     "release:prepare:workflow": "node scripts/release-prepare-workflow.mjs",
     "release:preflight": "node scripts/release-start.mjs preflight",

@@ -51,17 +51,6 @@ jobs:
             libayatana-appindicator3-dev librsvg2-dev libxdo-dev ninja-build \
             pkg-config tesseract-ocr
 
-      - name: Install PowerShell
-        run: |
-          apt-get install -y --no-install-recommends gnupg
-          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-            | gpg --dearmor -o /usr/share/keyrings/microsoft.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" \
-            > /etc/apt/sources.list.d/microsoft-prod.list
-          apt-get update
-          apt-get install -y --no-install-recommends powershell
-          pwsh --version
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -88,3 +77,17 @@ jobs:
           GIT_CONFIG_KEY_0: safe.directory
           GIT_CONFIG_VALUE_0: ${{ github.workspace }}
         run: pnpm test:ui && pnpm test:i18n
+
+      - name: Install PowerShell
+        run: |
+          apt-get install -y --no-install-recommends gnupg
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+            | gpg --dearmor -o /usr/share/keyrings/microsoft.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" \
+            > /etc/apt/sources.list.d/microsoft-prod.list
+          apt-get update
+          apt-get install -y --no-install-recommends powershell
+          pwsh --version
+
+      - name: Run Windows WebView2 record integration tests
+        run: pnpm test:integration
