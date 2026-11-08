@@ -245,6 +245,7 @@ jobs:
         run: |
           $hostTarget = (rustc -vV | Select-String '^host: ').ToString().Substring(6)
           $bundleRoot = Join-Path $PWD "src-tauri/target/host-$hostTarget/$env:TARGET/release/bundle/nsis"
+          $packageHashes = @{}
           foreach ($mode in @("embedBootstrapper", "offlineInstaller")) {
             $env:EPIKRISE_WINDOWS_WEBVIEW_MODE = $mode
             if (Test-Path -LiteralPath $bundleRoot) {
@@ -263,6 +264,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "Writing the WebView2 mode record for $mode failed with exit code $LASTEXITCODE."
             }
+            $packageHashes[$mode] = (Get-Content -LiteralPath (Join-Path $variantDirectory "webview-mode.json") -Raw | ConvertFrom-Json).package_sha256
+          }
+          if (($packageHashes.Values | Select-Object -Unique).Count -ne $packageHashes.Count) {
+            throw "Windows NSIS embedBootstrapper and offlineInstaller packages are byte-identical; the WebView2 mode setting was not applied."
           }
 
       - name: Build signed Linux or macOS updater bundles
