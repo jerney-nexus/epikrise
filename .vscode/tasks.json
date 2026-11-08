@@ -211,6 +211,15 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Lint Shell",
+      "detail": "Lints shell scripts in scripts/ with shellcheck.",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["lint:shell"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Format Check",
       "detail": "Checks code formatting.",
       "type": "process",

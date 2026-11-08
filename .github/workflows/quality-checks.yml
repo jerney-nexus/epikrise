@@ -11,6 +11,24 @@ permissions:
   contents: read
 
 jobs:
+  actionlint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Lint GitHub Actions workflows
+        uses: raven-actions/actionlint@v2
+        with:
+          version: 1.7.12
+          pyflakes: false
+
   quality:
     runs-on: ubuntu-24.04
     container:
@@ -38,14 +56,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install actionlint
+      - name: Lint shell scripts
         run: |
-          curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash \
-            | bash -s -- 1.7.12 "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-
-      - name: Lint GitHub Actions workflows
-        run: pnpm lint:actions
+          apt-get update
+          apt-get install -y --no-install-recommends shellcheck
+          pnpm lint:shell
 
       - name: Run lint, format, and frontend build
         run: pnpm lint && pnpm format:check && pnpm build

@@ -180,7 +180,7 @@ pnpm test:a11y
 
 The combined coverage command runs UI tests with V8 coverage and the Rust workspace with `cargo-llvm-cov`. It writes an HTML report to `coverage/index.html` and an LCOV report to `lcov.info`, which is read by the recommended Coverage Gutters VS Code extension. Use `pnpm test:ui:coverage` or `pnpm test:rust:coverage` for a targeted coverage run. Rust tests, Clippy, and Tauri builds keep Cargo artifacts in a host-triple-specific directory under `src-tauri/target`, so macOS builds and dev-container builds do not share incompatible host artifacts.
 
-Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`, `pnpm lint:actions` (GitHub Actions workflows), and `pnpm format:check`.
+Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`, `pnpm lint:actions` (GitHub Actions workflows), `pnpm lint:shell` (shell scripts), and `pnpm format:check`.
 
 ## Templates
 

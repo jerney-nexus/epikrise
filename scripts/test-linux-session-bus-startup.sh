@@ -9,6 +9,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# shellcheck disable=SC2016 # Inner shell expands $1 and $2 from the trailing arguments.
 dbus-run-session -- bash -c '
 set -euo pipefail
 printf "%s\n" "epikrise-integration-test" |
