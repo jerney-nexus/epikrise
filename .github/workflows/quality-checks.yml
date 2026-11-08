@@ -38,14 +38,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install actionlint
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash \
-            | bash -s -- 1.7.12 "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-
       - name: Lint GitHub Actions workflows
-        run: pnpm lint:actions
+        uses: raven-actions/actionlint@v2
+        with:
+          version: 1.7.12
+          pyflakes: false
+
+      - name: Lint shell scripts
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends shellcheck
+          pnpm lint:shell
 
       - name: Run lint, format, and frontend build
         run: pnpm lint && pnpm format:check && pnpm build

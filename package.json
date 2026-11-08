@@ -22,6 +22,7 @@
     "build:all": "node scripts/desktop-builds.mjs dispatch",
     "lint": "eslint . --max-warnings 0",
     "lint:actions": "actionlint",
+    "lint:shell": "shellcheck scripts/*.sh",
     "test": "pnpm test:ui && pnpm test:i18n && pnpm test:rust && pnpm test:e2e",
     "test:coverage": "pnpm test:ui:coverage && pnpm test:rust:coverage",
     "test:e2e": "playwright test",
