@@ -281,6 +281,7 @@ pnpm check
 pnpm test
 pnpm build
 pnpm lint:actions
+pnpm lint:shell
 pnpm audit:rust
 pnpm audit:pnpm
 ```
@@ -295,7 +296,9 @@ cargo install cargo-llvm-cov --locked
 cargo install cargo-audit --locked
 ```
 
-`cargo-deny` is required by `pnpm check`; `cargo-nextest` is required by `pnpm test:rust`; `cargo-audit` is required by `pnpm audit:rust`; and `cargo-llvm-cov` plus `llvm-tools-preview` are required for Rust coverage. `pnpm lint:actions` requires `actionlint`, which is installed in the dev container. For local setup, follow the [actionlint installation instructions](https://github.com/rhysd/actionlint#installation).
+`cargo-deny` is required by `pnpm check`; `cargo-nextest` is required by `pnpm test:rust`; `cargo-audit` is required by `pnpm audit:rust`; and `cargo-llvm-cov` plus `llvm-tools-preview` are required for Rust coverage. `pnpm lint:actions` requires `actionlint`, and `pnpm lint:shell` requires `shellcheck`; both are installed in the dev container. For local setup, follow the [actionlint installation instructions](https://github.com/rhysd/actionlint#installation) and the [shellcheck installation instructions](https://github.com/koalaman/shellcheck#installing).
+
+In CI, the workflow linting is done by the `raven-actions/actionlint` action in the `actionlint` job of `quality-checks.yml`, and shell scripts are linted by `pnpm lint:shell` in the `quality` job. `pnpm lint:actions` remains available for local use.
 
 `pnpm test` includes the full Playwright browser suite in addition to UI, i18n, and Rust tests.
 
