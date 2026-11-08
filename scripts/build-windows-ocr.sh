@@ -87,7 +87,7 @@ download_verified() {
 
   if [[ ! -f "$archive_path" ]] || ! printf '%s  %s\n' "$expected_sha256" "$archive_path" | sha256sum --check --status; then
     rm -f "$archive_path" "$archive_path.part"
-    curl --fail --location --silent --show-error "$url" -o "$archive_path.part"
+    curl --fail --location --silent --show-error --retry 5 --retry-all-errors --retry-delay 10 "$url" -o "$archive_path.part"
     printf '%s  %s\n' "$expected_sha256" "$archive_path.part" | sha256sum --check --status || {
       printf 'SHA-256 mismatch for %s.\n' "$filename" >&2
       exit 1

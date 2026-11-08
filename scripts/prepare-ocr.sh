@@ -173,7 +173,7 @@ mkdir -p "$resource_dir/pdfium" "$resource_dir/tessdata" "$binary_dir" "$pdfium_
 if [[ ! -f "$pdfium_cache_path" ]] || ! has_expected_sha256 "$pdfium_sha256" "$pdfium_cache_path"; then
   rm -f "$pdfium_cache_path" "$pdfium_cache_path.part"
   pdfium_url="https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8066/$pdfium_asset"
-  curl --fail --location --silent --show-error "$pdfium_url" -o "$pdfium_cache_path.part"
+  curl --fail --location --silent --show-error --retry 5 --retry-all-errors --retry-delay 10 "$pdfium_url" -o "$pdfium_cache_path.part"
   if ! has_expected_sha256 "$pdfium_sha256" "$pdfium_cache_path.part"; then
     printf 'PDFium checksum mismatch for %s.\n' "$pdfium_asset" >&2
     rm -f "$pdfium_cache_path.part"

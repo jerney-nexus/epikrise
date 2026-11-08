@@ -148,7 +148,7 @@ download_verified() {
   if [[ ! -f "$archive_path" ]] || [[ "$(file_sha256 "$archive_path")" != "$expected_sha256" ]]; then
     rm -f "$archive_path" "$archive_path.part"
     for attempt in 1 2; do
-      if ! curl --fail --location --silent --show-error "$url" -o "$archive_path.part"; then
+      if ! curl --fail --location --silent --show-error --retry 5 --retry-all-errors --retry-delay 10 "$url" -o "$archive_path.part"; then
         printf 'Download attempt %s/2 failed for %s.\n' "$attempt" "$filename" >&2
         continue
       fi
