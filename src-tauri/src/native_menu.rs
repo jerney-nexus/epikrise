@@ -820,6 +820,102 @@ mod tests {
     }
 
     #[test]
+    fn every_predefined_label_for_this_platform_maps_to_its_localized_field() {
+        let labels = NativeMenuLabels::english();
+        let mut cases: Vec<(&str, NativeMenuLabel, &String)> = vec![
+            ("Undo", NativeMenuLabel::Undo, &labels.undo_action),
+            ("Redo", NativeMenuLabel::Redo, &labels.redo_action),
+            ("Cut", NativeMenuLabel::Cut, &labels.cut_action),
+            ("Copy", NativeMenuLabel::Copy, &labels.copy_action),
+            ("Paste", NativeMenuLabel::Paste, &labels.paste_action),
+            (
+                "Paste and Match Style",
+                NativeMenuLabel::PasteAndMatchStyle,
+                &labels.paste_and_match_style_action,
+            ),
+            ("Delete", NativeMenuLabel::Delete, &labels.delete_action),
+            (
+                "Select All",
+                NativeMenuLabel::SelectAll,
+                &labels.select_all_action,
+            ),
+            (
+                "Minimize",
+                NativeMenuLabel::Minimize,
+                &labels.minimize_action,
+            ),
+            (
+                "Show All",
+                NativeMenuLabel::ShowAll,
+                &labels.show_all_action,
+            ),
+            (
+                "Bring All to Front",
+                NativeMenuLabel::BringAllToFront,
+                &labels.bring_all_to_front_action,
+            ),
+            (
+                "Actual Size",
+                NativeMenuLabel::ActualSize,
+                &labels.actual_size_action,
+            ),
+            ("Zoom In", NativeMenuLabel::ZoomIn, &labels.zoom_in_action),
+            (
+                "Zoom Out",
+                NativeMenuLabel::ZoomOut,
+                &labels.zoom_out_action,
+            ),
+            (
+                "Start Speaking",
+                NativeMenuLabel::StartSpeaking,
+                &labels.start_speaking_action,
+            ),
+            (
+                "Stop Speaking",
+                NativeMenuLabel::StopSpeaking,
+                &labels.stop_speaking_action,
+            ),
+            (
+                "Start Dictation…",
+                NativeMenuLabel::StartDictation,
+                &labels.start_dictation_action,
+            ),
+            (
+                "Emoji & Symbols",
+                NativeMenuLabel::EmojiAndSymbols,
+                &labels.emoji_and_symbols_action,
+            ),
+        ];
+        #[cfg(not(target_os = "macos"))]
+        cases.push(("About", NativeMenuLabel::About, &labels.about_action));
+        #[cfg(not(target_os = "macos"))]
+        cases.push((
+            "Maximize",
+            NativeMenuLabel::Maximize,
+            &labels.maximize_action,
+        ));
+        #[cfg(not(target_os = "windows"))]
+        cases.push((
+            "Close Window",
+            NativeMenuLabel::CloseWindow,
+            &labels.close_window_action,
+        ));
+        #[cfg(target_os = "windows")]
+        cases.push(("Close", NativeMenuLabel::Close, &labels.close_action));
+        #[cfg(target_os = "windows")]
+        cases.push(("Exit", NativeMenuLabel::Exit, &labels.exit_action));
+
+        for (default_text, label, localized) in cases {
+            assert_eq!(
+                NativeMenuLabel::from_default_text(default_text),
+                Some(label),
+                "{default_text}"
+            );
+            assert_eq!(label.text(&labels), localized.as_str(), "{default_text}");
+        }
+    }
+
+    #[test]
     fn syncing_an_unavailable_menu_reports_an_error() {
         assert!(
             sync(
