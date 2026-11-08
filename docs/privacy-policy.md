@@ -1,5 +1,6 @@
 ---
 title: Datenschutzrichtlinie für Epikrise
+permalink: /privacy-policy/
 ---
 
 # Datenschutzrichtlinie für Epikrise
@@ -33,6 +34,8 @@ Für die Texterkennung (OCR) können temporäre Bilddateien in privaten temporä
 ## 5. Übermittlung an KI-Anbieter
 
 Für die Erstellung von Entwürfen werden das aufbereitete Material und Ihre Vorlage an den von Ihnen gewählten Modellanbieter gesendet. Dazu gehören OpenAI, Anthropic, Google Gemini, xAI, Groq, OpenRouter sowie OpenAI-kompatible oder Ollama-Endpunkte. Ist der Endpunkt lokal (z. B. Ollama auf localhost), verlassen die Daten Ihr Gerät nicht. Bei entfernten Endpunkten gelten die Datenschutzbestimmungen des jeweiligen Anbieters. Vor der ersten Übermittlung an einen entfernten Endpunkt je Fall bestätigt die App den Anbieter und den Endpunkt. Der Herausgeber ist nicht Empfänger dieser Daten und nicht Vertragspartner des Anbieters.
+
+Unabhängig von der Fallbestätigung kann die App zwei Funktionen ausführen, die entfernte Endpunkte kontaktieren: das Abrufen der Modellliste und den Verbindungstest. Dabei werden Ihre IP-Adresse und, sofern konfiguriert, Ihr gespeicherter Zugangsschlüssel an den Endpunkt übermittelt. Der Verbindungstest kann zusätzlich eine kurze Testanfrage mit dem festen Text „Reply with OK.“ senden. Fallinhalte werden dabei nicht übermittelt.
 
 ## 6. Weitere Netzwerkzugriffe
 
