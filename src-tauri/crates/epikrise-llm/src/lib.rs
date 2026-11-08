@@ -1192,6 +1192,183 @@ mod tests {
         );
     }
 
+    #[test]
+    fn adapter_keys_round_trip_through_provider_account_ids() {
+        use super::{adapter_key, parse_adapter_key};
+
+        let adapters = [
+            ProviderAdapter::OpenAi,
+            ProviderAdapter::Anthropic,
+            ProviderAdapter::Gemini,
+            ProviderAdapter::Ollama,
+            ProviderAdapter::OpenAiCompatible,
+            ProviderAdapter::OpenRouter,
+            ProviderAdapter::Xai,
+            ProviderAdapter::Groq,
+        ];
+
+        for adapter in adapters {
+            let key = adapter_key(&adapter);
+            assert_eq!(parse_adapter_key(key), Some(adapter));
+        }
+        assert_eq!(parse_adapter_key("unknown"), None);
+    }
+
+    #[test]
+    fn anthropic_ollama_and_compatible_profiles_map_to_their_adapters() {
+        use genai::adapter::AdapterKind;
+
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::Anthropic, "claude-sonnet-5"),
+            AdapterKind::Anthropic
+        );
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::Ollama, "llama3.2"),
+            AdapterKind::Ollama
+        );
+    }
+
+    #[test]
+    fn http_status_codes_map_to_user_facing_errors() {
+        assert_eq!(map_http_status(401), LlmError::Authentication);
+        assert_eq!(map_http_status(403), LlmError::Authentication);
+        assert_eq!(map_http_status(429), LlmError::Quota);
+        assert_eq!(
+            map_http_status(404),
+            LlmError::ProviderRejected { status: 404 }
+        );
+        assert_eq!(map_http_status(500), LlmError::Network);
+        assert_eq!(map_http_status(503), LlmError::Network);
+    }
+
+    #[test]
+    fn prepare_request_rejects_invalid_generation_profiles() {
+        struct NoCredentials;
+
+        impl super::CredentialStore for NoCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
+        let messages = [ChatMessage {
+            role: MessageRole::User,
+            content: "Summarize.".to_owned(),
+            images: Vec::new(),
+        }];
+        let valid_profile = |model: &str| ProviderProfile {
+            id: "invalid-test".to_owned(),
+            display_name: "Invalid test".to_owned(),
+            adapter: ProviderAdapter::OpenAi,
+            model: model.to_owned(),
+            endpoint: None,
+            auth: AuthSource::None,
+            capabilities: ModelCapabilities {
+                vision: false,
+                streaming: true,
+                max_context: None,
+            },
+            generation: GenerationParams {
+                temperature: None,
+                max_tokens: None,
+                reasoning_effort: None,
+            },
+        };
+
+        assert!(matches!(
+            prepare_request(&credentials, &valid_profile("   "), &messages),
+            Err(LlmError::InvalidProfile)
+        ));
+
+        let mut nan_temperature = valid_profile("gpt-4o");
+        nan_temperature.generation.temperature = Some(f32::NAN);
+        assert!(matches!(
+            prepare_request(&credentials, &nan_temperature, &messages),
+            Err(LlmError::InvalidProfile)
+        ));
+
+        let mut zero_tokens = valid_profile("gpt-4o");
+        zero_tokens.generation.max_tokens = Some(0);
+        assert!(matches!(
+            prepare_request(&credentials, &zero_tokens, &messages),
+            Err(LlmError::InvalidProfile)
+        ));
+
+        let system_only = [ChatMessage {
+            role: MessageRole::System,
+            content: "Be brief.".to_owned(),
+            images: Vec::new(),
+        }];
+        assert!(matches!(
+            prepare_request(&credentials, &valid_profile("gpt-4o"), &system_only),
+            Err(LlmError::InvalidRequest)
+        ));
+    }
+
+    #[test]
+    fn every_reasoning_effort_maps_to_a_genai_option() {
+        struct NoCredentials;
+
+        impl super::CredentialStore for NoCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
+        let messages = [ChatMessage {
+            role: MessageRole::User,
+            content: "Think carefully.".to_owned(),
+            images: Vec::new(),
+        }];
+        let cases = [
+            (
+                ReasoningEffort::Minimal,
+                genai::chat::ReasoningEffort::Minimal,
+            ),
+            (ReasoningEffort::Low, genai::chat::ReasoningEffort::Low),
+            (
+                ReasoningEffort::Medium,
+                genai::chat::ReasoningEffort::Medium,
+            ),
+            (ReasoningEffort::High, genai::chat::ReasoningEffort::High),
+            (ReasoningEffort::XHigh, genai::chat::ReasoningEffort::XHigh),
+            (ReasoningEffort::Max, genai::chat::ReasoningEffort::Max),
+        ];
+
+        for (effort, expected) in cases {
+            let profile = ProviderProfile {
+                id: "effort-test".to_owned(),
+                display_name: "Effort test".to_owned(),
+                adapter: ProviderAdapter::OpenAi,
+                model: "o3-mini".to_owned(),
+                endpoint: None,
+                auth: AuthSource::None,
+                capabilities: ModelCapabilities {
+                    vision: false,
+                    streaming: true,
+                    max_context: None,
+                },
+                generation: GenerationParams {
+                    temperature: None,
+                    max_tokens: None,
+                    reasoning_effort: Some(effort),
+                },
+            };
+            let (_, _, _, options) = prepare_request(&credentials, &profile, &messages)
+                .expect("provider request should be prepared");
+            let actual = options
+                .reasoning_effort
+                .expect("reasoning effort should be mapped");
+            assert_eq!(
+                std::mem::discriminant(&actual),
+                std::mem::discriminant(&expected),
+                "unexpected reasoning mapping for {effort:?}"
+            );
+        }
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     #[ignore = "requires an unlocked desktop Secret Service"]

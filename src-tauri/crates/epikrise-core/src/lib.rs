@@ -783,8 +783,8 @@ fn serialize_prompt_json(value: &impl Serialize) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CaseSession, ClinicalTemplate, ExtractedBlock, ExtractionMethod, InputProvenance,
-        MAX_TEMPLATE_FILE_BYTES, OutputRules, OutputViolationKind, Redacted,
+        CaseSession, ClinicalTemplate, ExtractedBlock, ExtractionMethod, ImageAttachment,
+        InputProvenance, MAX_TEMPLATE_FILE_BYTES, OutputRules, OutputViolationKind, Redacted,
         TEMPLATE_SCHEMA_VERSION, TemplateDefault, TemplateError, TemplateMetadata, TemplateSection,
         TemplateVariable, TemplateVariableKind, lint_output,
     };
@@ -1085,6 +1085,233 @@ mod tests {
                 "patient_name".to_owned()
             ))
         );
+    }
+
+    #[test]
+    fn template_validation_rejects_duplicate_and_blank_definitions() {
+        let mut duplicate_variable = sample_template();
+        let variable = duplicate_variable.variables[0].clone();
+        duplicate_variable.variables.push(variable);
+        assert_eq!(
+            duplicate_variable.validate(),
+            Err(TemplateError::DuplicateVariable("patient_name".to_owned()))
+        );
+
+        let mut blank_id = sample_template();
+        blank_id.metadata.id = " ".to_owned();
+        assert_eq!(blank_id.validate(), Err(TemplateError::InvalidTemplate));
+
+        let mut blank_heading = sample_template();
+        blank_heading.sections[0].heading = " ".to_owned();
+        assert_eq!(
+            blank_heading.validate(),
+            Err(TemplateError::InvalidSection("diagnoses".to_owned()))
+        );
+
+        let mut duplicate_section = sample_template();
+        let section = duplicate_section.sections[0].clone();
+        duplicate_section.sections.push(section);
+        assert_eq!(
+            duplicate_section.validate(),
+            Err(TemplateError::InvalidSection("diagnoses".to_owned()))
+        );
+    }
+
+    #[test]
+    fn template_select_variables_validate_and_render_only_declared_options() {
+        let mut select = sample_template();
+        select.variables[0].kind = TemplateVariableKind::Select;
+        assert_eq!(
+            select.validate(),
+            Err(TemplateError::InvalidVariableDefinition(
+                "patient_name".to_owned()
+            ))
+        );
+
+        select.variables[0].options = vec!["a".to_owned(), "b".to_owned()];
+        assert_eq!(select.validate(), Ok(()));
+
+        let mut duplicate_options = select.clone();
+        duplicate_options.variables[0].options.push("a".to_owned());
+        assert_eq!(
+            duplicate_options.validate(),
+            Err(TemplateError::InvalidVariableDefinition(
+                "patient_name".to_owned()
+            ))
+        );
+
+        let mut default_outside_options = select.clone();
+        default_outside_options.variables[0].default = Some(TemplateDefault::Text("c".to_owned()));
+        assert_eq!(
+            default_outside_options.validate(),
+            Err(TemplateError::InvalidVariableDefinition(
+                "patient_name".to_owned()
+            ))
+        );
+
+        let mut boolean_with_options = sample_template();
+        boolean_with_options.variables[1].options = vec!["a".to_owned()];
+        assert_eq!(
+            boolean_with_options.validate(),
+            Err(TemplateError::InvalidVariableDefinition(
+                "include_history".to_owned()
+            ))
+        );
+
+        let unknown_option = BTreeMap::from([("patient_name".to_owned(), serde_json::json!("c"))]);
+        assert_eq!(
+            select.render_system_prompt(&unknown_option),
+            Err(TemplateError::InvalidVariableValue(
+                "patient_name".to_owned()
+            ))
+        );
+        let known_option = BTreeMap::from([("patient_name".to_owned(), serde_json::json!("b"))]);
+        assert!(select.render_system_prompt(&known_option).is_ok());
+    }
+
+    #[test]
+    fn template_text_default_is_used_when_value_is_omitted() {
+        let mut template = sample_template();
+        template.variables[0].required = false;
+        template.variables[0].default = Some(TemplateDefault::Text("Unknown".to_owned()));
+        let rendered = template
+            .render_system_prompt(&BTreeMap::new())
+            .expect("optional text default should render");
+        assert!(rendered.starts_with("Patient: Unknown"));
+    }
+
+    #[test]
+    fn template_rejects_invalid_date_values_during_rendering() {
+        let mut template = sample_template();
+        template.system_prompt = "{{ visit | format_date }}".to_owned();
+        template.variables[0].kind = TemplateVariableKind::Date;
+        template.variables[0].name = "visit".to_owned();
+        for invalid in ["2024-02-30", "24-02-01", "2024/02/01"] {
+            let values = BTreeMap::from([("visit".to_owned(), serde_json::json!(invalid))]);
+            assert_eq!(
+                template.render_system_prompt(&values),
+                Err(TemplateError::RenderingFailed),
+                "{invalid} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn template_parsing_enforces_size_and_encoding_limits() {
+        let oversized = vec![b'a'; MAX_TEMPLATE_FILE_BYTES + 1];
+        assert_eq!(
+            ClinicalTemplate::from_epitpl(&oversized),
+            Err(TemplateError::TemplateTooLarge)
+        );
+        assert_eq!(
+            ClinicalTemplate::from_json(&oversized),
+            Err(TemplateError::TemplateTooLarge)
+        );
+        assert_eq!(
+            ClinicalTemplate::from_epitpl(&[0xff, 0xfe]),
+            Err(TemplateError::InvalidSerializedTemplate)
+        );
+
+        let toml = sample_template()
+            .to_toml()
+            .expect("sample template should serialize to TOML");
+        let parsed_toml = ClinicalTemplate::from_epitpl(toml.as_bytes())
+            .expect("TOML template should parse through the epitpl entry point");
+        assert_eq!(parsed_toml.metadata.id, "generic-discharge");
+
+        let json = sample_template()
+            .to_json()
+            .expect("sample template should serialize to JSON");
+        let parsed_json = ClinicalTemplate::from_epitpl(&json)
+            .expect("JSON template should parse through the epitpl entry point");
+        assert_eq!(parsed_json.metadata.id, "generic-discharge");
+    }
+
+    #[test]
+    fn debug_output_redacts_image_provenance_and_case_contents() {
+        assert_eq!(
+            format!("{:?}", InputProvenance::Clipboard),
+            "InputProvenance(<redacted>)"
+        );
+
+        let image = ImageAttachment {
+            mime_type: "image/png".to_owned(),
+            data: vec![1, 2, 3],
+            name: "scan-secret.png".to_owned(),
+        };
+        let image_debug = format!("{image:?}");
+        assert!(image_debug.contains("image/png"));
+        assert!(image_debug.contains("<redacted>"));
+        assert!(!image_debug.contains("scan-secret"));
+
+        let mut block = ExtractedBlock::new("input-id", InputProvenance::RawText, "text");
+        block.images.push(image);
+        let block_debug = format!("{block:?}");
+        assert!(block_debug.contains("<redacted>"));
+        assert!(!block_debug.contains("scan-secret"));
+
+        let session = CaseSession::new("case-secret", "template");
+        assert_eq!(format!("{session:?}"), "CaseSession(<redacted>)");
+    }
+
+    #[test]
+    fn clearing_blocks_zeroizes_provenance_and_image_fields() {
+        let mut file_block = ExtractedBlock::new(
+            "file-id",
+            InputProvenance::File {
+                name: "patient.pdf".to_owned(),
+            },
+            "secret text",
+        );
+        file_block.images.push(ImageAttachment {
+            mime_type: "image/png".to_owned(),
+            data: vec![1, 2, 3],
+            name: "scan.png".to_owned(),
+        });
+        file_block.clear_sensitive_data();
+        assert!(file_block.content.is_empty());
+        assert!(matches!(
+            &file_block.provenance,
+            InputProvenance::File { name } if name.is_empty()
+        ));
+        assert!(file_block.images[0].data.is_empty());
+        assert!(file_block.images[0].name.is_empty());
+
+        let mut url_block = ExtractedBlock::new(
+            "url-id",
+            InputProvenance::Url {
+                address: "https://example.invalid/record".to_owned(),
+            },
+            "",
+        );
+        url_block.clear_sensitive_data();
+        assert!(matches!(
+            &url_block.provenance,
+            InputProvenance::Url { address } if address.is_empty()
+        ));
+    }
+
+    #[test]
+    fn review_acknowledgement_requires_finished_output_and_can_be_replaced() {
+        let mut session = CaseSession::new("case", "template");
+        assert!(!session.acknowledge_review("hash-1"));
+
+        session.set_output("first output");
+        assert!(session.acknowledge_review("hash-1"));
+        assert!(session.acknowledge_review("hash-2"));
+        assert!(session.can_copy("hash-2"));
+        assert!(!session.can_copy("hash-1"));
+
+        session.set_output("second output");
+        assert!(!session.can_copy("hash-2"));
+
+        session.begin_generation(BTreeMap::new());
+        assert!(!session.acknowledge_review("hash-3"));
+        session.finish_generation();
+
+        assert!(session.acknowledge_review("hash-3"));
+        session.invalidate_review();
+        assert!(!session.can_copy("hash-3"));
     }
 
     #[test]
