@@ -2,6 +2,7 @@
   import { onMount, tick } from "svelte";
   import { resolve } from "$app/paths";
   import { isTauri } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { renderOutputHtml } from "#lib/output-format.ts";
   import {
     defaultLocale,
@@ -12,6 +13,12 @@
     supportedLocales,
     translate,
   } from "#lib/i18n.ts";
+  import {
+    applyThemePreference,
+    readStoredThemePreference,
+    setThemePreference,
+    type ThemePreference,
+  } from "#lib/theme.ts";
   import {
     readText as readClipboardText,
     writeHtml as writeClipboardHtml,
@@ -211,6 +218,7 @@
   let isInvalidatingReview = $state(false);
   let desktopAvailable = $state(false);
   let uiLocale = $state(defaultLocale);
+  let themePreference = $state<ThemePreference>("auto");
   let nativeMenuUnavailable = $state(false);
   let ordinaryDialogOpener: HTMLElement | null = null;
   let nativeMenuSyncRevision = 0;
@@ -227,6 +235,19 @@
     uiLocale = locale;
     document.documentElement.lang = locale === pseudoLocale ? "en" : locale;
     void syncNativeMenu(locale, nativeMenuListenerReady);
+  }
+
+  function syncWindowTheme(preference: ThemePreference) {
+    // The native title bar and menu are cosmetic; the webview theme still applies if this fails.
+    void getCurrentWindow()
+      .setTheme(preference === "auto" ? null : preference)
+      .catch(() => {});
+  }
+
+  function changeThemePreference(preference: ThemePreference) {
+    setThemePreference(preference);
+    themePreference = preference;
+    if (desktopAvailable) syncWindowTheme(preference);
   }
 
   let nativeMenuListenerReady = false;
@@ -1715,8 +1736,11 @@
     const locale = initializeLocale(storedLocale, detectedLocale);
     uiLocale = locale;
     document.documentElement.lang = locale;
+    themePreference = readStoredThemePreference();
+    applyThemePreference(themePreference);
     desktopAvailable = isTauri();
     if (!desktopAvailable) return;
+    syncWindowTheme(themePreference);
     void commands.getPolicyStatus().then((status) => {
       if (status.status === "ok") applyPolicyStatus(status.data);
     });
@@ -2420,6 +2444,17 @@
           {#if import.meta.env.DEV}
             <option value={pseudoLocale}>{t("language-pseudo")}</option>
           {/if}
+        </select>
+        <label for="interface-theme">{t("Theme")}</label>
+        <select
+          id="interface-theme"
+          value={themePreference}
+          onchange={(event) =>
+            changeThemePreference(event.currentTarget.value as ThemePreference)}
+        >
+          <option value="light">{t("Light")}</option>
+          <option value="dark">{t("Dark")}</option>
+          <option value="auto">{t("Auto")}</option>
         </select>
         <div
           class="update-settings"
@@ -5806,7 +5841,7 @@
     }
   }
 
-  @media (prefers-color-scheme: dark) {
+  :global(:root[data-theme="dark"]) {
     :global(body) {
       color: #e3ebe5;
       background: #151f1a;
