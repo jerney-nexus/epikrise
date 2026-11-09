@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### 📚 Documentation
 
 - The privacy policy no longer says case content is held only in memory or processed only locally, and it now covers OCR temporary files and remote AI endpoints (#240)
+- CONTRIBUTING.md documents how to build the Store `.msixbundle` from the x64 and ARM64 MSIX packages for Partner Center (#244)
 
 ## [2026.11.4] - 2026-11-08
 
