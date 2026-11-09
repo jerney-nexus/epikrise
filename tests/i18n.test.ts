@@ -1,8 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { FluentBundle, FluentResource } from "@fluent/bundle";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  activeLocale,
+  compareLocales,
+  createBundles,
   defaultLocale,
+  getActiveLocale,
   initializeLocale,
   localePreferenceKey,
   pseudoLocale,
@@ -195,5 +199,116 @@ describe("Fluent localization", () => {
     for (const message of usedSources) {
       expect(translate(pseudoLocale, message, args), message).toMatch(/^［.+］$/);
     }
+  });
+});
+
+describe("locale state and fallbacks", () => {
+  it("orders the default locale first, then the rest alphabetically", () => {
+    expect(compareLocales(defaultLocale, "en")).toBe(-1);
+    expect(compareLocales("en", defaultLocale)).toBe(1);
+    expect(compareLocales("en", "fr")).toBeLessThan(0);
+    expect(compareLocales("fr", "en")).toBeGreaterThan(0);
+  });
+
+  it("builds bundles per locale folder and skips files outside one", () => {
+    const bundles = createBundles({
+      "../../locales/en/app.ftl": "settings = Settings",
+      "app.ftl": "settings = Ignored",
+    });
+    expect([...bundles.keys()]).toEqual(["en"]);
+    expect(bundles.get("en")?.getMessage("settings")?.value).toBeDefined();
+  });
+
+  const withLocalStorage = (storage: Partial<Storage>, run: () => void) => {
+    const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: storage,
+    });
+    try {
+      run();
+    } finally {
+      if (originalStorage) {
+        Object.defineProperty(globalThis, "localStorage", originalStorage);
+      } else {
+        delete (globalThis as { localStorage?: Storage }).localStorage;
+      }
+    }
+  };
+
+  afterEach(() => {
+    activeLocale.set(defaultLocale);
+  });
+
+  it("lists the default locale first and the rest alphabetically", () => {
+    expect(supportedLocales[0]).toBe(defaultLocale);
+    expect(supportedLocales.slice(1)).toEqual(
+      [...supportedLocales.slice(1)].sort((left, right) => left.localeCompare(right)),
+    );
+  });
+
+  it("starts on the default locale and tracks switches in the store", () => {
+    expect(getActiveLocale()).toBe(defaultLocale);
+    setLocale("en");
+    expect(getActiveLocale()).toBe("en");
+    let observed: string | undefined;
+    const unsubscribe = activeLocale.subscribe((value) => (observed = value));
+    setLocale(defaultLocale);
+    unsubscribe();
+    expect(observed).toBe(defaultLocale);
+  });
+
+  it("ignores unsupported locale selections without touching storage or state", () => {
+    const writes: string[] = [];
+    withLocalStorage({ setItem: (key: string) => void writes.push(key) }, () => {
+      setLocale("fr");
+    });
+    expect(writes).toEqual([]);
+    expect(getActiveLocale()).toBe(defaultLocale);
+  });
+
+  it("still switches locale when storage is unavailable", () => {
+    withLocalStorage(
+      {
+        setItem: () => {
+          throw new Error("storage disabled");
+        },
+      },
+      () => {
+        setLocale("en");
+      },
+    );
+    expect(getActiveLocale()).toBe("en");
+  });
+
+  it("switches locale when storage is missing entirely", () => {
+    const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    delete (globalThis as { localStorage?: Storage }).localStorage;
+    try {
+      setLocale("en");
+    } finally {
+      if (originalStorage) {
+        Object.defineProperty(globalThis, "localStorage", originalStorage);
+      }
+    }
+    expect(getActiveLocale()).toBe("en");
+  });
+
+  it("resolves null, exact, underscore, and language-only OS locales", () => {
+    expect(resolveLocale(null)).toBe(defaultLocale);
+    expect(resolveLocale("EN_us")).toBe("en");
+    expect(resolveLocale("en-US")).toBe("en");
+    expect(resolveLocale("zz")).toBe(defaultLocale);
+  });
+
+  it("returns the source text for locales without a bundle", () => {
+    expect(translate("fr", "Settings")).toBe("Settings");
+    expect(translate("zz", "Settings")).toBe("Settings");
+  });
+
+  it("returns the source text when a locale lacks the message", () => {
+    const unknownSource = "A label that is not in any catalog";
+    expect(translate("en", unknownSource)).toBe(unknownSource);
+    expect(translate(pseudoLocale, unknownSource)).toBe(unknownSource);
   });
 });
