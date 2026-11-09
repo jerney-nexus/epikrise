@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - General settings has a Theme option to choose Light, Dark, or Auto (follow the operating system); the choice applies immediately and is saved on this device
 
+### 🐛 Bug Fixes
+
+- Secondary and hint text in the light theme has higher contrast, so placeholders, hints, and helper labels meet WCAG 2.1 AA (#200)
+
 ### 📚 Documentation
 
 - The privacy policy no longer says case content is held only in memory or processed only locally, and it now covers OCR temporary files and remote AI endpoints (#240)
