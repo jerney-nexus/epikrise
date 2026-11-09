@@ -1638,6 +1638,45 @@ describe("release tag integration", () => {
       expect(await git(["tag", "--list"])).toBe("");
     });
   });
+
+  it("refuses when any configured push URL is non-local", async () => {
+    await withRepository(async (root, remote, git) => {
+      await git(["config", "--add", "remote.origin.pushurl", remote]);
+      await git([
+        "config",
+        "--add",
+        "remote.origin.pushurl",
+        "https://github.com/jerney-nexus/epikrise.git",
+      ]);
+      const confirm = vi.fn(async () => true);
+      await expect(createAndPushReleaseTag("", { root, confirm })).rejects.toThrow(
+        "non-local remote",
+      );
+      expect(confirm).not.toHaveBeenCalled();
+      expect(await git(["tag", "--list"])).toBe("");
+      expect(await git(["tag", "--list"], remote)).toBe("");
+    });
+  });
+
+  it("revalidates the push target after confirmation and before tagging", async () => {
+    await withRepository(async (root, remote, git) => {
+      await expect(
+        createAndPushReleaseTag("", {
+          root,
+          confirm: async () => {
+            await git([
+              "config",
+              "remote.origin.pushurl",
+              "https://github.com/jerney-nexus/epikrise.git",
+            ]);
+            return true;
+          },
+        }),
+      ).rejects.toThrow("non-local remote");
+      expect(await git(["tag", "--list"])).toBe("");
+      expect(await git(["tag", "--list"], remote)).toBe("");
+    });
+  });
 });
 
 describe("Windows cross-build versions", () => {
