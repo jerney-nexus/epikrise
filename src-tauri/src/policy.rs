@@ -647,7 +647,12 @@ mod tests {
             LoadedPolicy::load_from(directory.path()),
             Err(PolicyLoadError::UnsafeFile)
         ));
+    }
 
+    #[cfg(unix)]
+    #[test]
+    fn policy_path_beneath_a_regular_file_fails_inspection() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
         let file = directory.path().join("file.toml");
         fs::write(&file, "local_only = true\n").expect("test policy should be written");
         assert!(matches!(
