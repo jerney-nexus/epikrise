@@ -98,6 +98,17 @@ async function assertRepositoryRoot(root = repoRoot) {
 }
 
 /** @param {string} root */
+async function assertTestPushTargetIsLocal(root) {
+  if (!process.env.VITEST) return;
+  const pushUrl = await git(["remote", "get-url", "--push", "origin"], root);
+  if (!path.isAbsolute(pushUrl) && !pushUrl.startsWith("file://")) {
+    throw new Error(
+      `Refusing to push a release tag from tests to non-local remote ${pushUrl}.`,
+    );
+  }
+}
+
+/** @param {string} root */
 async function readProjectVersion(root = repoRoot) {
   const packageJson = JSON.parse(
     await readFile(path.join(root, "package.json"), "utf8"),
@@ -191,6 +202,7 @@ export async function createAndPushReleaseTag(requestedVersion, options = {}) {
   const root = path.resolve(options.root ?? repoRoot);
   const confirm = options.confirm ?? confirmTagPush;
   await assertRepositoryRoot(root);
+  await assertTestPushTargetIsLocal(root);
   await ensureWorktreeIsClean(root);
   const branch = await git(["branch", "--show-current"], root);
   if (branch !== "main") {

@@ -1537,6 +1537,7 @@ describe("release tag integration", () => {
           { cwd },
         )
       ).stdout.trim();
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
       await mkdir(root);
       await git(["init", "--bare", remote]);
@@ -1550,6 +1551,7 @@ describe("release tag integration", () => {
       await git(["push", "--no-follow-tags", "-u", "origin", "main"]);
       await test(root, remote, git);
     } finally {
+      stdout.mockRestore();
       await rm(directory, { recursive: true, force: true });
     }
   }
@@ -1617,6 +1619,23 @@ describe("release tag integration", () => {
         createAndPushReleaseTag("", { root, confirm: async () => true }),
       ).rejects.toThrow();
       expect(await git(["tag", "--list"], remote)).toBe("");
+    });
+  });
+
+  it("refuses to push a tag from tests when origin is a non-local remote", async () => {
+    await withRepository(async (root, remote, git) => {
+      await git([
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.com/jerney-nexus/epikrise.git",
+      ]);
+      const confirm = vi.fn(async () => true);
+      await expect(createAndPushReleaseTag("", { root, confirm })).rejects.toThrow(
+        "non-local remote",
+      );
+      expect(confirm).not.toHaveBeenCalled();
+      expect(await git(["tag", "--list"])).toBe("");
     });
   });
 });
