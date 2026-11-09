@@ -10,7 +10,7 @@ Epikrise
 
 ### Short description
 
-Turns clinical material you have anonymized into a structured draft for clinician review. Runs on your device; requests to a remote model provider go only to the provider you choose, after you confirm.
+Turns clinical material you have anonymized into a structured draft for clinician review. Runs on your device; content sent to a remote model provider goes only to the provider you choose, after you confirm.
 
 ### Description
 
@@ -20,7 +20,7 @@ Epikrise does not anonymize input. Remove identifying details before use.
 
 Generated text is a draft. A responsible clinician must review and edit it before use. Epikrise is not a medical device and not a diagnostic tool. It does not connect to a hospital information system; you copy the approved text and paste it into the target system yourself.
 
-Case content is held in memory and is not saved as history. OCR may write temporary image files; they are overwritten before removal, but operating-system copies cannot be ruled out. Form values and text you copy to the clipboard yourself are not covered and remain until you change them or the clipboard is overwritten. The app has no hosted backend, no telemetry, and no account. The Store version sends requests only to the model endpoint you configure and does not check for updates. Before the first remote request in each case, Epikrise asks you to confirm the provider and endpoint.
+Case content is held in memory and is not saved as history. OCR may write temporary image files; they are overwritten before removal, but operating-system copies cannot be ruled out. Form values and text you copy to the clipboard yourself are not covered and remain until you change them or the clipboard is overwritten. The app has no hosted backend, no telemetry, and no account. The Store version sends requests only to the model endpoint you configure and to web addresses you choose to import, and does not check for updates. Before case content is first sent to a remote provider in each case, Epikrise asks you to confirm the provider and endpoint. Retrieving the model list and testing the connection do not require case confirmation.
 
 Supported providers: OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI, and Groq. Ollama is local only when its configured endpoint is local. API keys are stored in the operating system keychain.
 
@@ -40,7 +40,7 @@ Supported providers: OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoi
 12. Copy output as formatted text only after clinician acknowledgment
 13. Case content kept in memory, not saved as history
 14. API keys stored in the operating system keychain
-15. Remote requests confirmed per case, provider and endpoint
+15. Case content sent to remote endpoints only after confirmation per case, provider and endpoint
 16. Interface in German and English
 
 ### Keywords
@@ -63,7 +63,7 @@ Epikrise
 
 ### Kurzbeschreibung
 
-Erstellt aus von Ihnen anonymisierten klinischen Unterlagen einen strukturierten Entwurf zur ärztlichen Prüfung. Läuft auf Ihrem Gerät; Anfragen an externe Modellanbieter gehen nur an den gewählten Anbieter und erst nach Ihrer Bestätigung.
+Erstellt aus von Ihnen anonymisierten klinischen Unterlagen einen strukturierten Entwurf zur ärztlichen Prüfung. Läuft auf Ihrem Gerät; Fallinhalte an externe Modellanbieter gehen nur an den gewählten Anbieter und erst nach Ihrer Bestätigung.
 
 ### Beschreibung
 
@@ -73,7 +73,7 @@ Epikrise anonymisiert die Eingaben nicht. Entfernen Sie identifizierende Angaben
 
 Erzeugter Text ist ein Entwurf. Eine verantwortliche Ärztin oder ein verantwortlicher Arzt muss ihn vor der Verwendung prüfen und bearbeiten. Epikrise ist kein Medizinprodukt und kein Diagnoseinstrument. Die App ist nicht mit einem Krankenhausinformationssystem verbunden; den freigegebenen Text kopieren Sie selbst in das Zielsystem.
 
-Fallinhalte werden im Arbeitsspeicher gehalten und nicht als Verlauf gespeichert. OCR kann temporäre Bilddateien anlegen; sie werden vor dem Entfernen überschrieben. Kopien durch das Betriebssystem lassen sich jedoch nicht ausschliessen. Formularwerte und Texte, die Sie selbst in die Zwischenablage kopieren, sind davon nicht erfasst und bleiben erhalten, bis Sie sie ändern oder die Zwischenablage überschrieben wird. Die App hat kein Backend, keine Telemetrie und kein Konto. Die Store-Version sendet Anfragen nur an den von Ihnen konfigurierten Modell-Endpunkt und prüft nicht auf Updates. Vor der ersten externen Anfrage je Fall bittet Epikrise um Bestätigung von Anbieter und Endpunkt.
+Fallinhalte werden im Arbeitsspeicher gehalten und nicht als Verlauf gespeichert. OCR kann temporäre Bilddateien anlegen; sie werden vor dem Entfernen überschrieben. Kopien durch das Betriebssystem lassen sich jedoch nicht ausschliessen. Formularwerte und Texte, die Sie selbst in die Zwischenablage kopieren, sind davon nicht erfasst und bleiben erhalten, bis Sie sie ändern oder die Zwischenablage überschrieben wird. Die App hat kein Backend, keine Telemetrie und kein Konto. Die Store-Version sendet Anfragen nur an den von Ihnen konfigurierten Modell-Endpunkt und an Webadressen, die Sie importieren, und prüft nicht auf Updates. Vor dem ersten Versand von Fallinhalten an einen externen Anbieter je Fall bittet Epikrise um Bestätigung von Anbieter und Endpunkt. Modellliste abrufen und Verbindungstest erfordern keine Fallbestätigung.
 
 Unterstützte Anbieter: OpenAI, Anthropic, Gemini, Ollama, OpenAI-kompatible Endpunkte, OpenRouter, xAI und Groq. Ein Ollama-Endpunkt gilt nur dann als lokal, wenn der konfigurierte Endpunkt lokal ist. API-Schlüssel werden im Schlüsselbund des Betriebssystems gespeichert.
 
@@ -93,7 +93,7 @@ Unterstützte Anbieter: OpenAI, Anthropic, Gemini, Ollama, OpenAI-kompatible End
 12. Ergebnis erst nach ärztlicher Bestätigung formatiert kopieren
 13. Fallinhalte im Arbeitsspeicher, nicht als Verlauf gespeichert
 14. API-Schlüssel im Schlüsselbund des Betriebssystems
-15. Externe Anfragen je Fall, Anbieter und Endpunkt bestätigt
+15. Fallinhalte an externe Endpunkte nur nach Bestätigung je Fall, Anbieter und Endpunkt
 16. Oberfläche auf Deutsch und Englisch
 
 ### Schlüsselwörter
