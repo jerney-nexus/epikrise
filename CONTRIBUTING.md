@@ -253,9 +253,29 @@ Run `pnpm build:all` only after the workflow is present and enabled on GitHub. T
 
 Windows jobs in this workflow use native Windows runners; the manual Linux cross-build setup is not available in Actions and never accepts the SDK/CRT license on a user's behalf.
 
-Each native Windows job also uploads an unsigned, architecture-specific MSIX artifact separately from its NSIS installer. These MSIX files are for manual Partner Center submission only: they use the reserved Store identity, are versioned as `year.month.patch.0`, and are not the local installation path. After a successful tagged signed release, the Store submission workflow builds only Windows x64 and ARM64 Store variants and attaches each package and its SHA-256/provenance manifest as separate assets to the matching GitHub Release. This is independent of the six-target Desktop builds workflow. When dispatching Desktop builds directly, provide `previous_store_version` if a prior Store submission exists so the build rejects a non-advancing version. Microsoft signs submitted Store packages and manages Store updates; this project does not upload packages to Partner Center or configure Store updates automatically. The Store package does not include the WebView2 Evergreen Runtime, which must be available on the Windows device. Continue using the NSIS `.exe` for local installation; it includes the offline WebView2 installer and remains separate from the Store package and Store update model.
+Each native Windows job also uploads an unsigned, architecture-specific MSIX artifact separately from its NSIS installer. These MSIX files are for manual Partner Center submission only: they use the reserved Store identity, are versioned as `year.month.patch.0`, and are not the local installation path. After a successful tagged signed release, the Store submission workflow builds only Windows x64 and ARM64 Store variants and attaches each package and its SHA-256/provenance manifest as separate assets to the matching GitHub Release. This is independent of the six-target Desktop builds workflow. When dispatching Desktop builds directly, provide `previous_store_version` if a prior Store submission exists so the build rejects a non-advancing version. Microsoft signs submitted Store packages and manages Store updates; this project does not upload packages to Partner Center or configure Store updates automatically. The Store package does not include the WebView2 Evergreen Runtime, which must be available on the Windows device. Continue using the NSIS `.exe` for local installation; it includes the offline WebView2 installer and remains separate from the Store package and Store update model. To package the x64 and ARM64 MSIX files for Partner Center, see [Building the Store `.msixbundle`](#building-the-store-msixbundle).
 
 Build artifacts are unsigned and macOS packages are not notarized. Expect SmartScreen/Gatekeeper warnings or installation restrictions; do not distribute them into a clinical environment as trusted installers. The workflow creates diagnostic artifacts; it does not publish releases or configure updates.
+
+### Building the Store `.msixbundle`
+
+Partner Center accepts one `.msixbundle` that contains the x64 and ARM64 Store packages. Build it manually on Windows after both architecture-specific MSIX artifacts from the same Desktop builds run are downloaded and verified. Use a Windows 10/11 machine with the Windows SDK installed, and run the commands in a Developer PowerShell (or call `makeappx.exe` by its full path).
+
+1. Download the `epikrise-store-msix-x64` and `epikrise-store-msix-arm64` artifacts for the same commit and version, and check each package against its SHA-256 manifest.
+2. Create an empty folder, for example `C:\StoreBundle`, and copy only the two `Epikrise_<version>_<arch>.msix` files into it. `makeappx` bundles only packages that share the same identity and version, so the folder must not contain anything else.
+3. Run `makeappx` from the SDK, replacing the folder and output paths:
+
+   ```powershell
+   makeappx.exe bundle /d C:\StoreBundle /p C:\StoreBundle\Epikrise_<version>.msixbundle
+   ```
+
+   If `makeappx.exe` is not on `PATH`, use the full SDK path, for example `"C:\Program Files (x86)\Windows Kits\10\bin\<sdk-version>\x64\makeappx.exe"`. The script `scripts/package-store-msix.ps1` searches the same SDK location and prefers the newest version.
+
+4. Confirm the output file exists. The bundle is unsigned. Microsoft signs submitted Store packages, as described above.
+
+Keep the bundle and its inputs out of the repository and out of any clinical environment. Upload the bundle to Partner Center manually.
+
+> **Not yet verified:** the steps above have not been run end-to-end on Windows. Confirm the exact bundle command and output on a Windows host with the SDK, and confirm whether Partner Center needs a bundle version (`/bv`) or any other option, before relying on this procedure.
 
 ## Project layout
 
