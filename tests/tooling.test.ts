@@ -1628,7 +1628,7 @@ describe("release tag integration", () => {
         "remote",
         "set-url",
         "origin",
-        "https://github.com/jerney-nexus/epikrise.git",
+        "https://example.invalid/epikrise.git",
       ]);
       const confirm = vi.fn(async () => true);
       await expect(createAndPushReleaseTag("", { root, confirm })).rejects.toThrow(
@@ -1646,7 +1646,7 @@ describe("release tag integration", () => {
         "config",
         "--add",
         "remote.origin.pushurl",
-        "https://github.com/jerney-nexus/epikrise.git",
+        "https://example.invalid/epikrise.git",
       ]);
       const confirm = vi.fn(async () => true);
       await expect(createAndPushReleaseTag("", { root, confirm })).rejects.toThrow(
@@ -1667,7 +1667,7 @@ describe("release tag integration", () => {
             await git([
               "config",
               "remote.origin.pushurl",
-              "https://github.com/jerney-nexus/epikrise.git",
+              "https://example.invalid/epikrise.git",
             ]);
             return true;
           },
