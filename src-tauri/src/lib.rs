@@ -1777,7 +1777,7 @@ pub fn run() -> Result<(), tauri::Error> {
 mod tests {
     use super::{
         GenerationRegistry, GenerationTask, MAX_PDF_VISION_PAGES, OcrTempSession,
-        SensitiveImageFile, TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile, TesseractError,
+        TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile, TesseractError,
         classify_tesseract_stderr, commit_case_generation, ensure_private_directory,
         load_template_library_from_paths, map_image_tesseract_error, map_pdf_tesseract_error,
         ocr_pdf_pages_with, parse_legacy_template_store, parse_template_library,
@@ -2403,6 +2403,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn sensitive_image_files_are_overwritten_before_unlinking() {
+        use super::SensitiveImageFile;
         use std::io::{Read, Seek, SeekFrom, Write};
 
         let directory = tempfile::tempdir().expect("temporary directory should be created");
