@@ -10,7 +10,7 @@ Epikrise
 
 ### Short description
 
-Turns clinical material you have anonymized into a structured draft for clinician review. Runs locally; model requests go only to the provider you choose, after you confirm.
+Turns clinical material you have anonymized into a structured draft for clinician review. Runs on your device; requests to a remote model provider go only to the provider you choose, after you confirm.
 
 ### Description
 
@@ -20,7 +20,7 @@ Epikrise does not anonymize input. Remove identifying details before use.
 
 Generated text is a draft. A responsible clinician must review and edit it before use. Epikrise is not a medical device and not a diagnostic tool. It does not connect to a hospital information system; you copy the approved text and paste it into the target system yourself.
 
-Case content is held in memory only and is not saved as history. The app has no hosted backend, no telemetry, and no account. Requests go only to the model endpoint you configure. Before the first remote request in each case, Epikrise asks you to confirm the provider and endpoint.
+Case content is held in memory and is not saved as history. OCR may write temporary image files; they are overwritten before removal, but operating-system copies cannot be ruled out. The app has no hosted backend, no telemetry, and no account. Requests go only to the model endpoint you configure. Before the first remote request in each case, Epikrise asks you to confirm the provider and endpoint.
 
 Supported providers: OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI, and Groq. Ollama is local only when its configured endpoint is local. API keys are stored in the operating system keychain.
 
@@ -38,7 +38,7 @@ Supported providers: OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoi
 10. Inputs, output and controls in one workspace
 11. Plain and formatted output preview
 12. Copy output as formatted text only after clinician acknowledgment
-13. Case content kept in memory only, not saved as history
+13. Case content kept in memory, not saved as history
 14. API keys stored in the operating system keychain
 15. Remote requests confirmed per case, provider and endpoint
 16. Interface in German and English
@@ -63,7 +63,7 @@ Epikrise
 
 ### Kurzbeschreibung
 
-Erstellt aus von Ihnen anonymisierten klinischen Unterlagen einen strukturierten Entwurf zur ärztlichen Prüfung. Läuft lokal; Modellanfragen gehen nur nach Ihrer Bestätigung an den gewählten Anbieter.
+Erstellt aus von Ihnen anonymisierten klinischen Unterlagen einen strukturierten Entwurf zur ärztlichen Prüfung. Läuft auf Ihrem Gerät; Anfragen an externe Modellanbieter gehen nur an den gewählten Anbieter und erst nach Ihrer Bestätigung.
 
 ### Beschreibung
 
@@ -73,7 +73,7 @@ Epikrise anonymisiert die Eingaben nicht. Entfernen Sie identifizierende Angaben
 
 Erzeugter Text ist ein Entwurf. Eine verantwortliche Ärztin oder ein verantwortlicher Arzt muss ihn vor der Verwendung prüfen und bearbeiten. Epikrise ist kein Medizinprodukt und kein Diagnoseinstrument. Die App ist nicht mit einem Krankenhausinformationssystem verbunden; den freigegebenen Text kopieren Sie selbst in das Zielsystem.
 
-Fallinhalte werden nur im Arbeitsspeicher gehalten und nicht als Verlauf gespeichert. Die App hat kein Backend, keine Telemetrie und kein Konto. Anfragen gehen nur an den von Ihnen konfigurierten Modell-Endpunkt. Vor der ersten externen Anfrage je Fall bittet Epikrise um Bestätigung von Anbieter und Endpunkt.
+Fallinhalte werden im Arbeitsspeicher gehalten und nicht als Verlauf gespeichert. OCR kann temporäre Bilddateien schreiben; sie werden vor dem Entfernen überschrieben, Kopien des Betriebssystems lassen sich aber nicht ausschließen. Die App hat kein Backend, keine Telemetrie und kein Konto. Anfragen gehen nur an den von Ihnen konfigurierten Modell-Endpunkt. Vor der ersten externen Anfrage je Fall bittet Epikrise um Bestätigung von Anbieter und Endpunkt.
 
 Unterstützte Anbieter: OpenAI, Anthropic, Gemini, Ollama, OpenAI-kompatible Endpunkte, OpenRouter, xAI und Groq. Ein Ollama-Endpunkt ist nur lokal, wenn er lokal konfiguriert ist. API-Schlüssel werden im Schlüsselbund des Betriebssystems gespeichert.
 
@@ -91,7 +91,7 @@ Unterstützte Anbieter: OpenAI, Anthropic, Gemini, Ollama, OpenAI-kompatible End
 10. Eingaben, Ergebnis und Steuerung in einem Arbeitsbereich
 11. Vorschau des Ergebnisses als Klartext oder formatiert
 12. Ergebnis erst nach ärztlicher Bestätigung formatiert kopieren
-13. Fallinhalte nur im Arbeitsspeicher, nicht als Verlauf gespeichert
+13. Fallinhalte im Arbeitsspeicher, nicht als Verlauf gespeichert
 14. API-Schlüssel im Schlüsselbund des Betriebssystems
 15. Externe Anfragen je Fall, Anbieter und Endpunkt bestätigt
 16. Oberfläche auf Deutsch und Englisch
