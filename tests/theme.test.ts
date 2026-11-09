@@ -17,7 +17,13 @@ function installBrowserStubs(stored: string | null = null) {
     addEventListener: (_: string, l: Listener) => listeners.add(l),
     removeEventListener: (_: string, l: Listener) => listeners.delete(l),
   };
-  const documentStub = { documentElement: { dataset: {} as Record<string, string> } };
+  const meta = new Map<string, string>();
+  const documentStub = {
+    documentElement: { dataset: {} as Record<string, string> },
+    querySelector: () => ({
+      setAttribute: (name: string, value: string) => meta.set(name, value),
+    }),
+  };
 
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => storage.get(key) ?? null,
@@ -30,6 +36,7 @@ function installBrowserStubs(stored: string | null = null) {
     storage,
     listeners,
     media,
+    meta,
     root: documentStub.documentElement.dataset,
   };
 }
@@ -62,12 +69,14 @@ describe("theme preference", () => {
   });
 
   it("applies light and dark explicitly regardless of the OS scheme", () => {
-    const { media, root } = installBrowserStubs();
+    const { media, root, meta } = installBrowserStubs();
     media.matches = true;
     applyThemePreference("light");
     expect(root.theme).toBe("light");
+    expect(meta.get("content")).toBe("#f2f5f1");
     applyThemePreference("dark");
     expect(root.theme).toBe("dark");
+    expect(meta.get("content")).toBe("#151f1a");
   });
 
   it("follows the OS scheme in auto mode and reacts to changes", () => {

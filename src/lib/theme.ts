@@ -3,6 +3,7 @@ export type ThemePreference = "light" | "dark" | "auto";
 export const themePreferenceKey = "epikrise.ui-theme";
 
 const darkSchemeQuery = "(prefers-color-scheme: dark)";
+const themeColors = { light: "#f2f5f1", dark: "#151f1a" } as const;
 let stopFollowingSystem: (() => void) | null = null;
 
 function isThemePreference(value: unknown): value is ThemePreference {
@@ -44,4 +45,6 @@ export function applyThemePreference(preference: ThemePreference): void {
 
 function setResolvedTheme(theme: "light" | "dark"): void {
   document.documentElement.dataset.theme = theme;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  meta?.setAttribute("content", themeColors[theme]);
 }

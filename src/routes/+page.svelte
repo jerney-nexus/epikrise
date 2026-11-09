@@ -2209,7 +2209,6 @@
 
 <svelte:head>
   <title>{t("Epikrise | Draft workspace")}</title>
-  <meta name="theme-color" content="#f2f5f1" />
 </svelte:head>
 
 <svelte:window oncopy={preventUnreviewedOutputCopy} onkeydown={handleDialogKeydown} />
