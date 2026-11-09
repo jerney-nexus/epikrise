@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### 📚 Documentation
+
+- The privacy policy no longer says case content is held only in memory or processed only locally, and it now covers OCR temporary files and remote AI endpoints (#240)
+
 ## [2026.11.4] - 2026-11-08
 
 ### 🐛 Bug Fixes
