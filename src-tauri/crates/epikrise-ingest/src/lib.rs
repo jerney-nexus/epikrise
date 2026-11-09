@@ -154,12 +154,7 @@ pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError>
                 .get(reqwest::header::LOCATION)
                 .and_then(|value| value.to_str().ok())
                 .ok_or(IngestError::UrlRequestFailed)?;
-            current_url = validate_url(
-                current_url
-                    .join(location)
-                    .map_err(|_| IngestError::InvalidUrl)?
-                    .as_str(),
-            )?;
+            current_url = resolve_redirect(&current_url, location)?;
             continue;
         }
         if !response.status().is_success() {
@@ -176,11 +171,7 @@ pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError>
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .unwrap_or("")
-            .split(';')
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_ascii_lowercase();
+            .to_owned();
         let mut bytes = Vec::new();
         while let Some(chunk) = response
             .chunk()
@@ -193,16 +184,7 @@ pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError>
             bytes.extend_from_slice(&chunk);
         }
 
-        let text = match content_type.as_str() {
-            "text/html" | "application/xhtml+xml" => {
-                extract_readable_html(&bytes, current_url.as_str())?
-            }
-            "text/plain" => String::from_utf8(bytes).map_err(|_| IngestError::InvalidUtf8)?,
-            _ => return Err(IngestError::UnsupportedUrlContent),
-        };
-        if text.trim().is_empty() {
-            return Err(IngestError::NoHtmlText);
-        }
+        let text = extract_fetched_text(&content_type, bytes, current_url.as_str())?;
         return Ok(ExtractedBlock::new(
             uuid::Uuid::new_v4().to_string(),
             InputProvenance::Url {
@@ -212,6 +194,35 @@ pub async fn extract_url(address: String) -> Result<ExtractedBlock, IngestError>
         ));
     }
     Err(IngestError::TooManyUrlRedirects)
+}
+
+fn resolve_redirect(current_url: &url::Url, location: &str) -> Result<url::Url, IngestError> {
+    let next = current_url
+        .join(location)
+        .map_err(|_| IngestError::InvalidUrl)?;
+    validate_url(next.as_str())
+}
+
+fn extract_fetched_text(
+    content_type_header: &str,
+    bytes: Vec<u8>,
+    document_url: &str,
+) -> Result<String, IngestError> {
+    let content_type = content_type_header
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let text = match content_type.as_str() {
+        "text/html" | "application/xhtml+xml" => extract_readable_html(&bytes, document_url)?,
+        "text/plain" => String::from_utf8(bytes).map_err(|_| IngestError::InvalidUtf8)?,
+        _ => return Err(IngestError::UnsupportedUrlContent),
+    };
+    if text.trim().is_empty() {
+        return Err(IngestError::NoHtmlText);
+    }
+    Ok(text)
 }
 
 fn extract_readable_html(bytes: &[u8], document_url: &str) -> Result<String, IngestError> {
@@ -687,9 +698,10 @@ pub fn extract_raw_text(text: String) -> Result<ExtractedBlock, IngestError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        IngestError, extract_file, extract_file_with_ocr, extract_image_for_vision,
-        extract_image_with_ocr, extract_raw_text, extract_readable_html, extract_text_file,
-        extract_url, is_public_ip, pdf_page_texts_and_ocr_targets, validate_url,
+        IngestError, MAX_DOCX_DOCUMENT_XML_BYTES, MAX_IMAGE_INPUT_BYTES, extract_fetched_text,
+        extract_file, extract_file_with_ocr, extract_image_for_vision, extract_image_with_ocr,
+        extract_raw_text, extract_readable_html, extract_text_file, extract_url, is_public_ip,
+        pdf_page_texts_and_ocr_targets, resolve_redirect, validate_url,
     };
     use epikrise_core::{ExtractionMethod, InputProvenance};
     use std::{
@@ -1263,5 +1275,246 @@ mod tests {
             .as_bytes(),
         );
         pdf
+    }
+
+    #[test]
+    fn rejects_oversized_images_before_decoding() {
+        assert_eq!(
+            extract_image_for_vision("huge.png".to_owned(), &vec![0u8; MAX_IMAGE_INPUT_BYTES + 1])
+                .err(),
+            Some(IngestError::ImageTooLarge)
+        );
+    }
+
+    #[test]
+    fn reports_unsupported_binary_formats_and_treats_plain_bytes_as_text() {
+        assert_eq!(
+            extract_file(
+                "animation.gif".to_owned(),
+                b"GIF89a\x01\x00\x01\x00".to_vec()
+            )
+            .err(),
+            Some(IngestError::UnsupportedBinary {
+                mime: "image/gif".to_owned()
+            })
+        );
+        let plain = extract_file("note.txt".to_owned(), b"plain note".to_vec())
+            .expect("plain bytes should extract as text");
+        assert_eq!(plain.content, "plain note");
+    }
+
+    #[test]
+    fn ocr_entry_point_delegates_non_pdf_input_to_plain_extraction() {
+        let block =
+            extract_file_with_ocr("note.txt".to_owned(), b"no ocr needed".to_vec(), |_, _| {
+                panic!("OCR must not run for non-PDF input")
+            })
+            .expect("text input should extract without OCR");
+
+        assert_eq!(block.content, "no ocr needed");
+        assert_eq!(block.extraction_method, ExtractionMethod::Parsed);
+        let pdf =
+            text_pdf("Discharge summary with enough parsed clinical text to skip OCR entirely.");
+
+        let block = extract_file_with_ocr("summary.pdf".to_owned(), pdf, |_, _| {
+            panic!("OCR must not run when every page has parsed text")
+        })
+        .expect("parsed PDF should extract");
+
+        assert_eq!(block.extraction_method, ExtractionMethod::Parsed);
+        assert!(block.content.contains("Discharge summary"));
+    }
+
+    #[test]
+    fn sparse_pdf_pages_are_merged_with_ocr_text() {
+        let pdf = text_pdf("Hi");
+
+        let block = extract_file_with_ocr("scan.pdf".to_owned(), pdf, |_, pages| {
+            assert_eq!(pages, &[1]);
+            Ok(vec!["Scanned clinical line".to_owned()])
+        })
+        .expect("OCR text should be merged");
+
+        assert_eq!(block.extraction_method, ExtractionMethod::Ocr);
+        assert!(block.content.contains("Hi"));
+        assert!(block.content.contains("Scanned clinical line"));
+    }
+
+    #[test]
+    fn rejects_ocr_results_that_do_not_match_requested_pages() {
+        assert_eq!(
+            extract_file_with_ocr("scan.pdf".to_owned(), text_pdf("Hi"), |_, _| Ok(Vec::new()))
+                .err(),
+            Some(IngestError::PdfOcrFailed)
+        );
+        assert_eq!(
+            extract_file_with_ocr("scan.pdf".to_owned(), text_pdf("Hi"), |_, _| {
+                Ok(vec!["   \n".to_owned()])
+            })
+            .err(),
+            Some(IngestError::PdfOcrFailed)
+        );
+    }
+
+    #[test]
+    fn ocr_targets_include_only_sparse_pages() {
+        let (pages, targets) = pdf_page_texts_and_ocr_targets(&text_pdf_pages(&[
+            "Long parsed page with more than forty visible characters for OCR skipping.",
+            "Hi",
+        ]))
+        .expect("two-page PDF should parse");
+
+        assert_eq!(pages.len(), 2);
+        assert_eq!(targets, vec![2]);
+    }
+
+    #[test]
+    fn xlsx_skips_blank_rows_and_trailing_empty_cells() {
+        let rows = concat!(
+            "<row r=\"1\">",
+            "<c r=\"A1\" t=\"inlineStr\"><is><t>Hi</t></is></c>",
+            "<c r=\"B1\" t=\"inlineStr\"><is><t>x</t></is></c>",
+            "<c r=\"C1\"/>",
+            "</row>",
+            "<row r=\"2\"/>",
+            "<row r=\"3\"><c r=\"A3\"/></row>",
+            "<row r=\"4\"><c r=\"A4\" t=\"inlineStr\"><is><t>Bye</t></is></c></row>",
+        );
+
+        let block = extract_file("sparse.xlsx".to_owned(), xlsx_file(&[("Data", rows)]))
+            .expect("sparse workbook should extract");
+
+        assert_eq!(block.content, "[Sheet: Data]\nHi\tx\nBye\n");
+    }
+
+    #[test]
+    fn xlsx_with_only_blank_cells_has_no_text() {
+        assert_eq!(
+            extract_file(
+                "blank.xlsx".to_owned(),
+                xlsx_file(&[("Blank", "<row r=\"1\"><c r=\"A1\"/></row>")])
+            )
+            .err(),
+            Some(IngestError::NoXlsxText)
+        );
+    }
+
+    #[test]
+    fn docx_rejects_oversized_document_xml() {
+        let oversized = "a".repeat(MAX_DOCX_DOCUMENT_XML_BYTES as usize + 1);
+
+        assert_eq!(
+            extract_file("large.docx".to_owned(), docx_file(&oversized)).err(),
+            Some(IngestError::DocxDocumentTooLarge)
+        );
+    }
+
+    #[test]
+    fn docx_without_text_runs_has_no_text() {
+        assert_eq!(
+            extract_file(
+                "empty.docx".to_owned(),
+                docx_file("<w:document><w:body><w:p/></w:body></w:document>")
+            )
+            .err(),
+            Some(IngestError::NoTextExtracted)
+        );
+    }
+
+    #[test]
+    fn docx_maps_breaks_tabs_and_entities_to_plain_text() {
+        let block = extract_file(
+            "entities.docx".to_owned(),
+            docx_file(concat!(
+                "<w:document><w:body>",
+                "<w:p><w:r><w:t>Line</w:t><w:br/><w:t>Next</w:t></w:r></w:p>",
+                "<w:p><w:r><w:t>A</w:t><w:tab/><w:t>B</w:t><w:cr/></w:r></w:p>",
+                "<w:p><w:r><w:t>&lt;a&gt; &quot;b&quot; &apos;c&apos; &amp; &#x41;&#66;</w:t></w:r></w:p>",
+                "</w:body></w:document>",
+            )),
+        )
+        .expect("DOCX text should extract");
+
+        assert_eq!(block.content, "Line\nNext\nA\tB\n<a> \"b\" 'c' & AB\n");
+    }
+
+    #[test]
+    fn docx_rejects_unknown_xml_entities() {
+        assert_eq!(
+            extract_file(
+                "bogus.docx".to_owned(),
+                docx_file("<w:document><w:body><w:p><w:r><w:t>&bogus;</w:t></w:r></w:p></w:body></w:document>")
+            )
+            .err(),
+            Some(IngestError::InvalidDocxXml)
+        );
+    }
+
+    #[test]
+    fn text_input_strips_byte_order_mark_and_rejects_blank_content() {
+        let block = extract_text_file(
+            "bom.txt".to_owned(),
+            "\u{feff}Plain note".as_bytes().to_vec(),
+        )
+        .expect("BOM-prefixed text should extract");
+        assert_eq!(block.content, "Plain note");
+
+        assert_eq!(
+            extract_text_file("blank.txt".to_owned(), "\u{feff}   \n".as_bytes().to_vec()).err(),
+            Some(IngestError::EmptyInput)
+        );
+    }
+
+    #[test]
+    fn redirects_resolve_relative_locations_and_reject_unsafe_schemes() {
+        let current = url::Url::parse("https://example.org/a/start").expect("valid URL");
+
+        assert_eq!(
+            resolve_redirect(&current, "/next?x=1")
+                .expect("root-relative redirect should resolve")
+                .as_str(),
+            "https://example.org/next?x=1"
+        );
+        assert_eq!(
+            resolve_redirect(&current, "../b")
+                .expect("relative redirect should resolve")
+                .as_str(),
+            "https://example.org/b"
+        );
+        assert_eq!(
+            resolve_redirect(&current, "ftp://example.org/file").err(),
+            Some(IngestError::InvalidUrl)
+        );
+    }
+
+    #[test]
+    fn fetched_text_is_selected_by_media_type_and_validated() {
+        let html = b"<html><head><title>Note</title></head><body><article><p>The fetched article body describes a stable clinical course with enough words to be retained by readability extraction.</p></article></body></html>".to_vec();
+        let text = extract_fetched_text("Text/HTML; charset=utf-8", html, "https://example.org/n")
+            .expect("HTML with parameters should be extracted");
+        assert!(text.contains("stable clinical course"));
+
+        assert_eq!(
+            extract_fetched_text(
+                "text/plain",
+                b"  plain body ".to_vec(),
+                "https://example.org/p"
+            )
+            .expect("plain text should be returned as-is"),
+            "  plain body "
+        );
+        assert_eq!(
+            extract_fetched_text("text/plain", vec![0xff, 0xfe], "https://example.org/p").err(),
+            Some(IngestError::InvalidUtf8)
+        );
+        assert_eq!(
+            extract_fetched_text("application/pdf", b"%PDF".to_vec(), "https://example.org/p")
+                .err(),
+            Some(IngestError::UnsupportedUrlContent)
+        );
+        assert_eq!(
+            extract_fetched_text("text/plain", b" \n\t".to_vec(), "https://example.org/p").err(),
+            Some(IngestError::NoHtmlText)
+        );
     }
 }

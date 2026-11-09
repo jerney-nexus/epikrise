@@ -592,13 +592,16 @@ pub async fn install_update(
 
 #[cfg(test)]
 mod tests {
+    use super::{
+        StoredSettings, UpdateInstallGate, UpdaterError, UpdaterState, authorize, persist_settings,
+    };
     #[cfg(feature = "direct-release-updater")]
     use super::{
         UpdateCandidate, UpdateService, approved_https_url, approved_redirect_chain,
         check_with_service, install_with_service, release_version_from_protocol,
         validate_candidate,
     };
-    use super::{UpdateInstallGate, UpdaterError, authorize};
+    use crate::policy::{EgressPolicy, LoadedPolicy, PolicyState};
     #[cfg(feature = "direct-release-updater")]
     use std::{
         collections::VecDeque,
@@ -607,6 +610,7 @@ mod tests {
             atomic::{AtomicBool, AtomicUsize, Ordering},
         },
     };
+    use std::{fs, path::PathBuf};
     #[cfg(feature = "direct-release-updater")]
     use url::Url;
 
@@ -754,6 +758,52 @@ mod tests {
     #[test]
     fn update_actions_require_a_available_opted_in_policy_state() {
         assert_eq!(authorize(true, true, true), Ok(()));
+    }
+
+    #[test]
+    fn authorize_current_combines_stored_opt_in_and_policy_flags() {
+        for enabled in [false, true] {
+            for policy_allowed in [false, true] {
+                let updater = UpdaterState::default();
+                updater.settings.lock().expect("settings lock").enabled = enabled;
+                let policy = EgressPolicy {
+                    allow_updater: policy_allowed,
+                    ..EgressPolicy::default()
+                };
+                let policy = PolicyState(LoadedPolicy::from_policy(policy, true, false));
+                assert_eq!(
+                    super::authorize_current(&updater, &policy),
+                    authorize(
+                        cfg!(feature = "direct-release-updater"),
+                        enabled,
+                        policy_allowed
+                    )
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn poisoned_settings_lock_reports_settings_failure() {
+        let updater = UpdaterState::default();
+        std::thread::scope(|scope| {
+            let _ = scope
+                .spawn(|| {
+                    let _guard = updater.settings.lock().expect("settings lock");
+                    panic!("poison the settings lock");
+                })
+                .join();
+        });
+        let policy = PolicyState(LoadedPolicy::from_policy(
+            EgressPolicy::default(),
+            false,
+            false,
+        ));
+        assert_eq!(
+            super::authorize_current(&updater, &policy),
+            Err(UpdaterError::SettingsFailed)
+        );
+        assert!(matches!(updater.lock(), Err(UpdaterError::SettingsFailed)));
     }
 
     #[test]
@@ -1007,5 +1057,206 @@ mod tests {
         );
         assert!(candidate_slot.lock().expect("candidate lock").is_none());
         assert_eq!(payload_service.install_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn settings_persist_as_json_and_replace_previous_contents() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let path = directory.path().join("updater.json");
+
+        persist_settings(&path, &StoredSettings { enabled: true })
+            .expect("enabled settings should persist");
+        let stored: StoredSettings =
+            serde_json::from_str(&fs::read_to_string(&path).expect("settings should exist"))
+                .expect("settings should be valid JSON");
+        assert!(stored.enabled);
+
+        persist_settings(&path, &StoredSettings { enabled: false })
+            .expect("disabled settings should replace the previous file");
+        let stored: StoredSettings =
+            serde_json::from_str(&fs::read_to_string(&path).expect("settings should exist"))
+                .expect("settings should be valid JSON");
+        assert!(!stored.enabled);
+    }
+
+    #[test]
+    fn settings_persistence_rejects_paths_without_a_parent_directory() {
+        assert_eq!(
+            persist_settings(&PathBuf::from("/"), &StoredSettings::default()),
+            Err(UpdaterError::SettingsFailed)
+        );
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[test]
+    fn release_versions_reject_malformed_or_out_of_range_segments() {
+        for version in [
+            "2026.9",
+            "2026.9.4.1",
+            "2026.9.x",
+            "2026.09.4",
+            "+2026.9.4",
+            "1999.1.0",
+            "2026.0.4",
+            "2026.1.65536",
+        ] {
+            assert!(
+                release_version_from_protocol(version).is_err(),
+                "{version} should be rejected"
+            );
+        }
+        assert_eq!(
+            release_version_from_protocol("2026.9.65535")
+                .expect("maximum patch should be accepted"),
+            "2026.9.65535"
+        );
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[test]
+    fn approved_urls_reject_credentials_and_non_default_ports() {
+        assert!(approved_https_url(
+            &Url::parse("https://github.com:443/asset").expect("URL")
+        ));
+        assert!(!approved_https_url(
+            &Url::parse("https://github.com:8443/asset").expect("URL")
+        ));
+        assert!(!approved_https_url(
+            &Url::parse("https://user@github.com/asset").expect("URL")
+        ));
+        assert!(!approved_https_url(
+            &Url::parse("https://user:secret@github.com/asset").expect("URL")
+        ));
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[test]
+    fn candidate_validation_rejects_unapproved_urls_and_invalid_versions() {
+        let candidate_version = newer_candidate_version();
+        let approved = Url::parse("https://github.com/owner/repo/app.AppImage").expect("URL");
+        let unapproved = Url::parse("https://attacker.invalid/app.AppImage").expect("URL");
+
+        assert!(
+            validate_candidate(
+                &candidate_version,
+                "linux-x86_64",
+                &unapproved,
+                "linux-x86_64"
+            )
+            .is_err()
+        );
+        assert!(
+            validate_candidate("not-a-version", "linux-x86_64", &approved, "linux-x86_64").is_err()
+        );
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
+    async fn discovery_with_an_invalid_description_does_not_cache_the_candidate() {
+        let mut candidate = valid_fake_candidate();
+        candidate.signature.clear();
+        let candidate_slot = Mutex::new(None);
+        let service = FakeUpdateService::new(vec![Ok(Some(candidate))], Ok(()));
+
+        assert!(matches!(
+            check_with_service(&candidate_slot, &service, || Ok(())).await,
+            Err(UpdaterError::UpdateFailed)
+        ));
+        assert!(candidate_slot.lock().expect("candidate lock").is_none());
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
+    async fn policy_revoked_during_discovery_does_not_cache_the_candidate() {
+        let calls = std::cell::Cell::new(0);
+        let candidate_slot = Mutex::new(None);
+        let service = FakeUpdateService::new(vec![Ok(Some(valid_fake_candidate()))], Ok(()));
+
+        assert!(matches!(
+            check_with_service(&candidate_slot, &service, || {
+                calls.set(calls.get() + 1);
+                if calls.get() == 1 {
+                    Ok(())
+                } else {
+                    Err(UpdaterError::PolicyDenied)
+                }
+            })
+            .await,
+            Err(UpdaterError::PolicyDenied)
+        ));
+        assert!(candidate_slot.lock().expect("candidate lock").is_none());
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
+    async fn install_without_a_discovered_candidate_fails_before_downloading() {
+        let candidate_slot: Mutex<Option<FakeCandidate>> = Mutex::new(None);
+        let service = FakeUpdateService::new(Vec::new(), Ok(()));
+        let mut progress = |_: u64, _: Option<u64>| {};
+
+        assert_eq!(
+            install_with_service(
+                &candidate_slot,
+                &service,
+                &UpdateInstallGate::default(),
+                true,
+                || Ok(()),
+                || Ok(false),
+                &mut progress,
+            )
+            .await,
+            Err(UpdaterError::UpdateFailed)
+        );
+        assert_eq!(service.install_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
+    async fn install_authorization_failure_clears_the_candidate() {
+        let candidate_slot = Mutex::new(Some(valid_fake_candidate()));
+        let service = FakeUpdateService::new(Vec::new(), Ok(()));
+        let mut progress = |_, _| {};
+
+        assert_eq!(
+            install_with_service(
+                &candidate_slot,
+                &service,
+                &UpdateInstallGate::default(),
+                true,
+                || Err(UpdaterError::PolicyDenied),
+                || Ok(false),
+                &mut progress,
+            )
+            .await,
+            Err(UpdaterError::PolicyDenied)
+        );
+        assert!(candidate_slot.lock().expect("candidate lock").is_none());
+        assert_eq!(service.install_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[cfg(feature = "direct-release-updater")]
+    #[tokio::test]
+    async fn install_rejects_candidates_that_fail_description_and_clears_them() {
+        let mut candidate = valid_fake_candidate();
+        candidate.signature.clear();
+        let candidate_slot = Mutex::new(Some(candidate));
+        let service = FakeUpdateService::new(Vec::new(), Ok(()));
+        let mut progress = |_, _| {};
+
+        assert_eq!(
+            install_with_service(
+                &candidate_slot,
+                &service,
+                &UpdateInstallGate::default(),
+                true,
+                || Ok(()),
+                || Ok(false),
+                &mut progress,
+            )
+            .await,
+            Err(UpdaterError::UpdateFailed)
+        );
+        assert!(candidate_slot.lock().expect("candidate lock").is_none());
+        assert_eq!(service.install_calls.load(Ordering::Relaxed), 0);
     }
 }

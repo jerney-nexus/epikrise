@@ -160,7 +160,11 @@ impl LoadedPolicy {
         Ok(Self::from_policy(policy, true, permissions_warning))
     }
 
-    fn from_policy(policy: EgressPolicy, active: bool, permissions_warning: bool) -> Self {
+    pub(crate) fn from_policy(
+        policy: EgressPolicy,
+        active: bool,
+        permissions_warning: bool,
+    ) -> Self {
         let status = PolicyStatus {
             active,
             local_only: policy.local_only,
@@ -624,6 +628,132 @@ mod tests {
                 .expect("test policy should be written");
             assert!(LoadedPolicy::load_from(&path).is_err());
         }
+    }
+
+    #[test]
+    fn missing_policy_file_yields_inactive_defaults() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let policy = LoadedPolicy::load_from(&directory.path().join("missing.toml"))
+            .expect("missing policy should load as defaults");
+        assert!(!policy.status.active);
+        assert!(!policy.status.permissions_warning);
+        assert!(policy.status.allow_template_creation);
+    }
+
+    #[test]
+    fn policy_path_must_be_a_regular_file() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        assert!(matches!(
+            LoadedPolicy::load_from(directory.path()),
+            Err(PolicyLoadError::UnsafeFile)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn policy_path_beneath_a_regular_file_fails_inspection() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let file = directory.path().join("file.toml");
+        fs::write(&file, "local_only = true\n").expect("test policy should be written");
+        assert!(matches!(
+            LoadedPolicy::load_from(&file.join("child.toml")),
+            Err(PolicyLoadError::InspectFailed(_))
+        ));
+    }
+
+    #[test]
+    fn reasoning_effort_is_clamped_to_policy_ceiling() {
+        use epikrise_llm::ReasoningEffort;
+
+        let policy = LoadedPolicy::from_policy(
+            super::EgressPolicy {
+                max_reasoning_effort: Some(ReasoningEffort::Medium),
+                ..Default::default()
+            },
+            true,
+            false,
+        );
+        for (requested, expected) in [
+            (ReasoningEffort::None, ReasoningEffort::None),
+            (ReasoningEffort::Minimal, ReasoningEffort::Minimal),
+            (ReasoningEffort::Low, ReasoningEffort::Low),
+            (ReasoningEffort::Medium, ReasoningEffort::Medium),
+            (ReasoningEffort::High, ReasoningEffort::Medium),
+            (ReasoningEffort::XHigh, ReasoningEffort::Medium),
+            (ReasoningEffort::Max, ReasoningEffort::Medium),
+        ] {
+            let mut allowed = profile(ProviderAdapter::Ollama, None);
+            allowed.generation.reasoning_effort = Some(requested);
+            policy.apply_generation_limits(&mut allowed);
+            assert_eq!(allowed.generation.reasoning_effort, Some(expected));
+        }
+    }
+
+    #[test]
+    fn egress_key_distinguishes_every_provider_adapter() {
+        use super::egress_key;
+
+        let expected = [
+            (ProviderAdapter::OpenAi, "open_ai"),
+            (ProviderAdapter::Anthropic, "anthropic"),
+            (ProviderAdapter::Gemini, "gemini"),
+            (ProviderAdapter::Ollama, "ollama"),
+            (ProviderAdapter::OpenAiCompatible, "open_ai_compatible"),
+            (ProviderAdapter::OpenRouter, "open_router"),
+            (ProviderAdapter::Xai, "xai"),
+            (ProviderAdapter::Groq, "groq"),
+        ];
+        for (adapter, name) in expected {
+            assert_eq!(
+                egress_key("case", &profile(adapter, Some("https://host.example"))),
+                format!("case:{name}:https://host.example")
+            );
+        }
+        assert_eq!(
+            egress_key("case", &profile(ProviderAdapter::Groq, None)),
+            "case:groq:"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_policy_path_is_under_etc() {
+        assert_eq!(
+            super::policy_path(),
+            Some(std::path::PathBuf::from("/etc/epikrise/policy.toml"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn administrator_control_check_rejects_missing_parent_and_empty_path() {
+        use super::administrator_controls_file;
+
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let file = directory.path().join("policy.toml");
+        fs::write(&file, "local_only = true\n").expect("test policy should be written");
+        let metadata = fs::symlink_metadata(&file).expect("test policy metadata should load");
+
+        assert!(!administrator_controls_file(Path::new(""), &metadata));
+        assert!(!administrator_controls_file(
+            &directory.path().join("missing").join("policy.toml"),
+            &metadata,
+        ));
+    }
+
+    #[test]
+    fn local_endpoint_detection_rejects_hostless_and_missing_endpoints() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let policy = load_policy(directory.path(), "local_only = true\n");
+        assert!(!policy.allows_provider(&profile(ProviderAdapter::OpenAiCompatible, None)));
+        assert!(!policy.allows_provider(&profile(
+            ProviderAdapter::OpenAiCompatible,
+            Some("mailto:clinic@example.invalid"),
+        )));
+        assert!(policy.allows_provider(&profile(
+            ProviderAdapter::OpenAiCompatible,
+            Some("http://LOCALHOST:8080/v1"),
+        )));
     }
 
     #[test]

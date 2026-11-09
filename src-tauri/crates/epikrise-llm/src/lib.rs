@@ -655,8 +655,8 @@ mod tests {
         AuthSource, ChatMessage, GenaiLlmClient, GenerationParams, KeyringCredentialStore,
         LlmClient, LlmError, MessageRole, ModelCapabilities, ProviderAdapter, ProviderProfile,
         ReasoningEffort, credential_account_id, credential_entry, credential_store_error,
-        genai_adapter, map_http_status, parse_credential_account, prepare_request,
-        should_fallback_to_completion, validate_endpoint,
+        genai_adapter, map_genai_error, map_http_status, map_webc_error, parse_credential_account,
+        prepare_request, should_fallback_to_completion, validate_endpoint,
     };
     use std::sync::Arc;
 
@@ -1192,6 +1192,183 @@ mod tests {
         );
     }
 
+    #[test]
+    fn adapter_keys_round_trip_through_provider_account_ids() {
+        use super::{adapter_key, parse_adapter_key};
+
+        let adapters = [
+            ProviderAdapter::OpenAi,
+            ProviderAdapter::Anthropic,
+            ProviderAdapter::Gemini,
+            ProviderAdapter::Ollama,
+            ProviderAdapter::OpenAiCompatible,
+            ProviderAdapter::OpenRouter,
+            ProviderAdapter::Xai,
+            ProviderAdapter::Groq,
+        ];
+
+        for adapter in adapters {
+            let key = adapter_key(&adapter);
+            assert_eq!(parse_adapter_key(key), Some(adapter));
+        }
+        assert_eq!(parse_adapter_key("unknown"), None);
+    }
+
+    #[test]
+    fn anthropic_ollama_and_compatible_profiles_map_to_their_adapters() {
+        use genai::adapter::AdapterKind;
+
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::Anthropic, "claude-sonnet-5"),
+            AdapterKind::Anthropic
+        );
+        assert_eq!(
+            genai_adapter(&ProviderAdapter::Ollama, "llama3.2"),
+            AdapterKind::Ollama
+        );
+    }
+
+    #[test]
+    fn http_status_codes_map_to_user_facing_errors() {
+        assert_eq!(map_http_status(401), LlmError::Authentication);
+        assert_eq!(map_http_status(403), LlmError::Authentication);
+        assert_eq!(map_http_status(429), LlmError::Quota);
+        assert_eq!(
+            map_http_status(404),
+            LlmError::ProviderRejected { status: 404 }
+        );
+        assert_eq!(map_http_status(500), LlmError::Network);
+        assert_eq!(map_http_status(503), LlmError::Network);
+    }
+
+    #[test]
+    fn prepare_request_rejects_invalid_generation_profiles() {
+        struct NoCredentials;
+
+        impl super::CredentialStore for NoCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
+        let messages = [ChatMessage {
+            role: MessageRole::User,
+            content: "Summarize.".to_owned(),
+            images: Vec::new(),
+        }];
+        let valid_profile = |model: &str| ProviderProfile {
+            id: "invalid-test".to_owned(),
+            display_name: "Invalid test".to_owned(),
+            adapter: ProviderAdapter::OpenAi,
+            model: model.to_owned(),
+            endpoint: None,
+            auth: AuthSource::None,
+            capabilities: ModelCapabilities {
+                vision: false,
+                streaming: true,
+                max_context: None,
+            },
+            generation: GenerationParams {
+                temperature: None,
+                max_tokens: None,
+                reasoning_effort: None,
+            },
+        };
+
+        assert!(matches!(
+            prepare_request(&credentials, &valid_profile("   "), &messages),
+            Err(LlmError::InvalidProfile)
+        ));
+
+        let mut nan_temperature = valid_profile("gpt-4o");
+        nan_temperature.generation.temperature = Some(f32::NAN);
+        assert!(matches!(
+            prepare_request(&credentials, &nan_temperature, &messages),
+            Err(LlmError::InvalidProfile)
+        ));
+
+        let mut zero_tokens = valid_profile("gpt-4o");
+        zero_tokens.generation.max_tokens = Some(0);
+        assert!(matches!(
+            prepare_request(&credentials, &zero_tokens, &messages),
+            Err(LlmError::InvalidProfile)
+        ));
+
+        let system_only = [ChatMessage {
+            role: MessageRole::System,
+            content: "Be brief.".to_owned(),
+            images: Vec::new(),
+        }];
+        assert!(matches!(
+            prepare_request(&credentials, &valid_profile("gpt-4o"), &system_only),
+            Err(LlmError::InvalidRequest)
+        ));
+    }
+
+    #[test]
+    fn every_reasoning_effort_maps_to_a_genai_option() {
+        struct NoCredentials;
+
+        impl super::CredentialStore for NoCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let credentials: Arc<dyn super::CredentialStore> = Arc::new(NoCredentials);
+        let messages = [ChatMessage {
+            role: MessageRole::User,
+            content: "Think carefully.".to_owned(),
+            images: Vec::new(),
+        }];
+        let cases = [
+            (
+                ReasoningEffort::Minimal,
+                genai::chat::ReasoningEffort::Minimal,
+            ),
+            (ReasoningEffort::Low, genai::chat::ReasoningEffort::Low),
+            (
+                ReasoningEffort::Medium,
+                genai::chat::ReasoningEffort::Medium,
+            ),
+            (ReasoningEffort::High, genai::chat::ReasoningEffort::High),
+            (ReasoningEffort::XHigh, genai::chat::ReasoningEffort::XHigh),
+            (ReasoningEffort::Max, genai::chat::ReasoningEffort::Max),
+        ];
+
+        for (effort, expected) in cases {
+            let profile = ProviderProfile {
+                id: "effort-test".to_owned(),
+                display_name: "Effort test".to_owned(),
+                adapter: ProviderAdapter::OpenAi,
+                model: "o3-mini".to_owned(),
+                endpoint: None,
+                auth: AuthSource::None,
+                capabilities: ModelCapabilities {
+                    vision: false,
+                    streaming: true,
+                    max_context: None,
+                },
+                generation: GenerationParams {
+                    temperature: None,
+                    max_tokens: None,
+                    reasoning_effort: Some(effort),
+                },
+            };
+            let (_, _, _, options) = prepare_request(&credentials, &profile, &messages)
+                .expect("provider request should be prepared");
+            let actual = options
+                .reasoning_effort
+                .expect("reasoning effort should be mapped");
+            assert_eq!(
+                std::mem::discriminant(&actual),
+                std::mem::discriminant(&expected),
+                "unexpected reasoning mapping for {effort:?}"
+            );
+        }
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     #[ignore = "requires an unlocked desktop Secret Service"]
@@ -1544,6 +1721,213 @@ mod tests {
                 .stream(&profile, &messages, cancellation, &mut on_delta)
                 .await,
             Err(LlmError::Cancelled)
+        );
+    }
+
+    fn profile_for_listing(auth: AuthSource, endpoint: Option<&str>) -> ProviderProfile {
+        ProviderProfile {
+            id: "list-test".to_owned(),
+            display_name: "List test".to_owned(),
+            adapter: ProviderAdapter::OpenAi,
+            model: "gpt-4o".to_owned(),
+            endpoint: endpoint.map(str::to_owned),
+            auth,
+            capabilities: ModelCapabilities {
+                vision: false,
+                streaming: false,
+                max_context: None,
+            },
+            generation: GenerationParams {
+                temperature: None,
+                max_tokens: None,
+                reasoning_effort: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn list_models_requires_stored_credential_before_network() {
+        struct MissingCredential;
+
+        impl super::CredentialStore for MissingCredential {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let client = GenaiLlmClient::new(Arc::new(MissingCredential));
+        let profile = profile_for_listing(
+            AuthSource::Keychain {
+                credential_id: "missing".to_owned(),
+            },
+            None,
+        );
+
+        assert_eq!(
+            client.list_models(&profile).await,
+            Err(LlmError::Authentication)
+        );
+    }
+
+    #[tokio::test]
+    async fn list_models_rejects_invalid_endpoint_before_network() {
+        struct NoCredentials;
+
+        impl super::CredentialStore for NoCredentials {
+            fn get(&self, _credential_id: &str) -> Result<Option<String>, LlmError> {
+                Ok(None)
+            }
+        }
+
+        let client = GenaiLlmClient::new(std::sync::Arc::new(NoCredentials));
+        let profile = profile_for_listing(AuthSource::None, Some("file:///etc/passwd"));
+
+        assert_eq!(
+            client.list_models(&profile).await,
+            Err(LlmError::InvalidProfile)
+        );
+    }
+
+    #[test]
+    fn genai_auth_and_resolver_errors_map_to_authentication() {
+        use genai::ModelIden;
+        use genai::adapter::AdapterKind;
+
+        let model_iden = || ModelIden::new(AdapterKind::OpenAI, "gpt-4o");
+
+        for error in [
+            genai::Error::RequiresApiKey {
+                model_iden: model_iden(),
+            },
+            genai::Error::NoAuthData {
+                model_iden: model_iden(),
+            },
+            genai::Error::NoAuthResolver {
+                model_iden: model_iden(),
+            },
+            genai::Error::Resolver {
+                model_iden: model_iden(),
+                resolver_error: genai::resolver::Error::Custom("bad".to_owned()),
+            },
+        ] {
+            assert_eq!(map_genai_error(error), LlmError::Authentication);
+        }
+    }
+
+    #[test]
+    fn genai_model_and_stream_errors_map_to_model_failures() {
+        use genai::ModelIden;
+        use genai::adapter::AdapterKind;
+
+        let model_iden = || ModelIden::new(AdapterKind::OpenAI, "gpt-4o");
+        let serde_error = serde_json::from_str::<u8>("x").unwrap_err();
+
+        for error in [
+            genai::Error::NoChatResponse {
+                model_iden: model_iden(),
+            },
+            genai::Error::ChatResponse {
+                model_iden: model_iden(),
+                body: serde_json::json!({}),
+            },
+            genai::Error::ChatResponseGeneration {
+                model_iden: model_iden(),
+                request_payload: Box::new(serde_json::json!({})),
+                response_body: Box::new(serde_json::json!({})),
+                cause: "bad".to_owned(),
+            },
+            genai::Error::StreamParse {
+                model_iden: model_iden(),
+                serde_error,
+            },
+        ] {
+            assert_eq!(map_genai_error(error), LlmError::Model);
+        }
+    }
+
+    #[test]
+    fn genai_http_and_web_call_errors_keep_their_status_category() {
+        use genai::ModelIden;
+        use genai::adapter::AdapterKind;
+        use genai::webc;
+
+        let model_iden = || ModelIden::new(AdapterKind::OpenAI, "gpt-4o");
+        let http_error = |status: reqwest::StatusCode| genai::Error::HttpError {
+            status,
+            canonical_reason: String::new(),
+            body: String::new(),
+            headers: Box::new(reqwest::header::HeaderMap::new()),
+        };
+
+        assert_eq!(
+            map_genai_error(http_error(reqwest::StatusCode::UNAUTHORIZED)),
+            LlmError::Authentication
+        );
+        assert_eq!(
+            map_genai_error(http_error(reqwest::StatusCode::TOO_MANY_REQUESTS)),
+            LlmError::Quota
+        );
+        assert_eq!(
+            map_genai_error(http_error(reqwest::StatusCode::NOT_FOUND)),
+            LlmError::ProviderRejected { status: 404 }
+        );
+        assert_eq!(
+            map_genai_error(genai::Error::WebModelCall {
+                model_iden: model_iden(),
+                webc_error: webc::Error::ResponseFailedStatus {
+                    status: reqwest::StatusCode::FORBIDDEN,
+                    body: String::new(),
+                    headers: Box::new(reqwest::header::HeaderMap::new()),
+                },
+            }),
+            LlmError::Authentication
+        );
+        assert_eq!(
+            map_genai_error(genai::Error::WebAdapterCall {
+                adapter_kind: AdapterKind::OpenAI,
+                webc_error: webc::Error::ResponseFailedNotJson {
+                    content_type: "text/html".to_owned(),
+                    body: String::new(),
+                },
+            }),
+            LlmError::Model
+        );
+        assert_eq!(
+            map_genai_error(genai::Error::WebStream {
+                model_iden: model_iden(),
+                cause: "dropped".to_owned(),
+                error: "dropped".into(),
+            }),
+            LlmError::Network
+        );
+    }
+
+    #[test]
+    fn webc_errors_map_to_model_or_status_categories() {
+        use genai::webc;
+
+        assert_eq!(
+            map_webc_error(webc::Error::ResponseFailedInvalidJson {
+                body: "{".to_owned(),
+                cause: "eof".to_owned(),
+            }),
+            LlmError::Model
+        );
+        assert_eq!(
+            map_webc_error(webc::Error::ResponseFailedStatus {
+                status: reqwest::StatusCode::TOO_MANY_REQUESTS,
+                body: String::new(),
+                headers: Box::new(reqwest::header::HeaderMap::new()),
+            }),
+            LlmError::Quota
+        );
+        assert_eq!(
+            map_webc_error(webc::Error::ResponseFailedStatus {
+                status: reqwest::StatusCode::BAD_GATEWAY,
+                body: String::new(),
+                headers: Box::new(reqwest::header::HeaderMap::new()),
+            }),
+            LlmError::Network
         );
     }
 
