@@ -1,0 +1,109 @@
+# Store listing: Epikrise (English and German)
+
+Draft for Partner Center. Source facts: README.md ("What it does", "Privacy posture"), LICENSE, src-tauri/msix/AppxManifest.xml.
+
+## English (en-US)
+
+### Short title
+
+Epikrise
+
+### Short description
+
+Turns clinical material you have anonymized into a structured draft for clinician review. Runs locally; model requests go only to the provider you choose, after you confirm.
+
+### Description
+
+Epikrise is a drafting aid for clinicians. Paste text or images, import documents, or provide a web address. Epikrise extracts the material and combines it with a template you choose to produce a structured draft, such as a discharge summary, for your review.
+
+Epikrise does not anonymize input. Remove identifying details before use.
+
+Generated text is a draft. A responsible clinician must review and edit it before use. Epikrise is not a medical device and not a diagnostic tool. It does not connect to a hospital information system; you copy the approved text and paste it into the target system yourself.
+
+Case content is held in memory only and is not saved as history. The app has no hosted backend, no telemetry, and no account. Requests go only to the model endpoint you configure. Before the first remote request in each case, Epikrise asks you to confirm the provider and endpoint.
+
+Supported providers: OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI, and Groq. Ollama is local only when its configured endpoint is local. API keys are stored in the operating system keychain.
+
+### Features
+
+1. Paste text or images, import PDF, DOCX, XLSX, RTF and HTML files, or fetch a web page
+2. Extract text from images and scanned PDF pages with local OCR, or with vision analysis where the model supports it
+3. Create structured drafts from your own templates
+4. Live template preview with MiniJinja rendering
+5. Template-defined output checks shown as warnings, with regeneration after corrections
+6. Add findings in several rounds and integrate them cumulatively
+7. Stream drafts and cancel generation at any time
+8. Supports OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI and Groq
+9. Discover models and check provider connections
+10. Inputs, output and controls in one workspace
+11. Plain and formatted output preview
+12. Copy output as formatted text only after clinician acknowledgment
+13. Case content kept in memory only, not saved as history
+14. API keys stored in the operating system keychain
+15. Remote requests confirmed per case, provider and endpoint
+16. Interface in German and English
+
+### Keywords
+
+Epikrise; discharge summary; clinical documentation; clinical notes; medical letters; drafting aid; templates
+
+### Copyright
+
+© 2026 Pascal Jerney
+
+### Licensing terms
+
+MIT License. Copyright (c) 2026 Pascal Jerney. Full text: https://github.com/jerney-nexus/epikrise/blob/main/LICENSE
+
+## Deutsch (de-CH)
+
+### Kurztitel
+
+Epikrise
+
+### Kurzbeschreibung
+
+Erstellt aus von Ihnen anonymisierten klinischen Unterlagen einen strukturierten Entwurf zur ärztlichen Prüfung. Läuft lokal; Modellanfragen gehen nur nach Ihrer Bestätigung an den gewählten Anbieter.
+
+### Beschreibung
+
+Epikrise ist eine Entwurfshilfe für medizinisches Personal. Fügen Sie Text oder Bilder ein, importieren Sie Dokumente oder geben Sie eine Webadresse an. Epikrise extrahiert das Material und erstellt mit einer von Ihnen gewählten Vorlage einen strukturierten Entwurf, zum Beispiel einen Entlassungsbericht, zur Prüfung.
+
+Epikrise anonymisiert die Eingaben nicht. Entfernen Sie identifizierende Angaben vor der Verwendung.
+
+Erzeugter Text ist ein Entwurf. Eine verantwortliche Ärztin oder ein verantwortlicher Arzt muss ihn vor der Verwendung prüfen und bearbeiten. Epikrise ist kein Medizinprodukt und kein Diagnoseinstrument. Die App ist nicht mit einem Krankenhausinformationssystem verbunden; den freigegebenen Text kopieren Sie selbst in das Zielsystem.
+
+Fallinhalte werden nur im Arbeitsspeicher gehalten und nicht als Verlauf gespeichert. Die App hat kein Backend, keine Telemetrie und kein Konto. Anfragen gehen nur an den von Ihnen konfigurierten Modell-Endpunkt. Vor der ersten externen Anfrage je Fall bittet Epikrise um Bestätigung von Anbieter und Endpunkt.
+
+Unterstützte Anbieter: OpenAI, Anthropic, Gemini, Ollama, OpenAI-kompatible Endpunkte, OpenRouter, xAI und Groq. Ein Ollama-Endpunkt ist nur lokal, wenn er lokal konfiguriert ist. API-Schlüssel werden im Schlüsselbund des Betriebssystems gespeichert.
+
+### Funktionen
+
+1. Text oder Bilder einfügen, Dateien (PDF, DOCX, XLSX, RTF, HTML) importieren oder Webseiten abrufen
+2. Text aus Bildern und gescannten PDF-Seiten lokal per OCR erkennen oder per Bildanalyse, sofern das Modell sie unterstützt
+3. Strukturierte Entwürfe aus Ihren eigenen Vorlagen erstellen
+4. Live-Vorschau der Vorlage mit MiniJinja
+5. Vorlagenprüfungen als Warnungen, mit erneuter Erstellung nach Korrekturen
+6. Befunde in mehreren Runden hinzufügen und kumulativ integrieren
+7. Entwürfe streamen und die Erstellung jederzeit abbrechen
+8. Unterstützt OpenAI, Anthropic, Gemini, Ollama, OpenAI-kompatible Endpunkte, OpenRouter, xAI und Groq
+9. Modelle ermitteln und Anbieterverbindungen prüfen
+10. Eingaben, Ergebnis und Steuerung in einem Arbeitsbereich
+11. Vorschau des Ergebnisses als Klartext oder formatiert
+12. Ergebnis erst nach ärztlicher Bestätigung formatiert kopieren
+13. Fallinhalte nur im Arbeitsspeicher, nicht als Verlauf gespeichert
+14. API-Schlüssel im Schlüsselbund des Betriebssystems
+15. Externe Anfragen je Fall, Anbieter und Endpunkt bestätigt
+16. Oberfläche auf Deutsch und Englisch
+
+### Schlüsselwörter
+
+Epikrise; Entlassungsbericht; Klinische Dokumentation; Klinische Notizen; Arztbrief; Entwurfshilfe; Vorlagen
+
+### Copyright
+
+© 2026 Pascal Jerney
+
+### Lizenzbedingungen
+
+MIT-Lizenz. Copyright (c) 2026 Pascal Jerney. Volltext: https://github.com/jerney-nexus/epikrise/blob/main/LICENSE
