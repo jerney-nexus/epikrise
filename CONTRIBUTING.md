@@ -259,17 +259,17 @@ Build artifacts are unsigned and macOS packages are not notarized. Expect SmartS
 
 ### Building the Store `.msixbundle`
 
-Partner Center accepts one `.msixbundle` that contains the x64 and ARM64 Store packages. Build it manually on Windows after both architecture-specific MSIX artifacts from the same Desktop builds run are downloaded and verified. Use a Windows 10/11 machine with the Windows SDK installed, and run the commands in a Developer PowerShell (or call `makeappx.exe` by its full path).
+Partner Center accepts one `.msixbundle` that contains the x64 and ARM64 Store packages. Build it manually on Windows after both architecture-specific MSIX packages for the same release are downloaded and verified. Use a Windows 10/11 machine with the Windows SDK installed, and run the commands in a Developer PowerShell (or call `makeappx.exe` by its full path).
 
-1. Download the `epikrise-store-msix-x64` and `epikrise-store-msix-arm64` artifacts for the same commit and version, and check each package against its SHA-256 manifest.
+1. Download the `Epikrise_<version>_x64.msix` and `Epikrise_<version>_arm64.msix` files, with their `.msix.manifest.json` files, from the GitHub Release for the tagged version. The Store submission workflow attaches them after a successful tagged signed release. Check each package against its manifest. The `epikrise-store-msix-x64` and `epikrise-store-msix-arm64` artifacts from the same Desktop builds run contain the same files if the release is not yet published.
 2. Create an empty folder, for example `C:\StoreBundle`, and copy only the two `Epikrise_<version>_<arch>.msix` files into it. `makeappx` bundles only packages that share the same identity and version, so the folder must not contain anything else.
-3. Run `makeappx` from the SDK, replacing the folder and output paths:
+3. Run `makeappx` from the SDK, replacing the folder and output paths. `<version>` is the four-part version shared by both packages (`year.month.patch.0`). Pass it with `/bv`; without it, MakeAppx stamps the bundle with the current date-time instead.
 
    ```powershell
-   makeappx.exe bundle /d C:\StoreBundle /p C:\StoreBundle\Epikrise_<version>.msixbundle
+   makeappx.exe bundle /d C:\StoreBundle /p C:\StoreBundle\Epikrise_<version>.msixbundle /bv <version>
    ```
 
-   If `makeappx.exe` is not on `PATH`, use the full SDK path, for example `"C:\Program Files (x86)\Windows Kits\10\bin\<sdk-version>\x64\makeappx.exe"`. The script `scripts/package-store-msix.ps1` searches the same SDK location and prefers the newest version.
+   If `makeappx.exe` is not on `PATH`, call it by its full SDK path with PowerShell's call operator, for example `& "C:\Program Files (x86)\Windows Kits\10\bin\<sdk-version>\x64\makeappx.exe" bundle /d C:\StoreBundle /p C:\StoreBundle\Epikrise_<version>.msixbundle /bv <version>`. The script `scripts/package-store-msix.ps1` searches the same SDK location and prefers the newest version.
 
 4. Confirm the output file exists. The bundle is unsigned. Microsoft signs submitted Store packages, as described above.
 
