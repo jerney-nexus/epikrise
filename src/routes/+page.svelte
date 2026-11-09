@@ -237,17 +237,19 @@
     void syncNativeMenu(locale, nativeMenuListenerReady);
   }
 
-  function syncWindowTheme(preference: ThemePreference) {
+  async function syncWindowTheme(preference: ThemePreference) {
     // The native title bar and menu are cosmetic; the webview theme still applies if this fails.
-    void getCurrentWindow()
-      .setTheme(preference === "auto" ? null : preference)
-      .catch(() => {});
+    try {
+      await getCurrentWindow().setTheme(preference === "auto" ? null : preference);
+    } catch {
+      // Ignored: getCurrentWindow can throw synchronously when the Tauri window metadata is unavailable.
+    }
   }
 
   function changeThemePreference(preference: ThemePreference) {
     setThemePreference(preference);
     themePreference = preference;
-    if (desktopAvailable) syncWindowTheme(preference);
+    if (desktopAvailable) void syncWindowTheme(preference);
   }
 
   let nativeMenuListenerReady = false;
@@ -1740,7 +1742,7 @@
     applyThemePreference(themePreference);
     desktopAvailable = isTauri();
     if (!desktopAvailable) return;
-    syncWindowTheme(themePreference);
+    void syncWindowTheme(themePreference);
     void commands.getPolicyStatus().then((status) => {
       if (status.status === "ok") applyPolicyStatus(status.data);
     });
