@@ -275,8 +275,6 @@ Partner Center accepts one `.msixbundle` that contains the x64 and ARM64 Store p
 
 Keep the bundle and its inputs out of the repository and out of any clinical environment. Upload the bundle to Partner Center manually.
 
-> **Verified:** the steps above were run end-to-end on Windows, and the resulting `.msixbundle` was accepted by Partner Center and is under certification. Confirm the exact options used if a future run differs.
-
 ## Project layout
 
 ```
