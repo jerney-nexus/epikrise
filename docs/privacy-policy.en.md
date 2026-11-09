@@ -21,7 +21,7 @@ Epikrise does not operate its own backend. There are no user accounts, no teleme
 
 ## 3. Processing on your device
 
-The app processes the content you enter or import (texts, documents, images, PDF files, tables, and web page content) locally. Cases and generated outputs are held only in memory. When you discard a case or close the app, the internal case state is cleared. Not covered by this are form values, such as template field entries, and text you copied to the clipboard yourself; these remain until you change them or the clipboard is overwritten. No history is stored.
+The app processes the content you enter or import (texts, documents, images, PDF files, tables, and web page content) on your device. The only exception is sending case content to a remote AI endpoint, which happens only after you confirm it (see section 5). Cases and generated outputs are held in memory; temporary files for text recognition are covered in the next paragraph. When you discard a case or close the app, the internal case state is cleared. Not covered by this are form values, such as template field entries, and text you copied to the clipboard yourself; these remain until you change them or the clipboard is overwritten. No history is stored.
 
 For text recognition (OCR), temporary image files may be created in private temporary directories. These are overwritten before deletion. However, the operating system and runtime environment may keep copies, so secure forensic deletion cannot be guaranteed.
 

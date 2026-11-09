@@ -21,7 +21,7 @@ Epikrise betreibt kein eigenes Backend. Es gibt keine Benutzerkonten, keine Tele
 
 ## 3. Verarbeitung auf Ihrem Gerät
 
-Eingegebene und importierte Inhalte (Texte, Dokumente, Bilder, PDF-Dateien, Tabellen und Webseiten-Inhalte) verarbeitet die App lokal. Fälle und erzeugte Ausgaben werden nur im Arbeitsspeicher gehalten. Beim Verwerfen des Falls oder Beenden der App wird der interne Fallzustand gelöscht. Nicht davon erfasst sind Formularwerte wie eingegebene Vorlagenfelder sowie Texte, die Sie selbst in die Zwischenablage kopiert haben; diese bleiben erhalten, bis Sie sie ändern bzw. die Zwischenablage überschrieben wird. Eine Verlaufsspeicherung erfolgt nicht.
+Eingegebene und importierte Inhalte (Texte, Dokumente, Bilder, PDF-Dateien, Tabellen und Webseiten-Inhalte) verarbeitet die App auf Ihrem Gerät. Ausnahme ist die Übermittlung von Fallinhalten an einen entfernten KI-Endpunkt, die nur nach Ihrer Bestätigung erfolgt (siehe Abschnitt 5). Fälle und erzeugte Ausgaben werden im Arbeitsspeicher gehalten; zu temporären Dateien für die Texterkennung siehe den folgenden Absatz. Beim Verwerfen des Falls oder Beenden der App wird der interne Fallzustand gelöscht. Nicht davon erfasst sind Formularwerte wie eingegebene Vorlagenfelder sowie Texte, die Sie selbst in die Zwischenablage kopiert haben; diese bleiben erhalten, bis Sie sie ändern bzw. die Zwischenablage überschrieben wird. Eine Verlaufsspeicherung erfolgt nicht.
 
 Für die Texterkennung (OCR) können temporäre Bilddateien in privaten temporären Verzeichnissen entstehen. Diese werden vor dem Löschen überschrieben. Betriebssystem und Laufzeitumgebung können jedoch Kopien speichern, eine forensisch sichere Löschung kann daher nicht garantiert werden.
 
