@@ -958,12 +958,22 @@ test("orders template settings controls with import before export", async ({
     );
   expect(controlOrder).toEqual([
     "active-template",
+    "Create template",
     "Edit template",
     "Delete active template",
-    "Create template",
     "Import template (.epitpl)",
     "Export template (.epitpl)",
   ]);
+
+  const verticalGaps = await dialog
+    .locator("#active-template, .template-settings-action")
+    .evaluateAll((controls) =>
+      controls.slice(1).map((control, index) => {
+        const previous = controls[index].getBoundingClientRect();
+        return Math.round(control.getBoundingClientRect().top - previous.bottom);
+      }),
+    );
+  expect(new Set(verticalGaps).size).toBe(1);
 });
 
 test("keeps one enabled-by-default section in the template editor", async ({

@@ -2968,6 +2968,23 @@
           </button>
         </div>
 
+        {#snippet createTemplateButton()}
+          <button
+            class="button-primary template-settings-action"
+            type="button"
+            onclick={openTemplateCreation}
+            disabled={!desktopAvailable ||
+              isGenerating ||
+              isPreparingGeneration ||
+              (policyStatus?.active && !policyStatus.allowTemplateCreation)}
+          >
+            {t("Create template")}
+            {#if policyStatus?.active && !policyStatus.allowTemplateCreation}
+              <span class="policy-badge">{t("Administrator managed")}</span>
+            {/if}
+          </button>
+        {/snippet}
+
         {#if importedTemplates.length}
           <label for="active-template">{t("Active template")}</label>
           <select
@@ -2980,6 +2997,7 @@
               <option value={template.metadata.id}>{template.metadata.name}</option>
             {/each}
           </select>
+          {@render createTemplateButton()}
           <button
             class="button-secondary template-settings-action"
             type="button"
@@ -3011,6 +3029,7 @@
           </button>
         {:else}
           <p class="template-empty">{t("No templates imported")}</p>
+          {@render createTemplateButton()}
           <button
             class="button-secondary template-settings-action"
             type="button"
@@ -3053,21 +3072,6 @@
             </div>
           </div>
         {/if}
-
-        <button
-          class="button-primary template-settings-action"
-          type="button"
-          onclick={openTemplateCreation}
-          disabled={!desktopAvailable ||
-            isGenerating ||
-            isPreparingGeneration ||
-            (policyStatus?.active && !policyStatus.allowTemplateCreation)}
-        >
-          {t("Create template")}
-          {#if policyStatus?.active && !policyStatus.allowTemplateCreation}
-            <span class="policy-badge">{t("Administrator managed")}</span>
-          {/if}
-        </button>
 
         <button
           class="button-secondary template-settings-action template-import-button"
@@ -4960,6 +4964,10 @@
 
   .model-list-message.error {
     color: #a64231;
+  }
+
+  .template-settings .button-primary.template-settings-action {
+    margin-top: 0;
   }
 
   .button-primary:hover:not(:disabled) {
