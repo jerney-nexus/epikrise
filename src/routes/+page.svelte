@@ -6057,6 +6057,23 @@
     .lint-jump {
       color: #f1c6ae;
     }
+
+    .egress-endpoint,
+    .rail-footer,
+    .output-toolbar,
+    .template-discard,
+    .template-preview dt,
+    .source-input-meta span:last-child {
+      color: #a7b7ad;
+    }
+
+    .template-discard:hover {
+      color: #e3ebe5;
+    }
+
+    textarea::placeholder {
+      color: #9aa69f;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
