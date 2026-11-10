@@ -973,7 +973,13 @@ test("orders template settings controls with import before export", async ({
         return Math.round(control.getBoundingClientRect().top - previous.bottom);
       }),
     );
-  expect(new Set(verticalGaps).size).toBe(1);
+  // The first gap runs into "Create template", which carries its own top margin.
+  expect(new Set(verticalGaps.slice(1)).size).toBe(1);
+
+  const createMarginTop = await dialog
+    .locator(".template-settings-action", { hasText: "Create template" })
+    .evaluate((control) => getComputedStyle(control).marginTop);
+  expect(createMarginTop).toBe("11px");
 });
 
 test("keeps one enabled-by-default section in the template editor", async ({

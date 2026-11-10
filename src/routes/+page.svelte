@@ -2323,7 +2323,7 @@
         </select>
         <div class="credential-actions">
           <button
-            class="button-primary"
+            class="button-primary primary-spaced"
             type="button"
             onclick={openAddCredential}
             disabled={!desktopAvailable ||
@@ -2383,7 +2383,7 @@
         {/if}
 
         <button
-          class="button-primary"
+          class="button-primary primary-spaced"
           type="button"
           onclick={testProvider}
           disabled={connectionState === "checking"}
@@ -2486,7 +2486,7 @@
             {:else}
               <p>{t("Update checks contact GitHub Releases only when requested.")}</p>
               <button
-                class="button-primary"
+                class="button-primary primary-spaced"
                 type="button"
                 disabled={!updateSettings.enabled || updateBusy}
                 onclick={checkForUpdate}
@@ -2517,7 +2517,7 @@
                   <p>{updateCandidate.notes}</p>
                 {/if}
                 <button
-                  class="button-primary"
+                  class="button-primary primary-spaced"
                   type="button"
                   disabled={updateBusy ||
                     Boolean(caseSessionId) ||
@@ -2564,14 +2564,14 @@
         <p>{t("Epikrise will close while the update is installed.")}</p>
         <div class="settings-actions">
           <button
-            class="button-primary"
+            class="button-primary primary-spaced"
             type="button"
             onclick={() => updateConfirmationDialog?.close()}
           >
             {t("Cancel")}
           </button>
           <button
-            class="button-primary"
+            class="button-primary primary-spaced"
             type="button"
             disabled={updateBusy || Boolean(caseSessionId) || Boolean(activeRequestId)}
             onclick={installConfirmedUpdate}
@@ -2641,7 +2641,7 @@
           </p>
         {/if}
         <button
-          class="button-primary"
+          class="button-primary primary-spaced"
           type="submit"
           disabled={credentialBusy ||
             (policyStatus?.active && !policyStatus.allowCredentialManagement)}
@@ -2970,7 +2970,7 @@
 
         {#snippet createTemplateButton()}
           <button
-            class="button-primary template-settings-action"
+            class="button-primary template-settings-action primary-spaced"
             type="button"
             onclick={openTemplateCreation}
             disabled={!desktopAvailable ||
@@ -3239,7 +3239,7 @@
             </details>
             <div class="template-preview-actions">
               <button
-                class="button-primary"
+                class="button-primary primary-spaced"
                 onclick={savePendingTemplate}
                 disabled={templateBusy ||
                   (policyStatus?.active &&
@@ -3588,7 +3588,7 @@
             {t("Cancel")}
           </button>
           <button
-            class="button-primary"
+            class="button-primary primary-spaced"
             type="submit"
             disabled={templateSaveBusy ||
               (policyStatus?.active &&
@@ -3659,7 +3659,7 @@
           {t("Cancel")}
         </button>
         <button
-          class="button-primary"
+          class="button-primary primary-spaced"
           type="button"
           onclick={confirmProviderEgress}
           disabled={egressConfirmationBusy}
@@ -3680,7 +3680,7 @@
         </p>
 
         <div class="onboarding-actions">
-          <button class="button-primary" onclick={openTemplateSettings}>
+          <button class="button-primary primary-spaced" onclick={openTemplateSettings}>
             {t("Open template settings")}
           </button>
         </div>
@@ -3821,7 +3821,7 @@
               </button>
             {:else}
               <button
-                class="button-primary generate-button"
+                class="button-primary generate-button primary-spaced"
                 type="button"
                 onclick={() => generateDraft()}
                 disabled={(!prompt.trim() && sourceBlocks.length === 0) ||
@@ -3951,7 +3951,7 @@
                 <span>{t("I have reviewed the output and take responsibility.")}</span>
               </label>
               <button
-                class="button-primary review-copy-button"
+                class="button-primary review-copy-button primary-spaced"
                 onclick={copyReviewedOutput}
                 disabled={!canCopyOutput}
               >
@@ -4918,10 +4918,13 @@
   }
 
   .button-primary {
-    margin-top: 11px;
     color: white;
     background: #236e5d;
     font-weight: 650;
+  }
+
+  .primary-spaced {
+    margin-top: 11px;
   }
 
   .button-secondary,
@@ -4964,10 +4967,6 @@
 
   .model-list-message.error {
     color: #a64231;
-  }
-
-  .template-settings .button-primary.template-settings-action {
-    margin-top: 0;
   }
 
   .button-primary:hover:not(:disabled) {
