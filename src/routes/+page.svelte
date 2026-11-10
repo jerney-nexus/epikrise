@@ -6071,6 +6071,15 @@
       color: #e3ebe5;
     }
 
+    .template-editor-actions .template-discard {
+      border-color: #45584c;
+      background: #1d2c23;
+    }
+
+    .template-editor-actions .template-discard:hover:not(:disabled) {
+      background: #18251d;
+    }
+
     textarea::placeholder {
       color: #9aa69f;
     }
