@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Secondary and hint text in the light theme has higher contrast, so placeholders, hints, and helper labels meet WCAG 2.1 AA (#200)
 - Connection and Generate buttons no longer lift on hover, so all buttons share the same colour-only hover behaviour; button styles are consolidated into primary, secondary, and alert variants with one shared size (#260)
+- Dropdown text is legible on Linux with the dark theme: dropdowns use the themed dark background and light text instead of native light controls, and field labels have higher contrast (#262)
 
 ### 📚 Documentation
 

@@ -5716,7 +5716,15 @@
     }
   }
 
+  /* Keeps native form controls and option popups in the app's theme on
+     WebKitGTK instead of the operating system's color scheme. */
+  :global(:root[data-theme="light"]) {
+    color-scheme: light;
+  }
+
   :global(:root[data-theme="dark"]) {
+    color-scheme: dark;
+
     :global(body) {
       color: #e3ebe5;
       background: #151f1a;
@@ -5790,6 +5798,27 @@
     textarea:focus {
       border-color: #75b29b;
       outline-color: rgba(117, 178, 155, 0.22);
+    }
+
+    /* WebKitGTK ignores background colors on native selects, so the
+       control is drawn by the platform; appearance: none makes the
+       themed background and text apply, with a chevron replacing the
+       native arrow. */
+    select {
+      appearance: none;
+      padding-right: 32px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a7b7ad' stroke-width='1.5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+
+    option {
+      color: #e3ebe5;
+      background: #18251d;
+    }
+
+    label {
+      color: #a7b7ad;
     }
 
     .draft-output {
