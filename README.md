@@ -208,7 +208,7 @@ Reasoning effort can be left at the provider default or set to none, minimal, lo
 
 ## Interface language
 
-The interface defaults to German (Switzerland) and also supports English. On first launch, Epikrise uses the operating-system language when it is supported; otherwise it uses the default. Choose a language in General settings to save an override on this device. Template names, field labels and clinical content continue to use the locale defined by each template.
+The interface defaults to German (Switzerland) and also supports English. On first launch, Epikrise uses the operating-system language when it is supported; otherwise it uses the default. Choose a language in General settings to save an override on this device. In General settings, the Theme option chooses Light, Dark, or Auto; Auto, the default, follows the operating-system appearance. The choice applies immediately and is saved on this device. Template names, field labels and clinical content continue to use the locale defined by each template.
 
 Interface messages live in `locales/<locale>/app.ftl`. Keep message IDs aligned between shipped catalogs and run `pnpm test:i18n` after editing them. During development, the settings dialog also offers a temporary pseudo-localized preview to expose untranslated or layout-sensitive text.
 
