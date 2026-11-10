@@ -4174,7 +4174,7 @@
     white-space: normal;
   }
 
-  .credential-remove-button:hover:not(:disabled) {
+  .button-alert.credential-remove-button:hover:not(:disabled) {
     color: #fff;
     background: #a94435;
   }
@@ -5918,6 +5918,11 @@
 
     .button-alert:hover:not(:disabled) {
       background: #4a2f27;
+    }
+
+    .button-alert.credential-remove-button:hover:not(:disabled) {
+      color: #fff;
+      background: #a94435;
     }
 
     .lint-warnings {
