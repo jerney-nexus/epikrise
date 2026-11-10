@@ -5800,7 +5800,7 @@
     textarea {
       border-color: #45584c;
       color: #e3ebe5;
-      background: #18251d;
+      background-color: #18251d;
     }
 
     input:focus,
