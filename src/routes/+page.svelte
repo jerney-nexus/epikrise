@@ -2366,7 +2366,7 @@
                 {credentialBusy ? t("Removing...") : t("Confirm removal")}
               </button>
               <button
-                class="button-alert credential-cancel-button"
+                class="button-secondary credential-cancel-button"
                 type="button"
                 onclick={() => (credentialRemovalPending = false)}
                 disabled={credentialBusy}
@@ -3062,7 +3062,7 @@
                 {templateBusy ? t("Deleting...") : t("Confirm deletion")}
               </button>
               <button
-                class="button-alert credential-cancel-button"
+                class="button-secondary credential-cancel-button"
                 type="button"
                 onclick={() => (templateDeletionPending = false)}
                 disabled={templateBusy}
