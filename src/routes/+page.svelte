@@ -4061,7 +4061,7 @@
   }
 
   .provider-summary dt {
-    color: #65766e;
+    color: #617169;
     font-size: 10px;
   }
 
@@ -4094,7 +4094,7 @@
 
   .egress-endpoint {
     overflow-wrap: anywhere;
-    color: #65766e;
+    color: #617169;
   }
 
   .egress-state {
@@ -4322,7 +4322,7 @@
 
   .dialog-heading p:not(.eyebrow) {
     margin: 7px 0 0;
-    color: #65766e;
+    color: #617169;
     font-size: 12px;
   }
 
@@ -4448,7 +4448,7 @@
 
   .setting-hint {
     margin: -4px 0 0;
-    color: #75847c;
+    color: #64716a;
     font-size: 10px;
   }
 
@@ -4466,7 +4466,7 @@
 
   .template-empty {
     margin: 0;
-    color: #829088;
+    color: #647169;
     font-size: 12px;
   }
 
@@ -4632,7 +4632,7 @@
   }
 
   .template-preview dt {
-    color: #819087;
+    color: #647169;
     font-size: 10px;
   }
 
@@ -4686,7 +4686,7 @@
   .template-discard {
     min-height: 30px;
     border: 0;
-    color: #65766e;
+    color: #617169;
     background: transparent;
     cursor: pointer;
     font-size: 11px;
@@ -4898,7 +4898,7 @@
   }
 
   .preview-heading span {
-    color: #718078;
+    color: #64716a;
     font-size: 10px;
     text-align: right;
   }
@@ -5084,7 +5084,7 @@
     gap: 9px;
     margin-top: auto;
     padding-top: 20px;
-    color: #65766e;
+    color: #617169;
     font-size: 12px;
   }
 
@@ -5224,7 +5224,7 @@
   .field-count,
   .generation-status {
     padding-top: 3px;
-    color: #74837b;
+    color: #64716a;
     font-size: 11px;
     white-space: nowrap;
   }
@@ -5240,7 +5240,7 @@
     justify-content: space-between;
     gap: 10px;
     margin: -3px 0 11px;
-    color: #74837b;
+    color: #64716a;
     font-size: 11px;
   }
 
@@ -5386,7 +5386,7 @@
 
   .source-input-meta span:last-child {
     flex: 0 0 auto;
-    color: #819087;
+    color: #647169;
   }
 
   .source-input-details {
@@ -5394,7 +5394,7 @@
     grid-column: 1 / -1;
     flex-wrap: wrap;
     gap: 5px 10px;
-    color: #718078;
+    color: #64716a;
     font-size: 10px;
   }
 
@@ -5421,7 +5421,7 @@
   }
 
   .source-input-item summary {
-    color: #64766d;
+    color: #607269;
     cursor: pointer;
     font-size: 10px;
   }
@@ -5446,7 +5446,7 @@
   }
 
   textarea::placeholder {
-    color: #9aa69f;
+    color: #647169;
   }
 
   .source-actions {
@@ -5460,7 +5460,7 @@
   .source-actions p {
     max-width: none;
     margin: 0;
-    color: #75847c;
+    color: #64716a;
     font-size: 11px;
   }
 
@@ -5695,7 +5695,7 @@
 
   .empty-state {
     margin: 4px 0;
-    color: #95a29b;
+    color: #64716a;
     font-family: Georgia, serif;
     font-size: 17px;
     font-style: italic;
@@ -5716,7 +5716,7 @@
     gap: 14px;
     margin-top: auto;
     padding: 26px 0 16px;
-    color: #77857e;
+    color: #64706a;
     font-size: 11px;
   }
 
@@ -6056,6 +6056,32 @@
 
     .lint-jump {
       color: #f1c6ae;
+    }
+
+    .egress-endpoint,
+    .rail-footer,
+    .output-toolbar,
+    .template-discard,
+    .template-preview dt,
+    .source-input-meta span:last-child {
+      color: #a7b7ad;
+    }
+
+    .template-discard:hover {
+      color: #e3ebe5;
+    }
+
+    .template-editor-actions .template-discard {
+      border-color: #45584c;
+      background: #1d2c23;
+    }
+
+    .template-editor-actions .template-discard:hover:not(:disabled) {
+      background: #18251d;
+    }
+
+    textarea::placeholder {
+      color: #9aa69f;
     }
   }
 
