@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### 🚀 Features
 
 - General settings has a Theme option to choose Light, Dark, or Auto (follow the operating system); the choice applies immediately and is saved on this device
+- The template editor's Move up, Move down, and Delete buttons show a hover state (#256)
 
 ### 🐛 Bug Fixes
 
