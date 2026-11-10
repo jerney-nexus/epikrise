@@ -952,7 +952,7 @@ test("orders template settings controls with import before export", async ({
   const dialog = page.getByRole("dialog", { name: "Template settings" });
 
   const controlOrder = await dialog
-    .locator("#active-template, .template-export-button, .template-import-button")
+    .locator("#active-template, .template-settings-action")
     .evaluateAll((controls) =>
       controls.map((control) => control.id || control.textContent?.trim()),
     );
