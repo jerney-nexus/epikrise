@@ -333,6 +333,7 @@ fn administrator_controls_file(path: &Path, metadata: &fs::Metadata) -> bool {
 
 #[cfg(windows)]
 fn administrator_controls_file(path: &Path, _metadata: &fs::Metadata) -> bool {
+    use std::os::windows::process::CommandExt;
     use std::process::Command;
 
     let Some(system_root) = std::env::var_os("SystemRoot") else {
@@ -367,6 +368,8 @@ Write-Output 'safe'
 "#;
     // Paths travel via environment variables: with -Command, PowerShell folds
     // trailing arguments into the script text, where a bare path would run.
+    // Without CREATE_NO_WINDOW, the GUI app shows a flashing PowerShell console.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let output = Command::new(powershell)
         .args([
             "-NoLogo",
@@ -377,6 +380,7 @@ Write-Output 'safe'
         ])
         .env("EPIKRISE_POLICY_PATH", path)
         .env("EPIKRISE_POLICY_DIR", parent)
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
     output.is_ok_and(|output| output.status.success() && output.stdout.starts_with(b"safe"))
 }
