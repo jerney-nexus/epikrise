@@ -1,5 +1,8 @@
 name: Release PR macOS updater bundle gate
 
+# pull_request_target is kept deliberately: the gate must read smoke results for the
+# PR head from a trusted workflow definition, and a fork PR must not be able to edit
+# this job. Never check out or execute PR head code in this workflow.
 on:
   pull_request_target:
     branches: [main]
@@ -24,6 +27,18 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
+
+      - name: Confirm checkout is the PR base, not PR head
+        if: ${{ startsWith(github.head_ref, 'release/') }}
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          actual="$(git rev-parse HEAD)"
+          if [ "$actual" != "$EXPECTED_SHA" ] || [ "$actual" = "$HEAD_SHA" ]; then
+            echo "::error::Checked out $actual; expected base $EXPECTED_SHA and never PR head $HEAD_SHA." >&2
+            exit 1
+          fi
 
       - name: Wait for macOS updater bundle smoke
         if: ${{ startsWith(github.head_ref, 'release/') }}
