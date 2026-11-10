@@ -1033,7 +1033,11 @@ test("styles settings actions consistently in light and dark themes", async ({
         buttons.map((button) => {
           const style = getComputedStyle(button);
           const bounds = button.getBoundingClientRect();
+          const variant = ["primary", "secondary", "alert"].find((name) =>
+            button.classList.contains(`button-${name}`),
+          );
           return {
+            variant,
             width: bounds.width,
             height: bounds.height,
             color: style.color,
@@ -1045,9 +1049,13 @@ test("styles settings actions consistently in light and dark themes", async ({
     expect(templateActions).toHaveLength(5);
     expect(new Set(templateActions.map(({ width }) => width)).size).toBe(1);
     expect(new Set(templateActions.map(({ height }) => height)).size).toBe(1);
-    expect(new Set(templateActions.map(({ color }) => color)).size).toBe(1);
-    expect(new Set(templateActions.map(({ background }) => background)).size).toBe(1);
-    expect(new Set(templateActions.map(({ border }) => border)).size).toBe(1);
+    expect(templateActions.map(({ variant }) => variant).sort()).toEqual([
+      "alert",
+      "primary",
+      "secondary",
+      "secondary",
+      "secondary",
+    ]);
 
     const templateWidth = await templateDialog.evaluate(
       (dialog) => dialog.getBoundingClientRect().width,
@@ -1065,10 +1073,13 @@ test("styles settings actions consistently in light and dark themes", async ({
           border: style.borderTopColor,
         };
       });
+    const secondaryAction = templateActions.find(
+      ({ variant }) => variant === "secondary",
+    );
     expect(refreshStyle).toEqual({
-      color: templateActions[0].color,
-      background: templateActions[0].background,
-      border: templateActions[0].border,
+      color: secondaryAction?.color,
+      background: secondaryAction?.background,
+      border: secondaryAction?.border,
     });
     await expect
       .poll(() =>

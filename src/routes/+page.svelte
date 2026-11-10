@@ -2995,7 +2995,7 @@
             {/if}
           </button>
           <button
-            class="button-secondary template-settings-action"
+            class="button-alert template-settings-action"
             type="button"
             onclick={() => (templateDeletionPending = true)}
             disabled={!activeTemplate ||
@@ -3055,7 +3055,7 @@
         {/if}
 
         <button
-          class="button-secondary template-settings-action"
+          class="button-primary template-settings-action"
           type="button"
           onclick={openTemplateCreation}
           disabled={!desktopAvailable ||
