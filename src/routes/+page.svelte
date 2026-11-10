@@ -4942,6 +4942,7 @@
     border-color: #e4b6a8;
     color: #9a4938;
     background: #fff8f5;
+    transition: none;
   }
 
   .model-picker {
