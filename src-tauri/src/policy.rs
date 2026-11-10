@@ -347,14 +347,12 @@ fn administrator_controls_file(path: &Path, _metadata: &fs::Metadata) -> bool {
     const ACL_CHECK: &str = r#"
 $trusted = @('S-1-5-18', 'S-1-5-32-544')
 $write = [System.Security.AccessControl.FileSystemRights]::WriteData -bor
-  [System.Security.AccessControl.FileSystemRights]::AppendData -bor
-  [System.Security.AccessControl.FileSystemRights]::WriteAttributes -bor
-  [System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes -bor
-  [System.Security.AccessControl.FileSystemRights]::Delete -bor
-  [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
-  [System.Security.AccessControl.FileSystemRights]::TakeOwnership -bor
-  [System.Security.AccessControl.FileSystemRights]::Modify -bor
-  [System.Security.AccessControl.FileSystemRights]::FullControl
+[System.Security.AccessControl.FileSystemRights]::AppendData -bor
+[System.Security.AccessControl.FileSystemRights]::WriteAttributes -bor
+[System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes -bor
+[System.Security.AccessControl.FileSystemRights]::Delete -bor
+[System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+[System.Security.AccessControl.FileSystemRights]::TakeOwnership
 $targets = @($env:EPIKRISE_POLICY_PATH, $env:EPIKRISE_POLICY_DIR)
 foreach ($target in $targets) {
   $acl = Get-Acl -LiteralPath $target -ErrorAction Stop
