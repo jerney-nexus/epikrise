@@ -4617,9 +4617,7 @@
   }
 
   .template-preview-actions .button-primary {
-    min-height: 35px;
     margin: 0;
-    font-size: 11px;
   }
 
   .template-editor-dialog {
@@ -5068,7 +5066,6 @@
   }
 
   .onboarding-actions .button-primary {
-    min-height: 42px;
     margin: 0;
     padding: 0 18px;
   }
