@@ -354,7 +354,8 @@ $write = [System.Security.AccessControl.FileSystemRights]::WriteData -bor
   [System.Security.AccessControl.FileSystemRights]::TakeOwnership -bor
   [System.Security.AccessControl.FileSystemRights]::Modify -bor
   [System.Security.AccessControl.FileSystemRights]::FullControl
-foreach ($target in $args) {
+$targets = @($env:EPIKRISE_POLICY_PATH, $env:EPIKRISE_POLICY_DIR)
+foreach ($target in $targets) {
   $acl = Get-Acl -LiteralPath $target -ErrorAction Stop
   if ($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -notin $trusted) { exit 1 }
   foreach ($rule in $acl.Access) {
@@ -364,6 +365,8 @@ foreach ($target in $args) {
 }
 Write-Output 'safe'
 "#;
+    // Paths travel via environment variables: with -Command, PowerShell folds
+    // trailing arguments into the script text, where a bare path would run.
     let output = Command::new(powershell)
         .args([
             "-NoLogo",
@@ -372,8 +375,8 @@ Write-Output 'safe'
             "-Command",
             ACL_CHECK,
         ])
-        .arg(path)
-        .arg(parent)
+        .env("EPIKRISE_POLICY_PATH", path)
+        .env("EPIKRISE_POLICY_DIR", parent)
         .output();
     output.is_ok_and(|output| output.status.success() && output.stdout.starts_with(b"safe"))
 }
