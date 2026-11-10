@@ -4850,6 +4850,14 @@
     background: #fff8f5;
   }
 
+  .template-section-order button:hover:not(:disabled) {
+    background: #edf3ef;
+  }
+
+  .template-section-order .template-section-delete:hover:not(:disabled) {
+    background: #fbeae4;
+  }
+
   .template-editor-body {
     display: grid;
     min-height: 0;
@@ -5952,10 +5960,18 @@
       background: #1d2c23;
     }
 
+    .template-section-order button:hover:not(:disabled) {
+      background: #26392e;
+    }
+
     .template-section-order .template-section-delete {
       border-color: #8a574b;
       color: #f2b6a8;
       background: #382922;
+    }
+
+    .template-section-order .template-section-delete:hover:not(:disabled) {
+      background: #47302a;
     }
 
     .template-preview,
