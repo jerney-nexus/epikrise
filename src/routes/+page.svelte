@@ -4914,7 +4914,9 @@
     font-family: inherit;
     font-size: 12px;
     cursor: pointer;
-    transition: background-color 160ms ease;
+    transition:
+      background-color 160ms ease,
+      color 160ms ease;
   }
 
   .button-primary {
@@ -4942,7 +4944,6 @@
     border-color: #e4b6a8;
     color: #9a4938;
     background: #fff8f5;
-    transition: none;
   }
 
   .model-picker {
