@@ -4893,6 +4893,16 @@
     padding: 0 10px;
   }
 
+  /* Native GTK selects add their own inset on Linux, so every select uses
+     the same explicit padding and chevron instead of the platform control. */
+  select {
+    appearance: none;
+    padding: 0 32px 0 14px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23495a53' stroke-width='1.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+
   input:focus,
   select:focus,
   textarea:focus {
@@ -5800,16 +5810,8 @@
       outline-color: rgba(117, 178, 155, 0.22);
     }
 
-    /* WebKitGTK ignores background colors on native selects, so the
-       control is drawn by the platform; appearance: none makes the
-       themed background and text apply, with a chevron replacing the
-       native arrow. */
     select {
-      appearance: none;
-      padding-right: 32px;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a7b7ad' stroke-width='1.5'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 12px center;
     }
 
     option {
