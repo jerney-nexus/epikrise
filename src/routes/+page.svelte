@@ -3448,7 +3448,7 @@
           <div class="template-sections-heading">
             <p class="eyebrow" id="sections-editor-title">{t("Sections editor")}</p>
             <button
-              class="button-secondary template-export-button"
+              class="button-secondary"
               type="button"
               onclick={addTemplateEditorSection}
               disabled={templateSaveBusy}
@@ -4169,19 +4169,9 @@
   .credential-actions > .credential-remove-button {
     width: 100%;
     min-width: 0;
-    min-height: 44px;
     margin-top: 0;
-    padding: 6px 8px;
-    font-size: 12px;
     line-height: 1.25;
     white-space: normal;
-  }
-
-  .credential-remove-button,
-  .credential-cancel-button {
-    min-height: 36px;
-    padding: 0 11px;
-    font-size: 12px;
   }
 
   .credential-remove-button:hover:not(:disabled) {
@@ -4469,11 +4459,6 @@
     margin-top: 12px;
   }
 
-  .template-export-button {
-    min-height: 34px;
-    font-size: 12px;
-  }
-
   .template-fields {
     display: flex;
     flex-direction: column;
@@ -4520,13 +4505,10 @@
     box-sizing: border-box;
     display: flex;
     width: 100%;
-    min-height: 44px;
     align-items: center;
     justify-content: center;
     gap: 8px;
     margin: 0;
-    padding: 8px 12px;
-    font-size: 13px;
     text-align: center;
   }
 
@@ -4637,11 +4619,6 @@
   .template-preview-actions .button-primary {
     min-height: 35px;
     margin: 0;
-    font-size: 11px;
-  }
-
-  .template-discard {
-    min-height: 30px;
     font-size: 11px;
   }
 
@@ -4891,12 +4868,6 @@
     padding: 0 14px;
   }
 
-  .template-editor-actions .template-discard {
-    min-height: 40px;
-    padding: 0 14px;
-    font-size: 12px;
-  }
-
   label {
     margin-top: 7px;
     color: #495a53;
@@ -4935,8 +4906,11 @@
     align-items: center;
     justify-content: center;
     gap: 9px;
+    padding: 0 14px;
     border: 1px solid transparent;
     border-radius: 5px;
+    font-family: inherit;
+    font-size: 12px;
     cursor: pointer;
     transition: background-color 160ms ease;
   }
@@ -4950,7 +4924,6 @@
 
   .button-secondary,
   .button-alert {
-    font: inherit;
     font-weight: 650;
   }
 
@@ -4978,9 +4951,6 @@
   }
 
   .model-refresh-button {
-    min-height: 36px;
-    padding: 0 9px;
-    font-size: 11px;
     white-space: nowrap;
   }
 
@@ -5275,9 +5245,6 @@
   }
 
   .input-tool-button {
-    min-height: 37px;
-    padding: 0 11px;
-    font-size: 11px;
     white-space: nowrap;
   }
 
@@ -5427,18 +5394,10 @@
   .generate-button {
     min-width: 145px;
     margin-top: 0;
-    padding: 0 15px;
   }
 
   .cancel-button {
     min-width: 100px;
-    padding: 0 14px;
-  }
-
-  .case-discard-button {
-    min-height: 34px;
-    padding: 0 10px;
-    font-size: 11px;
   }
 
   .draft-output {
@@ -5555,10 +5514,7 @@
   }
 
   .lint-regenerate-button {
-    min-height: 34px;
     margin-top: 9px;
-    padding: 0 10px;
-    font-size: 11px;
   }
 
   .review-controls {
@@ -5595,13 +5551,8 @@
   }
 
   .review-copy-button {
-    min-height: 42px;
     max-width: 100%;
     margin-top: 0;
-    padding: 8px 14px;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 650;
     overflow-wrap: anywhere;
   }
 
