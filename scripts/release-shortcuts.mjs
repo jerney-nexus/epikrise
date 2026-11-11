@@ -242,16 +242,37 @@ export function selectDispatchedRun(runs, { workflow, requestId }) {
  * @param {string} workflow
  * @param {{ requestId: string }} expected
  */
-async function waitForNewRun(workflow, { requestId }) {
-  const deadline = Date.now() + dispatchTimeoutMs;
+/**
+ * @param {string} workflow
+ * @param {{ requestId: string }} expected
+ * @param {{
+ *   list?: (workflow: string, branch: string) => Promise<WorkflowRun[]>,
+ *   sleep?: (ms: number) => Promise<void>,
+ *   now?: () => number,
+ *   timeoutMs?: number,
+ *   pollMs?: number,
+ * }} [deps]
+ */
+export async function waitForNewRun(
+  workflow,
+  { requestId },
+  {
+    list = listWorkflowRuns,
+    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now = Date.now,
+    timeoutMs = dispatchTimeoutMs,
+    pollMs = dispatchPollMs,
+  } = {},
+) {
+  const deadline = now() + timeoutMs;
   do {
-    const run = selectDispatchedRun(await listWorkflowRuns(workflow, "main"), {
+    const run = selectDispatchedRun(await list(workflow, "main"), {
       workflow,
       requestId,
     });
     if (run) return run;
-    await new Promise((resolve) => setTimeout(resolve, dispatchPollMs));
-  } while (Date.now() < deadline);
+    await sleep(pollMs);
+  } while (now() < deadline);
   throw new Error(
     `Dispatched ${workflow} with request ${requestId}, but no matching run was listed within 3 minutes. The run may still start, so it is not known to have failed. Look for request ${requestId} with gh run list --repo=${repository} --workflow=${workflow} --branch=main, or open https://github.com/${repository}/actions/workflows/${workflow}.`,
   );
@@ -368,7 +389,7 @@ export function assertManifestTargets(manifest, tag, assetNames) {
  * @returns {boolean}
  */
 function isAssetUnderPrefix(url, prefix) {
-  if (!url) return false;
+  if (typeof url !== "string" || url === "") return false;
   try {
     const href = new URL(url).href;
     if (!href.startsWith(prefix)) return false;

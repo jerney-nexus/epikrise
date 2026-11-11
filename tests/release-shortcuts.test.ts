@@ -7,6 +7,7 @@ import {
   delegatedInvocation,
   latestMarkerStatus,
   selectDispatchedRun,
+  waitForNewRun,
 } from "../scripts/release-shortcuts.mjs";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -84,6 +85,38 @@ describe("selectDispatchedRun", () => {
   });
 });
 
+describe("waitForNewRun", () => {
+  const workflow = "windows-release-workspace.yml";
+  const noSleep = async () => {};
+  let clock = 0;
+  const now = () => clock;
+
+  it("returns the matching run once it appears on a later poll", async () => {
+    const responses = [[], [run({ databaseId: 42 })]];
+    const list = async () => responses.shift() ?? [];
+    const found = await waitForNewRun(
+      workflow,
+      { requestId },
+      { list, sleep: noSleep, now, timeoutMs: 1000, pollMs: 1 },
+    );
+    expect(found.databaseId).toBe(42);
+  });
+
+  it("fails with a lookup hint when no run appears before the deadline", async () => {
+    clock = 0;
+    const advance = async () => {
+      clock += 1000;
+    };
+    await expect(
+      waitForNewRun(
+        workflow,
+        { requestId },
+        { list: async () => [], sleep: advance, now, timeoutMs: 2500, pollMs: 1000 },
+      ),
+    ).rejects.toThrow(`request ${requestId}`);
+  });
+});
+
 describe("release shortcuts", () => {
   it("lists each platform target when latest.json points at the tag assets", () => {
     expect(
@@ -97,6 +130,23 @@ describe("release shortcuts", () => {
         assetNames,
       ),
     ).toEqual([`  windows-x86_64: ${prefix}app.msi.zip`]);
+  });
+
+  it("rejects a URL array that the updater cannot consume", () => {
+    expect(() =>
+      assertManifestTargets(
+        {
+          platforms: {
+            "windows-x86_64": {
+              signature: "sig",
+              url: [`${prefix}app.zip`] as unknown as string,
+            },
+          },
+        },
+        tag,
+        assetNames,
+      ),
+    ).toThrow("does not target v2026.11.5");
   });
 
   it("rejects a manifest that targets another release", () => {
