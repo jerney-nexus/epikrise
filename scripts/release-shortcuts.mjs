@@ -209,8 +209,9 @@ export function selectDispatchedRun(
       run.event === "workflow_dispatch" &&
       !existingIds.has(run.databaseId) &&
       run.headSha === expectedSha &&
-      // Runs created before this dispatch started cannot be ours.
-      Date.parse(run.createdAt) >= dispatchStartedAt,
+      // Runs created before this dispatch started cannot be ours. GitHub
+      // timestamps have whole-second precision, so compare at that precision.
+      Date.parse(run.createdAt) >= Math.floor(dispatchStartedAt / 1000) * 1000,
   );
   if (created.length > 1) {
     throw new Error(
@@ -456,6 +457,9 @@ async function main() {
     return;
   }
   if (!Object.hasOwn(commands, name)) throw new Error(usage);
+  if (process.argv.length > 3) {
+    throw new Error(`${name} takes no arguments.\n${usage}`);
+  }
   const output = await commands[name]();
   if (typeof output === "string") process.stdout.write(output);
 }

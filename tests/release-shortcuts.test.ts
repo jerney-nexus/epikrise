@@ -71,6 +71,12 @@ describe("selectDispatchedRun", () => {
     expect(selectDispatchedRun(runs, selectOptions())).toBeUndefined();
   });
 
+  it("accepts a run created in the same second as a fractional dispatch start", () => {
+    const ours = run({ databaseId: 14, createdAt: "2026-11-11T09:00:00Z" });
+    const options = { ...selectOptions(), dispatchStartedAt: dispatchStartedAt + 345 };
+    expect(selectDispatchedRun([ours], options)).toBe(ours);
+  });
+
   it("accepts a run created at the exact dispatch start", () => {
     const ours = run({ databaseId: 11, createdAt: "2026-11-11T09:00:00Z" });
     expect(selectDispatchedRun([ours], selectOptions())).toBe(ours);
