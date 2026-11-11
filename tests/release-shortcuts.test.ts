@@ -5,11 +5,84 @@ import { describe, expect, it } from "vitest";
 import {
   assertManifestTargets,
   delegatedInvocation,
+  selectDispatchedRun,
 } from "../scripts/release-shortcuts.mjs";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const tag = "v2026.11.5";
 const prefix = `https://github.com/jerney-nexus/epikrise/releases/download/${tag}/`;
+
+type WorkflowRun = Parameters<typeof selectDispatchedRun>[0][number];
+
+const expectedSha = "a".repeat(40);
+const otherSha = "b".repeat(40);
+const dispatchStartedAt = Date.parse("2026-11-11T09:00:00Z");
+
+function run(overrides: Partial<WorkflowRun>): WorkflowRun {
+  return {
+    databaseId: 1,
+    status: "queued",
+    conclusion: "",
+    event: "workflow_dispatch",
+    headBranch: "main",
+    headSha: expectedSha,
+    createdAt: "2026-11-11T09:00:05Z",
+    url: "https://github.com/jerney-nexus/epikrise/actions/runs/1",
+    ...overrides,
+  };
+}
+
+function selectOptions(existingIds: Set<number> = new Set()) {
+  return {
+    workflow: "windows-release-workspace.yml",
+    existingIds,
+    expectedSha,
+    dispatchStartedAt,
+  };
+}
+
+describe("selectDispatchedRun", () => {
+  it("picks the single new dispatch run for the expected commit", () => {
+    const ours = run({ databaseId: 42 });
+    expect(selectDispatchedRun([ours], selectOptions())).toBe(ours);
+  });
+
+  it("returns undefined while no matching run has appeared", () => {
+    expect(selectDispatchedRun([], selectOptions())).toBeUndefined();
+  });
+
+  it("ignores runs that existed before the dispatch", () => {
+    const runs = [run({ databaseId: 7 })];
+    expect(selectDispatchedRun(runs, selectOptions(new Set([7])))).toBeUndefined();
+  });
+
+  it("ignores runs for a different commit than origin main", () => {
+    const runs = [run({ databaseId: 8, headSha: otherSha })];
+    expect(selectDispatchedRun(runs, selectOptions())).toBeUndefined();
+  });
+
+  it("ignores runs not started by workflow_dispatch", () => {
+    const runs = [run({ databaseId: 9, event: "push" })];
+    expect(selectDispatchedRun(runs, selectOptions())).toBeUndefined();
+  });
+
+  it("ignores runs created before the dispatch started, even if unseen", () => {
+    const runs = [run({ databaseId: 10, createdAt: "2026-11-11T08:59:59Z" })];
+    expect(selectDispatchedRun(runs, selectOptions())).toBeUndefined();
+  });
+
+  it("accepts a run created at the exact dispatch start", () => {
+    const ours = run({ databaseId: 11, createdAt: "2026-11-11T09:00:00Z" });
+    expect(selectDispatchedRun([ours], selectOptions())).toBe(ours);
+  });
+
+  it("fails when two new runs match the expected commit", () => {
+    const runs = [run({ databaseId: 12 }), run({ databaseId: 13 })];
+    expect(() => selectDispatchedRun(runs, selectOptions())).toThrow(
+      `More than one new windows-release-workspace.yml run appeared for ${expectedSha}`,
+    );
+  });
+});
 
 describe("release shortcuts", () => {
   it("lists each platform target when latest.json points at the tag assets", () => {

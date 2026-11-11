@@ -193,6 +193,34 @@ export async function runWindowsReleaseWorkspace() {
 }
 
 /**
+ * Picks the run created by our dispatch from a listing. Returns undefined when
+ * none matches yet and throws when more than one matches.
+ *
+ * @param {WorkflowRun[]} runs
+ * @param {{ workflow: string, existingIds: Set<number>, expectedSha: string, dispatchStartedAt: number }} expected
+ * @returns {WorkflowRun | undefined}
+ */
+export function selectDispatchedRun(
+  runs,
+  { workflow, existingIds, expectedSha, dispatchStartedAt },
+) {
+  const created = runs.filter(
+    (run) =>
+      run.event === "workflow_dispatch" &&
+      !existingIds.has(run.databaseId) &&
+      run.headSha === expectedSha &&
+      // Runs created before this dispatch started cannot be ours.
+      Date.parse(run.createdAt) >= dispatchStartedAt,
+  );
+  if (created.length > 1) {
+    throw new Error(
+      `More than one new ${workflow} run appeared for ${expectedSha}. Pick the right one with gh run list --repo=${repository} --workflow=${workflow}.`,
+    );
+  }
+  return created[0];
+}
+
+/**
  * @param {string} workflow
  * @param {{ existingIds: Set<number>, expectedSha: string, dispatchStartedAt: number }} expected
  */
@@ -201,21 +229,13 @@ async function waitForNewRun(
   { existingIds, expectedSha, dispatchStartedAt },
 ) {
   for (let attempt = 0; attempt < dispatchPollAttempts; attempt += 1) {
-    const runs = await listWorkflowRuns(workflow, "main");
-    const created = runs.filter(
-      (run) =>
-        run.event === "workflow_dispatch" &&
-        !existingIds.has(run.databaseId) &&
-        run.headSha === expectedSha &&
-        // Runs created before this dispatch started cannot be ours.
-        Date.parse(run.createdAt) >= dispatchStartedAt,
-    );
-    if (created.length > 1) {
-      throw new Error(
-        `More than one new ${workflow} run appeared for ${expectedSha}. Pick the right one with gh run list --repo=${repository} --workflow=${workflow}.`,
-      );
-    }
-    if (created.length === 1) return created[0];
+    const run = selectDispatchedRun(await listWorkflowRuns(workflow, "main"), {
+      workflow,
+      existingIds,
+      expectedSha,
+      dispatchStartedAt,
+    });
+    if (run) return run;
     await new Promise((resolve) => setTimeout(resolve, dispatchPollMs));
   }
   throw new Error(
