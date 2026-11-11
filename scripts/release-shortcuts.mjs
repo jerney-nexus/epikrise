@@ -17,7 +17,7 @@ const dispatchPollAttempts = 20;
 
 /**
  * @typedef {{ number: number, title: string, headRefName: string, url: string }} PullRequest
- * @typedef {{ databaseId: number, status: string, conclusion: string, event: string, headBranch: string, createdAt: string, url: string }} WorkflowRun
+ * @typedef {{ databaseId: number, status: string, conclusion: string, event: string, headBranch: string, headSha: string, createdAt: string, url: string }} WorkflowRun
  * @typedef {{ tagName: string, isDraft: boolean, isLatest: boolean, publishedAt: string }} Release
  */
 
@@ -90,7 +90,7 @@ async function listWorkflowRuns(workflow, branch) {
     "--limit",
     "20",
     "--json",
-    "databaseId,status,conclusion,event,headBranch,createdAt,url",
+    "databaseId,status,conclusion,event,headBranch,headSha,createdAt,url",
   ]);
 }
 
@@ -138,6 +138,22 @@ export async function findReleasePullRequests() {
 }
 
 /**
+ * Reads the commit SHA that origin's main currently points to.
+ *
+ * @returns {Promise<string>}
+ */
+async function remoteMainSha() {
+  const { stdout } = await execFile("git", ["ls-remote", "origin", "refs/heads/main"], {
+    cwd: repoRoot,
+  });
+  const sha = stdout.split(/\s+/)[0];
+  if (!/^[0-9a-f]{40}$/.test(sha)) {
+    throw new Error("Could not read the origin main commit with git ls-remote.");
+  }
+  return sha;
+}
+
+/**
  * Dispatches the Windows release workspace workflow on main and watches the new run.
  *
  * @returns {Promise<void>}
@@ -149,6 +165,7 @@ export async function runWindowsReleaseWorkspace() {
       (run) => run.databaseId,
     ),
   );
+  const expectedSha = await remoteMainSha();
   const dispatchStartedAt = Date.now();
   await gh([
     "workflow",
@@ -159,11 +176,11 @@ export async function runWindowsReleaseWorkspace() {
     "--ref",
     "main",
   ]);
-  const run = await waitForNewRun(
-    windowsWorkspaceWorkflow,
+  const run = await waitForNewRun(windowsWorkspaceWorkflow, {
     existingIds,
+    expectedSha,
     dispatchStartedAt,
-  );
+  });
   process.stdout.write(`Watching ${run.url}\n`);
   await streamGh([
     "run",
@@ -177,22 +194,25 @@ export async function runWindowsReleaseWorkspace() {
 
 /**
  * @param {string} workflow
- * @param {Set<number>} existingIds
- * @param {number} dispatchStartedAt
+ * @param {{ existingIds: Set<number>, expectedSha: string, dispatchStartedAt: number }} expected
  */
-async function waitForNewRun(workflow, existingIds, dispatchStartedAt) {
+async function waitForNewRun(
+  workflow,
+  { existingIds, expectedSha, dispatchStartedAt },
+) {
   for (let attempt = 0; attempt < dispatchPollAttempts; attempt += 1) {
     const runs = await listWorkflowRuns(workflow, "main");
     const created = runs.filter(
       (run) =>
         run.event === "workflow_dispatch" &&
         !existingIds.has(run.databaseId) &&
+        run.headSha === expectedSha &&
         // Runs created before this dispatch started cannot be ours.
         Date.parse(run.createdAt) >= dispatchStartedAt,
     );
     if (created.length > 1) {
       throw new Error(
-        `More than one new ${workflow} run appeared. Pick the right one with gh run list --repo=${repository} --workflow=${workflow}.`,
+        `More than one new ${workflow} run appeared for ${expectedSha}. Pick the right one with gh run list --repo=${repository} --workflow=${workflow}.`,
       );
     }
     if (created.length === 1) return created[0];
