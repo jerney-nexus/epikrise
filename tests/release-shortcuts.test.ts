@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertManifestTargets,
   delegatedInvocation,
+  latestMarkerStatus,
   selectDispatchedRun,
 } from "../scripts/release-shortcuts.mjs";
 
@@ -120,6 +121,33 @@ describe("release shortcuts", () => {
         tag,
       ),
     ).toThrow("has no signature");
+  });
+
+  it("rejects a whitespace-only signature", () => {
+    expect(() =>
+      assertManifestTargets(
+        { platforms: { "linux-x86_64": { signature: "  ", url: `${prefix}a` } } },
+        tag,
+      ),
+    ).toThrow("has no signature");
+  });
+
+  it("rejects URLs that name only the release directory", () => {
+    for (const directory of [prefix, `${prefix}app.zip/..`, `${prefix}.`]) {
+      expect(() =>
+        assertManifestTargets(
+          { platforms: { "windows-x86_64": { signature: "sig", url: directory } } },
+          tag,
+        ),
+      ).toThrow("does not target v2026.11.5");
+    }
+  });
+
+  it("reports an older release without failing when a newer tag holds latest", () => {
+    expect(latestMarkerStatus(tag, tag)).toContain("as the latest release.");
+    expect(latestMarkerStatus(tag, "v2026.11.6")).toContain("was not promoted");
+    expect(() => latestMarkerStatus(tag, "v2026.11.4")).toThrow("should be latest");
+    expect(() => latestMarkerStatus(tag, undefined)).toThrow("should be latest");
   });
 
   it("rejects dot segments that escape the tag's asset directory", () => {

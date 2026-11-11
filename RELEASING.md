@@ -106,7 +106,7 @@ Confirm the release is visible on GitHub and that `latest.json` points at the ri
 pnpm release:published-status
 ```
 
-This checks that the release is published, that GitHub marks it as latest, and that every `latest.json` platform URL targets its assets. The VS Code task is **Epikrise: Show Published Release Status**.
+This checks that the release is published, that every `latest.json` platform URL targets its assets, and whether GitHub marks this release as latest. An older release can finish after a newer one. In that case the workflow keeps the latest marker on the newer tag, and the command reports that instead of failing. The VS Code task is **Epikrise: Show Published Release Status**.
 
 - Record updater test results separately from the release, as described in step 7.
 - Store delivery uses a separate Microsoft certification process. See [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-workflow).

@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { validateCalverVersion } from "./prepare-release.mjs";
+import { shouldPromoteLatest } from "./release-artifacts.mjs";
 
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -311,10 +312,10 @@ export function assertManifestTargets(manifest, tag) {
     `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/`,
   ).href;
   for (const [platform, entry] of platforms) {
-    if (!isUnderPrefix(entry?.url, prefix)) {
+    if (!isAssetUnderPrefix(entry?.url, prefix)) {
       throw new Error(`${manifestName} platform ${platform} does not target ${tag}.`);
     }
-    if (!entry.signature) {
+    if (typeof entry.signature !== "string" || entry.signature.trim() === "") {
       throw new Error(`${manifestName} platform ${platform} has no signature.`);
     }
   }
@@ -322,19 +323,43 @@ export function assertManifestTargets(manifest, tag) {
 }
 
 /**
- * Compares normalized URLs so dot segments cannot escape the release directory.
+ * Compares normalized URLs so dot segments cannot escape the release directory,
+ * and requires a named asset below the prefix.
  *
  * @param {string | undefined} url
  * @param {string} prefix normalized prefix ending in "/"
  * @returns {boolean}
  */
-function isUnderPrefix(url, prefix) {
+function isAssetUnderPrefix(url, prefix) {
   if (!url) return false;
   try {
-    return new URL(url).href.startsWith(prefix);
+    const href = new URL(url).href;
+    return (
+      href.startsWith(prefix) && href.length > prefix.length && !href.endsWith("/")
+    );
   } catch {
     return false;
   }
+}
+
+/**
+ * Describes the GitHub "latest" marker for tag. An older release may finish after
+ * a newer one, in which case the release workflow keeps the marker on the newer tag.
+ *
+ * @param {string} tag
+ * @param {string | undefined} latestTag
+ * @returns {string} the line to report
+ */
+export function latestMarkerStatus(tag, latestTag) {
+  if (latestTag === tag) {
+    return `GitHub marks ${tag} as the latest release.`;
+  }
+  if (shouldPromoteLatest(tag, latestTag)) {
+    throw new Error(
+      `GitHub marks ${latestTag ?? "none"} as the latest release, but ${tag} should be latest. Check the release marker before continuing.`,
+    );
+  }
+  return `GitHub marks ${latestTag} as the latest release, so ${tag} was not promoted. This is expected when a newer release already holds the marker.`;
 }
 
 /**
@@ -357,15 +382,10 @@ export async function reportPublishedStatus() {
     throw new Error(`Release ${tag} is still a draft. It is not published yet.`);
   }
 
-  const latestTag = releases.find((item) => item.isLatest)?.tagName ?? "none";
-  if (latestTag !== tag) {
-    throw new Error(
-      `GitHub marks ${latestTag} as the latest release, not ${tag}. Check the release marker before continuing.`,
-    );
-  }
+  const latestTag = releases.find((item) => item.isLatest)?.tagName;
   const lines = [
     `Release ${tag} is published (${release.publishedAt}): ${releaseUrl(tag)}`,
-    `GitHub marks ${tag} as the latest release.`,
+    latestMarkerStatus(tag, latestTag),
   ];
 
   const directory = await mkdtemp(path.join(tmpdir(), "epikrise-release-"));
