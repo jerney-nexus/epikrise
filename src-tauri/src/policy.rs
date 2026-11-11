@@ -351,6 +351,7 @@ $write = [System.Security.AccessControl.FileSystemRights]::WriteData -bor
 [System.Security.AccessControl.FileSystemRights]::WriteAttributes -bor
 [System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes -bor
 [System.Security.AccessControl.FileSystemRights]::Delete -bor
+[System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
 [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
 [System.Security.AccessControl.FileSystemRights]::TakeOwnership
 $targets = @($env:EPIKRISE_POLICY_PATH, $env:EPIKRISE_POLICY_DIR)
