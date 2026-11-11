@@ -14,6 +14,7 @@ const windowsWorkspaceWorkflow = "windows-release-workspace.yml";
 const manifestName = "latest.json";
 const dispatchPollMs = 3000;
 const dispatchPollAttempts = 20;
+const dispatchClockSkewMs = 60_000;
 
 /**
  * @typedef {{ number: number, title: string, headRefName: string, url: string }} PullRequest
@@ -149,6 +150,7 @@ export async function runWindowsReleaseWorkspace() {
       (run) => run.databaseId,
     ),
   );
+  const dispatchStartedAt = Date.now();
   await gh([
     "workflow",
     "run",
@@ -158,7 +160,11 @@ export async function runWindowsReleaseWorkspace() {
     "--ref",
     "main",
   ]);
-  const run = await waitForNewRun(windowsWorkspaceWorkflow, existingIds);
+  const run = await waitForNewRun(
+    windowsWorkspaceWorkflow,
+    existingIds,
+    dispatchStartedAt,
+  );
   process.stdout.write(`Watching ${run.url}\n`);
   await streamGh([
     "run",
@@ -173,14 +179,23 @@ export async function runWindowsReleaseWorkspace() {
 /**
  * @param {string} workflow
  * @param {Set<number>} existingIds
+ * @param {number} dispatchStartedAt
  */
-async function waitForNewRun(workflow, existingIds) {
+async function waitForNewRun(workflow, existingIds, dispatchStartedAt) {
   for (let attempt = 0; attempt < dispatchPollAttempts; attempt += 1) {
     const runs = await listWorkflowRuns(workflow, "main");
-    const created = runs.find(
-      (run) => run.event === "workflow_dispatch" && !existingIds.has(run.databaseId),
+    const created = runs.filter(
+      (run) =>
+        run.event === "workflow_dispatch" &&
+        !existingIds.has(run.databaseId) &&
+        Date.parse(run.createdAt) >= dispatchStartedAt - dispatchClockSkewMs,
     );
-    if (created) return created;
+    if (created.length > 1) {
+      throw new Error(
+        `More than one new ${workflow} run appeared. Pick the right one with gh run list --repo=${repository} --workflow=${workflow}.`,
+      );
+    }
+    if (created.length === 1) return created[0];
     await new Promise((resolve) => setTimeout(resolve, dispatchPollMs));
   }
   throw new Error(
@@ -298,11 +313,14 @@ export async function reportPublishedStatus() {
   }
 
   const latestTag = releases.find((item) => item.isLatest)?.tagName ?? "none";
+  if (latestTag !== tag) {
+    throw new Error(
+      `GitHub marks ${latestTag} as the latest release, not ${tag}. Check the release marker before continuing.`,
+    );
+  }
   const lines = [
     `Release ${tag} is published (${release.publishedAt}): ${releaseUrl(tag)}`,
-    latestTag === tag
-      ? `GitHub marks ${tag} as the latest release.`
-      : `GitHub marks ${latestTag} as the latest release, not ${tag}.`,
+    `GitHub marks ${tag} as the latest release.`,
   ];
 
   const directory = await mkdtemp(path.join(tmpdir(), "epikrise-release-"));
