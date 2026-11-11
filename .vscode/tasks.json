@@ -272,6 +272,42 @@
       "args": ["release:tag", "${input:releaseTagVersion}"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Find Release Pull Request",
+      "detail": "Lists open release/ pull requests (requires an authenticated gh).",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["release:pr"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Run Windows Release Workspace",
+      "detail": "Dispatches the Windows release workspace workflow on main and watches it (requires gh).",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["release:workspace"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Show Draft Release Status",
+      "detail": "Shows the latest Signed updater release run and the draft release for the package.json version (requires gh).",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["release:draft-status"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Show Published Release Status",
+      "detail": "Confirms the published release and its latest.json targets for the package.json version (requires gh).",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["release:published-status"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
     }
   ],
   "inputs": [
