@@ -1513,7 +1513,7 @@ describe("release preparation workflow dispatch", () => {
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
     );
     expect(packageJson.scripts["release:prepare:workflow"]).toBe(
-      "node scripts/release-prepare-workflow.mjs",
+      "node scripts/release-shortcuts.mjs prepare-workflow",
     );
   });
 });

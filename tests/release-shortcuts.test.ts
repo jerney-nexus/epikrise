@@ -2,7 +2,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { assertManifestTargets } from "../scripts/release-shortcuts.mjs";
+import {
+  assertManifestTargets,
+  delegatedInvocation,
+} from "../scripts/release-shortcuts.mjs";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const tag = "v2026.11.5";
@@ -47,9 +50,46 @@ describe("release shortcuts", () => {
     ).toThrow("has no signature");
   });
 
-  it("wires shortcuts to package scripts without publishing or tagging", async () => {
+  it("forwards version arguments to the delegated release scripts", () => {
+    const scripts = path.join(repoRoot, "scripts");
+    expect(delegatedInvocation("prepare", ["2026.11.6"])).toEqual({
+      script: path.join(scripts, "prepare-release.mjs"),
+      args: ["2026.11.6"],
+    });
+    expect(delegatedInvocation("prepare-workflow", [])).toEqual({
+      script: path.join(scripts, "release-prepare-workflow.mjs"),
+      args: [],
+    });
+    expect(delegatedInvocation("preflight", [])).toEqual({
+      script: path.join(scripts, "release-start.mjs"),
+      args: ["preflight"],
+    });
+    expect(delegatedInvocation("tag", ["2026.11.5"])).toEqual({
+      script: path.join(scripts, "release-start.mjs"),
+      args: ["tag", "2026.11.5"],
+    });
+  });
+
+  it("returns null for subcommands it does not delegate", () => {
+    expect(delegatedInvocation("pull-request", [])).toBeNull();
+    expect(delegatedInvocation("constructor", [])).toBeNull();
+  });
+
+  it("wires shortcuts and existing release scripts through the dispatcher", async () => {
     const packageJson = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
+    );
+    expect(packageJson.scripts["release:prepare"]).toBe(
+      "node scripts/release-shortcuts.mjs prepare",
+    );
+    expect(packageJson.scripts["release:prepare:workflow"]).toBe(
+      "node scripts/release-shortcuts.mjs prepare-workflow",
+    );
+    expect(packageJson.scripts["release:preflight"]).toBe(
+      "node scripts/release-shortcuts.mjs preflight",
+    );
+    expect(packageJson.scripts["release:tag"]).toBe(
+      "node scripts/release-shortcuts.mjs tag",
     );
     expect(packageJson.scripts["release:pr"]).toBe(
       "node scripts/release-shortcuts.mjs pull-request",

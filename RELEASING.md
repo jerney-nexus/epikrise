@@ -38,9 +38,15 @@ Its branch is `release/<version>` and its title is `Release <version>`.
 
 ## 3. Check the Windows release workspace
 
-Run the **Windows release workspace** workflow from the Actions tab on `main`. Both architecture jobs (x64 and ARM64) must pass before you tag.
+Run the **Windows release workspace** workflow from the Actions tab on `main`, or run:
 
-To dispatch it from the terminal, run `pnpm release:workspace`. It starts the workflow on `main` and watches the new run until it finishes, exiting non-zero if it fails. The VS Code task is **Epikrise: Run Windows Release Workspace**.
+```bash
+pnpm release:workspace
+```
+
+This starts the workflow on `main` and watches the new run until it finishes, exiting non-zero if it fails. Both architecture jobs (x64 and ARM64) must pass before you tag.
+
+The VS Code task is **Epikrise: Run Windows Release Workspace**.
 
 ## 4. Confirm the tag is ready
 
@@ -68,7 +74,13 @@ Pushing the `v*` tag starts the **Signed updater release** workflow.
 
 The signed-release workflow builds signed bundles for each target, stages the assets and signatures, generates `latest.json`, and creates a **draft** release. Nothing is published yet.
 
-Check the draft's assets, signatures, `latest.json`, and target URLs. `pnpm release:draft-status` shows the latest **Signed updater release** run and whether the draft exists for the `package.json` version; open the draft from the URL it prints. The VS Code task is **Epikrise: Show Draft Release Status**.
+Check the draft's assets, signatures, `latest.json`, and target URLs:
+
+```bash
+pnpm release:draft-status
+```
+
+This shows the latest **Signed updater release** run and whether the draft exists for the `package.json` version. Open the draft from the URL it prints. The VS Code task is **Epikrise: Show Draft Release Status**.
 
 ## 7. Test the draft natively
 
@@ -88,7 +100,14 @@ If any target you are claiming as supported fails its checks, do not approve.
 
 ## 9. After publishing
 
-- Confirm the release is visible on GitHub and that `latest.json` points at the right assets. `pnpm release:published-status` checks that the release is published, that GitHub marks it as latest, and that every `latest.json` platform URL targets its assets. The VS Code task is **Epikrise: Show Published Release Status**.
+Confirm the release is visible on GitHub and that `latest.json` points at the right assets:
+
+```bash
+pnpm release:published-status
+```
+
+This checks that the release is published, that GitHub marks it as latest, and that every `latest.json` platform URL targets its assets. The VS Code task is **Epikrise: Show Published Release Status**.
+
 - Record updater test results separately from the release, as described in step 7.
 - Store delivery uses a separate Microsoft certification process. See [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-workflow).
 

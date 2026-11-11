@@ -329,15 +329,67 @@ const commands = {
   "published-status": reportPublishedStatus,
 };
 
+/**
+ * Release scripts that keep their own implementation and are reached through
+ * this entry point. Extra arguments are forwarded after `prefix`.
+ */
+const delegatedCommands = {
+  prepare: { script: "prepare-release.mjs", prefix: [] },
+  "prepare-workflow": { script: "release-prepare-workflow.mjs", prefix: [] },
+  preflight: { script: "release-start.mjs", prefix: ["preflight"] },
+  tag: { script: "release-start.mjs", prefix: ["tag"] },
+};
+
+const usage = `Usage: node scripts/release-shortcuts.mjs ${[
+  ...Object.keys(commands),
+  ...Object.keys(delegatedCommands),
+].join(" | ")}`;
+
+/**
+ * Maps a dispatcher subcommand to the script path and argument list it runs.
+ *
+ * @param {string} name
+ * @param {string[]} forwarded arguments passed after the subcommand
+ * @returns {{ script: string, args: string[] } | null}
+ */
+export function delegatedInvocation(name, forwarded) {
+  if (!Object.hasOwn(delegatedCommands, name)) return null;
+  const { script, prefix } = delegatedCommands[name];
+  return {
+    script: path.join(repoRoot, "scripts", script),
+    args: [...prefix, ...forwarded],
+  };
+}
+
+/**
+ * Runs a delegated release script with inherited stdio and mirrors its exit code.
+ *
+ * @param {{ script: string, args: string[] }} invocation
+ * @returns {Promise<void>}
+ */
+function runDelegated({ script, args }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [script, ...args], {
+      cwd: repoRoot,
+      stdio: "inherit",
+    });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      process.exitCode = code ?? 1;
+      resolve(undefined);
+    });
+  });
+}
+
 async function main() {
   const name = process.argv[2] ?? "";
-  const command = commands[name];
-  if (!command) {
-    throw new Error(
-      `Usage: node scripts/release-shortcuts.mjs ${Object.keys(commands).join(" | ")}`,
-    );
+  const delegated = delegatedInvocation(name, process.argv.slice(3));
+  if (delegated) {
+    await runDelegated(delegated);
+    return;
   }
-  const output = await command();
+  if (!Object.hasOwn(commands, name)) throw new Error(usage);
+  const output = await commands[name]();
   if (typeof output === "string") process.stdout.write(output);
 }
 
