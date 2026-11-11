@@ -133,7 +133,14 @@ describe("release shortcuts", () => {
   });
 
   it("rejects URLs that name only the release directory", () => {
-    for (const directory of [prefix, `${prefix}app.zip/..`, `${prefix}.`]) {
+    for (const directory of [
+      prefix,
+      `${prefix}app.zip/..`,
+      `${prefix}.`,
+      `${prefix}#`,
+      `${prefix}?download=1`,
+      `${prefix}nested/app.zip`,
+    ]) {
       expect(() =>
         assertManifestTargets(
           { platforms: { "windows-x86_64": { signature: "sig", url: directory } } },

@@ -20,7 +20,7 @@ const dispatchPollAttempts = 20;
 /**
  * @typedef {{ number: number, title: string, headRefName: string, url: string }} PullRequest
  * @typedef {{ databaseId: number, status: string, conclusion: string, event: string, headBranch: string, headSha: string, displayTitle: string, createdAt: string, url: string }} WorkflowRun
- * @typedef {{ tagName: string, isDraft: boolean, isLatest: boolean, publishedAt: string }} Release
+ * @typedef {{ tagName: string, isDraft: boolean, publishedAt: string | null }} Release
  */
 
 /** @param {string[]} args */
@@ -96,18 +96,45 @@ async function listWorkflowRuns(workflow, branch) {
   ]);
 }
 
-/** @returns {Promise<Release[]>} */
+/**
+ * Lists every release, including drafts, by following all API pages.
+ *
+ * @returns {Promise<Release[]>}
+ */
 async function listReleases() {
-  return ghJson([
-    "release",
-    "list",
-    "--repo",
-    repository,
-    "--limit",
-    "20",
-    "--json",
-    "tagName,isDraft,isLatest,publishedAt",
+  const stdout = await gh([
+    "api",
+    "--paginate",
+    "--jq",
+    ".[] | {tagName: .tag_name, isDraft: .draft, publishedAt: .published_at}",
+    `repos/${repository}/releases`,
   ]);
+  return stdout
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line));
+}
+
+/**
+ * Returns the tag GitHub marks as latest, or undefined when no published release exists.
+ *
+ * @returns {Promise<string | undefined>}
+ */
+async function latestReleaseTag() {
+  try {
+    const tag = await gh([
+      "api",
+      `repos/${repository}/releases/latest`,
+      "--jq",
+      ".tag_name",
+    ]);
+    return tag.trim() || undefined;
+  } catch (error) {
+    if (/HTTP 404|Not Found/.test(String(/** @type {Error} */ (error).message))) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -334,9 +361,8 @@ function isAssetUnderPrefix(url, prefix) {
   if (!url) return false;
   try {
     const href = new URL(url).href;
-    return (
-      href.startsWith(prefix) && href.length > prefix.length && !href.endsWith("/")
-    );
+    if (!href.startsWith(prefix)) return false;
+    return /^[^/?#]+$/.test(href.slice(prefix.length));
   } catch {
     return false;
   }
@@ -382,7 +408,7 @@ export async function reportPublishedStatus() {
     throw new Error(`Release ${tag} is still a draft. It is not published yet.`);
   }
 
-  const latestTag = releases.find((item) => item.isLatest)?.tagName;
+  const latestTag = await latestReleaseTag();
   const lines = [
     `Release ${tag} is published (${release.publishedAt}): ${releaseUrl(tag)}`,
     latestMarkerStatus(tag, latestTag),
