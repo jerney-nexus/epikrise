@@ -12,6 +12,7 @@ import {
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const tag = "v2026.11.5";
 const prefix = `https://github.com/jerney-nexus/epikrise/releases/download/${tag}/`;
+const assetNames = new Set(["app.msi.zip", "app.zip", "a"]);
 
 type WorkflowRun = Parameters<typeof selectDispatchedRun>[0][number];
 
@@ -38,12 +39,11 @@ function selectOptions() {
   return {
     workflow: "windows-release-workspace.yml",
     requestId,
-    expectedSha,
   };
 }
 
 describe("selectDispatchedRun", () => {
-  it("picks the dispatch run that carries our request ID for the expected commit", () => {
+  it("picks the dispatch run that carries our request ID", () => {
     const ours = run({ databaseId: 42 });
     expect(selectDispatchedRun([ours], selectOptions())).toBe(ours);
   });
@@ -59,9 +59,9 @@ describe("selectDispatchedRun", () => {
     expect(selectDispatchedRun(runs, selectOptions())).toBeUndefined();
   });
 
-  it("ignores runs for a different commit than origin main", () => {
-    const runs = [run({ databaseId: 8, headSha: otherSha })];
-    expect(selectDispatchedRun(runs, selectOptions())).toBeUndefined();
+  it("still matches our run when main advanced after the request was sent", () => {
+    const ours = run({ databaseId: 8, headSha: otherSha });
+    expect(selectDispatchedRun([ours], selectOptions())).toBe(ours);
   });
 
   it("ignores runs not started by workflow_dispatch", () => {
@@ -79,7 +79,7 @@ describe("selectDispatchedRun", () => {
   it("fails when two runs carry our request ID", () => {
     const runs = [run({ databaseId: 12 }), run({ databaseId: 13 })];
     expect(() => selectDispatchedRun(runs, selectOptions())).toThrow(
-      `More than one windows-release-workspace.yml run carries request ${requestId} for ${expectedSha}`,
+      `More than one windows-release-workspace.yml run carries request ${requestId}`,
     );
   });
 });
@@ -94,6 +94,7 @@ describe("release shortcuts", () => {
           },
         },
         tag,
+        assetNames,
       ),
     ).toEqual([`  windows-x86_64: ${prefix}app.msi.zip`]);
   });
@@ -110,8 +111,23 @@ describe("release shortcuts", () => {
           },
         },
         tag,
+        assetNames,
       ),
     ).toThrow("does not target v2026.11.5");
+  });
+
+  it("rejects a manifest target that is not attached to the release", () => {
+    expect(() =>
+      assertManifestTargets(
+        {
+          platforms: {
+            "windows-x86_64": { signature: "sig", url: `${prefix}missing.zip` },
+          },
+        },
+        tag,
+        assetNames,
+      ),
+    ).toThrow("points at missing.zip, which is not attached to v2026.11.5");
   });
 
   it("rejects a manifest entry without a signature", () => {
@@ -119,6 +135,7 @@ describe("release shortcuts", () => {
       assertManifestTargets(
         { platforms: { "linux-x86_64": { url: `${prefix}a` } } },
         tag,
+        assetNames,
       ),
     ).toThrow("has no signature");
   });
@@ -128,6 +145,7 @@ describe("release shortcuts", () => {
       assertManifestTargets(
         { platforms: { "linux-x86_64": { signature: "  ", url: `${prefix}a` } } },
         tag,
+        assetNames,
       ),
     ).toThrow("has no signature");
   });
@@ -145,6 +163,7 @@ describe("release shortcuts", () => {
         assertManifestTargets(
           { platforms: { "windows-x86_64": { signature: "sig", url: directory } } },
           tag,
+          assetNames,
         ),
       ).toThrow("does not target v2026.11.5");
     }
@@ -166,6 +185,7 @@ describe("release shortcuts", () => {
         assertManifestTargets(
           { platforms: { "windows-x86_64": { signature: "sig", url: escape } } },
           tag,
+          assetNames,
         ),
       ).toThrow("does not target v2026.11.5");
     }

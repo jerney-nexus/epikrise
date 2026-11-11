@@ -90,7 +90,7 @@ async function listWorkflowRuns(workflow, branch) {
     "--branch",
     branch,
     "--limit",
-    "20",
+    "100",
     "--json",
     "databaseId,status,conclusion,event,headBranch,headSha,displayTitle,createdAt,url",
   ]);
@@ -200,10 +200,12 @@ export async function runWindowsReleaseWorkspace() {
     "--field",
     `request_id=${requestId}`,
   ]);
-  const run = await waitForNewRun(windowsWorkspaceWorkflow, {
-    requestId,
-    expectedSha,
-  });
+  const run = await waitForNewRun(windowsWorkspaceWorkflow, { requestId });
+  if (run.headSha !== expectedSha) {
+    process.stdout.write(
+      `main moved from ${expectedSha.slice(0, 7)} to ${run.headSha.slice(0, 7)} after the request was sent. Watching the run for ${run.headSha.slice(0, 7)}.\n`,
+    );
+  }
   process.stdout.write(`Watching ${run.url}\n`);
   await streamGh([
     "run",
@@ -217,23 +219,20 @@ export async function runWindowsReleaseWorkspace() {
 
 /**
  * Picks the run created by our dispatch from a listing. The run name carries the
- * request ID that was sent as the workflow input. Returns undefined when none
- * matches yet and throws when more than one matches.
+ * request ID that was sent as the workflow input, which is unique per dispatch.
+ * Returns undefined when none matches yet and throws when more than one matches.
  *
  * @param {WorkflowRun[]} runs
- * @param {{ workflow: string, requestId: string, expectedSha: string }} expected
+ * @param {{ workflow: string, requestId: string }} expected
  * @returns {WorkflowRun | undefined}
  */
-export function selectDispatchedRun(runs, { workflow, requestId, expectedSha }) {
+export function selectDispatchedRun(runs, { workflow, requestId }) {
   const created = runs.filter(
-    (run) =>
-      run.event === "workflow_dispatch" &&
-      run.headSha === expectedSha &&
-      run.displayTitle.includes(requestId),
+    (run) => run.event === "workflow_dispatch" && run.displayTitle.includes(requestId),
   );
   if (created.length > 1) {
     throw new Error(
-      `More than one ${workflow} run carries request ${requestId} for ${expectedSha}. Pick the right one with gh run list --repo=${repository} --workflow=${workflow}.`,
+      `More than one ${workflow} run carries request ${requestId}. Pick the right one with gh run list --repo=${repository} --workflow=${workflow}.`,
     );
   }
   return created[0];
@@ -241,15 +240,14 @@ export function selectDispatchedRun(runs, { workflow, requestId, expectedSha }) 
 
 /**
  * @param {string} workflow
- * @param {{ requestId: string, expectedSha: string }} expected
+ * @param {{ requestId: string }} expected
  */
-async function waitForNewRun(workflow, { requestId, expectedSha }) {
+async function waitForNewRun(workflow, { requestId }) {
   const deadline = Date.now() + dispatchTimeoutMs;
   do {
     const run = selectDispatchedRun(await listWorkflowRuns(workflow, "main"), {
       workflow,
       requestId,
-      expectedSha,
     });
     if (run) return run;
     await new Promise((resolve) => setTimeout(resolve, dispatchPollMs));
@@ -332,8 +330,9 @@ export async function reportDraftStatus() {
  *
  * @param {{ platforms?: Record<string, { url?: string, signature?: string }> }} manifest
  * @param {string} tag
+ * @param {Set<string>} assetNames names of the assets attached to the release
  */
-export function assertManifestTargets(manifest, tag) {
+export function assertManifestTargets(manifest, tag, assetNames) {
   const platforms = Object.entries(manifest?.platforms ?? {});
   if (platforms.length === 0) {
     throw new Error(`${manifestName} lists no platforms.`);
@@ -347,6 +346,14 @@ export function assertManifestTargets(manifest, tag) {
     }
     if (typeof entry.signature !== "string" || entry.signature.trim() === "") {
       throw new Error(`${manifestName} platform ${platform} has no signature.`);
+    }
+    const assetName = decodeURIComponent(
+      new URL(entry.url ?? "").pathname.split("/").at(-1) ?? "",
+    );
+    if (!assetNames.has(assetName)) {
+      throw new Error(
+        `${manifestName} platform ${platform} points at ${assetName}, which is not attached to ${tag}.`,
+      );
     }
   }
   return platforms.map(([platform, entry]) => `  ${platform}: ${entry.url}`);
@@ -417,6 +424,18 @@ export async function reportPublishedStatus() {
     latestMarkerStatus(tag, latestTag),
   ];
 
+  /** @type {{ assets: { name: string }[] }} */
+  const { assets } = await ghJson([
+    "release",
+    "view",
+    tag,
+    "--repo",
+    repository,
+    "--json",
+    "assets",
+  ]);
+  const assetNames = new Set(assets.map((asset) => asset.name));
+
   const directory = await mkdtemp(path.join(tmpdir(), "epikrise-release-"));
   try {
     await gh([
@@ -434,7 +453,10 @@ export async function reportPublishedStatus() {
     const manifest = JSON.parse(
       await readFile(path.join(directory, manifestName), "utf8"),
     );
-    lines.push(`${manifestName} targets:`, ...assertManifestTargets(manifest, tag));
+    lines.push(
+      `${manifestName} targets:`,
+      ...assertManifestTargets(manifest, tag, assetNames),
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
