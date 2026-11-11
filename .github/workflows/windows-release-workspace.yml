@@ -1,5 +1,7 @@
 name: Windows release workspace
 
+run-name: Windows release workspace${{ inputs.request_id && format(' {0}', inputs.request_id) || '' }}
+
 on:
   pull_request:
     branches: [main]
@@ -10,6 +12,11 @@ on:
       - "scripts/prepare-release-workspace.mjs"
       - "scripts/prepare-release.mjs"
   workflow_dispatch:
+    inputs:
+      request_id:
+        description: Unique request identifier from scripts/release-shortcuts.mjs
+        required: false
+        type: string
 
 permissions:
   contents: read

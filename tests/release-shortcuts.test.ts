@@ -16,7 +16,7 @@ type WorkflowRun = Parameters<typeof selectDispatchedRun>[0][number];
 
 const expectedSha = "a".repeat(40);
 const otherSha = "b".repeat(40);
-const dispatchStartedAt = Date.parse("2026-11-11T09:00:00Z");
+const requestId = "11111111-2222-4333-8444-555555555555";
 
 function run(overrides: Partial<WorkflowRun>): WorkflowRun {
   return {
@@ -26,23 +26,23 @@ function run(overrides: Partial<WorkflowRun>): WorkflowRun {
     event: "workflow_dispatch",
     headBranch: "main",
     headSha: expectedSha,
+    displayTitle: `Windows release workspace ${requestId}`,
     createdAt: "2026-11-11T09:00:05Z",
     url: "https://github.com/jerney-nexus/epikrise/actions/runs/1",
     ...overrides,
   };
 }
 
-function selectOptions(existingIds: Set<number> = new Set()) {
+function selectOptions() {
   return {
     workflow: "windows-release-workspace.yml",
-    existingIds,
+    requestId,
     expectedSha,
-    dispatchStartedAt,
   };
 }
 
 describe("selectDispatchedRun", () => {
-  it("picks the single new dispatch run for the expected commit", () => {
+  it("picks the dispatch run that carries our request ID for the expected commit", () => {
     const ours = run({ databaseId: 42 });
     expect(selectDispatchedRun([ours], selectOptions())).toBe(ours);
   });
@@ -51,9 +51,11 @@ describe("selectDispatchedRun", () => {
     expect(selectDispatchedRun([], selectOptions())).toBeUndefined();
   });
 
-  it("ignores runs that existed before the dispatch", () => {
-    const runs = [run({ databaseId: 7 })];
-    expect(selectDispatchedRun(runs, selectOptions(new Set([7])))).toBeUndefined();
+  it("ignores runs dispatched with a different request ID", () => {
+    const runs = [
+      run({ databaseId: 7, displayTitle: "Windows release workspace other-id" }),
+    ];
+    expect(selectDispatchedRun(runs, selectOptions())).toBeUndefined();
   });
 
   it("ignores runs for a different commit than origin main", () => {
@@ -66,26 +68,17 @@ describe("selectDispatchedRun", () => {
     expect(selectDispatchedRun(runs, selectOptions())).toBeUndefined();
   });
 
-  it("ignores runs created before the dispatch started, even if unseen", () => {
-    const runs = [run({ databaseId: 10, createdAt: "2026-11-11T08:59:59Z" })];
+  it("ignores a teammate's run for the same commit without our request ID", () => {
+    const runs = [
+      run({ databaseId: 10, displayTitle: "Windows release workspace teammate-id" }),
+    ];
     expect(selectDispatchedRun(runs, selectOptions())).toBeUndefined();
   });
 
-  it("accepts a run created in the same second as a fractional dispatch start", () => {
-    const ours = run({ databaseId: 14, createdAt: "2026-11-11T09:00:00Z" });
-    const options = { ...selectOptions(), dispatchStartedAt: dispatchStartedAt + 345 };
-    expect(selectDispatchedRun([ours], options)).toBe(ours);
-  });
-
-  it("accepts a run created at the exact dispatch start", () => {
-    const ours = run({ databaseId: 11, createdAt: "2026-11-11T09:00:00Z" });
-    expect(selectDispatchedRun([ours], selectOptions())).toBe(ours);
-  });
-
-  it("fails when two new runs match the expected commit", () => {
+  it("fails when two runs carry our request ID", () => {
     const runs = [run({ databaseId: 12 }), run({ databaseId: 13 })];
     expect(() => selectDispatchedRun(runs, selectOptions())).toThrow(
-      `More than one new windows-release-workspace.yml run appeared for ${expectedSha}`,
+      `More than one windows-release-workspace.yml run carries request ${requestId} for ${expectedSha}`,
     );
   });
 });
@@ -127,6 +120,20 @@ describe("release shortcuts", () => {
         tag,
       ),
     ).toThrow("has no signature");
+  });
+
+  it("rejects dot segments that escape the tag's asset directory", () => {
+    for (const escape of [
+      `${prefix}../v2026.11.4/app.zip`,
+      `${prefix}%2e%2e/v2026.11.4/app.zip`,
+    ]) {
+      expect(() =>
+        assertManifestTargets(
+          { platforms: { "windows-x86_64": { signature: "sig", url: escape } } },
+          tag,
+        ),
+      ).toThrow("does not target v2026.11.5");
+    }
   });
 
   it("forwards version arguments to the delegated release scripts", () => {

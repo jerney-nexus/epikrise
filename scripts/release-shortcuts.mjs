@@ -1,4 +1,5 @@
 import { execFile as execFileCallback, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
@@ -17,7 +18,7 @@ const dispatchPollAttempts = 20;
 
 /**
  * @typedef {{ number: number, title: string, headRefName: string, url: string }} PullRequest
- * @typedef {{ databaseId: number, status: string, conclusion: string, event: string, headBranch: string, headSha: string, createdAt: string, url: string }} WorkflowRun
+ * @typedef {{ databaseId: number, status: string, conclusion: string, event: string, headBranch: string, headSha: string, displayTitle: string, createdAt: string, url: string }} WorkflowRun
  * @typedef {{ tagName: string, isDraft: boolean, isLatest: boolean, publishedAt: string }} Release
  */
 
@@ -90,7 +91,7 @@ async function listWorkflowRuns(workflow, branch) {
     "--limit",
     "20",
     "--json",
-    "databaseId,status,conclusion,event,headBranch,headSha,createdAt,url",
+    "databaseId,status,conclusion,event,headBranch,headSha,displayTitle,createdAt,url",
   ]);
 }
 
@@ -138,17 +139,15 @@ export async function findReleasePullRequests() {
 }
 
 /**
- * Reads the commit SHA that origin's main currently points to.
+ * Reads the commit SHA that main points to in the configured repository.
  *
  * @returns {Promise<string>}
  */
 async function remoteMainSha() {
-  const { stdout } = await execFile("git", ["ls-remote", "origin", "refs/heads/main"], {
-    cwd: repoRoot,
-  });
-  const sha = stdout.split(/\s+/)[0];
-  if (!/^[0-9a-f]{40}$/.test(sha)) {
-    throw new Error("Could not read the origin main commit with git ls-remote.");
+  const ref = await ghJson(["api", `repos/${repository}/git/ref/heads/main`]);
+  const sha = ref?.object?.sha;
+  if (!/^[0-9a-f]{40}$/.test(sha ?? "")) {
+    throw new Error(`Could not read the ${repository} main commit from GitHub.`);
   }
   return sha;
 }
@@ -160,13 +159,8 @@ async function remoteMainSha() {
  */
 export async function runWindowsReleaseWorkspace() {
   await ensureAuthenticated();
-  const existingIds = new Set(
-    (await listWorkflowRuns(windowsWorkspaceWorkflow, "main")).map(
-      (run) => run.databaseId,
-    ),
-  );
   const expectedSha = await remoteMainSha();
-  const dispatchStartedAt = Date.now();
+  const requestId = randomUUID();
   await gh([
     "workflow",
     "run",
@@ -175,11 +169,12 @@ export async function runWindowsReleaseWorkspace() {
     repository,
     "--ref",
     "main",
+    "--field",
+    `request_id=${requestId}`,
   ]);
   const run = await waitForNewRun(windowsWorkspaceWorkflow, {
-    existingIds,
+    requestId,
     expectedSha,
-    dispatchStartedAt,
   });
   process.stdout.write(`Watching ${run.url}\n`);
   await streamGh([
@@ -193,29 +188,24 @@ export async function runWindowsReleaseWorkspace() {
 }
 
 /**
- * Picks the run created by our dispatch from a listing. Returns undefined when
- * none matches yet and throws when more than one matches.
+ * Picks the run created by our dispatch from a listing. The run name carries the
+ * request ID that was sent as the workflow input. Returns undefined when none
+ * matches yet and throws when more than one matches.
  *
  * @param {WorkflowRun[]} runs
- * @param {{ workflow: string, existingIds: Set<number>, expectedSha: string, dispatchStartedAt: number }} expected
+ * @param {{ workflow: string, requestId: string, expectedSha: string }} expected
  * @returns {WorkflowRun | undefined}
  */
-export function selectDispatchedRun(
-  runs,
-  { workflow, existingIds, expectedSha, dispatchStartedAt },
-) {
+export function selectDispatchedRun(runs, { workflow, requestId, expectedSha }) {
   const created = runs.filter(
     (run) =>
       run.event === "workflow_dispatch" &&
-      !existingIds.has(run.databaseId) &&
       run.headSha === expectedSha &&
-      // Runs created before this dispatch started cannot be ours. GitHub
-      // timestamps have whole-second precision, so compare at that precision.
-      Date.parse(run.createdAt) >= Math.floor(dispatchStartedAt / 1000) * 1000,
+      run.displayTitle.includes(requestId),
   );
   if (created.length > 1) {
     throw new Error(
-      `More than one new ${workflow} run appeared for ${expectedSha}. Pick the right one with gh run list --repo=${repository} --workflow=${workflow}.`,
+      `More than one ${workflow} run carries request ${requestId} for ${expectedSha}. Pick the right one with gh run list --repo=${repository} --workflow=${workflow}.`,
     );
   }
   return created[0];
@@ -223,18 +213,14 @@ export function selectDispatchedRun(
 
 /**
  * @param {string} workflow
- * @param {{ existingIds: Set<number>, expectedSha: string, dispatchStartedAt: number }} expected
+ * @param {{ requestId: string, expectedSha: string }} expected
  */
-async function waitForNewRun(
-  workflow,
-  { existingIds, expectedSha, dispatchStartedAt },
-) {
+async function waitForNewRun(workflow, { requestId, expectedSha }) {
   for (let attempt = 0; attempt < dispatchPollAttempts; attempt += 1) {
     const run = selectDispatchedRun(await listWorkflowRuns(workflow, "main"), {
       workflow,
-      existingIds,
+      requestId,
       expectedSha,
-      dispatchStartedAt,
     });
     if (run) return run;
     await new Promise((resolve) => setTimeout(resolve, dispatchPollMs));
@@ -321,9 +307,11 @@ export function assertManifestTargets(manifest, tag) {
   if (platforms.length === 0) {
     throw new Error(`${manifestName} lists no platforms.`);
   }
-  const prefix = `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/`;
+  const prefix = new URL(
+    `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/`,
+  ).href;
   for (const [platform, entry] of platforms) {
-    if (!entry?.url?.startsWith(prefix)) {
+    if (!isUnderPrefix(entry?.url, prefix)) {
       throw new Error(`${manifestName} platform ${platform} does not target ${tag}.`);
     }
     if (!entry.signature) {
@@ -331,6 +319,22 @@ export function assertManifestTargets(manifest, tag) {
     }
   }
   return platforms.map(([platform, entry]) => `  ${platform}: ${entry.url}`);
+}
+
+/**
+ * Compares normalized URLs so dot segments cannot escape the release directory.
+ *
+ * @param {string | undefined} url
+ * @param {string} prefix normalized prefix ending in "/"
+ * @returns {boolean}
+ */
+function isUnderPrefix(url, prefix) {
+  if (!url) return false;
+  try {
+    return new URL(url).href.startsWith(prefix);
+  } catch {
+    return false;
+  }
 }
 
 /**
