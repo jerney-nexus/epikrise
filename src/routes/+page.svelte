@@ -2323,7 +2323,7 @@
         </select>
         <div class="credential-actions">
           <button
-            class="connection-button"
+            class="button-primary primary-spaced"
             type="button"
             onclick={openAddCredential}
             disabled={!desktopAvailable ||
@@ -2334,7 +2334,7 @@
             {t("Add provider credential")}
           </button>
           <button
-            class="credential-remove-button"
+            class="button-alert credential-remove-button"
             type="button"
             onclick={() => (credentialRemovalPending = true)}
             disabled={!selectedCredential ||
@@ -2357,7 +2357,7 @@
             </p>
             <div>
               <button
-                class="credential-remove-button"
+                class="button-alert credential-remove-button"
                 type="button"
                 onclick={deleteProviderCredential}
                 disabled={credentialBusy ||
@@ -2366,7 +2366,7 @@
                 {credentialBusy ? t("Removing...") : t("Confirm removal")}
               </button>
               <button
-                class="credential-cancel-button"
+                class="button-secondary credential-cancel-button"
                 type="button"
                 onclick={() => (credentialRemovalPending = false)}
                 disabled={credentialBusy}
@@ -2383,7 +2383,7 @@
         {/if}
 
         <button
-          class="connection-button"
+          class="button-primary primary-spaced"
           type="button"
           onclick={testProvider}
           disabled={connectionState === "checking"}
@@ -2486,7 +2486,7 @@
             {:else}
               <p>{t("Update checks contact GitHub Releases only when requested.")}</p>
               <button
-                class="connection-button"
+                class="button-primary primary-spaced"
                 type="button"
                 disabled={!updateSettings.enabled || updateBusy}
                 onclick={checkForUpdate}
@@ -2517,7 +2517,7 @@
                   <p>{updateCandidate.notes}</p>
                 {/if}
                 <button
-                  class="connection-button"
+                  class="button-primary primary-spaced"
                   type="button"
                   disabled={updateBusy ||
                     Boolean(caseSessionId) ||
@@ -2564,14 +2564,14 @@
         <p>{t("Epikrise will close while the update is installed.")}</p>
         <div class="settings-actions">
           <button
-            class="connection-button"
+            class="button-primary primary-spaced"
             type="button"
             onclick={() => updateConfirmationDialog?.close()}
           >
             {t("Cancel")}
           </button>
           <button
-            class="connection-button"
+            class="button-primary primary-spaced"
             type="button"
             disabled={updateBusy || Boolean(caseSessionId) || Boolean(activeRequestId)}
             onclick={installConfirmedUpdate}
@@ -2641,7 +2641,7 @@
           </p>
         {/if}
         <button
-          class="connection-button"
+          class="button-primary primary-spaced"
           type="submit"
           disabled={credentialBusy ||
             (policyStatus?.active && !policyStatus.allowCredentialManagement)}
@@ -2788,7 +2788,7 @@
         aria-label={t("Case actions")}
       >
         <button
-          class="case-discard-button"
+          class="button-alert case-discard-button"
           type="button"
           onclick={discardCase}
           disabled={isGenerating || isPreparingGeneration}
@@ -2858,7 +2858,7 @@
             {/each}
           </select>
           <button
-            class="model-refresh-button settings-action-color"
+            class="button-secondary model-refresh-button"
             type="button"
             onclick={refreshModels}
             disabled={modelListLoading || isGenerating || isPreparingGeneration}
@@ -2968,6 +2968,23 @@
           </button>
         </div>
 
+        {#snippet createTemplateButton()}
+          <button
+            class="button-primary template-settings-action primary-spaced"
+            type="button"
+            onclick={openTemplateCreation}
+            disabled={!desktopAvailable ||
+              isGenerating ||
+              isPreparingGeneration ||
+              (policyStatus?.active && !policyStatus.allowTemplateCreation)}
+          >
+            {t("Create template")}
+            {#if policyStatus?.active && !policyStatus.allowTemplateCreation}
+              <span class="policy-badge">{t("Administrator managed")}</span>
+            {/if}
+          </button>
+        {/snippet}
+
         {#if importedTemplates.length}
           <label for="active-template">{t("Active template")}</label>
           <select
@@ -2980,8 +2997,9 @@
               <option value={template.metadata.id}>{template.metadata.name}</option>
             {/each}
           </select>
+          {@render createTemplateButton()}
           <button
-            class="template-export-button template-settings-action"
+            class="button-secondary template-settings-action"
             type="button"
             onclick={openTemplateEditor}
             disabled={!activeTemplate ||
@@ -2995,7 +3013,7 @@
             {/if}
           </button>
           <button
-            class="template-export-button template-settings-action"
+            class="button-alert template-settings-action"
             type="button"
             onclick={() => (templateDeletionPending = true)}
             disabled={!activeTemplate ||
@@ -3011,8 +3029,9 @@
           </button>
         {:else}
           <p class="template-empty">{t("No templates imported")}</p>
+          {@render createTemplateButton()}
           <button
-            class="template-export-button template-settings-action"
+            class="button-secondary template-settings-action"
             type="button"
             onclick={createGenericStarter}
             disabled={templateBusy ||
@@ -3034,7 +3053,7 @@
             <p>{t("Permanently delete this template?")}</p>
             <div>
               <button
-                class="credential-remove-button"
+                class="button-alert credential-remove-button"
                 type="button"
                 onclick={deleteActiveTemplate}
                 disabled={templateBusy ||
@@ -3043,7 +3062,7 @@
                 {templateBusy ? t("Deleting...") : t("Confirm deletion")}
               </button>
               <button
-                class="credential-cancel-button"
+                class="button-secondary credential-cancel-button"
                 type="button"
                 onclick={() => (templateDeletionPending = false)}
                 disabled={templateBusy}
@@ -3055,22 +3074,7 @@
         {/if}
 
         <button
-          class="template-export-button template-settings-action"
-          type="button"
-          onclick={openTemplateCreation}
-          disabled={!desktopAvailable ||
-            isGenerating ||
-            isPreparingGeneration ||
-            (policyStatus?.active && !policyStatus.allowTemplateCreation)}
-        >
-          {t("Create template")}
-          {#if policyStatus?.active && !policyStatus.allowTemplateCreation}
-            <span class="policy-badge">{t("Administrator managed")}</span>
-          {/if}
-        </button>
-
-        <button
-          class="template-import-button template-settings-action"
+          class="button-secondary template-settings-action template-import-button"
           type="button"
           onclick={() => templateFileInput?.click()}
           disabled={templateBusy ||
@@ -3095,7 +3099,7 @@
         />
         {#if activeTemplate}
           <button
-            class="template-export-button template-settings-action"
+            class="button-secondary template-settings-action"
             type="button"
             onclick={exportActiveTemplate}
             disabled={templateBusy ||
@@ -3235,7 +3239,7 @@
             </details>
             <div class="template-preview-actions">
               <button
-                class="connection-button"
+                class="button-primary primary-spaced"
                 onclick={savePendingTemplate}
                 disabled={templateBusy ||
                   (policyStatus?.active &&
@@ -3248,7 +3252,7 @@
                   : t("Save template")}
               </button>
               <button
-                class="template-discard"
+                class="button-secondary template-discard"
                 onclick={() => {
                   pendingTemplate = null;
                   pendingTemplateOperation = null;
@@ -3448,7 +3452,7 @@
           <div class="template-sections-heading">
             <p class="eyebrow" id="sections-editor-title">{t("Sections editor")}</p>
             <button
-              class="template-export-button"
+              class="button-secondary"
               type="button"
               onclick={addTemplateEditorSection}
               disabled={templateSaveBusy}
@@ -3576,7 +3580,7 @@
 
         <div class="template-editor-actions">
           <button
-            class="template-discard"
+            class="button-secondary template-discard"
             type="button"
             onclick={() => templateEditorDialog?.close()}
             disabled={templateSaveBusy}
@@ -3584,7 +3588,7 @@
             {t("Cancel")}
           </button>
           <button
-            class="connection-button"
+            class="button-primary primary-spaced"
             type="submit"
             disabled={templateSaveBusy ||
               (policyStatus?.active &&
@@ -3644,7 +3648,7 @@
       <p>{t("Current case material and template will be sent to this endpoint.")}</p>
       <div class="template-editor-actions">
         <button
-          class="template-discard"
+          class="button-secondary template-discard"
           type="button"
           onclick={() => {
             pendingEgressConfirmation = null;
@@ -3655,7 +3659,7 @@
           {t("Cancel")}
         </button>
         <button
-          class="connection-button"
+          class="button-primary primary-spaced"
           type="button"
           onclick={confirmProviderEgress}
           disabled={egressConfirmationBusy}
@@ -3676,7 +3680,7 @@
         </p>
 
         <div class="onboarding-actions">
-          <button class="connection-button" onclick={openTemplateSettings}>
+          <button class="button-primary primary-spaced" onclick={openTemplateSettings}>
             {t("Open template settings")}
           </button>
         </div>
@@ -3715,7 +3719,7 @@
           />
           <div class="input-tools">
             <button
-              class="input-tool-button"
+              class="button-secondary input-tool-button"
               type="button"
               onclick={() => sourceFileInput?.click()}
               disabled={ingestBusy || isGenerating || isPreparingGeneration}
@@ -3740,7 +3744,7 @@
                   (policyStatus?.active && !policyStatus.allowUrlIngestion)}
               />
               <button
-                class="input-tool-button"
+                class="button-secondary input-tool-button"
                 type="submit"
                 disabled={!sourceUrl.trim() ||
                   (policyStatus?.active && !policyStatus.allowUrlIngestion) ||
@@ -3808,12 +3812,16 @@
 
           <div class="source-actions">
             {#if isGenerating}
-              <button class="cancel-button" type="button" onclick={cancelGeneration}>
+              <button
+                class="button-alert cancel-button"
+                type="button"
+                onclick={cancelGeneration}
+              >
                 {t("Cancel generation")}
               </button>
             {:else}
               <button
-                class="generate-button"
+                class="button-primary generate-button primary-spaced"
                 type="button"
                 onclick={() => generateDraft()}
                 disabled={(!prompt.trim() && sourceBlocks.length === 0) ||
@@ -3919,7 +3927,7 @@
                 {/each}
               </ul>
               <button
-                class="lint-regenerate-button"
+                class="button-alert lint-regenerate-button"
                 onclick={regenerateWithCorrections}
                 disabled={isGenerating ||
                   isPreparingGeneration ||
@@ -3943,7 +3951,7 @@
                 <span>{t("I have reviewed the output and take responsibility.")}</span>
               </label>
               <button
-                class="review-copy-button"
+                class="button-primary review-copy-button primary-spaced"
                 onclick={copyReviewedOutput}
                 disabled={!canCopyOutput}
               >
@@ -4161,41 +4169,18 @@
     gap: 8px;
   }
 
-  .credential-actions > .connection-button,
+  .credential-actions > .button-primary,
   .credential-actions > .credential-remove-button {
     width: 100%;
     min-width: 0;
-    min-height: 44px;
     margin-top: 0;
-    padding: 6px 8px;
-    font-size: 12px;
     line-height: 1.25;
     white-space: normal;
   }
 
-  .credential-remove-button,
-  .credential-cancel-button {
-    min-height: 36px;
-    padding: 0 11px;
-    border: 1px solid #b95848;
-    border-radius: 4px;
-    color: #8f3428;
-    background: #fff8f5;
-    cursor: pointer;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 650;
-  }
-
-  .credential-remove-button:hover:not(:disabled) {
+  .button-alert.credential-remove-button:hover:not(:disabled) {
     color: #fff;
     background: #a94435;
-  }
-
-  .credential-cancel-button {
-    border-color: #cbd8cf;
-    color: #52665c;
-    background: transparent;
   }
 
   .credential-confirmation {
@@ -4478,22 +4463,6 @@
     margin-top: 12px;
   }
 
-  .template-export-button {
-    min-height: 34px;
-    border: 1px solid #bfd1c7;
-    border-radius: 5px;
-    color: #285e50;
-    background: transparent;
-    cursor: pointer;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 650;
-  }
-
-  .template-export-button:hover:not(:disabled) {
-    background: #eaf3ec;
-  }
-
   .template-fields {
     display: flex;
     flex-direction: column;
@@ -4540,37 +4509,11 @@
     box-sizing: border-box;
     display: flex;
     width: 100%;
-    min-height: 44px;
     align-items: center;
     justify-content: center;
     gap: 8px;
     margin: 0;
-    padding: 8px 12px;
-    border: 1px solid #bfd1c7;
-    border-radius: 5px;
-    color: #285e50;
-    background: #f6faf6;
-    cursor: pointer;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 650;
     text-align: center;
-  }
-
-  .template-settings-action:hover:not(:disabled),
-  .settings-action-color:hover:not(:disabled) {
-    background: #eaf3ec;
-  }
-
-  .template-settings-action:focus-visible,
-  .settings-action-color:focus-visible {
-    outline: 3px solid #287562;
-    outline-offset: 2px;
-  }
-
-  .template-settings-action:disabled {
-    color: #65766e;
-    background: #f0f3f1;
   }
 
   .template-file-input {
@@ -4677,24 +4620,8 @@
     gap: 6px;
   }
 
-  .template-preview-actions .connection-button {
-    min-height: 35px;
+  .template-preview-actions .button-primary {
     margin: 0;
-    font-size: 11px;
-  }
-
-  .template-discard {
-    min-height: 30px;
-    border: 0;
-    color: #617169;
-    background: transparent;
-    cursor: pointer;
-    font-size: 11px;
-  }
-
-  .template-discard:hover {
-    color: #1d2926;
-    text-decoration: underline;
   }
 
   .template-editor-dialog {
@@ -4936,29 +4863,11 @@
     gap: 10px;
   }
 
-  .template-editor-actions .connection-button {
+  .template-editor-actions .button-primary {
     flex: 1 1 170px;
     min-width: 160px;
     margin: 0;
     padding: 0 14px;
-  }
-
-  .template-editor-actions .template-discard {
-    min-height: 40px;
-    padding: 0 14px;
-    border: 1px solid #cbd7d0;
-    border-radius: 5px;
-    color: #335248;
-    background: #f8faf8;
-    cursor: pointer;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 650;
-    text-decoration: none;
-  }
-
-  .template-editor-actions .template-discard:hover:not(:disabled) {
-    background: #edf3ef;
   }
 
   label {
@@ -4991,27 +4900,50 @@
     outline: 3px solid rgba(52, 140, 119, 0.14);
   }
 
-  .connection-button,
-  .generate-button,
-  .cancel-button {
+  .button-primary,
+  .button-secondary,
+  .button-alert {
     display: inline-flex;
     min-height: 40px;
     align-items: center;
     justify-content: center;
     gap: 9px;
-    border: 0;
+    padding: 0 14px;
+    border: 1px solid transparent;
     border-radius: 5px;
+    font-family: inherit;
+    font-size: 12px;
     cursor: pointer;
-    font-weight: 650;
     transition:
       background-color 160ms ease,
-      transform 160ms ease;
+      color 160ms ease;
   }
 
-  .connection-button {
-    margin-top: 11px;
+  .button-primary {
     color: white;
     background: #236e5d;
+    font-weight: 650;
+  }
+
+  .primary-spaced {
+    margin-top: 11px;
+  }
+
+  .button-secondary,
+  .button-alert {
+    font-weight: 650;
+  }
+
+  .button-secondary {
+    border-color: #bfd1c7;
+    color: #285e50;
+    background: #f6faf6;
+  }
+
+  .button-alert {
+    border-color: #e4b6a8;
+    color: #9a4938;
+    background: #fff8f5;
   }
 
   .model-picker {
@@ -5026,20 +4958,7 @@
   }
 
   .model-refresh-button {
-    min-height: 36px;
-    padding: 0 9px;
-    font-size: 11px;
     white-space: nowrap;
-  }
-
-  .settings-action-color {
-    border: 1px solid #bfd1c7;
-    border-radius: 5px;
-    color: #285e50;
-    background: #f6faf6;
-    cursor: pointer;
-    font: inherit;
-    font-weight: 650;
   }
 
   .model-list-message {
@@ -5052,10 +4971,26 @@
     color: #a64231;
   }
 
-  .connection-button:hover:not(:disabled),
-  .generate-button:hover:not(:disabled) {
+  .button-primary:hover:not(:disabled) {
     background: #165747;
-    transform: translateY(-1px);
+  }
+
+  .button-secondary:hover:not(:disabled) {
+    background: #eaf3ec;
+  }
+
+  .button-secondary:focus-visible {
+    outline: 3px solid #287562;
+    outline-offset: 2px;
+  }
+
+  .button-secondary:disabled {
+    color: #65766e;
+    background: #f0f3f1;
+  }
+
+  .button-alert:hover:not(:disabled) {
+    background: #f9e9e3;
   }
 
   button:disabled {
@@ -5139,8 +5074,7 @@
     margin-top: 20px;
   }
 
-  .onboarding-actions .connection-button {
-    min-height: 42px;
+  .onboarding-actions .button-primary {
     margin: 0;
     padding: 0 18px;
   }
@@ -5317,21 +5251,7 @@
   }
 
   .input-tool-button {
-    min-height: 37px;
-    padding: 0 11px;
-    border: 1px solid #bfd1c7;
-    border-radius: 5px;
-    color: #285e50;
-    background: #f6faf6;
-    cursor: pointer;
-    font: inherit;
-    font-size: 11px;
-    font-weight: 650;
     white-space: nowrap;
-  }
-
-  .input-tool-button:hover:not(:disabled) {
-    background: #eaf3ec;
   }
 
   .input-tool-button:disabled {
@@ -5479,38 +5399,11 @@
 
   .generate-button {
     min-width: 145px;
-    padding: 0 15px;
-    color: white;
-    background: #236e5d;
+    margin-top: 0;
   }
 
   .cancel-button {
     min-width: 100px;
-    padding: 0 14px;
-    border: 1px solid #e4b6a8;
-    color: #9a4938;
-    background: #fff8f5;
-  }
-
-  .cancel-button:hover {
-    background: #f9e9e3;
-  }
-
-  .case-discard-button {
-    min-height: 34px;
-    padding: 0 10px;
-    border: 1px solid #e4b6a8;
-    border-radius: 5px;
-    color: #9a4938;
-    background: #fff8f5;
-    cursor: pointer;
-    font: inherit;
-    font-size: 11px;
-    font-weight: 650;
-  }
-
-  .case-discard-button:hover:not(:disabled) {
-    background: #f9e9e3;
   }
 
   .draft-output {
@@ -5627,21 +5520,7 @@
   }
 
   .lint-regenerate-button {
-    min-height: 34px;
     margin-top: 9px;
-    padding: 0 10px;
-    border: 1px solid #d3a390;
-    border-radius: 5px;
-    color: #704838;
-    background: rgba(255, 255, 255, 0.65);
-    cursor: pointer;
-    font: inherit;
-    font-size: 11px;
-    font-weight: 700;
-  }
-
-  .lint-regenerate-button:hover:not(:disabled) {
-    background: white;
   }
 
   .review-controls {
@@ -5678,22 +5557,9 @@
   }
 
   .review-copy-button {
-    min-height: 42px;
     max-width: 100%;
-    padding: 8px 14px;
-    border: 0;
-    border-radius: 5px;
-    color: white;
-    background: #236e5d;
-    cursor: pointer;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 650;
+    margin-top: 0;
     overflow-wrap: anywhere;
-  }
-
-  .review-copy-button:hover:not(:disabled) {
-    background: #165747;
   }
 
   .review-copy-button:disabled {
@@ -6025,28 +5891,21 @@
       background: #dcebe1;
     }
 
-    .input-tool-button,
-    .template-export-button,
-    .template-settings-action,
-    .settings-action-color {
+    .button-secondary {
       border-color: #496354;
       color: #c5e0d1;
       background: #203329;
     }
 
-    .input-tool-button:hover:not(:disabled),
-    .template-export-button:hover:not(:disabled),
-    .template-settings-action:hover:not(:disabled),
-    .settings-action-color:hover:not(:disabled) {
+    .button-secondary:hover:not(:disabled) {
       background: #294637;
     }
 
-    .template-settings-action:focus-visible,
-    .settings-action-color:focus-visible {
+    .button-secondary:focus-visible {
       outline-color: #a8e0c8;
     }
 
-    .template-settings-action:disabled {
+    .button-secondary:disabled {
       color: #a7b7ad;
       background: #26362d;
     }
@@ -6057,11 +5916,19 @@
       background: #3b2b22;
     }
 
-    .case-discard-button,
-    .cancel-button {
+    .button-alert {
       border-color: #805447;
       color: #ffc2ae;
       background: #38251f;
+    }
+
+    .button-alert:hover:not(:disabled) {
+      background: #4a2f27;
+    }
+
+    .button-alert.credential-remove-button:hover:not(:disabled) {
+      color: #fff;
+      background: #a94435;
     }
 
     .lint-warnings {
@@ -6077,23 +5944,9 @@
     .egress-endpoint,
     .rail-footer,
     .output-toolbar,
-    .template-discard,
     .template-preview dt,
     .source-input-meta span:last-child {
       color: #a7b7ad;
-    }
-
-    .template-discard:hover {
-      color: #e3ebe5;
-    }
-
-    .template-editor-actions .template-discard {
-      border-color: #45584c;
-      background: #1d2c23;
-    }
-
-    .template-editor-actions .template-discard:hover:not(:disabled) {
-      background: #18251d;
     }
 
     textarea::placeholder {
