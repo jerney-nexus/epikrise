@@ -15,7 +15,7 @@ const signedReleaseWorkflow = "signed-release.yml";
 const windowsWorkspaceWorkflow = "windows-release-workspace.yml";
 const manifestName = "latest.json";
 const dispatchPollMs = 3000;
-const dispatchPollAttempts = 20;
+const dispatchTimeoutMs = 3 * 60 * 1000;
 
 /**
  * @typedef {{ number: number, title: string, headRefName: string, url: string }} PullRequest
@@ -244,7 +244,8 @@ export function selectDispatchedRun(runs, { workflow, requestId, expectedSha }) 
  * @param {{ requestId: string, expectedSha: string }} expected
  */
 async function waitForNewRun(workflow, { requestId, expectedSha }) {
-  for (let attempt = 0; attempt < dispatchPollAttempts; attempt += 1) {
+  const deadline = Date.now() + dispatchTimeoutMs;
+  do {
     const run = selectDispatchedRun(await listWorkflowRuns(workflow, "main"), {
       workflow,
       requestId,
@@ -252,9 +253,9 @@ async function waitForNewRun(workflow, { requestId, expectedSha }) {
     });
     if (run) return run;
     await new Promise((resolve) => setTimeout(resolve, dispatchPollMs));
-  }
+  } while (Date.now() < deadline);
   throw new Error(
-    `The ${workflow} run did not appear within a minute. Check it with gh run list --repo=${repository} --workflow=${workflow}.`,
+    `Dispatched ${workflow} with request ${requestId}, but no matching run was listed within 3 minutes. The run may still start, so it is not known to have failed. Look for request ${requestId} with gh run list --repo=${repository} --workflow=${workflow} --branch=main, or open https://github.com/${repository}/actions/workflows/${workflow}.`,
   );
 }
 
@@ -317,7 +318,9 @@ export async function reportDraftStatus() {
   if (!release) {
     lines.push("  not found yet (the signed release run creates the draft)");
   } else if (release.isDraft) {
-    lines.push(`  draft, not published: ${releaseUrl(tag)}`);
+    lines.push(
+      `  draft, not published. Open https://github.com/${repository}/releases and select ${tag}. Draft releases are visible only to users with write access to the repository.`,
+    );
   } else {
     lines.push(`  already published at ${release.publishedAt}: ${releaseUrl(tag)}`);
   }

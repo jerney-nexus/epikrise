@@ -80,7 +80,7 @@ Check the draft's assets, signatures, `latest.json`, and target URLs:
 pnpm release:draft-status
 ```
 
-This shows the latest **Signed updater release** run and whether the draft exists for the `package.json` version. Open the draft from the URL it prints. The VS Code task is **Epikrise: Show Draft Release Status**.
+This shows the latest **Signed updater release** run and whether the draft exists for the `package.json` version. For a draft, it prints the releases page; open it and select the tag. Drafts are visible only to users with write access to the repository. The VS Code task is **Epikrise: Show Draft Release Status**.
 
 ## 7. Test the draft natively
 
