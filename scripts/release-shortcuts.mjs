@@ -352,6 +352,9 @@ export async function reportDraftStatus() {
   } else {
     lines.push(`  already published at ${release.publishedAt}: ${releaseUrl(tag)}`);
   }
+  if (release) {
+    lines.push(`${manifestName} targets:`, ...(await manifestTargetLines(tag)));
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -452,8 +455,19 @@ export async function reportPublishedStatus() {
   const lines = [
     `Release ${tag} is published (${release.publishedAt}): ${releaseUrl(tag)}`,
     latestMarkerStatus(tag, latestTag),
+    `${manifestName} targets:`,
+    ...(await manifestTargetLines(tag)),
   ];
+  return `${lines.join("\n")}\n`;
+}
 
+/**
+ * Downloads latest.json for tag and checks it against the attached release assets.
+ *
+ * @param {string} tag
+ * @returns {Promise<string[]>} lines describing each platform target
+ */
+async function manifestTargetLines(tag) {
   /** @type {{ assets: { name: string }[] }} */
   const { assets } = await ghJson([
     "release",
@@ -483,14 +497,10 @@ export async function reportPublishedStatus() {
     const manifest = JSON.parse(
       await readFile(path.join(directory, manifestName), "utf8"),
     );
-    lines.push(
-      `${manifestName} targets:`,
-      ...assertManifestTargets(manifest, tag, assetNames),
-    );
+    return assertManifestTargets(manifest, tag, assetNames);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
-  return `${lines.join("\n")}\n`;
 }
 
 /** @type {Record<string, () => Promise<string | void>>} */
