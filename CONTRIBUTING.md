@@ -328,7 +328,7 @@ In CI, the workflow linting is done by the `raven-actions/actionlint` action in 
 pnpm test:integration
 ```
 
-CI installs PowerShell and runs this command in the "UI and i18n" workflow after the UI and i18n tests.
+CI installs PowerShell and runs this command in the "UI and i18n" job of the "Frontend tests" workflow after the UI and i18n tests.
 
 ### Browser tests
 

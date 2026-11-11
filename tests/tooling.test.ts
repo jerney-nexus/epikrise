@@ -3103,9 +3103,8 @@ describe("signed release artifacts", () => {
       "utf8",
     );
     const qualityWorkflows = [
-      "ui-tests.yml",
+      "frontend-tests.yml",
       "rust-tests.yml",
-      "playwright-tests.yml",
       "security-audit.yml",
       "quality-checks.yml",
     ];
@@ -3158,8 +3157,17 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).not.toContain("cargo-xwin");
     expect(releaseWorkflow).not.toContain("EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD");
     expect(releaseWorkflow).toMatch(
-      /build:\s+needs:\s+- validate\s+- verify-ui\s+- verify-rust\s+- verify-playwright\s+- verify-security\s+- verify-quality/,
+      /build:\s+needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality/,
     );
+    const frontendWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/frontend-tests.yml"),
+      "utf8",
+    );
+    expect(frontendWorkflow).toContain("name: UI and i18n");
+    expect(frontendWorkflow).toContain('name: "Playwright browser tests"');
+    expect(frontendWorkflow).toContain("name: playwright-report");
+    expect(frontendWorkflow).toContain("run: pnpm test:e2e");
+    expect(frontendWorkflow).toContain("run: pnpm test:ui && pnpm test:i18n");
     expect(qualityWorkflow).toContain(
       "run: pnpm lint && pnpm format:check && pnpm build",
     );
