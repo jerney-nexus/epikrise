@@ -14,7 +14,6 @@ const windowsWorkspaceWorkflow = "windows-release-workspace.yml";
 const manifestName = "latest.json";
 const dispatchPollMs = 3000;
 const dispatchPollAttempts = 20;
-const dispatchClockSkewMs = 60_000;
 
 /**
  * @typedef {{ number: number, title: string, headRefName: string, url: string }} PullRequest
@@ -188,7 +187,8 @@ async function waitForNewRun(workflow, existingIds, dispatchStartedAt) {
       (run) =>
         run.event === "workflow_dispatch" &&
         !existingIds.has(run.databaseId) &&
-        Date.parse(run.createdAt) >= dispatchStartedAt - dispatchClockSkewMs,
+        // Runs created before this dispatch started cannot be ours.
+        Date.parse(run.createdAt) >= dispatchStartedAt,
     );
     if (created.length > 1) {
       throw new Error(
