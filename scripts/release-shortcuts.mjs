@@ -15,6 +15,12 @@ const manifestName = "latest.json";
 const dispatchPollMs = 3000;
 const dispatchPollAttempts = 20;
 
+/**
+ * @typedef {{ number: number, title: string, headRefName: string, url: string }} PullRequest
+ * @typedef {{ databaseId: number, status: string, conclusion: string, event: string, headBranch: string, createdAt: string, url: string }} WorkflowRun
+ * @typedef {{ tagName: string, isDraft: boolean, isLatest: boolean, publishedAt: string }} Release
+ */
+
 /** @param {string[]} args */
 async function gh(args) {
   try {
@@ -66,7 +72,11 @@ function releaseUrl(tag) {
   return `https://github.com/${repository}/releases/tag/${encodeURIComponent(tag)}`;
 }
 
-/** @param {string} workflow @param {string} branch */
+/**
+ * @param {string} workflow
+ * @param {string} branch
+ * @returns {Promise<WorkflowRun[]>}
+ */
 async function listWorkflowRuns(workflow, branch) {
   return ghJson([
     "run",
@@ -84,6 +94,20 @@ async function listWorkflowRuns(workflow, branch) {
   ]);
 }
 
+/** @returns {Promise<Release[]>} */
+async function listReleases() {
+  return ghJson([
+    "release",
+    "list",
+    "--repo",
+    repository,
+    "--limit",
+    "20",
+    "--json",
+    "tagName,isDraft,isLatest,publishedAt",
+  ]);
+}
+
 /**
  * Finds the release preparation pull request.
  *
@@ -91,6 +115,7 @@ async function listWorkflowRuns(workflow, branch) {
  */
 export async function findReleasePullRequests() {
   await ensureAuthenticated();
+  /** @type {PullRequest[]} */
   const pulls = await ghJson([
     "pr",
     "list",
@@ -202,16 +227,7 @@ export async function reportDraftStatus() {
       "--json",
       "databaseId,status,conclusion,headBranch,createdAt,url",
     ]),
-    ghJson([
-      "release",
-      "list",
-      "--repo",
-      repository,
-      "--limit",
-      "20",
-      "--json",
-      "tagName,isDraft,isLatest,publishedAt",
-    ]),
+    listReleases(),
   ]);
 
   const lines = [
@@ -270,16 +286,7 @@ export async function reportPublishedStatus() {
   await ensureAuthenticated();
   const version = await readProjectVersion();
   const tag = `v${version}`;
-  const releases = await ghJson([
-    "release",
-    "list",
-    "--repo",
-    repository,
-    "--limit",
-    "20",
-    "--json",
-    "tagName,isDraft,isLatest,publishedAt",
-  ]);
+  const releases = await listReleases();
   const release = releases.find((item) => item.tagName === tag);
   if (!release) {
     throw new Error(
@@ -322,6 +329,7 @@ export async function reportPublishedStatus() {
   return `${lines.join("\n")}\n`;
 }
 
+/** @type {Record<string, () => Promise<string | void>>} */
 const commands = {
   "pull-request": findReleasePullRequests,
   "windows-workspace": runWindowsReleaseWorkspace,
@@ -333,6 +341,7 @@ const commands = {
  * Release scripts that keep their own implementation and are reached through
  * this entry point. Extra arguments are forwarded after `prefix`.
  */
+/** @type {Record<string, { script: string, prefix: string[] }>} */
 const delegatedCommands = {
   prepare: { script: "prepare-release.mjs", prefix: [] },
   "prepare-workflow": { script: "release-prepare-workflow.mjs", prefix: [] },
