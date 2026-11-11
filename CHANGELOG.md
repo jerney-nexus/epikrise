@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2026.11.5] - 2026-11-11
+
 ### 🚀 Features
 
 - General settings has a Theme option to choose Light, Dark, or Auto (follow the operating system); the choice applies immediately and is saved on this device
@@ -22,6 +24,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The privacy policy no longer says case content is held only in memory or processed only locally, and it now covers OCR temporary files and remote AI endpoints (#240)
 - CONTRIBUTING.md documents how to build the Store `.msixbundle` from the x64 and ARM64 MSIX packages for Partner Center (#244)
+
+### 🚀 Features
+
+- _(settings)_ Add manual light, dark, and auto theme switcher (#199) (#250)
+- _(ui)_ Add hover styles to template section buttons (#256)
+
+### 🐛 Bug Fixes
+
+- _(deps)_ Upgrade minimatch to 11.0.1 (#208) (#245)
+- _(ui)_ Raise text contrast to WCAG AA in light theme (#200) (#251)
+
+### 📚 Documentation
+
+- _(store)_ Add English and German Microsoft Store listing text and artwork (#238)
+- _(privacy)_ Correct in-memory and local-processing wording (#241)
+- Update README with additional badges for quality checks and licensing (#242)
+- Document Store msixbundle creation for Partner Center (#244)
+- _(security)_ Record accepted risk for deepmerge GHSA-gcqx-w48m-w2h4 (#209) (#255)
+
+### 🧪 Testing
+
+- Cover root layout SSR configuration (#233)
+- Raise i18n coverage to 100% (#234)
+- Raise Rust line coverage to 78% (#235)
+
+### ⚙️ Miscellaneous Tasks
+
+- _(pages)_ Build GitHub Pages with Jekyll (#243) (#246)
+- _(gate)_ Document and guard pull_request_target in macOS updater gate (#205) (#247)
 
 ## [2026.11.4] - 2026-11-08
 
@@ -496,4 +527,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 [2026.11.2]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.1...v2026.11.2
 [2026.11.3]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.2...v2026.11.3
 [2026.11.4]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.3...v2026.11.4
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.4...HEAD
+[2026.11.5]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.4...v2026.11.5
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.5...HEAD
