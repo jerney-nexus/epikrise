@@ -6,6 +6,7 @@ import {
   assertManifestTargets,
   delegatedInvocation,
   latestMarkerStatus,
+  mainMovedNotice,
   selectDispatchedRun,
   waitForNewRun,
 } from "../scripts/release-shortcuts.mjs";
@@ -81,6 +82,18 @@ describe("selectDispatchedRun", () => {
     const runs = [run({ databaseId: 12 }), run({ databaseId: 13 })];
     expect(() => selectDispatchedRun(runs, selectOptions())).toThrow(
       `More than one windows-release-workspace.yml run carries request ${requestId}`,
+    );
+  });
+});
+
+describe("mainMovedNotice", () => {
+  it("is silent when the matched run is on the SHA that was dispatched", () => {
+    expect(mainMovedNotice(expectedSha, expectedSha)).toBeUndefined();
+  });
+
+  it("reports both short SHAs when main advanced before the run started", () => {
+    expect(mainMovedNotice(expectedSha, otherSha)).toBe(
+      "main moved from aaaaaaa to bbbbbbb after the request was sent. Watching the run for bbbbbbb.\n",
     );
   });
 });

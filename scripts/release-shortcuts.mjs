@@ -201,11 +201,8 @@ export async function runWindowsReleaseWorkspace() {
     `request_id=${requestId}`,
   ]);
   const run = await waitForNewRun(windowsWorkspaceWorkflow, { requestId });
-  if (run.headSha !== expectedSha) {
-    process.stdout.write(
-      `main moved from ${expectedSha.slice(0, 7)} to ${run.headSha.slice(0, 7)} after the request was sent. Watching the run for ${run.headSha.slice(0, 7)}.\n`,
-    );
-  }
+  const movedNotice = mainMovedNotice(expectedSha, run.headSha);
+  if (movedNotice) process.stdout.write(movedNotice);
   process.stdout.write(`Watching ${run.url}\n`);
   await streamGh([
     "run",
@@ -215,6 +212,18 @@ export async function runWindowsReleaseWorkspace() {
     repository,
     "--exit-status",
   ]);
+}
+
+/**
+ * Describes a commit change between the dispatch request and the run that matched.
+ *
+ * @param {string} expectedSha main SHA when the request was sent
+ * @param {string} runSha head SHA of the run that was matched
+ * @returns {string | undefined}
+ */
+export function mainMovedNotice(expectedSha, runSha) {
+  if (runSha === expectedSha) return undefined;
+  return `main moved from ${expectedSha.slice(0, 7)} to ${runSha.slice(0, 7)} after the request was sent. Watching the run for ${runSha.slice(0, 7)}.\n`;
 }
 
 /**
