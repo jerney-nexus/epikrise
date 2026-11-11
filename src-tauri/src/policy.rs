@@ -333,6 +333,7 @@ fn administrator_controls_file(path: &Path, metadata: &fs::Metadata) -> bool {
 
 #[cfg(windows)]
 fn administrator_controls_file(path: &Path, _metadata: &fs::Metadata) -> bool {
+    use std::os::windows::process::CommandExt;
     use std::process::Command;
 
     let Some(system_root) = std::env::var_os("SystemRoot") else {
@@ -346,15 +347,15 @@ fn administrator_controls_file(path: &Path, _metadata: &fs::Metadata) -> bool {
     const ACL_CHECK: &str = r#"
 $trusted = @('S-1-5-18', 'S-1-5-32-544')
 $write = [System.Security.AccessControl.FileSystemRights]::WriteData -bor
-  [System.Security.AccessControl.FileSystemRights]::AppendData -bor
-  [System.Security.AccessControl.FileSystemRights]::WriteAttributes -bor
-  [System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes -bor
-  [System.Security.AccessControl.FileSystemRights]::Delete -bor
-  [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
-  [System.Security.AccessControl.FileSystemRights]::TakeOwnership -bor
-  [System.Security.AccessControl.FileSystemRights]::Modify -bor
-  [System.Security.AccessControl.FileSystemRights]::FullControl
-foreach ($target in $args) {
+[System.Security.AccessControl.FileSystemRights]::AppendData -bor
+[System.Security.AccessControl.FileSystemRights]::WriteAttributes -bor
+[System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes -bor
+[System.Security.AccessControl.FileSystemRights]::Delete -bor
+[System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+[System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+[System.Security.AccessControl.FileSystemRights]::TakeOwnership
+$targets = @($env:EPIKRISE_POLICY_PATH, $env:EPIKRISE_POLICY_DIR)
+foreach ($target in $targets) {
   $acl = Get-Acl -LiteralPath $target -ErrorAction Stop
   if ($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -notin $trusted) { exit 1 }
   foreach ($rule in $acl.Access) {
@@ -364,6 +365,10 @@ foreach ($target in $args) {
 }
 Write-Output 'safe'
 "#;
+    // Paths travel via environment variables: with -Command, PowerShell folds
+    // trailing arguments into the script text, where a bare path would run.
+    // Without CREATE_NO_WINDOW, the GUI app shows a flashing PowerShell console.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let output = Command::new(powershell)
         .args([
             "-NoLogo",
@@ -372,8 +377,9 @@ Write-Output 'safe'
             "-Command",
             ACL_CHECK,
         ])
-        .arg(path)
-        .arg(parent)
+        .env("EPIKRISE_POLICY_PATH", path)
+        .env("EPIKRISE_POLICY_DIR", parent)
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
     output.is_ok_and(|output| output.status.success() && output.stdout.starts_with(b"safe"))
 }
