@@ -758,6 +758,8 @@ describe("CalVer release versions", () => {
           BaseListing: {
             Title: "Epikrise",
             Description: "Desc",
+            ShortDescription: "Short",
+            ReleaseNotes: "Notes",
             Images: [image(fileStatus)],
           },
         },
@@ -776,6 +778,8 @@ describe("CalVer release versions", () => {
       const { stdout } = await execFile("node", [script, submissionPath, basePath]);
       const merged = JSON.parse(stdout);
       expect(merged.Listings["en-us"].BaseListing.Title).toBe("Epikrise");
+      expect(merged.Listings["en-us"].BaseListing.ShortDescription).toBe("Short");
+      expect(merged.Listings["en-us"].BaseListing.ReleaseNotes).toBe("Notes");
       expect(merged.Listings["en-us"].BaseListing.Images).toEqual([image("Uploaded")]);
       expect(merged.ApplicationPackages).toEqual([{ Version: "2026.11.5.0" }]);
 

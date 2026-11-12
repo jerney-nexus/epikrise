@@ -7,13 +7,21 @@
 
 import { readFileSync } from "node:fs";
 
-const TEXT_FIELDS = [
+// Every BaseListing field msstore accepts, except Images (handled below).
+const LISTING_FIELDS = [
   "Title",
+  "ShortTitle",
+  "VoiceTitle",
   "Description",
+  "ShortDescription",
   "Features",
   "Keywords",
+  "ReleaseNotes",
   "CopyrightAndTrademarkInfo",
   "LicenseTerms",
+  "DevStudio",
+  "RecommendedHardware",
+  "MinimumHardware",
 ];
 
 function fail(message) {
@@ -46,7 +54,7 @@ for (const [locale, source] of Object.entries(base.Listings ?? {})) {
     fail(`locale ${locale} is not in the submission; add it in Partner Center first`);
   }
 
-  for (const field of TEXT_FIELDS) {
+  for (const field of LISTING_FIELDS) {
     if (source.BaseListing[field] !== undefined) {
       target[field] = source.BaseListing[field];
     }
