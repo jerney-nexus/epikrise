@@ -1,9 +1,8 @@
 name: Store base metadata
 
 # Manual helper: fetches the current Partner Center submission metadata so it
-# can be compared with store-assets/listing.json. The output is uploaded as a
-# workflow artifact and is never committed, because it can contain listing
-# details that are not yet public.
+# is the source for store-assets/base-metadata.json. The output is uploaded as
+# a workflow artifact. Commit it by hand after removing any upload URLs.
 
 on:
   workflow_dispatch:

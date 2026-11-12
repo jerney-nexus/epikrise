@@ -1,18 +1,27 @@
 #!/usr/bin/env node
-// Merges store-assets/listing.json into a Partner Center submission JSON.
-// Usage: node scripts/update-store-metadata.mjs <submission.json> <listing.json>
-// Writes the updated submission JSON to stdout and fails when expected
-// listing images are not uploaded for every locale.
+// Copies listing text and images from store-assets/base-metadata.json into a
+// Partner Center submission JSON. The submission keeps its own packages.
+// Usage: node scripts/update-store-metadata.mjs <submission.json> <base-metadata.json>
+// Writes the updated submission JSON to stdout and fails when a base image is
+// not uploaded.
 
 import { readFileSync } from "node:fs";
 
-const TEXT_FIELDS = [
-  "title",
-  "description",
-  "features",
-  "keywords",
-  "copyrightAndTrademarkInfo",
-  "licenseTerms",
+// Every BaseListing field msstore accepts, except Images (handled below).
+const LISTING_FIELDS = [
+  "Title",
+  "ShortTitle",
+  "VoiceTitle",
+  "Description",
+  "ShortDescription",
+  "Features",
+  "Keywords",
+  "ReleaseNotes",
+  "CopyrightAndTrademarkInfo",
+  "LicenseTerms",
+  "DevStudio",
+  "RecommendedHardware",
+  "MinimumHardware",
 ];
 
 function fail(message) {
@@ -28,49 +37,40 @@ function readJson(path) {
   }
 }
 
-const [submissionPath, listingPath] = process.argv.slice(2);
-if (!submissionPath || !listingPath) {
-  fail("usage: update-store-metadata.mjs <submission.json> <listing.json>");
+const [submissionPath, basePath] = process.argv.slice(2);
+if (!submissionPath || !basePath) {
+  fail("usage: update-store-metadata.mjs <submission.json> <base-metadata.json>");
 }
 
 const submission = readJson(submissionPath);
-const listing = readJson(listingPath);
+const base = readJson(basePath);
 
-// msstore may emit PascalCase submission JSON; keep whichever casing it uses.
-const usePascalCase = "Listings" in submission && !("listings" in submission);
-const key = (name) =>
-  usePascalCase ? `${name[0].toUpperCase()}${name.slice(1)}` : name;
+const listings = submission.Listings ?? {};
+const notUploaded = [];
 
-const listings = submission[key("listings")] ?? {};
-const missingImages = [];
-
-for (const [locale, source] of Object.entries(listing.locales)) {
-  const entry = listings[locale];
-  const baseListing = entry?.[key("baseListing")];
-  if (!baseListing) {
+for (const [locale, source] of Object.entries(base.Listings ?? {})) {
+  const target = listings[locale]?.BaseListing;
+  if (!target) {
     fail(`locale ${locale} is not in the submission; add it in Partner Center first`);
   }
 
-  for (const field of TEXT_FIELDS) {
-    if (source[field] !== undefined) {
-      baseListing[key(field)] = source[field];
+  for (const field of LISTING_FIELDS) {
+    if (source.BaseListing[field] !== undefined) {
+      target[field] = source.BaseListing[field];
     }
   }
 
-  const uploaded = new Set(
-    (baseListing[key("images")] ?? [])
-      .filter((image) => image[key("fileStatus")] === "Uploaded")
-      .map((image) => image[key("fileName")]),
-  );
-  for (const fileName of listing.images) {
-    if (!uploaded.has(fileName)) {
-      missingImages.push(`${locale}: ${fileName}`);
+  const images = source.BaseListing.Images ?? [];
+  for (const image of images) {
+    if (image.FileStatus !== "Uploaded") {
+      notUploaded.push(`${locale}: ${image.FileName} (${image.FileStatus})`);
     }
   }
+  target.Images = images;
 }
 
-if (missingImages.length > 0) {
-  fail(`images not uploaded in Partner Center:\n  ${missingImages.join("\n  ")}`);
+if (notUploaded.length > 0) {
+  fail(`images not uploaded in Partner Center:\n  ${notUploaded.join("\n  ")}`);
 }
 
 process.stdout.write(`${JSON.stringify(submission, null, 2)}\n`);
