@@ -7,12 +7,12 @@
 import { readFileSync } from "node:fs";
 
 const TEXT_FIELDS = [
-  "title",
-  "description",
-  "features",
-  "keywords",
-  "copyrightAndTrademarkInfo",
-  "licenseTerms",
+  "Title",
+  "Description",
+  "Features",
+  "Keywords",
+  "CopyrightAndTrademarkInfo",
+  "LicenseTerms",
 ];
 
 function fail(message) {
@@ -36,33 +36,27 @@ if (!submissionPath || !listingPath) {
 const submission = readJson(submissionPath);
 const listing = readJson(listingPath);
 
-// msstore may emit PascalCase submission JSON; keep whichever casing it uses.
-const usePascalCase = "Listings" in submission && !("listings" in submission);
-const key = (name) =>
-  usePascalCase ? `${name[0].toUpperCase()}${name.slice(1)}` : name;
-
-const listings = submission[key("listings")] ?? {};
+const listings = submission.Listings ?? {};
 const missingImages = [];
 
-for (const [locale, source] of Object.entries(listing.locales)) {
-  const entry = listings[locale];
-  const baseListing = entry?.[key("baseListing")];
+for (const [locale, source] of Object.entries(listing.Listings)) {
+  const baseListing = listings[locale]?.BaseListing;
   if (!baseListing) {
     fail(`locale ${locale} is not in the submission; add it in Partner Center first`);
   }
 
   for (const field of TEXT_FIELDS) {
-    if (source[field] !== undefined) {
-      baseListing[key(field)] = source[field];
+    if (source.BaseListing[field] !== undefined) {
+      baseListing[field] = source.BaseListing[field];
     }
   }
 
   const uploaded = new Set(
-    (baseListing[key("images")] ?? [])
-      .filter((image) => image[key("fileStatus")] === "Uploaded")
-      .map((image) => image[key("fileName")]),
+    (baseListing.Images ?? [])
+      .filter((image) => image.FileStatus === "Uploaded")
+      .map((image) => image.FileName),
   );
-  for (const fileName of listing.images) {
+  for (const { FileName: fileName } of listing.Images) {
     if (!uploaded.has(fileName)) {
       missingImages.push(`${locale}: ${fileName}`);
     }

@@ -742,14 +742,16 @@ describe("CalVer release versions", () => {
     });
   });
 
-  it("merges listing metadata into PascalCase submissions and keeps their casing", async () => {
+  it("merges listing metadata into PascalCase submissions", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-store-metadata-"));
     const listingPath = path.join(directory, "listing.json");
     const submissionPath = path.join(directory, "submission.json");
     const script = path.join(process.cwd(), "scripts", "update-store-metadata.mjs");
     const listing = {
-      locales: { "en-us": { title: "Epikrise", description: "Desc" } },
-      images: ["icon.png"],
+      Listings: {
+        "en-us": { BaseListing: { Title: "Epikrise", Description: "Desc" } },
+      },
+      Images: [{ FileName: "icon.png", ImageType: "StoreLogoSquare" }],
     };
 
     try {
@@ -770,7 +772,6 @@ describe("CalVer release versions", () => {
       const merged = JSON.parse(stdout);
       expect(merged.Listings["en-us"].BaseListing.Title).toBe("Epikrise");
       expect(merged.Listings["en-us"].BaseListing.Description).toBe("Desc");
-      expect(merged.listings).toBeUndefined();
 
       await writeFile(submissionPath, JSON.stringify(submission("PendingUpload")));
       await expect(
