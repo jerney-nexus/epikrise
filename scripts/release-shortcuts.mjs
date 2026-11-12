@@ -352,9 +352,7 @@ export async function reportDraftStatus() {
   } else {
     lines.push(`  already published at ${release.publishedAt}: ${releaseUrl(tag)}`);
   }
-  if (release) {
-    lines.push(`${manifestName} targets:`, ...(await manifestTargetLines(tag)));
-  }
+  if (release) await appendManifestTargets(lines, tag);
   return `${lines.join("\n")}\n`;
 }
 
@@ -455,10 +453,27 @@ export async function reportPublishedStatus() {
   const lines = [
     `Release ${tag} is published (${release.publishedAt}): ${releaseUrl(tag)}`,
     latestMarkerStatus(tag, latestTag),
-    `${manifestName} targets:`,
-    ...(await manifestTargetLines(tag)),
   ];
+  await appendManifestTargets(lines, tag);
   return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Appends latest.json target lines to lines. On a validation failure, the
+ * status collected so far is printed before the error is rethrown, so a
+ * release that is still uploading keeps its workflow and draft context.
+ *
+ * @param {string[]} lines status lines collected so far
+ * @param {string} tag
+ * @returns {Promise<void>}
+ */
+async function appendManifestTargets(lines, tag) {
+  try {
+    lines.push(`${manifestName} targets:`, ...(await manifestTargetLines(tag)));
+  } catch (error) {
+    process.stdout.write(`${lines.join("\n")}\n`);
+    throw error;
+  }
 }
 
 /**
