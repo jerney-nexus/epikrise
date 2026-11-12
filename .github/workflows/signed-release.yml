@@ -54,18 +54,13 @@ jobs:
               --release-file "$release_file"
           fi
 
-  verify-ui:
-    uses: ./.github/workflows/ui-tests.yml
+  verify-frontend:
+    uses: ./.github/workflows/frontend-tests.yml
     permissions:
       contents: read
 
   verify-rust:
     uses: ./.github/workflows/rust-tests.yml
-    permissions:
-      contents: read
-
-  verify-playwright:
-    uses: ./.github/workflows/playwright-tests.yml
     permissions:
       contents: read
 
@@ -82,9 +77,8 @@ jobs:
   build:
     needs:
       - validate
-      - verify-ui
+      - verify-frontend
       - verify-rust
-      - verify-playwright
       - verify-security
       - verify-quality
     name: Build ${{ matrix.target }}
