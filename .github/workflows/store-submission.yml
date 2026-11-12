@@ -238,7 +238,7 @@ jobs:
         run: |
           msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
-          node scripts/update-store-metadata.mjs submission.json store-assets/listing.json | Out-File -FilePath submission-updated.json -Encoding utf8
+          node scripts/update-store-metadata.mjs submission.json store-assets/base-metadata.json | Out-File -FilePath submission-updated.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "update-store-metadata.mjs failed." }
           $updated = Get-Content submission-updated.json -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
           # Pass the JSON on stdin: an inline argument is capped by the 32,767-character Windows command line.

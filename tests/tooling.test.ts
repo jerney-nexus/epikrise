@@ -742,40 +742,46 @@ describe("CalVer release versions", () => {
     });
   });
 
-  it("merges listing metadata into PascalCase submissions", async () => {
+  it("copies base metadata listings and images into the draft submission", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "epikrise-store-metadata-"));
-    const listingPath = path.join(directory, "listing.json");
+    const basePath = path.join(directory, "base-metadata.json");
     const submissionPath = path.join(directory, "submission.json");
     const script = path.join(process.cwd(), "scripts", "update-store-metadata.mjs");
-    const listing = {
+    const image = (fileStatus: string) => ({
+      FileName: "icon.png",
+      FileStatus: fileStatus,
+      ImageType: "StoreLogoSquare",
+    });
+    const base = (fileStatus: string) => ({
       Listings: {
-        "en-us": { BaseListing: { Title: "Epikrise", Description: "Desc" } },
+        "en-us": {
+          BaseListing: {
+            Title: "Epikrise",
+            Description: "Desc",
+            Images: [image(fileStatus)],
+          },
+        },
       },
-      Images: [{ FileName: "icon.png", ImageType: "StoreLogoSquare" }],
+    });
+    const submission = {
+      ApplicationPackages: [{ Version: "2026.11.5.0" }],
+      Listings: {
+        "en-us": { BaseListing: { Title: "Old", Images: [] } },
+      },
     };
 
     try {
-      await writeFile(listingPath, JSON.stringify(listing));
-      const submission = (fileStatus: string) => ({
-        Listings: {
-          "en-us": {
-            BaseListing: {
-              Title: "Old",
-              Images: [{ FileStatus: fileStatus, FileName: "icon.png" }],
-            },
-          },
-        },
-      });
-
-      await writeFile(submissionPath, JSON.stringify(submission("Uploaded")));
-      const { stdout } = await execFile("node", [script, submissionPath, listingPath]);
+      await writeFile(submissionPath, JSON.stringify(submission));
+      await writeFile(basePath, JSON.stringify(base("Uploaded")));
+      const { stdout } = await execFile("node", [script, submissionPath, basePath]);
       const merged = JSON.parse(stdout);
       expect(merged.Listings["en-us"].BaseListing.Title).toBe("Epikrise");
-      expect(merged.Listings["en-us"].BaseListing.Description).toBe("Desc");
+      expect(merged.Listings["en-us"].BaseListing.Images).toEqual([image("Uploaded")]);
+      expect(merged.ApplicationPackages).toEqual([{ Version: "2026.11.5.0" }]);
 
-      await writeFile(submissionPath, JSON.stringify(submission("PendingUpload")));
+      await writeFile(basePath, JSON.stringify(base("PendingUpload")));
       await expect(
-        execFile("node", [script, submissionPath, listingPath]),
+        execFile("node", [script, submissionPath, basePath]),
       ).rejects.toMatchObject({ stderr: expect.stringContaining("icon.png") });
     } finally {
       await rm(directory, { recursive: true, force: true });

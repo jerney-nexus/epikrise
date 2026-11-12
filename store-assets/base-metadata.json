@@ -1,0 +1,254 @@
+{
+  "Id": "1152921505702382833",
+  "ApplicationCategory": "Productivity",
+  "Pricing": {
+    "TrialPeriod": "NoFreeTrial",
+    "MarketSpecificPricings": {
+      "LB": "NotAvailable",
+      "EH": "NotAvailable"
+    },
+    "PriceId": "Free",
+    "IsAdvancedPricingModel": true
+  },
+  "Visibility": "Public",
+  "TargetPublishMode": "Immediate",
+  "TargetPublishDate": "1601-01-01T00:00:00Z",
+  "Listings": {
+    "de-ch": {
+      "BaseListing": {
+        "Keywords": [
+          "Epikrise",
+          "Entlassungsbericht",
+          "Klinische Dokumentation",
+          "Klinische Notizen",
+          "Arztbrief",
+          "Entwurfshilfe",
+          "Vorlagen"
+        ],
+        "Description": "Epikrise ist eine Entwurfshilfe für medizinisches Personal. Fügen Sie Text oder Bilder ein, importieren Sie Dokumente oder geben Sie eine Webadresse an. Epikrise extrahiert das Material und erstellt mit einer von Ihnen gewählten Vorlage einen strukturierten Entwurf, zum Beispiel einen Entlassungsbericht, zur Prüfung.\n\nEpikrise anonymisiert die Eingaben nicht. Entfernen Sie identifizierende Angaben vor der Verwendung.\n\nErzeugter Text ist ein Entwurf. Eine verantwortliche Ärztin oder ein verantwortlicher Arzt muss ihn vor der Verwendung prüfen und bearbeiten. Epikrise ist kein Medizinprodukt und kein Diagnoseinstrument. Die App ist nicht mit einem Krankenhausinformationssystem verbunden; den freigegebenen Text kopieren Sie selbst in das Zielsystem.\n\nFallinhalte werden im Arbeitsspeicher gehalten und nicht als Verlauf gespeichert. OCR kann temporäre Bilddateien anlegen; sie werden vor dem Entfernen überschrieben. Kopien durch das Betriebssystem lassen sich jedoch nicht ausschliessen. Formularwerte und Texte, die Sie selbst in die Zwischenablage kopieren, sind davon nicht erfasst und bleiben erhalten, bis Sie sie ändern oder die Zwischenablage überschrieben wird. Die App hat kein Backend, keine Telemetrie und kein Konto. Die Store-Version sendet Anfragen nur an den von Ihnen konfigurierten Modell-Endpunkt und an Webadressen, die Sie importieren, und prüft nicht auf Updates. Vor dem ersten Versand von Fallinhalten an einen externen Anbieter je Fall bittet Epikrise um Bestätigung von Anbieter und Endpunkt. Das Abrufen der Modellliste und das Testen der Verbindung erfordern keine Fallbestätigung.\n\nUnterstützte Anbieter: OpenAI, Anthropic, Gemini, Ollama, OpenAI-kompatible Endpunkte, OpenRouter, xAI und Groq. Ein Ollama-Endpunkt gilt nur dann als lokal, wenn der konfigurierte Endpunkt lokal ist. API-Schlüssel werden im Schlüsselbund des Betriebssystems gespeichert.",
+        "Features": [
+          "Text oder Bilder einfügen, Dateien (PDF, DOCX, XLSX, RTF, HTML) importieren oder Webseiten abrufen",
+          "Text aus Bildern und gescannten PDF-Seiten lokal per OCR erkennen oder per Bildanalyse, sofern das Modell sie unterstützt",
+          "Strukturierte Entwürfe aus Ihren eigenen Vorlagen erstellen",
+          "Live-Vorschau der Vorlage mit MiniJinja",
+          "Vorlagenprüfungen als Warnungen, mit erneuter Erstellung nach Korrekturen",
+          "Befunde in mehreren Runden hinzufügen und kumulativ integrieren",
+          "Entwürfe streamen und die Erstellung jederzeit abbrechen",
+          "Unterstützt OpenAI, Anthropic, Gemini, Ollama, OpenAI-kompatible Endpunkte, OpenRouter, xAI und Groq",
+          "Modelle ermitteln und Anbieterverbindungen prüfen",
+          "Eingaben, Ergebnis und Steuerung in einem Arbeitsbereich",
+          "Vorschau des Ergebnisses als Klartext oder formatiert",
+          "Ergebnis erst nach ärztlicher Bestätigung formatiert kopieren",
+          "Fallinhalte im Arbeitsspeicher, nicht als Verlauf gespeichert",
+          "API-Schlüssel im Schlüsselbund des Betriebssystems",
+          "Fallinhalte an externe Endpunkte nur nach Bestätigung je Fall, Anbieter und Endpunkt",
+          "Oberfläche auf Deutsch und Englisch"
+        ],
+        "ReleaseNotes": "In dieser Version können Sie in den Allgemeinen Einstellungen zwischen Hell, Dunkel und Automatisch wählen; Automatisch folgt dem Betriebssystem. Die Änderung wird sofort übernommen und auf diesem Gerät gespeichert. Im hellen Design ist der Textkontrast höher, sodass Platzhalter, Hinweise und Hilfstexte besser lesbar sind. Alle Schaltflächen haben jetzt einen einheitlichen Stil und heben sich beim Darüberfahren nicht mehr an, und die Schaltflächen der Vorlagenabschnitte (Nach oben, Nach unten, Löschen) zeigen beim Darüberfahren einen Hover-Zustand. Unter Windows öffnet Epikrise die Richtliniendatei des Administrators (policy.toml) nicht mehr bei jedem Start in einem Editor, und beim Start blitzt kein PowerShell-Fenster mehr auf.",
+        "Images": [
+          {
+            "FileName": "Screenshot 2026-11-09 014756.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029455661",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "Screenshot 2026-11-09 014840.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029455662",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "Screenshot 2026-11-09 014856.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029455663",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "packaging-1x1-2160x2160.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029451935",
+            "ImageType": "StoreLogoSquare"
+          },
+          {
+            "FileName": "poster-9x16-1440x2160.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029451154",
+            "ImageType": "StoreLogo9x16"
+          },
+          {
+            "FileName": "superhero-16x9-3840x2160.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029451155",
+            "ImageType": "PromotionalArt16x9"
+          }
+        ],
+        "RecommendedHardware": [],
+        "MinimumHardware": [],
+        "Title": "Epikrise",
+        "LicenseTerms": "MIT-Lizenz. Copyright (c) 2026 Pascal Jerney. Volltext: https://github.com/jerney-nexus/epikrise/blob/main/LICENSE",
+        "CopyrightAndTrademarkInfo": "© 2026 Pascal Jerney",
+        "ShortDescription": "Erstellt aus von Ihnen anonymisierten klinischen Unterlagen einen strukturierten Entwurf zur ärztlichen Prüfung. Läuft auf Ihrem Gerät; Fallinhalte an externe Modellanbieter gehen nur an den gewählten Anbieter und erst nach Ihrer Bestätigung.",
+        "ShortTitle": null,
+        "VoiceTitle": null,
+        "DevStudio": "Pascal Jerney"
+      },
+      "PlatformOverrides": {}
+    },
+    "en-us": {
+      "BaseListing": {
+        "Keywords": [
+          "discharge summary",
+          "Epikrise",
+          "clinical documentation",
+          "clinical notes",
+          "medical letters",
+          "drafting aid",
+          "templates"
+        ],
+        "Description": "Epikrise is a drafting aid for clinicians. Paste text or images, import documents, or provide a web address. Epikrise extracts the material and combines it with a template you choose to produce a structured draft, such as a discharge summary, for your review.\n\nEpikrise does not anonymize input. Remove identifying details before use.\n\nGenerated text is a draft. A responsible clinician must review and edit it before use. Epikrise is not a medical device and not a diagnostic tool. It does not connect to a hospital information system; you copy the approved text and paste it into the target system yourself.\n\nCase content is held in memory and is not saved as history. OCR may write temporary image files; they are overwritten before removal, but operating-system copies cannot be ruled out. Form values and text you copy to the clipboard yourself are not covered and remain until you change them or the clipboard is overwritten. The app has no hosted backend, no telemetry, and no account. The Store version sends requests only to the model endpoint you configure and to web addresses you choose to import, and does not check for updates. Before case content is first sent to a remote provider in each case, Epikrise asks you to confirm the provider and endpoint. Retrieving the model list and testing the connection do not require case confirmation.\n\nSupported providers: OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI, and Groq. Ollama is local only when its configured endpoint is local. API keys are stored in the operating system keychain.",
+        "Features": [
+          "Paste text or images, import PDF, DOCX, XLSX, RTF and HTML files, or fetch a web page",
+          "Extract text from images and scanned PDF pages with local OCR, or with vision analysis where the model supports it",
+          "Create structured drafts from your own templates",
+          "Live template preview with MiniJinja rendering",
+          "Template-defined output checks shown as warnings, with regeneration after corrections",
+          "Add findings in several rounds and integrate them cumulatively",
+          "Stream drafts and cancel generation at any time",
+          "Supports OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI and Groq",
+          "Discover models and check provider connections",
+          "Inputs, output and controls in one workspace",
+          "Plain and formatted output preview",
+          "Copy output as formatted text only after clinician acknowledgment",
+          "Case content kept in memory only, not saved as history",
+          "API keys stored in the operating system keychain",
+          "Case content sent to remote endpoints only after confirmation per case, provider and endpoint",
+          "Interface in German and English"
+        ],
+        "ReleaseNotes": "This version adds a theme choice to General settings, where you can pick Light, Dark, or Auto, which follows your operating system. The change applies immediately and is saved on this device. The light theme now has higher text contrast, so placeholders, hints, and helper text are easier to read. All buttons share one style and no longer lift on hover, and the template section buttons (Move up, Move down, Delete) show a hover state. On Windows, Epikrise no longer opens the administrator policy file in an editor on every launch, and it no longer briefly shows a PowerShell window at startup.",
+        "Images": [
+          {
+            "FileName": "Screenshot 2026-11-09 023845.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029457152",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "Screenshot 2026-11-09 023859.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029457241",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "Screenshot 2026-11-09 023910.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029457242",
+            "ImageType": "Screenshot"
+          },
+          {
+            "FileName": "packaging-1x1-2160x2160.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029457237",
+            "ImageType": "StoreLogoSquare"
+          },
+          {
+            "FileName": "poster-9x16-1440x2160.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029457236",
+            "ImageType": "StoreLogo9x16"
+          },
+          {
+            "FileName": "superhero-16x9-3840x2160.png",
+            "FileStatus": "Uploaded",
+            "Id": "1152922700029451936",
+            "ImageType": "PromotionalArt16x9"
+          }
+        ],
+        "RecommendedHardware": [],
+        "MinimumHardware": [],
+        "Title": "Epikrise",
+        "LicenseTerms": "MIT License. Copyright (c) 2026 Pascal Jerney. Full text: https://github.com/jerney-nexus/epikrise/blob/main/LICENSE",
+        "CopyrightAndTrademarkInfo": "© 2026 Pascal Jerney",
+        "ShortDescription": "Turns clinical material you have anonymized into a structured draft for clinician review. Runs on your device; content sent to a remote model provider goes only to the provider you choose, after you confirm.",
+        "ShortTitle": null,
+        "VoiceTitle": null,
+        "DevStudio": "Pascal Jerney"
+      },
+      "PlatformOverrides": {}
+    }
+  },
+  "HardwarePreferences": [
+    "Keyboard",
+    "Mouse"
+  ],
+  "AutomaticBackupEnabled": false,
+  "CanInstallOnRemovableMedia": true,
+  "IsGameDvrEnabled": false,
+  "GamingOptions": [
+    {
+      "Genres": [],
+      "IsLocalMultiplayer": false,
+      "IsLocalCooperative": false,
+      "IsOnlineMultiplayer": false,
+      "IsOnlineCooperative": false,
+      "IsBroadcastingPrivilegeGranted": true,
+      "IsCrossPlayEnabled": false,
+      "KinectDataForExternal": "Disabled"
+    }
+  ],
+  "HasExternalInAppProducts": false,
+  "MeetAccessibilityGuidelines": true,
+  "NotesForCertification": "",
+  "Status": "Published",
+  "StatusDetails": {
+    "Errors": [],
+    "Warnings": [
+      {
+        "Code": "SalesUnsupportedWarning",
+        "Details": "The sales resource is no longer supported. To view or edit the sales data for this submission, use the Dev Center dashboard."
+      }
+    ],
+    "CertificationReports": []
+  },
+  "ApplicationPackages": [
+    {
+      "FileName": "Epikrise_2026.11.5.0.msixbundle",
+      "FileStatus": "Uploaded",
+      "Id": "2000000000100557820",
+      "Version": "2026.11.5.0",
+      "Architecture": "neutral",
+      "Languages": [
+        "de-CH",
+        "en-US"
+      ],
+      "Capabilities": [
+        "Microsoft.storeFilter.core.notSupported_8wekyb3d8bbwe",
+        "runFullTrust"
+      ],
+      "MinimumDirectXVersion": "None",
+      "MinimumSystemRam": "None"
+    }
+  ],
+  "PackageDeliveryOptions": {
+    "PackageRollout": {
+      "IsPackageRollout": false,
+      "PackageRolloutPercentage": 0,
+      "PackageRolloutStatus": "PackageRolloutInProgress",
+      "FallbackSubmissionId": "1152921505702027603"
+    },
+    "IsMandatoryUpdate": false,
+    "MandatoryUpdateEffectiveDate": "1601-01-01T00:00:00Z"
+  },
+  "EnterpriseLicensing": "Online",
+  "AllowMicrosoftDecideAppAvailabilityToFutureDeviceFamilies": true,
+  "AllowTargetFutureDeviceFamilies": {
+    "7": false,
+    "Desktop": true,
+    "Mobile": false,
+    "Xbox": false,
+    "Team": false,
+    "Holographic": false
+  },
+  "FriendlyName": "Submission 2",
+  "Trailers": []
+}

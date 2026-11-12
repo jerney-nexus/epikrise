@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Merges store-assets/listing.json into a Partner Center submission JSON.
-// Usage: node scripts/update-store-metadata.mjs <submission.json> <listing.json>
-// Writes the updated submission JSON to stdout and fails when expected
-// listing images are not uploaded for every locale.
+// Copies listing text and images from store-assets/base-metadata.json into a
+// Partner Center submission JSON. The submission keeps its own packages.
+// Usage: node scripts/update-store-metadata.mjs <submission.json> <base-metadata.json>
+// Writes the updated submission JSON to stdout and fails when a base image is
+// not uploaded.
 
 import { readFileSync } from "node:fs";
 
@@ -28,43 +29,40 @@ function readJson(path) {
   }
 }
 
-const [submissionPath, listingPath] = process.argv.slice(2);
-if (!submissionPath || !listingPath) {
-  fail("usage: update-store-metadata.mjs <submission.json> <listing.json>");
+const [submissionPath, basePath] = process.argv.slice(2);
+if (!submissionPath || !basePath) {
+  fail("usage: update-store-metadata.mjs <submission.json> <base-metadata.json>");
 }
 
 const submission = readJson(submissionPath);
-const listing = readJson(listingPath);
+const base = readJson(basePath);
 
 const listings = submission.Listings ?? {};
-const missingImages = [];
+const notUploaded = [];
 
-for (const [locale, source] of Object.entries(listing.Listings)) {
-  const baseListing = listings[locale]?.BaseListing;
-  if (!baseListing) {
+for (const [locale, source] of Object.entries(base.Listings ?? {})) {
+  const target = listings[locale]?.BaseListing;
+  if (!target) {
     fail(`locale ${locale} is not in the submission; add it in Partner Center first`);
   }
 
   for (const field of TEXT_FIELDS) {
     if (source.BaseListing[field] !== undefined) {
-      baseListing[field] = source.BaseListing[field];
+      target[field] = source.BaseListing[field];
     }
   }
 
-  const uploaded = new Set(
-    (baseListing.Images ?? [])
-      .filter((image) => image.FileStatus === "Uploaded")
-      .map((image) => image.FileName),
-  );
-  for (const { FileName: fileName } of listing.Images) {
-    if (!uploaded.has(fileName)) {
-      missingImages.push(`${locale}: ${fileName}`);
+  const images = source.BaseListing.Images ?? [];
+  for (const image of images) {
+    if (image.FileStatus !== "Uploaded") {
+      notUploaded.push(`${locale}: ${image.FileName} (${image.FileStatus})`);
     }
   }
+  target.Images = images;
 }
 
-if (missingImages.length > 0) {
-  fail(`images not uploaded in Partner Center:\n  ${missingImages.join("\n  ")}`);
+if (notUploaded.length > 0) {
+  fail(`images not uploaded in Partner Center:\n  ${notUploaded.join("\n  ")}`);
 }
 
 process.stdout.write(`${JSON.stringify(submission, null, 2)}\n`);
