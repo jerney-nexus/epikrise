@@ -60,6 +60,7 @@ jobs:
           GIT_CONFIG_VALUE_0: main
         with:
           ref: ${{ inputs.commit }}
+          fetch-tags: true
           persist-credentials: false
 
       - uses: pnpm/setup@v2

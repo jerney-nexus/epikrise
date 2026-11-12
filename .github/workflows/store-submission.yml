@@ -238,6 +238,8 @@ jobs:
           node scripts/update-store-metadata.mjs submission.json store-assets/listing.json | Out-File -FilePath submission-updated.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "update-store-metadata.mjs failed." }
           $updated = Get-Content submission-updated.json -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
+          # Keep embedded JSON quotes intact when msstore receives the argument.
+          $PSNativeCommandArgumentPassing = 'Standard'
           msstore submission updateMetadata $env:STORE_PRODUCT_ID $updated
           if ($LASTEXITCODE -ne 0) { throw "msstore submission updateMetadata failed." }
 

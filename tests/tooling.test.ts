@@ -2803,6 +2803,7 @@ describe("six-target desktop build tooling", () => {
       "utf8",
     );
     expect(storeMsixWorkflow).toContain("--package-family store-msix");
+    expect(storeMsixWorkflow).toContain("fetch-tags: true");
     expect(workflow).toContain("--package-family desktop");
     expect(storeMsixWorkflow).toContain("Stage Store MSIX with integrity manifest");
     expect(storeMsixWorkflow).toContain("artifact-staging/store-msix-artifact/");
@@ -3345,6 +3346,7 @@ describe("signed release artifacts", () => {
     );
 
     expect(workflow).toContain("workflow_run:");
+    expect(workflow).toContain("PSNativeCommandArgumentPassing = 'Standard'");
     expect(workflow).toContain("- Signed updater release");
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(workflow).toContain(
