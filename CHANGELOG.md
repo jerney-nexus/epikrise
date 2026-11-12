@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2026.11.6] - 2026-11-12
+
+### ⚙️ Miscellaneous Tasks
+
+- Pass App client-id to release preparation token (#269)
+
 ## [2026.11.5] - 2026-11-11
 
 ### 🚀 Features
@@ -528,4 +534,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 [2026.11.3]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.2...v2026.11.3
 [2026.11.4]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.3...v2026.11.4
 [2026.11.5]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.4...v2026.11.5
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.5...HEAD
+[2026.11.6]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.5...v2026.11.6
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.6...HEAD
