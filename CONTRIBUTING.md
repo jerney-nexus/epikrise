@@ -275,6 +275,8 @@ Partner Center accepts one `.msixbundle` that contains the x64 and ARM64 Store p
 
 Keep the bundle and its inputs out of the repository and out of any clinical environment. Upload the bundle to Partner Center manually.
 
+The Store packages do not bundle the WebView2 Evergreen Runtime and do not include a WebView2 bootstrapper. Devices must already have the runtime installed. The NSIS installer is the offline-WebView2 path. Keep the Store listing's requirements consistent with this.
+
 ## Project layout
 
 ```

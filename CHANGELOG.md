@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### 🚀 Features
+
+- Epikrise is available on the Microsoft Store
+
 ## [2026.11.5] - 2026-11-11
 
 ### 🚀 Features

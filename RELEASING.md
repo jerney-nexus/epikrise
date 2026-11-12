@@ -111,8 +111,19 @@ This checks that the release is published, that every `latest.json` platform URL
 - Record updater test results separately from the release, as described in step 7.
 - Store delivery uses a separate Microsoft certification process. See [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-workflow).
 
+## Microsoft Store submission
+
+The Store package is separate from the signed release, the NSIS installer, and the direct-release updater. It is never installed by the direct updater, and the Store build has no updater code or update checks. Microsoft manages Store updates.
+
+1. Wait for the **Store submission packages** run for the tag. It attaches the unsigned x64 and ARM64 MSIX packages, with their SHA-256 and provenance manifests, to the GitHub Release. Its inputs do not include `previous_store_version`. Before uploading, compare the version with the last Partner Center submission. The version must be higher, using the `year.month.patch.0` form.
+2. If you need packages before the release is published, dispatch **Desktop builds** with `previous_store_version` set to the last submitted Store version. The build rejects a version that does not advance. See [CONTRIBUTING.md](CONTRIBUTING.md#building-the-store-msixbundle).
+3. Build the `.msixbundle` from the x64 and ARM64 packages on Windows, as described in [CONTRIBUTING.md](CONTRIBUTING.md#building-the-store-msixbundle).
+4. Upload the bundle manually in Partner Center. Microsoft signs submitted packages and runs certification. Record the certification outcome and any reviewer questions in the related issue.
+5. Test the Store package on a clean Windows install. Record the Windows version and WebView2 runtime status. The package does not bundle WebView2, so the device must already have the Evergreen Runtime.
+
 ## Never
 
 - Commit private signing keys or generate or replace a production key in CI. Keys live in the approved GitHub Actions secrets.
 - Move or re-create a published tag.
 - Publish a release while a claimed platform has failing acceptance checks.
+- Upload a Store package whose version does not advance over the last Partner Center submission.
