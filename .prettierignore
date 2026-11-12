@@ -7,3 +7,6 @@ src-tauri/target/
 
 # Keep Tauri Specta bindings in their generated format.
 src/bindings.ts
+
+# Keep the verbatim Partner Center base metadata export unchanged.
+store-assets/base-metadata.json
