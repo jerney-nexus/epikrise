@@ -126,7 +126,7 @@ The Store package is separate from the signed release, the NSIS installer, and t
 Complete this once before the first automated submission:
 
 1. Create the Partner Center app and set its product ID as the `STORE_PRODUCT_ID` repository variable.
-2. Add the repository secrets `AZURE_AD_TENANT_ID`, `SELLER_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, and `AZURE_AD_APPLICATION_SECRET`. Use these names only, and never commit their values.
+2. Add the secrets `AZURE_AD_TENANT_ID`, `SELLER_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, and `AZURE_AD_APPLICATION_SECRET`, and the variable `STORE_PRODUCT_ID`, to the `store-partner-center` environment (Settings → Environments), not as repository-level secrets. Restrict its deployment branches to `main`. Use these names only, and never commit their values.
 3. Upload the listing images by hand in Partner Center for every locale in `store-assets/listing.json`.
 4. Run **Store base metadata** (`.github/workflows/store-base-metadata.yml`) with manual dispatch, then download the `epikrise-store-base-metadata` artifact. It holds the current Partner Center submission JSON. Compare it with `store-assets/listing.json` before the first automated submission. Do not commit that file: it can contain listing details that are not yet public.
 
