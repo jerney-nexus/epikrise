@@ -126,11 +126,76 @@ The Store package is separate from the signed release, the NSIS installer, and t
 Complete this once before the first automated submission:
 
 1. Create the Partner Center app and set its product ID as the `STORE_PRODUCT_ID` repository variable.
-2. Add the secrets `AZURE_AD_TENANT_ID`, `SELLER_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, and `AZURE_AD_APPLICATION_SECRET`, and the variable `STORE_PRODUCT_ID`, to the `store-partner-center` environment (Settings → Environments), not as repository-level secrets. Restrict its deployment branches to `main`. Use these names only, and never commit their values.
+2. Add the secrets `AZURE_AD_TENANT_ID`, `SELLER_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_CERTIFICATE_PFX_BASE64` (the base64 of the PFX file, which contains the private key), and `AZURE_AD_CERTIFICATE_PASSWORD`, and the variable `STORE_PRODUCT_ID`, to the `store-partner-center` environment (Settings → Environments), not as repository-level secrets. Upload the matching `.cer` to the Entra app registration. The certificate is valid for 24 months at most; renew it before it expires. Restrict the environment's deployment branches to `main`. Use these names only, and never commit their values or the PFX file.
 3. Upload the listing images by hand in Partner Center for every locale listed in `store-assets/base-metadata.json`.
 4. Run **Store base metadata** (`.github/workflows/store-base-metadata.yml`) with manual dispatch, then download the `epikrise-store-base-metadata` artifact. Save it as `store-assets/base-metadata.json`, removing any `FileUploadUrl` values first. The file is the source for the automated listing sync.
 
 Both Store submission jobs run on `windows-latest`, following the Microsoft GitHub Actions example. The upload job uses PowerShell and stops on the first failing `msstore` command.
+
+## Partner Center certificate
+
+The Store workflows authenticate to Partner Center with a self-signed certificate instead of a client secret. The certificate expires 24 months after creation, and the workflows fail once it does. Record its expiry date (shown in the `NotAfter` field below) and set a reminder at least 30 days before it.
+
+### Create the certificate (Windows PowerShell)
+
+```powershell
+$dir = "$env:USERPROFILE\epikrise-msstore"
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+$cert = New-SelfSignedCertificate -Subject "CN=epikrise-msstore" `
+  -CertStoreLocation Cert:\CurrentUser\My `
+  -KeyAlgorithm RSA -KeyLength 2048 -KeyExportPolicy Exportable `
+  -NotAfter (Get-Date).AddMonths(24)
+$cert | Select-Object Subject, Thumbprint, NotAfter
+```
+
+### Export the public certificate and upload it to Entra
+
+```powershell
+Export-Certificate -Cert $cert -FilePath "$dir\epikrise-msstore.cer"
+```
+
+In the Entra admin center, open the app registration used for Partner Center (its client ID is `AZURE_AD_APPLICATION_CLIENT_ID`), go to **Certificates & secrets → Certificates → Upload certificate**, and upload `epikrise-msstore.cer`. Keep any older certificate until the new one has passed a workflow run.
+
+### Export the PFX for CI
+
+```powershell
+$pfxPassword = Read-Host -AsSecureString "PFX password"
+Export-PfxCertificate -Cert $cert -FilePath "$dir\epikrise-msstore.pfx" -Password $pfxPassword
+Format-Hex -Path "$dir\epikrise-msstore.pfx" -Count 16
+```
+
+A valid PFX has `02 01 03` after the length header, near the start of the output. If the first bytes are `30`, the file is a `.cer`, not a PFX; repeat the export. Never commit the PFX or the password.
+
+### Set the CI secrets
+
+Encode the PFX as one line and copy it to the clipboard:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$dir\epikrise-msstore.pfx")) | Set-Clipboard
+```
+
+Paste it into the `AZURE_AD_CERTIFICATE_PFX_BASE64` secret of the `store-partner-center` environment. Set `AZURE_AD_CERTIFICATE_PASSWORD` to the password entered above.
+
+### Test locally
+
+Import the PFX into the current user's certificate store, then run the read-only checks, substituting the new certificate's thumbprint:
+
+```powershell
+Import-PfxCertificate -FilePath "$dir\epikrise-msstore.pfx" -CertStoreLocation Cert:\CurrentUser\My -Password $pfxPassword
+msstore reconfigure --tenantId <tenant> --sellerId <seller> --clientId <client> --certificateThumbprint <thumbprint>
+msstore info
+```
+
+Do not run `updateMetadata`, `publish`, or `submission publish` as a test.
+
+### Finish the renewal
+
+1. Run **Store base metadata** (manual dispatch) and confirm it passes with the new secrets.
+2. Delete the old certificate from the Entra app registration.
+3. Delete the local `.pfx` and `.cer` files, then clear the clipboard with `Set-Clipboard -Value ' '`.
+4. Renew the certificate before the old one expires. A failed Store run leaves any draft in Partner Center; check and remove it before rerunning.
+
+If the client secret (`AZURE_AD_APPLICATION_SECRET`) still exists, delete it from the environment and revoke it in Entra after the first certificate-based run passes.
 
 ## Never
 
