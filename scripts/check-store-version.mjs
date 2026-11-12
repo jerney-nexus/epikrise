@@ -53,7 +53,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const next = assertReleaseAdvancesStoreVersions(releaseVersion, submission);
     process.stdout.write(`Store version ${next} advances the submission.\n`);
   } catch (error) {
-    process.stderr.write(`check-store-version: ${error.message}\n`);
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`check-store-version: ${message}\n`);
     process.exit(1);
   }
 }
