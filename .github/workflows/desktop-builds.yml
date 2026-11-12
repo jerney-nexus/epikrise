@@ -287,6 +287,8 @@ jobs:
     uses: ./.github/workflows/store-msix.yml
     permissions:
       contents: read
+      id-token: write
+      attestations: write
     with:
       commit: ${{ inputs.expected_sha }}
       request_id: ${{ inputs.request_id }}

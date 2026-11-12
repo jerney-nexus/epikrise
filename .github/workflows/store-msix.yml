@@ -221,6 +221,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      id-token: write
+      attestations: write
     env:
       RELEASE_SHA: ${{ inputs.commit }}
     steps:
@@ -268,6 +270,11 @@ jobs:
           [[ ${#bundles[@]} -eq 1 && -f "${bundles[0]}" ]]
           bundle_name="$(basename "${bundles[0]}")"
           (cd store-bundle && sha256sum "$bundle_name" > "$bundle_name.sha256")
+
+      - name: Attest Store bundle provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: store-bundle/Epikrise_*_bundle.msixbundle
 
       - uses: actions/upload-artifact@v7
         with:

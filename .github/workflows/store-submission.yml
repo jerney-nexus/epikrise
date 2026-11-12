@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       actions: read
+      attestations: read
       contents: write
     env:
       RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
@@ -92,6 +93,16 @@ jobs:
           bundle_name="$(basename "${bundles[0]}")"
           (cd store-bundle && sha256sum -c "$bundle_name.sha256")
           cp "${bundles[0]}" "store-bundle/$bundle_name.sha256" store-release-assets/
+
+      - name: Verify Store bundle provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundles=(store-bundle/Epikrise_*_bundle.msixbundle)
+          [[ ${#bundles[@]} -eq 1 && -f "${bundles[0]}" ]]
+          gh attestation verify "${bundles[0]}" --repo "$GITHUB_REPOSITORY"
 
       - name: Verify published release identity
         env:
@@ -203,6 +214,15 @@ jobs:
             --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID `
             --clientSecret $env:AZURE_AD_APPLICATION_SECRET
           if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed." }
+
+      - name: Require release to advance the Store version
+        shell: pwsh
+        run: |
+          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-before.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
+          $releaseVersion = $env:RELEASE_TAG.TrimStart("v")
+          node scripts/check-store-version.mjs $releaseVersion submission-before.json
+          if ($LASTEXITCODE -ne 0) { throw "Store version guard failed." }
 
       - name: Upload bundle as draft
         shell: pwsh

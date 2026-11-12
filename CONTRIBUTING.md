@@ -273,6 +273,8 @@ Partner Center accepts one `.msixbundle` that contains the x64 and ARM64 Store p
 
 4. Confirm the output file exists. The bundle is unsigned. Microsoft signs submitted Store packages, as described above.
 
+The `store-msix.yml` bundle job attaches a GitHub build provenance attestation to the `.msixbundle`. The release's Store publish job verifies it with `gh attestation verify` before attaching the bundle. To verify a downloaded copy, run `gh attestation verify Epikrise_<version>_bundle.msixbundle --repo jerney-nexus/epikrise`.
+
 Keep the bundle and its inputs out of the repository and out of any clinical environment. Upload the bundle to Partner Center manually.
 
 The Store packages do not bundle the WebView2 Evergreen Runtime and do not include a WebView2 bootstrapper. Devices must already have the runtime installed. The NSIS installer is the offline-WebView2 path. Keep the Store listing's requirements consistent with this.

@@ -418,6 +418,8 @@ jobs:
     uses: ./.github/workflows/store-msix.yml
     permissions:
       contents: read
+      id-token: write
+      attestations: write
     with:
       commit: ${{ github.sha }}
       release_tag: ${{ github.ref_name }}

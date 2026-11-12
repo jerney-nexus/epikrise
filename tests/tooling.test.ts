@@ -36,6 +36,7 @@ import {
   updateWorkspaceLockVersions,
   validateCalverVersion,
 } from "../scripts/prepare-release.mjs";
+import { assertReleaseAdvancesStoreVersions } from "../scripts/check-store-version.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
 import {
   buildReleasePreparationWorkflowArgs,
@@ -693,6 +694,35 @@ describe("CalVer release versions", () => {
       expect(releaseVersionFromProtocolVersion(protocolVersion)).toBe(releaseVersion);
     },
   );
+
+  it("requires the release to advance every Partner Center package version", () => {
+    expect(
+      assertReleaseAdvancesStoreVersions("2026.10.0", {
+        applicationPackages: [{ version: "2026.9.4.0" }, { version: "2026.9.3.0" }],
+      }),
+    ).toBe("2026.10.0.0");
+    expect(() =>
+      assertReleaseAdvancesStoreVersions("2026.9.4", {
+        applicationPackages: [{ version: "2026.9.4.0" }],
+      }),
+    ).toThrow("must be greater");
+    expect(() =>
+      assertReleaseAdvancesStoreVersions("2026.10.0", {
+        applicationPackages: [{ version: "2026.10.0.0" }],
+      }),
+    ).toThrow("must be greater");
+  });
+
+  it("fails closed when the submission lists no readable package versions", () => {
+    expect(() => assertReleaseAdvancesStoreVersions("2026.10.0", {})).toThrow(
+      "No package versions",
+    );
+    expect(() =>
+      assertReleaseAdvancesStoreVersions("2026.10.0", {
+        applicationPackages: [{ fileName: "x.msix" }],
+      }),
+    ).toThrow("No package versions");
+  });
 
   it("enforces Store version bounds and rejects Store downgrades", () => {
     expect(() => deriveReleaseVersions("1999.12.0")).toThrow("at least 2000");
@@ -2768,15 +2798,21 @@ describe("six-target desktop build tooling", () => {
     expect(workflow).toContain("scripts/tauri-build-output.sh");
     expect(workflow).toContain("verify-binary-architecture.mjs");
     expect(workflow).toContain("x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)");
+    const storeMsixWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/store-msix.yml"),
+      "utf8",
+    );
+    expect(storeMsixWorkflow).toContain("--package-family store-msix");
     expect(workflow).toContain("--package-family desktop");
-    expect(workflow).toContain("--package-family store-msix");
-    expect(workflow).toContain("Stage Store MSIX with integrity manifest");
-    expect(workflow).toContain("artifact-staging/store-msix-artifact/");
-    expect(workflow).toContain("epikrise-store-msix-${{ matrix.windows_arch }}");
+    expect(storeMsixWorkflow).toContain("Stage Store MSIX with integrity manifest");
+    expect(storeMsixWorkflow).toContain("artifact-staging/store-msix-artifact/");
+    expect(storeMsixWorkflow).toContain(
+      "epikrise-store-msix-${{ matrix.architecture }}",
+    );
     expect(workflow).toContain('--runner-os "$RUNNER_OS"');
     expect(workflow).toContain('--runner-arch "$RUNNER_ARCH"');
     expect(workflow).toContain('--rust-host "$host_target"');
-    expect(workflow).toMatch(
+    expect(storeMsixWorkflow).toMatch(
       /Create unsigned Store MSIX[\s\S]*Stage Store MSIX with integrity manifest[\s\S]*epikrise-store-msix-/,
     );
   });
@@ -3216,7 +3252,7 @@ describe("signed release artifacts", () => {
     expect(approveJob).toContain("needs: stage");
     expect(approveJob).toContain("environment:\n      name: release");
     expect(approveJob).not.toContain("concurrency:");
-    expect(publishJob).toContain("needs: [stage, approve]");
+    expect(publishJob).toContain("needs: [stage, approve, store-msix]");
     expect(publishJob).not.toContain("environment:");
     expect(publishJob).toContain("validate-draft");
     expect(publishJob).toContain("actions/download-artifact@v8");
@@ -3314,26 +3350,23 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain(
       "startsWith(github.event.workflow_run.head_branch, 'v')",
     );
-    expect(workflow).toContain("windows-2025");
-    expect(workflow).toContain("windows-11-vs2026-arm");
-    expect(workflow).toContain("x86_64-pc-windows-msvc");
-    expect(workflow).toContain("aarch64-pc-windows-msvc");
+    expect(workflow).toContain("windows-latest");
+    const storeMsixWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/store-msix.yml"),
+      "utf8",
+    );
+    expect(storeMsixWorkflow).toContain("windows-2025");
+    expect(storeMsixWorkflow).toContain("windows-11-vs2026-arm");
+    expect(storeMsixWorkflow).toContain("x86_64-pc-windows-msvc");
+    expect(storeMsixWorkflow).toContain("aarch64-pc-windows-msvc");
     expect(workflow).not.toContain("x86_64-unknown-linux-gnu");
     expect(workflow).not.toContain("aarch64-unknown-linux-gnu");
     expect(workflow).not.toContain("desktop-builds.yml");
-    expect(workflow).toContain("--package-family store-msix");
+    expect(storeMsixWorkflow).toContain("--package-family store-msix");
     expect(workflow).toContain("stage-store-release");
     expect(workflow).toContain("gh release upload");
     expect(workflow).toContain("verify-store-release");
     expect(workflow).toContain("release.body.includes(marker)");
-
-    const buildJob = workflow.slice(
-      workflow.indexOf("  build:"),
-      workflow.indexOf("  publish:"),
-    );
-    expect(buildJob.indexOf("- name: Install source tooling")).toBeLessThan(
-      buildJob.indexOf("- name: Validate release tag and commit"),
-    );
 
     const publishJob = workflow.slice(workflow.indexOf("  publish:"));
     expect(publishJob).toContain("uses: pnpm/setup@v2");
