@@ -248,6 +248,15 @@ jobs:
             throw "Store bundle creation failed."
           }
 
+      - name: Write Store bundle checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundles=(store-bundle/Epikrise_*_bundle.msixbundle)
+          [[ ${#bundles[@]} -eq 1 && -f "${bundles[0]}" ]]
+          bundle_name="$(basename "${bundles[0]}")"
+          (cd store-bundle && sha256sum "$bundle_name" > "$bundle_name.sha256")
+
       - uses: actions/upload-artifact@v7
         with:
           name: epikrise-store-msixbundle
@@ -325,7 +334,9 @@ jobs:
           set -euo pipefail
           bundles=(store-bundle/Epikrise_*_bundle.msixbundle)
           [[ ${#bundles[@]} -eq 1 && -f "${bundles[0]}" ]]
-          cp "${bundles[0]}" store-release-assets/
+          bundle_name="$(basename "${bundles[0]}")"
+          (cd store-bundle && sha256sum -c "$bundle_name.sha256")
+          cp "${bundles[0]}" "store-bundle/$bundle_name.sha256" store-release-assets/
 
       - name: Verify published release identity
         env:
@@ -363,7 +374,10 @@ jobs:
           gh release download "$RELEASE_TAG" \
             --pattern 'Epikrise_*.msix' \
             --pattern 'Epikrise_*.msix.manifest.json' \
+            --pattern 'Epikrise_*_bundle.msixbundle' \
+            --pattern 'Epikrise_*_bundle.msixbundle.sha256' \
             --dir "$downloaded"
+          (cd "$downloaded" && sha256sum -c Epikrise_*_bundle.msixbundle.sha256)
           request_id="$(node --input-type=module <<'NODE'
             const sha = process.env.RELEASE_SHA;
             process.stdout.write(`${sha.slice(0, 8)}-${sha.slice(8, 12)}-${sha.slice(12, 16)}-${sha.slice(16, 20)}-${sha.slice(20, 32)}`);
