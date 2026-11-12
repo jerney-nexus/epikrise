@@ -168,19 +168,22 @@ A valid PFX has `02 01 03` after the length header, near the start of the output
 
 ### Set the CI secrets
 
-Encode the PFX as one line, then paste it into the `AZURE_AD_CERTIFICATE_PFX_BASE64` secret of the `store-partner-center` environment. Set `AZURE_AD_CERTIFICATE_PASSWORD` to the password entered above.
+Encode the PFX as one line and copy it to the clipboard:
 
-- macOS: `base64 -i epikrise-msstore.pfx | tr -d '\n' | pbcopy`
-- Windows: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("$dir\epikrise-msstore.pfx"))`
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$dir\epikrise-msstore.pfx")) | Set-Clipboard
+```
+
+Paste it into the `AZURE_AD_CERTIFICATE_PFX_BASE64` secret of the `store-partner-center` environment. Set `AZURE_AD_CERTIFICATE_PASSWORD` to the password entered above.
 
 ### Test locally
 
-Import the PFX into the local certificate store (on macOS, the keyring). Then run the read-only checks, substituting the new certificate's thumbprint:
+Import the PFX into the current user's certificate store, then run the read-only checks, substituting the new certificate's thumbprint:
 
-```sh
+```powershell
+Import-PfxCertificate -FilePath "$dir\epikrise-msstore.pfx" -CertStoreLocation Cert:\CurrentUser\My -Password $pfxPassword
 msstore reconfigure --tenantId <tenant> --sellerId <seller> --clientId <client> --certificateThumbprint <thumbprint>
 msstore info
-msstore submission get <product-id> > /dev/null
 ```
 
 Do not run `updateMetadata`, `publish`, or `submission publish` as a test.
@@ -189,7 +192,7 @@ Do not run `updateMetadata`, `publish`, or `submission publish` as a test.
 
 1. Run **Store base metadata** (manual dispatch) and confirm it passes with the new secrets.
 2. Delete the old certificate from the Entra app registration.
-3. Delete the local `.pfx` and `.cer` files, and any clipboard copy of the base64 value (`pbcopy </dev/null` on macOS).
+3. Delete the local `.pfx` and `.cer` files, then clear the clipboard with `Set-Clipboard -Value ' '`.
 4. Renew the certificate before the old one expires. A failed Store run leaves any draft in Partner Center; check and remove it before rerunning.
 
 If the client secret (`AZURE_AD_APPLICATION_SECRET`) still exists, delete it from the environment and revoke it in Entra after the first certificate-based run passes.
