@@ -738,7 +738,7 @@ describe("CalVer release versions", () => {
 
     try {
       await writeFile(listingPath, JSON.stringify(listing));
-      const submission = (fileStatus) => ({
+      const submission = (fileStatus: string) => ({
         Listings: {
           "en-us": {
             BaseListing: {
