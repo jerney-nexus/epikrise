@@ -3339,6 +3339,15 @@ describe("signed release artifacts", () => {
     expect(diagnosticWorkflow).not.toContain("gh release create");
   });
 
+  it("runs the manual Store base metadata helper in the Store environment", async () => {
+    const workflow = await readFile(
+      path.join(repoRoot, ".github/workflows/store-base-metadata.yml"),
+      "utf8",
+    );
+
+    expect(workflow).toContain("environment:\n      name: store-partner-center");
+  });
+
   it("builds and attaches Store packages after successful tagged updater releases", async () => {
     const workflow = await readFile(
       path.join(repoRoot, ".github/workflows/store-submission.yml"),
