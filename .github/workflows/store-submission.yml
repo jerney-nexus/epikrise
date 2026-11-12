@@ -198,8 +198,66 @@ jobs:
           retention-days: 3
           compression-level: 0
 
-  publish:
+  bundle:
     needs: build
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    name: Build Store MSIX bundle
+    runs-on: windows-2025
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: epikrise-store-msix-*
+          path: store-artifacts
+          merge-multiple: false
+
+      - name: Create and verify Store bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packages = @{}
+          foreach ($architecture in @("x64", "arm64")) {
+            $found = @(Get-ChildItem -LiteralPath "store-artifacts/epikrise-store-msix-$architecture" `
+                -Filter "Epikrise_*_$architecture.msix" -File -Recurse)
+            if ($found.Count -ne 1) {
+              throw "Expected one $architecture Store package, found $($found.Count)."
+            }
+            $packages[$architecture] = $found[0].FullName
+          }
+          & "$env:GITHUB_WORKSPACE/scripts/package-store-msixbundle.ps1" `
+            -X64Package $packages["x64"] `
+            -Arm64Package $packages["arm64"] `
+            -OutputDirectory "store-bundle"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Store bundle creation failed."
+          }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: epikrise-store-msixbundle
+          path: store-bundle
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  publish:
+    needs: [build, bundle]
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
@@ -256,6 +314,19 @@ jobs:
             --commit "$RELEASE_SHA" \
             --request-id "$request_id"
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: epikrise-store-msixbundle
+          path: store-bundle
+
+      - name: Stage Store bundle as a release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundles=(store-bundle/Epikrise_*_bundle.msixbundle)
+          [[ ${#bundles[@]} -eq 1 && -f "${bundles[0]}" ]]
+          cp "${bundles[0]}" store-release-assets/
+
       - name: Verify published release identity
         env:
           GH_TOKEN: ${{ github.token }}
@@ -303,3 +374,59 @@ jobs:
             --tag "$RELEASE_TAG" \
             --commit "$RELEASE_SHA" \
             --request-id "$request_id"
+
+  submit:
+    needs: [bundle, publish]
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    name: Submit Store bundle to Partner Center
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+      STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
+    steps:
+      - name: Require Store product ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$STORE_PRODUCT_ID" ]]
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: epikrise-store-msixbundle
+          path: store-bundle
+
+      - name: Locate Store bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundles=(store-bundle/Epikrise_*_bundle.msixbundle)
+          [[ ${#bundles[@]} -eq 1 && -f "${bundles[0]}" ]]
+          printf 'STORE_BUNDLE_PATH=%s\n' "$PWD/${bundles[0]}" >> "$GITHUB_ENV"
+
+      - uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
+
+      - name: Configure Partner Center credentials
+        env:
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          SELLER_ID: ${{ secrets.SELLER_ID }}
+          AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          AZURE_AD_APPLICATION_SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          msstore reconfigure \
+            --tenantId "$AZURE_AD_TENANT_ID" \
+            --sellerId "$SELLER_ID" \
+            --clientId "$AZURE_AD_APPLICATION_CLIENT_ID" \
+            --clientSecret "$AZURE_AD_APPLICATION_SECRET"
+
+      - name: Publish bundle to Partner Center
+        shell: bash
+        run: |
+          set -euo pipefail
+          msstore publish "$STORE_BUNDLE_PATH" -id "$STORE_PRODUCT_ID"
