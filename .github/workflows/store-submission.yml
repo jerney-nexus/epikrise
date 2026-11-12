@@ -241,12 +241,9 @@ jobs:
           node scripts/update-store-metadata.mjs submission.json store-assets/listing.json | Out-File -FilePath submission-updated.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "update-store-metadata.mjs failed." }
           $updated = Get-Content submission-updated.json -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
-          # Windows caps the whole command line at 32,767 characters; the JSON is passed as one argument.
-          if ($updated.Length -gt 30000) { throw "Submission JSON is $($updated.Length) characters; too long for a single msstore argument." }
-          # Keep embedded JSON quotes intact when msstore receives the argument.
-          $PSNativeCommandArgumentPassing = 'Standard'
+          # Pass the JSON on stdin: an inline argument is capped by the 32,767-character Windows command line.
           # The returned submission includes FileUploadUrl (an upload SAS); keep it out of the log.
-          msstore submission updateMetadata $env:STORE_PRODUCT_ID $updated | Out-Null
+          $updated | msstore submission updateMetadata $env:STORE_PRODUCT_ID - | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "msstore submission updateMetadata failed." }
 
       - name: Commit submission and wait for certification

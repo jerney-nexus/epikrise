@@ -3430,7 +3430,7 @@ describe("signed release artifacts", () => {
     );
 
     expect(workflow).toContain("workflow_run:");
-    expect(workflow).toContain("PSNativeCommandArgumentPassing = 'Standard'");
+    expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - | Out-Null");
     expect(workflow).toContain("- Signed updater release");
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(workflow).toContain(
