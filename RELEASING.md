@@ -23,8 +23,10 @@ Leave the version blank to select the next CalVer version. The workflow updates 
 Find that pull request:
 
 ```bash
-gh pr list --repo=jerney-nexus/epikrise --state=open --search "head:release/"
+pnpm release:pr
 ```
+
+This runs `gh pr list --repo=jerney-nexus/epikrise --state=open --search "head:release/"`. The VS Code task is **Epikrise: Find Release Pull Request**.
 
 Its branch is `release/<version>` and its title is `Release <version>`.
 
@@ -36,7 +38,15 @@ Its branch is `release/<version>` and its title is `Release <version>`.
 
 ## 3. Check the Windows release workspace
 
-Run the **Windows release workspace** workflow from the Actions tab on `main`. Both architecture jobs (x64 and ARM64) must pass before you tag.
+Run the **Windows release workspace** workflow from the Actions tab on `main`, or run:
+
+```bash
+pnpm release:workspace
+```
+
+This starts the workflow on `main` and watches the new run until it finishes, exiting non-zero if it fails. Both architecture jobs (x64 and ARM64) must pass before you tag.
+
+The VS Code task is **Epikrise: Run Windows Release Workspace**.
 
 ## 4. Confirm the tag is ready
 
@@ -64,7 +74,13 @@ Pushing the `v*` tag starts the **Signed updater release** workflow.
 
 The signed-release workflow builds signed bundles for each target, stages the assets and signatures, generates `latest.json`, and creates a **draft** release. Nothing is published yet.
 
-Check the draft's assets, signatures, `latest.json`, and target URLs.
+Check the draft's assets, signatures, `latest.json`, and target URLs:
+
+```bash
+pnpm release:draft-status
+```
+
+This shows the latest **Signed updater release** run and whether the draft exists for the `package.json` version. For a draft, it prints the releases page; open it and select the tag. Drafts are visible only to users with write access to the repository. The VS Code task is **Epikrise: Show Draft Release Status**.
 
 ## 7. Test the draft natively
 
@@ -84,7 +100,14 @@ If any target you are claiming as supported fails its checks, do not approve.
 
 ## 9. After publishing
 
-- Confirm the release is visible on GitHub and that `latest.json` points at the right assets.
+Confirm the release is visible on GitHub and that `latest.json` points at the right assets:
+
+```bash
+pnpm release:published-status
+```
+
+This checks that the release is published, that every `latest.json` platform URL targets its assets, and whether GitHub marks this release as latest. An older release can finish after a newer one. In that case the workflow keeps the latest marker on the newer tag, and the command reports that instead of failing. The VS Code task is **Epikrise: Show Published Release Status**.
+
 - Record updater test results separately from the release, as described in step 7.
 - Store delivery uses a separate Microsoft certification process. See [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-workflow).
 
