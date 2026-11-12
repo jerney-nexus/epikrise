@@ -208,14 +208,18 @@ jobs:
           AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
           SELLER_ID: ${{ secrets.SELLER_ID }}
           AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
-          AZURE_AD_APPLICATION_SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+          AZURE_AD_CERTIFICATE_PFX_BASE64: ${{ secrets.AZURE_AD_CERTIFICATE_PFX_BASE64 }}
+          AZURE_AD_CERTIFICATE_PASSWORD: ${{ secrets.AZURE_AD_CERTIFICATE_PASSWORD }}
         shell: pwsh
         run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "partner-center.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:AZURE_AD_CERTIFICATE_PFX_BASE64))
           msstore reconfigure `
             --tenantId $env:AZURE_AD_TENANT_ID `
             --sellerId $env:SELLER_ID `
             --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID `
-            --clientSecret $env:AZURE_AD_APPLICATION_SECRET
+            --certificateFilePath $pfxPath `
+            --certificatePassword $env:AZURE_AD_CERTIFICATE_PASSWORD
           if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed." }
 
       - name: Require release to advance the Store version

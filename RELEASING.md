@@ -126,7 +126,7 @@ The Store package is separate from the signed release, the NSIS installer, and t
 Complete this once before the first automated submission:
 
 1. Create the Partner Center app and set its product ID as the `STORE_PRODUCT_ID` repository variable.
-2. Add the secrets `AZURE_AD_TENANT_ID`, `SELLER_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, and `AZURE_AD_APPLICATION_SECRET`, and the variable `STORE_PRODUCT_ID`, to the `store-partner-center` environment (Settings → Environments), not as repository-level secrets. Restrict its deployment branches to `main`. Use these names only, and never commit their values.
+2. Add the secrets `AZURE_AD_TENANT_ID`, `SELLER_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_CERTIFICATE_PFX_BASE64` (the base64 of the PFX file, which contains the private key), and `AZURE_AD_CERTIFICATE_PASSWORD`, and the variable `STORE_PRODUCT_ID`, to the `store-partner-center` environment (Settings → Environments), not as repository-level secrets. Upload the matching `.cer` to the Entra app registration. The certificate is valid for 24 months at most; renew it before it expires. Restrict the environment's deployment branches to `main`. Use these names only, and never commit their values or the PFX file.
 3. Upload the listing images by hand in Partner Center for every locale listed in `store-assets/base-metadata.json`.
 4. Run **Store base metadata** (`.github/workflows/store-base-metadata.yml`) with manual dispatch, then download the `epikrise-store-base-metadata` artifact. Save it as `store-assets/base-metadata.json`, removing any `FileUploadUrl` values first. The file is the source for the automated listing sync.
 
