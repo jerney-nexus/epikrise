@@ -389,6 +389,11 @@ jobs:
       RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
       STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
       - name: Require Store product ID
         shell: bash
         run: |
@@ -425,8 +430,23 @@ jobs:
             --clientId "$AZURE_AD_APPLICATION_CLIENT_ID" \
             --clientSecret "$AZURE_AD_APPLICATION_SECRET"
 
-      - name: Publish bundle to Partner Center
+      - name: Upload bundle as draft
         shell: bash
         run: |
           set -euo pipefail
-          msstore publish "$STORE_BUNDLE_PATH" -id "$STORE_PRODUCT_ID"
+          msstore publish "$STORE_BUNDLE_PATH" -id "$STORE_PRODUCT_ID" --noCommit
+
+      - name: Sync listing metadata from store-assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          msstore submission get "$STORE_PRODUCT_ID" > submission.json
+          node scripts/update-store-metadata.mjs submission.json store-assets/listing.json > submission-updated.json
+          msstore submission updateMetadata "$STORE_PRODUCT_ID" "$(jq -c . submission-updated.json)"
+
+      - name: Commit submission and wait for certification
+        shell: bash
+        run: |
+          set -euo pipefail
+          msstore submission publish "$STORE_PRODUCT_ID"
+          msstore submission poll "$STORE_PRODUCT_ID"
