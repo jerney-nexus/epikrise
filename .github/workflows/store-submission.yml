@@ -150,7 +150,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
     name: Submit Store bundle to Partner Center
-    runs-on: ubuntu-24.04
+    runs-on: windows-latest
     timeout-minutes: 30
     permissions:
       actions: read
@@ -165,10 +165,11 @@ jobs:
           persist-credentials: false
 
       - name: Require Store product ID
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          [[ -n "$STORE_PRODUCT_ID" ]]
+          if (-not $env:STORE_PRODUCT_ID) {
+            throw "STORE_PRODUCT_ID repository variable is not set."
+          }
 
       - uses: actions/download-artifact@v8
         with:
@@ -178,12 +179,13 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Locate Store bundle
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          bundles=(store-bundle/Epikrise_*_bundle.msixbundle)
-          [[ ${#bundles[@]} -eq 1 && -f "${bundles[0]}" ]]
-          printf 'STORE_BUNDLE_PATH=%s\n' "$PWD/${bundles[0]}" >> "$GITHUB_ENV"
+          $bundles = @(Get-ChildItem -Path store-bundle -Filter 'Epikrise_*_bundle.msixbundle' -File)
+          if ($bundles.Count -ne 1) {
+            throw "Expected exactly one Store bundle, found $($bundles.Count)."
+          }
+          "STORE_BUNDLE_PATH=$($bundles[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
 
@@ -193,32 +195,36 @@ jobs:
           SELLER_ID: ${{ secrets.SELLER_ID }}
           AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
           AZURE_AD_APPLICATION_SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          msstore reconfigure \
-            --tenantId "$AZURE_AD_TENANT_ID" \
-            --sellerId "$SELLER_ID" \
-            --clientId "$AZURE_AD_APPLICATION_CLIENT_ID" \
-            --clientSecret "$AZURE_AD_APPLICATION_SECRET"
+          msstore reconfigure `
+            --tenantId $env:AZURE_AD_TENANT_ID `
+            --sellerId $env:SELLER_ID `
+            --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID `
+            --clientSecret $env:AZURE_AD_APPLICATION_SECRET
+          if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed." }
 
       - name: Upload bundle as draft
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          msstore publish "$STORE_BUNDLE_PATH" -id "$STORE_PRODUCT_ID" --noCommit
+          msstore publish $env:STORE_BUNDLE_PATH -id $env:STORE_PRODUCT_ID --noCommit
+          if ($LASTEXITCODE -ne 0) { throw "msstore publish failed." }
 
       - name: Sync listing metadata from store-assets
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          msstore submission get "$STORE_PRODUCT_ID" > submission.json
-          node scripts/update-store-metadata.mjs submission.json store-assets/listing.json > submission-updated.json
-          msstore submission updateMetadata "$STORE_PRODUCT_ID" "$(jq -c . submission-updated.json)"
+          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
+          node scripts/update-store-metadata.mjs submission.json store-assets/listing.json | Out-File -FilePath submission-updated.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "update-store-metadata.mjs failed." }
+          $updated = Get-Content submission-updated.json -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
+          msstore submission updateMetadata $env:STORE_PRODUCT_ID $updated
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission updateMetadata failed." }
 
       - name: Commit submission and wait for certification
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          msstore submission publish "$STORE_PRODUCT_ID"
-          msstore submission poll "$STORE_PRODUCT_ID"
+          msstore submission publish $env:STORE_PRODUCT_ID
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission publish failed." }
+          msstore submission poll $env:STORE_PRODUCT_ID
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission poll failed." }

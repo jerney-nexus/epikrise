@@ -116,10 +116,21 @@ This checks that the release is published, that every `latest.json` platform URL
 The Store package is separate from the signed release, the NSIS installer, and the direct-release updater. It is never installed by the direct updater, and the Store build has no updater code or update checks. Microsoft manages Store updates.
 
 1. Wait for the **Store submission packages** run for the tag. It attaches the unsigned x64 and ARM64 MSIX packages and the `.msixbundle`, built by the signed release run for the same commit, with SHA-256 and provenance manifests, to the GitHub Release. Its inputs do not include `previous_store_version`.
-2. The same run then uploads the bundle to Partner Center with `msstore publish --noCommit`, after the signed release is published. It then syncs the Store listing text from [`store-assets/listing.json`](store-assets/listing.json) with `msstore submission updateMetadata` and commits the submission with `msstore submission publish`. Edit the listing text only in that JSON file. The listing images in `listing.json` must already be uploaded in Partner Center for every locale; the job fails before committing if any are missing. Upload them by hand first. The version must be higher than the last Partner Center submission, using the `year.month.patch.0` form. The upload job fails if the version does not advance. If the upload fails, the signed release assets are unaffected; rerun the job after fixing the cause. A draft left by a failed run is replaced by the next `publish` run.
+2. The same run then uploads the bundle to Partner Center with `msstore publish --noCommit`, after the signed release is published. It then syncs the Store listing text from [`store-assets/listing.json`](store-assets/listing.json) with `msstore submission updateMetadata` and commits the submission with `msstore submission publish`. Edit the listing text only in that JSON file. The listing images in `listing.json` must already be uploaded in Partner Center for every locale; the job fails before committing if any are missing. Upload them by hand first. The version must be higher than the last Partner Center submission, using the `year.month.patch.0` form. Confirm this by hand: the build rejects a non-advancing version only when `previous_store_version` is provided to Desktop builds. If the upload fails, the signed release assets are unaffected; fix the cause, check Partner Center for a draft left by the failed run, and rerun the job.
 3. The first Store submission and any manual resubmission are done by hand in Partner Center. To build packages before the release is published, dispatch **Desktop builds** with `previous_store_version` set to the last submitted Store version. The build rejects a version that does not advance. See [CONTRIBUTING.md](CONTRIBUTING.md#building-the-store-msixbundle).
 4. Microsoft signs submitted packages and runs certification. Record the certification outcome and any reviewer questions in the related issue.
 5. Test the Store package on a clean Windows install. Record the Windows version and WebView2 runtime status. The package does not bundle WebView2, so the device must already have the Evergreen Runtime.
+
+## Microsoft Store setup
+
+Complete this once before the first automated submission:
+
+1. Create the Partner Center app and set its product ID as the `STORE_PRODUCT_ID` repository variable.
+2. Add the repository secrets `AZURE_AD_TENANT_ID`, `SELLER_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, and `AZURE_AD_APPLICATION_SECRET`. Use these names only, and never commit their values.
+3. Upload the listing images by hand in Partner Center for every locale in `store-assets/listing.json`.
+4. Run **Store base metadata** (`.github/workflows/store-base-metadata.yml`) with manual dispatch, then download the `epikrise-store-base-metadata` artifact. It holds the current Partner Center submission JSON. Compare it with `store-assets/listing.json` before the first automated submission. Do not commit that file: it can contain listing details that are not yet public.
+
+Both Store submission jobs run on `windows-latest`, following the Microsoft GitHub Actions example. The upload job uses PowerShell and stops on the first failing `msstore` command.
 
 ## Never
 
