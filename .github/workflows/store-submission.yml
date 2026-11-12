@@ -16,25 +16,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      startsWith(github.event.workflow_run.head_branch, 'v')
-    uses: ./.github/workflows/store-msix.yml
-    permissions:
-      contents: read
-    with:
-      commit: ${{ github.event.workflow_run.head_sha }}
-      release_tag: ${{ github.event.workflow_run.head_branch }}
-
   publish:
-    needs: build
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
     name: Attach Store packages to GitHub Release
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
       contents: write
     env:
       RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
@@ -67,6 +56,8 @@ jobs:
           pattern: epikrise-store-msix-*
           path: store-artifacts
           merge-multiple: false
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
 
       - name: Validate release and stage downloadable Store packages
         shell: bash
@@ -89,6 +80,8 @@ jobs:
         with:
           name: epikrise-store-msixbundle
           path: store-bundle
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
 
       - name: Stage Store bundle as a release asset
         shell: bash
@@ -152,7 +145,7 @@ jobs:
             --request-id "$request_id"
 
   submit:
-    needs: [build, publish]
+    needs: publish
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
@@ -160,6 +153,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
+      actions: read
       contents: read
     env:
       RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
@@ -180,6 +174,8 @@ jobs:
         with:
           name: epikrise-store-msixbundle
           path: store-bundle
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
 
       - name: Locate Store bundle
         shell: bash
