@@ -161,6 +161,8 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
     name: Submit Store bundle to Partner Center
+    environment:
+      name: store-partner-center
     runs-on: windows-latest
     timeout-minutes: 30
     permissions:

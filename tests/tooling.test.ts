@@ -3353,6 +3353,7 @@ describe("signed release artifacts", () => {
       "startsWith(github.event.workflow_run.head_branch, 'v')",
     );
     expect(workflow).toContain("windows-latest");
+    expect(workflow).toContain("environment:\n      name: store-partner-center");
     const storeMsixWorkflow = await readFile(
       path.join(repoRoot, ".github/workflows/store-msix.yml"),
       "utf8",
