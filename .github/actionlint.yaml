@@ -10,6 +10,10 @@ paths:
   .github/workflows/store-submission.yml:
     ignore:
       - 'label "windows-11-vs2026-arm" is unknown'
+      - 'unexpected key "queue" for "concurrency" section'
+  .github/workflows/store-msix.yml:
+    ignore:
+      - 'label "windows-11-vs2026-arm" is unknown'
   # actionlint 1.7.12 predates client-id for create-github-app-token@v3; remove when upgraded.
   .github/workflows/release-preparation.yml:
     ignore:

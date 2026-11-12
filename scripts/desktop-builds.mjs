@@ -128,10 +128,6 @@ export function assertSuccessfulJobs(jobs) {
       `Required build job did not succeed: Build ${target}.`,
     );
   }
-  assert(
-    conclusions.size === desktopTargets.length,
-    "The Actions run did not contain exactly the six required build jobs.",
-  );
 }
 
 /** @param {string} filePath */

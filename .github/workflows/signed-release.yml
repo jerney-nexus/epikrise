@@ -412,6 +412,18 @@ jobs:
           retention-days: 3
           compression-level: 0
 
+  store-msix:
+    name: Build Store MSIX packages
+    needs: [validate, verify-frontend, verify-rust, verify-security, verify-quality]
+    uses: ./.github/workflows/store-msix.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    with:
+      commit: ${{ github.sha }}
+      release_tag: ${{ github.ref_name }}
+
   stage:
     name: Stage signed updater release
     needs: build
@@ -524,7 +536,7 @@ jobs:
 
   publish:
     name: Publish accepted draft release
-    needs: [stage, approve]
+    needs: [stage, approve, store-msix]
     runs-on: ubuntu-24.04
     concurrency:
       group: updater-release

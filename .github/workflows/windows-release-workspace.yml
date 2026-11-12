@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/signed-release.yml"
       - ".github/workflows/store-submission.yml"
+      - ".github/workflows/store-msix.yml"
       - ".github/workflows/windows-release-workspace.yml"
       - "scripts/prepare-release-workspace.mjs"
       - "scripts/prepare-release.mjs"

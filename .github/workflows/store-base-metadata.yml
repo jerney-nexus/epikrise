@@ -1,0 +1,72 @@
+name: Store base metadata
+
+# Manual helper: fetches the current Partner Center submission metadata so it
+# can be compared with store-assets/listing.json. The output is uploaded as a
+# workflow artifact and is never committed, because it can contain listing
+# details that are not yet public.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-base-metadata
+  cancel-in-progress: false
+
+jobs:
+  get-base-metadata:
+    name: Get Store base metadata
+    environment:
+      name: store-partner-center
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Require Store product ID
+        shell: pwsh
+        run: |
+          if (-not $env:STORE_PRODUCT_ID) {
+            throw "STORE_PRODUCT_ID repository variable is not set."
+          }
+
+      - uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
+
+      - name: Configure Partner Center credentials
+        env:
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          SELLER_ID: ${{ secrets.SELLER_ID }}
+          AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          AZURE_AD_APPLICATION_SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+        shell: pwsh
+        run: |
+          msstore reconfigure `
+            --tenantId $env:AZURE_AD_TENANT_ID `
+            --sellerId $env:SELLER_ID `
+            --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID `
+            --clientSecret $env:AZURE_AD_APPLICATION_SECRET
+
+      - name: Get base metadata
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path store-base-metadata | Out-Null
+          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-raw.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
+          # The raw submission carries FileUploadUrl (an upload SAS); never upload it.
+          node scripts/redact-store-submission.mjs submission-raw.json | Out-File -FilePath store-base-metadata/base-metadata.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "redact-store-submission.mjs failed." }
+          Remove-Item submission-raw.json
+          Get-Content store-base-metadata/base-metadata.json -Raw | ConvertFrom-Json | Out-Null
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: epikrise-store-base-metadata
+          path: store-base-metadata/base-metadata.json
+          if-no-files-found: error
+          retention-days: 14

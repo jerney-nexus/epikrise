@@ -115,11 +115,22 @@ This checks that the release is published, that every `latest.json` platform URL
 
 The Store package is separate from the signed release, the NSIS installer, and the direct-release updater. It is never installed by the direct updater, and the Store build has no updater code or update checks. Microsoft manages Store updates.
 
-1. Wait for the **Store submission packages** run for the tag. It attaches the unsigned x64 and ARM64 MSIX packages, with their SHA-256 and provenance manifests, to the GitHub Release. Its inputs do not include `previous_store_version`. Before uploading, compare the version with the last Partner Center submission. The version must be higher, using the `year.month.patch.0` form.
-2. If you need packages before the release is published, dispatch **Desktop builds** with `previous_store_version` set to the last submitted Store version. The build rejects a version that does not advance. See [CONTRIBUTING.md](CONTRIBUTING.md#building-the-store-msixbundle).
-3. Build the `.msixbundle` from the x64 and ARM64 packages on Windows, as described in [CONTRIBUTING.md](CONTRIBUTING.md#building-the-store-msixbundle).
-4. Upload the bundle manually in Partner Center. Microsoft signs submitted packages and runs certification. Record the certification outcome and any reviewer questions in the related issue.
+1. Wait for the **Store submission packages** run for the tag. It attaches the unsigned x64 and ARM64 MSIX packages and the `.msixbundle`, built by the signed release run for the same commit, with SHA-256 and provenance manifests, to the GitHub Release. The `.msixbundle` also has a build provenance attestation, which the publish job verifies with `gh attestation verify` before uploading. To check it yourself, run `gh attestation verify <file> --repo jerney-nexus/epikrise`. Its inputs do not include `previous_store_version`.
+2. The `submit` job waits for approval in the `store-partner-center` GitHub environment before it uploads anything. Configure that environment with required reviewers (Settings → Environments). Approve the job in the run page only after the signed release is verified. Once approved, the same run uploads the bundle to Partner Center with `msstore publish --noCommit`, after the signed release is published. It then syncs the Store listing text from [`store-assets/listing.json`](store-assets/listing.json) with `msstore submission updateMetadata` and commits the submission with `msstore submission publish`. Edit the listing text only in that JSON file. The listing images in `listing.json` must already be uploaded in Partner Center for every locale; the job fails before committing if any are missing. Upload them by hand first. Before uploading, the job runs a version guard (`scripts/check-store-version.mjs`) that compares the release version with every package version in the current Partner Center submission and fails if the release does not advance past them. The guard fails closed: if it cannot read any package versions from `msstore submission get`, the job stops. The first submission therefore has to be done by hand. If the upload fails, the signed release assets are unaffected; fix the cause, check Partner Center for a draft left by the failed run, and rerun the job. A leftover draft with the same version can block the guard on rerun, so resolve it in Partner Center first.
+3. The first Store submission and any manual resubmission are done by hand in Partner Center. To build packages before the release is published, dispatch **Desktop builds** with `previous_store_version` set to the last submitted Store version. The build rejects a version that does not advance. See [CONTRIBUTING.md](CONTRIBUTING.md#building-the-store-msixbundle).
+4. Microsoft signs submitted packages and runs certification. Record the certification outcome and any reviewer questions in the related issue.
 5. Test the Store package on a clean Windows install. Record the Windows version and WebView2 runtime status. The package does not bundle WebView2, so the device must already have the Evergreen Runtime.
+
+## Microsoft Store setup
+
+Complete this once before the first automated submission:
+
+1. Create the Partner Center app and set its product ID as the `STORE_PRODUCT_ID` repository variable.
+2. Add the secrets `AZURE_AD_TENANT_ID`, `SELLER_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, and `AZURE_AD_APPLICATION_SECRET`, and the variable `STORE_PRODUCT_ID`, to the `store-partner-center` environment (Settings → Environments), not as repository-level secrets. Restrict its deployment branches to `main`. Use these names only, and never commit their values.
+3. Upload the listing images by hand in Partner Center for every locale in `store-assets/listing.json`.
+4. Run **Store base metadata** (`.github/workflows/store-base-metadata.yml`) with manual dispatch, then download the `epikrise-store-base-metadata` artifact. It holds the current Partner Center submission JSON. Compare it with `store-assets/listing.json` before the first automated submission. Do not commit that file: it can contain listing details that are not yet public.
+
+Both Store submission jobs run on `windows-latest`, following the Microsoft GitHub Actions example. The upload job uses PowerShell and stops on the first failing `msstore` command.
 
 ## Never
 

@@ -234,60 +234,6 @@ jobs:
               ;;
           esac
 
-      - name: Create unsigned Store MSIX
-        if: matrix.platform == 'windows'
-        env:
-          WINDOWS_ARCH: ${{ matrix.windows_arch }}
-          TARGET: ${{ matrix.target }}
-          PREVIOUS_STORE_VERSION: ${{ inputs.previous_store_version }}
-        shell: pwsh
-        run: |
-          $hostLine = (rustc -vV | Select-String '^host: ').Line
-          if (-not $hostLine) {
-            throw "Unable to determine the native Rust host target."
-          }
-          $hostTarget = $hostLine -replace '^host: ', ''
-          $buildDirectory = "src-tauri/target/host-$hostTarget/$env:TARGET/release"
-          $arguments = @{
-            Architecture = $env:WINDOWS_ARCH
-            Target = $env:TARGET
-            BuildDirectory = $buildDirectory
-            OutputDirectory = "artifact-staging/store-msix"
-          }
-          if ($env:PREVIOUS_STORE_VERSION) {
-            $arguments.PreviousStoreVersion = $env:PREVIOUS_STORE_VERSION
-          }
-          ./scripts/package-store-msix.ps1 @arguments
-
-      - name: Stage Store MSIX with integrity manifest
-        if: matrix.platform == 'windows'
-        shell: bash
-        run: |
-          host_target="$(rustc -vV | sed -n 's/^host: //p')"
-          node scripts/desktop-builds.mjs stage \
-            --target "$TARGET" \
-            --package-family store-msix \
-            --bundle-root artifact-staging/store-msix \
-            --stage-root artifact-staging/store-msix-artifact \
-            --commit "$EXPECTED_SHA" \
-            --request-id "$REQUEST_ID" \
-            --runner-os "$RUNNER_OS" \
-            --runner-arch "$RUNNER_ARCH" \
-            --rust-host "$host_target" \
-            --build-mode "$EPIKRISE_BUILD_MODE" \
-            --source-archive-sha256 "$EPIKRISE_SOURCE_ARCHIVE_SHA256" \
-            --cache-key "$EPIKRISE_CACHE_KEY" \
-            --cache-restored "$EPIKRISE_CACHE_RESTORED"
-
-      - uses: actions/upload-artifact@v7
-        if: matrix.platform == 'windows'
-        with:
-          name: epikrise-store-msix-${{ matrix.windows_arch }}
-          path: artifact-staging/store-msix-artifact/
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
-
       - name: Stage packages and manifest
         shell: bash
         run: |
@@ -335,3 +281,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+  store-msix:
+    name: Build Store MSIX packages
+    uses: ./.github/workflows/store-msix.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    with:
+      commit: ${{ inputs.expected_sha }}
+      request_id: ${{ inputs.request_id }}
+      previous_store_version: ${{ inputs.previous_store_version || '' }}
