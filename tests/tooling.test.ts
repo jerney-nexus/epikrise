@@ -37,6 +37,7 @@ import {
   validateCalverVersion,
 } from "../scripts/prepare-release.mjs";
 import { assertReleaseAdvancesStoreVersions } from "../scripts/check-store-version.mjs";
+import { redactFileUploadUrls } from "../scripts/redact-store-submission.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
 import {
   buildReleasePreparationWorkflowArgs,
@@ -724,6 +725,21 @@ describe("CalVer release versions", () => {
         ApplicationPackages: [{ Version: "2026.9.4.0" }],
       }),
     ).toThrow("must be greater");
+  });
+
+  it("removes FileUploadUrl credentials at any depth from submission JSON", () => {
+    const redacted = redactFileUploadUrls({
+      Packages: [{ FileName: "a.msix", FileUploadUrl: "https://blob?sig=secret" }],
+      Listings: { "en-us": { Images: [{ fileUploadUrl: "https://blob?sig=s2" }] } },
+      Version: "1.0.0",
+    });
+
+    expect(JSON.stringify(redacted)).not.toContain("sig=");
+    expect(redacted).toEqual({
+      Packages: [{ FileName: "a.msix" }],
+      Listings: { "en-us": { Images: [{}] } },
+      Version: "1.0.0",
+    });
   });
 
   it("merges listing metadata into PascalCase submissions and keeps their casing", async () => {

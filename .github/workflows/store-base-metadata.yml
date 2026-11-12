@@ -56,8 +56,12 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path store-base-metadata | Out-Null
-          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath store-base-metadata/base-metadata.json -Encoding utf8
+          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-raw.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
+          # The raw submission carries FileUploadUrl (an upload SAS); never upload it.
+          node scripts/redact-store-submission.mjs submission-raw.json | Out-File -FilePath store-base-metadata/base-metadata.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "redact-store-submission.mjs failed." }
+          Remove-Item submission-raw.json
           Get-Content store-base-metadata/base-metadata.json -Raw | ConvertFrom-Json | Out-Null
 
       - uses: actions/upload-artifact@v7
