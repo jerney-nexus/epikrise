@@ -35,25 +35,32 @@ if (!submissionPath || !listingPath) {
 
 const submission = readJson(submissionPath);
 const listing = readJson(listingPath);
-const listings = submission.listings ?? {};
+
+// msstore may emit PascalCase submission JSON; keep whichever casing it uses.
+const usePascalCase = "Listings" in submission && !("listings" in submission);
+const key = (name) =>
+  usePascalCase ? `${name[0].toUpperCase()}${name.slice(1)}` : name;
+
+const listings = submission[key("listings")] ?? {};
 const missingImages = [];
 
 for (const [locale, source] of Object.entries(listing.locales)) {
   const entry = listings[locale];
-  if (!entry?.baseListing) {
+  const baseListing = entry?.[key("baseListing")];
+  if (!baseListing) {
     fail(`locale ${locale} is not in the submission; add it in Partner Center first`);
   }
 
   for (const field of TEXT_FIELDS) {
     if (source[field] !== undefined) {
-      entry.baseListing[field] = source[field];
+      baseListing[key(field)] = source[field];
     }
   }
 
   const uploaded = new Set(
-    (entry.baseListing.images ?? [])
-      .filter((image) => image.fileStatus === "Uploaded")
-      .map((image) => image.fileName),
+    (baseListing[key("images")] ?? [])
+      .filter((image) => image[key("fileStatus")] === "Uploaded")
+      .map((image) => image[key("fileName")]),
   );
   for (const fileName of listing.images) {
     if (!uploaded.has(fileName)) {

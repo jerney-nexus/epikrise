@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: store-submission-${{ github.event.workflow_run.head_branch }}
+  group: store-partner-center-submission
   cancel-in-progress: false
 
 jobs:

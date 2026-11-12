@@ -713,6 +713,58 @@ describe("CalVer release versions", () => {
     ).toThrow("must be greater");
   });
 
+  it("reads PascalCase package versions emitted by msstore", () => {
+    expect(
+      assertReleaseAdvancesStoreVersions("2026.10.0", {
+        ApplicationPackages: [{ Version: "2026.9.4.0" }],
+      }),
+    ).toBe("2026.10.0.0");
+    expect(() =>
+      assertReleaseAdvancesStoreVersions("2026.9.4", {
+        ApplicationPackages: [{ Version: "2026.9.4.0" }],
+      }),
+    ).toThrow("must be greater");
+  });
+
+  it("merges listing metadata into PascalCase submissions and keeps their casing", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-store-metadata-"));
+    const listingPath = path.join(directory, "listing.json");
+    const submissionPath = path.join(directory, "submission.json");
+    const script = path.join(process.cwd(), "scripts", "update-store-metadata.mjs");
+    const listing = {
+      locales: { "en-us": { title: "Epikrise", description: "Desc" } },
+      images: ["icon.png"],
+    };
+
+    try {
+      await writeFile(listingPath, JSON.stringify(listing));
+      const submission = (fileStatus) => ({
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              Title: "Old",
+              Images: [{ FileStatus: fileStatus, FileName: "icon.png" }],
+            },
+          },
+        },
+      });
+
+      await writeFile(submissionPath, JSON.stringify(submission("Uploaded")));
+      const { stdout } = await execFile("node", [script, submissionPath, listingPath]);
+      const merged = JSON.parse(stdout);
+      expect(merged.Listings["en-us"].BaseListing.Title).toBe("Epikrise");
+      expect(merged.Listings["en-us"].BaseListing.Description).toBe("Desc");
+      expect(merged.listings).toBeUndefined();
+
+      await writeFile(submissionPath, JSON.stringify(submission("PendingUpload")));
+      await expect(
+        execFile("node", [script, submissionPath, listingPath]),
+      ).rejects.toMatchObject({ stderr: expect.stringContaining("icon.png") });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("fails closed when the submission lists no readable package versions", () => {
     expect(() => assertReleaseAdvancesStoreVersions("2026.10.0", {})).toThrow(
       "No package versions",
@@ -2294,6 +2346,13 @@ describe("six-target desktop build tooling", () => {
       conclusion: "success",
     }));
     expect(() => assertSuccessfulJobs(jobs)).not.toThrow();
+    expect(() =>
+      assertSuccessfulJobs([
+        ...jobs,
+        { name: "Build Store MSIX packages", conclusion: "success" },
+        { name: "Bundle Store packages", conclusion: "success" },
+      ]),
+    ).not.toThrow();
     expect(() => assertSuccessfulJobs(jobs.slice(1))).toThrow("did not succeed");
     expect(() =>
       assertSuccessfulJobs(jobs.map((job) => ({ ...job, conclusion: "failure" }))),

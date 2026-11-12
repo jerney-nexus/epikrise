@@ -16,11 +16,13 @@ function isRecord(value) {
 
 /** @param {unknown} submission @returns {string[]} */
 export function publishedPackageVersions(submission) {
-  const packages = isRecord(submission) ? submission.applicationPackages : undefined;
+  const packages = isRecord(submission)
+    ? (submission.applicationPackages ?? submission.ApplicationPackages)
+    : undefined;
   if (!Array.isArray(packages)) return [];
   return packages
     .filter(isRecord)
-    .map((pkg) => pkg.version)
+    .map((pkg) => pkg.version ?? pkg.Version)
     .filter((version) => typeof version === "string");
 }
 
