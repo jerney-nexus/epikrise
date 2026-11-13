@@ -44,6 +44,14 @@
     type UpdateSettings,
   } from "../bindings";
 
+  const languageLabelSources: Record<string, string> = {
+    "de-CH": "language-de-ch",
+    en: "language-en",
+    fr: "language-fr",
+    it: "language-it",
+    es: "language-es",
+  };
+
   type PolicyStatus = {
     active: boolean;
     localOnly: boolean;
@@ -2439,17 +2447,7 @@
         >
           {#each supportedLocales as locale (locale)}
             <option value={locale}>
-              {t(
-                locale === "de-CH"
-                  ? "language-de-ch"
-                  : locale === "fr"
-                    ? "language-fr"
-                    : locale === "it"
-                      ? "language-it"
-                      : locale === "es"
-                        ? "language-es"
-                        : "language-en",
-              )}
+              {t(languageLabelSources[locale] ?? locale)}
             </option>
           {/each}
           {#if import.meta.env.DEV}
