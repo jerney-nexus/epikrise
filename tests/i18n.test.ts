@@ -52,9 +52,11 @@ describe("Fluent localization", () => {
       new URL("../src/routes/+page.svelte", import.meta.url),
       "utf8",
     );
-    const usedSources = [...source.matchAll(/\bt\("([^"]+)"/g)].map(
-      (match) => match[1],
-    );
+    const usedSources = [
+      ...source.matchAll(/\bt\("([^"]+)"/g),
+      ...source.matchAll(/\bt\([^"()]+\? "([^"]+)" : "([^"]+)"\)/g),
+      ...source.matchAll(/generationMessage = "([^"]+)"/g),
+    ].flatMap((match) => match.slice(1));
     const catalogs = await Promise.all(supportedLocales.map(readCatalog));
 
     for (const { locale, bundle } of catalogs) {

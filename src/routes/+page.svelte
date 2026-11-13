@@ -1402,7 +1402,7 @@
       id = `new_section_${suffix}`;
       suffix += 1;
     }
-    const heading = "New section";
+    const heading = t("add-section-heading");
     const locale = templateEditDraft.metadata.locale.trim();
     setTemplateEditorSections([
       ...sections,
@@ -3714,7 +3714,9 @@
               <p class="eyebrow">{t("01 / Source")}</p>
               <h3 id="source-title">{t("Clinical material")}</h3>
             </div>
-            <span class="field-count">{inputCharacterCount} chars</span>
+            <span class="field-count"
+              >{t("count-chars", { count: inputCharacterCount })}</span
+            >
           </div>
 
           <input
@@ -3782,7 +3784,7 @@
                 <li class="source-input-item">
                   <div class="source-input-meta">
                     <span title={provenanceLabel}>{provenanceLabel}</span>
-                    <span>{block.content.length} chars</span>
+                    <span>{t("count-chars", { count: block.content.length })}</span>
                   </div>
                   <div class="source-input-details">
                     <span
