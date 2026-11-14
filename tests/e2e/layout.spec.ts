@@ -286,7 +286,7 @@ async function expectLayoutFits(page: Page) {
       ...root.querySelectorAll<HTMLElement>("*"),
     ].filter(
       (element) =>
-        scrolls(getComputedStyle(element)) &&
+        scrolls(getComputedStyle(element).overflowY) &&
         element.scrollHeight > element.clientHeight + 1,
     );
     for (const scroller of scrollers) {
