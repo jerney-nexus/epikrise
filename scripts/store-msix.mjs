@@ -270,17 +270,39 @@ export async function prepareStoreMsixLayout({
       ),
       "resources/ocr/tessdata/eng.traineddata",
     ],
-    ...["fra", "ita", "spa"].map((language) => [
+    [
       path.join(
         repoRoot,
         "src-tauri",
         "resources",
         "ocr",
         "tessdata",
-        `${language}.traineddata`,
+        "fra.traineddata",
       ),
-      `resources/ocr/tessdata/${language}.traineddata`,
-    ]),
+      "resources/ocr/tessdata/fra.traineddata",
+    ],
+    [
+      path.join(
+        repoRoot,
+        "src-tauri",
+        "resources",
+        "ocr",
+        "tessdata",
+        "ita.traineddata",
+      ),
+      "resources/ocr/tessdata/ita.traineddata",
+    ],
+    [
+      path.join(
+        repoRoot,
+        "src-tauri",
+        "resources",
+        "ocr",
+        "tessdata",
+        "spa.traineddata",
+      ),
+      "resources/ocr/tessdata/spa.traineddata",
+    ],
     [
       path.join(repoRoot, "src-tauri", "icons", "StoreLogo.png"),
       "Assets/StoreLogo.png",
