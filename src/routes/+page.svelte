@@ -1720,7 +1720,10 @@
   async function exportActiveTemplate() {
     if (!activeTemplate) return;
     try {
-      const result = await commands.exportTemplate(activeTemplate);
+      const result = await commands.exportTemplate(
+        activeTemplate,
+        t("Epikrise template"),
+      );
       if (result.status === "error") {
         templateMessage = formatTemplateError(result.error);
         templateIsError = true;

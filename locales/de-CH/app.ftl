@@ -47,6 +47,7 @@ ui-close-model-settings = Modelleinstellungen schliessen
 ui-select-import-and-configure-the-active-template = Aktive Vorlage auswählen, importieren und konfigurieren.
 ui-close-template-settings = Vorlageneinstellungen schliessen
 ui-export-template-epitpl = Vorlage exportieren (.epitpl)
+ui-epikrise-template = Epikrise-Vorlage
 ui-edit-template = Vorlage bearbeiten
 ui-create-template = Vorlage erstellen
 ui-new-clinical-template = Neue klinische Vorlage

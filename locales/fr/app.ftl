@@ -47,6 +47,7 @@ ui-close-model-settings = Fermer les paramètres du modèle
 ui-select-import-and-configure-the-active-template = Sélectionnez, importez et configurez le modèle de document actif.
 ui-close-template-settings = Fermer les paramètres des modèles de document
 ui-export-template-epitpl = Exporter le modèle (.epitpl)
+ui-epikrise-template = Modèle Epikrise
 ui-edit-template = Modifier le modèle
 ui-create-template = Créer un modèle
 ui-new-clinical-template = Nouveau modèle clinique

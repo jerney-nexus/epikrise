@@ -482,6 +482,7 @@ fn validate_template(bytes: Vec<u8>) -> Result<ClinicalTemplate, TemplateError> 
 #[specta::specta]
 fn export_template(
     template: ClinicalTemplate,
+    filter_label: String,
     policy: State<'_, PolicyState>,
 ) -> Result<String, TemplateError> {
     if !policy.0.policy.allow_template_export {
@@ -506,7 +507,7 @@ fn export_template(
         &filename
     };
     let Some(path) = rfd::FileDialog::new()
-        .add_filter("Epikrise template", &["epitpl"])
+        .add_filter(&filter_label, &["epitpl"])
         .set_file_name(format!("{filename}.epitpl"))
         .save_file()
     else {
