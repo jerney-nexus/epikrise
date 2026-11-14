@@ -22,7 +22,9 @@
             },
             "stdout",
             "-l",
-            "deu+eng+fra+ita+spa",
+            {
+              "validator": "^(deu|eng|fra|ita|spa)(\\+eng)?$"
+            },
             "--tessdata-dir",
             {
               "validator": "^.*[/\\\\]tessdata$"

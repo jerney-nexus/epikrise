@@ -32,6 +32,7 @@
     type AllowedModel,
     type ExtractedBlock,
     type ExtractionMethod,
+    type OcrLanguage,
     type IngestError,
     type LlmError,
     type NativeMenuAction,
@@ -202,6 +203,7 @@
   let credentialBusy = $state(false);
   let credentialRemovalPending = $state(false);
   let visionEnabled = $state(false);
+  let ocrLanguage = $state<OcrLanguage>("german");
   let outputTokenLimit = $state<number | undefined>(8192);
   let reasoningEffort = $state<ReasoningEffort | "provider_default">(
     "provider_default",
@@ -834,8 +836,8 @@
         }
         const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
         const result = file.type.startsWith("image/")
-          ? await commands.extractImage(file.name, bytes, visionEnabled)
-          : await commands.extractFile(file.name, bytes, visionEnabled);
+          ? await commands.extractImage(file.name, bytes, visionEnabled, ocrLanguage)
+          : await commands.extractFile(file.name, bytes, visionEnabled, ocrLanguage);
         if (result.status === "error") {
           ingestMessage = t("file-extraction-failed", {
             name: file.name,
@@ -3731,6 +3733,16 @@
             aria-label={t("Choose clinical files")}
           />
           <div class="input-tools">
+            <label class="ocr-language-setting">
+              <span>{t("Scan language")}</span>
+              <select bind:value={ocrLanguage} disabled={ingestBusy}>
+                <option value="german">{t("German")}</option>
+                <option value="english">{t("English")}</option>
+                <option value="french">{t("French")}</option>
+                <option value="italian">{t("Italian")}</option>
+                <option value="spanish">{t("Spanish")}</option>
+              </select>
+            </label>
             <button
               class="button-secondary input-tool-button"
               type="button"
@@ -5275,6 +5287,19 @@
 
   .input-tool-button {
     white-space: nowrap;
+  }
+
+  .ocr-language-setting {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #496258;
+    font-size: 12px;
+  }
+
+  .ocr-language-setting select {
+    min-width: 0;
+    flex: 1;
   }
 
   .input-tool-button:disabled {
