@@ -163,30 +163,38 @@ async function expectLayoutFits(page: Page) {
     const scrolls = (style: CSSStyleDeclaration) =>
       ["auto", "scroll"].includes(style.overflowX) ||
       ["auto", "scroll"].includes(style.overflowY);
-    // Ancestors that scroll are intentional; content inside them is not checked for clipping.
-    const isInsideScroller = (element: HTMLElement) => {
-      for (let node = element.parentElement; node; node = node.parentElement) {
-        if (scrolls(getComputedStyle(node))) return true;
+    // The part of an element that is visible through its clipping or scrolling ancestors.
+    const visibleRect = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      let { left, top, right, bottom } = rect;
+      for (
+        let node = element.parentElement;
+        node && node !== document.body;
+        node = node.parentElement
+      ) {
+        const style = getComputedStyle(node);
+        if (!clipsOverflow(style) && !scrolls(style)) continue;
+        const clip = node.getBoundingClientRect();
+        left = Math.max(left, clip.left);
+        top = Math.max(top, clip.top);
+        right = Math.min(right, clip.right);
+        bottom = Math.min(bottom, clip.bottom);
       }
-      return false;
+      return { left, top, right, bottom };
     };
 
     const label = (element: HTMLElement) =>
       element.textContent?.trim().slice(0, 40) || element.tagName.toLowerCase();
 
+    // Native file inputs are clipped off-screen; the visible button that opens them is checked instead.
     const controls = Array.from(
       root.querySelectorAll<HTMLElement>(
-        "button, [role='tab'], label, a, h1, h2, h3, input, select, textarea",
+        "button, [role='tab'], label, a, h1, h2, h3, input:not([type='file']), select, textarea",
       ),
     ).filter((element) => {
       const style = getComputedStyle(element);
       const box = element.getBoundingClientRect();
-      return (
-        style.visibility !== "hidden" &&
-        box.width > 0 &&
-        box.height > 0 &&
-        !isInsideScroller(element)
-      );
+      return style.visibility !== "hidden" && box.width > 0 && box.height > 0;
     });
 
     for (const element of controls) {
@@ -240,8 +248,8 @@ async function expectLayoutFits(page: Page) {
         const a = controls[i];
         const b = controls[j];
         if (a.contains(b) || b.contains(a)) continue;
-        const first = a.getBoundingClientRect();
-        const second = b.getBoundingClientRect();
+        const first = visibleRect(a);
+        const second = visibleRect(b);
         const overlapX =
           Math.min(first.right, second.right) - Math.max(first.left, second.left);
         const overlapY =
