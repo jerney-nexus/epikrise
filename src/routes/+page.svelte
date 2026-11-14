@@ -1402,7 +1402,7 @@
       id = `new_section_${suffix}`;
       suffix += 1;
     }
-    const heading = t("add-section-heading");
+    const heading = "New section";
     const locale = templateEditDraft.metadata.locale.trim();
     setTemplateEditorSections([
       ...sections,
