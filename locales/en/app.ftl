@@ -1,4 +1,9 @@
 ui-epikrise-draft-workspace = Epikrise | Draft workspace
+startup-error-title = Epikrise could not start
+startup-session-bus-failed = Epikrise could not restart with the desktop session-bus address.
+startup-session-bus-hint = Credential listing may fail.
+startup-policy-failed = Epikrise could not start because the administrator policy file (policy.toml) could not be loaded.
+startup-policy-hint = Correct the policy file and restart Epikrise.
 ui-epikrise-home = Epikrise home
 ui-workspace = Workspace
 ui-provider-settings = Provider settings

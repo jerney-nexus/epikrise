@@ -433,6 +433,9 @@ async function prepareRelease(requestedVersion) {
   const validationRoot = await mkdtemp(path.join(tmpdir(), "epikrise-release-inputs-"));
   try {
     await cp(packagePath, path.join(validationRoot, "package.json"));
+    await cp(path.join(repoRoot, "locales"), path.join(validationRoot, "locales"), {
+      recursive: true,
+    });
     await cp(path.join(repoRoot, "src-tauri"), path.join(validationRoot, "src-tauri"), {
       recursive: true,
       filter: (source) =>

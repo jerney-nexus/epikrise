@@ -29,6 +29,7 @@ use sha2::{Digest, Sha256};
 #[cfg(target_os = "linux")]
 mod linux_session_bus;
 mod policy;
+mod startup_dialog;
 use policy::{LoadedPolicy, PolicyState, PolicyStatus, egress_key};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod native_menu;
@@ -1661,10 +1662,12 @@ pub fn run() -> Result<(), tauri::Error> {
         Ok(()) => {}
         Err(error) => {
             let message = format!(
-                "Epikrise could not restart with the desktop session-bus address.\n\n{error}\n\nCredential listing may fail."
+                "{}\n\n{error}\n\n{}",
+                startup_dialog::message("startup-session-bus-failed"),
+                startup_dialog::message("startup-session-bus-hint"),
             );
             let _ = rfd::MessageDialog::new()
-                .set_title("Epikrise could not start")
+                .set_title(startup_dialog::message("startup-error-title"))
                 .set_description(message)
                 .set_level(rfd::MessageLevel::Error)
                 .set_buttons(rfd::MessageButtons::Ok)
@@ -1676,10 +1679,12 @@ pub fn run() -> Result<(), tauri::Error> {
 
     let policy = LoadedPolicy::load().map_err(|error| {
         let message = format!(
-            "Epikrise could not start because the administrator policy file (policy.toml) could not be loaded.\n\n{error}\n\nCorrect the policy file and restart Epikrise."
+            "{}\n\n{error}\n\n{}",
+            startup_dialog::message("startup-policy-failed"),
+            startup_dialog::message("startup-policy-hint"),
         );
         let _ = rfd::MessageDialog::new()
-            .set_title("Epikrise could not start")
+            .set_title(startup_dialog::message("startup-error-title"))
             .set_description(message)
             .set_level(rfd::MessageLevel::Error)
             .set_buttons(rfd::MessageButtons::Ok)

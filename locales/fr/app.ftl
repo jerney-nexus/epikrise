@@ -1,4 +1,9 @@
 ui-epikrise-draft-workspace = Epikrise | Espace de travail du brouillon
+startup-error-title = Epikrise n'a pas pu démarrer
+startup-session-bus-failed = Epikrise n'a pas pu redémarrer avec l'adresse du bus de session du bureau.
+startup-session-bus-hint = L'affichage des identifiants peut échouer.
+startup-policy-failed = Epikrise n'a pas pu démarrer, car le fichier de politique de l'administrateur (policy.toml) n'a pas pu être chargé.
+startup-policy-hint = Corrigez le fichier de politique, puis redémarrez Epikrise.
 ui-epikrise-home = Accueil d’Epikrise
 ui-workspace = Espace de travail
 ui-provider-settings = Paramètres du fournisseur
