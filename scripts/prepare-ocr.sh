@@ -125,6 +125,13 @@ if [[ "$tessdata_dir" =~ ^[A-Za-z]:[\\/].* ]]; then
   fi
   tessdata_dir="$(cygpath -u "$tessdata_dir")"
 fi
+ocr_languages=(deu eng fra ita spa)
+has_all_ocr_languages() {
+  local language
+  for language in "${ocr_languages[@]}"; do
+    [[ -f "$1/$language.traineddata" ]] || return 1
+  done
+}
 if [[ -z "$tessdata_dir" ]]; then
   tesseract_path="$(command -v tesseract || true)"
   if [[ -z "$tesseract_path" ]]; then
@@ -133,18 +140,18 @@ if [[ -z "$tessdata_dir" ]]; then
   fi
 
   tessdata_dir="$(tesseract --list-langs 2>&1 | sed -n 's/.* in "\([^"]*\)".*/\1/p' | head -n 1)"
-  if [[ ! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata" ]]; then
+  if ! has_all_ocr_languages "$tessdata_dir"; then
     child_tessdata_dir="$tessdata_dir/tessdata"
-    if [[ -f "$child_tessdata_dir/deu.traineddata" && -f "$child_tessdata_dir/eng.traineddata" ]]; then
+    if has_all_ocr_languages "$child_tessdata_dir"; then
       tessdata_dir="$child_tessdata_dir"
     fi
   fi
-  if [[ (! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata") ]] && command -v dpkg-query >/dev/null 2>&1; then
-    tessdata_packages="${EPIKRISE_TESSDATA_PACKAGES:-tesseract-ocr-deu tesseract-ocr-eng}"
+  if ! has_all_ocr_languages "$tessdata_dir" && command -v dpkg-query >/dev/null 2>&1; then
+    tessdata_packages="${EPIKRISE_TESSDATA_PACKAGES:-tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-fra tesseract-ocr-ita tesseract-ocr-spa}"
     read -r -a tessdata_package_names <<< "$tessdata_packages"
     for tessdata_package in "${tessdata_package_names[@]}"; do
-      package_tessdata_dir="$(dpkg-query --listfiles "$tessdata_package" 2>/dev/null | sed -n 's#\(.*\)/\(deu\|eng\)\.traineddata$#\1#p' | head -n 1 || true)"
-      if [[ -n "$package_tessdata_dir" && -f "$package_tessdata_dir/deu.traineddata" && -f "$package_tessdata_dir/eng.traineddata" ]]; then
+      package_tessdata_dir="$(dpkg-query --listfiles "$tessdata_package" 2>/dev/null | sed -n 's#\(.*\)/\(deu\|eng\|fra\|ita\|spa\)\.traineddata$#\1#p' | head -n 1 || true)"
+      if [[ -n "$package_tessdata_dir" ]] && has_all_ocr_languages "$package_tessdata_dir"; then
         tessdata_dir="$package_tessdata_dir"
         break
       fi
@@ -152,8 +159,8 @@ if [[ -z "$tessdata_dir" ]]; then
   fi
 fi
 
-if [[ ! -f "$tessdata_dir/deu.traineddata" || ! -f "$tessdata_dir/eng.traineddata" ]]; then
-  printf 'Tesseract language data must include both deu and eng traineddata files.\n' >&2
+if ! has_all_ocr_languages "$tessdata_dir"; then
+  printf 'Tesseract language data must include deu, eng, fra, ita, and spa traineddata files.\n' >&2
   if [[ "$host_target" == *-apple-darwin ]]; then
     printf 'Install them with: brew install tesseract tesseract-lang\n' >&2
   else
@@ -188,8 +195,9 @@ tar -xzf "$pdfium_cache_path" -C "$temp_dir" "$pdfium_member"
 install -m 0644 "$temp_dir/$pdfium_member" "$pdfium_path"
 node "$repo_root/scripts/verify-binary-architecture.mjs" "$target" "$pdfium_path"
 
-install -m 0644 "$tessdata_dir/deu.traineddata" "$resource_dir/tessdata/deu.traineddata"
-install -m 0644 "$tessdata_dir/eng.traineddata" "$resource_dir/tessdata/eng.traineddata"
+for language in "${ocr_languages[@]}"; do
+  install -m 0644 "$tessdata_dir/$language.traineddata" "$resource_dir/tessdata/$language.traineddata"
+done
 
 if [[ "$target" == *-pc-windows-msvc ]]; then
   if [[ "$target" == "$host_target" ]]; then

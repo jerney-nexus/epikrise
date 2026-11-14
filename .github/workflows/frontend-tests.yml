@@ -65,7 +65,10 @@ jobs:
           mkdir -p src-tauri/resources/ocr/pdfium src-tauri/resources/ocr/tessdata
           touch src-tauri/resources/ocr/pdfium/libpdfium.so \
             src-tauri/resources/ocr/tessdata/deu.traineddata \
-            src-tauri/resources/ocr/tessdata/eng.traineddata
+            src-tauri/resources/ocr/tessdata/eng.traineddata \
+            src-tauri/resources/ocr/tessdata/fra.traineddata \
+            src-tauri/resources/ocr/tessdata/ita.traineddata \
+            src-tauri/resources/ocr/tessdata/spa.traineddata
 
       - name: Check UI
         run: pnpm check:ui

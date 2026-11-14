@@ -1510,6 +1510,9 @@ fn tesseract_path_arg(path: &Path) -> OsString {
     path.as_os_str().to_owned()
 }
 
+// Must match the `-l` argument allowed for the sidecar in capabilities/default.json.
+const OCR_LANGUAGES: &str = "deu+eng+fra+ita+spa";
+
 fn run_tesseract(
     app: &AppHandle,
     image_path: &Path,
@@ -1523,7 +1526,7 @@ fn run_tesseract(
         tesseract_path_arg(image_path),
         "stdout".into(),
         "-l".into(),
-        "deu+eng".into(),
+        OCR_LANGUAGES.into(),
         "--tessdata-dir".into(),
         tesseract_path_arg(tessdata_dir),
     ];
@@ -1782,7 +1785,7 @@ pub fn run() -> Result<(), tauri::Error> {
 #[cfg(test)]
 mod tests {
     use super::{
-        GenerationRegistry, GenerationTask, MAX_PDF_VISION_PAGES, OcrTempSession,
+        GenerationRegistry, GenerationTask, MAX_PDF_VISION_PAGES, OCR_LANGUAGES, OcrTempSession,
         TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile, TesseractError,
         classify_tesseract_stderr, commit_case_generation, ensure_private_directory,
         load_template_library_from_paths, map_image_tesseract_error, map_pdf_tesseract_error,
@@ -2871,7 +2874,30 @@ author = "Tests"
     }
 
     #[test]
-    #[ignore = "requires the local PDFium, Tesseract, and deu/eng OCR resources"]
+    fn sidecar_allowlist_matches_the_runtime_ocr_languages() {
+        let capabilities: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json"))
+                .expect("capability file should be valid JSON");
+        let spawn_args: Vec<&serde_json::Value> = capabilities["permissions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|permission| permission["identifier"] == "shell:allow-spawn")
+            .flat_map(|permission| permission["allow"].as_array().into_iter().flatten())
+            .flat_map(|allow| allow["args"].as_array().into_iter().flatten())
+            .collect();
+        let language_flag = spawn_args
+            .iter()
+            .position(|arg| arg.as_str() == Some("-l"))
+            .expect("tesseract spawn should allow the -l flag");
+
+        assert_eq!(spawn_args[language_flag + 1].as_str(), Some(OCR_LANGUAGES));
+        let languages: Vec<&str> = OCR_LANGUAGES.split('+').collect();
+        assert_eq!(languages, ["deu", "eng", "fra", "ita", "spa"]);
+    }
+
+    #[test]
+    #[ignore = "requires the local PDFium, Tesseract, and OCR language resources"]
     fn renders_a_synthetic_pdf_and_recognizes_its_text() {
         let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/ocr");
         let pdfium_path = resources.join("pdfium/libpdfium.so");
@@ -2888,7 +2914,7 @@ author = "Tests"
                 let output = Command::new("tesseract")
                     .arg(image_path)
                     .arg("stdout")
-                    .args(["-l", "deu+eng", "--tessdata-dir"])
+                    .args(["-l", OCR_LANGUAGES, "--tessdata-dir"])
                     .arg(tessdata_dir)
                     .output()
                     .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;

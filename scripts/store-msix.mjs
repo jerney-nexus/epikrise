@@ -43,6 +43,9 @@ const payloadFiles = [
   "resources/ocr/pdfium/pdfium.dll",
   "resources/ocr/tessdata/deu.traineddata",
   "resources/ocr/tessdata/eng.traineddata",
+  "resources/ocr/tessdata/fra.traineddata",
+  "resources/ocr/tessdata/ita.traineddata",
+  "resources/ocr/tessdata/spa.traineddata",
   "Assets/StoreLogo.png",
   "Assets/Square150x150Logo.png",
   "Assets/Square44x44Logo.png",
@@ -267,6 +270,17 @@ export async function prepareStoreMsixLayout({
       ),
       "resources/ocr/tessdata/eng.traineddata",
     ],
+    ...["fra", "ita", "spa"].map((language) => [
+      path.join(
+        repoRoot,
+        "src-tauri",
+        "resources",
+        "ocr",
+        "tessdata",
+        `${language}.traineddata`,
+      ),
+      `resources/ocr/tessdata/${language}.traineddata`,
+    ]),
     [
       path.join(repoRoot, "src-tauri", "icons", "StoreLogo.png"),
       "Assets/StoreLogo.png",

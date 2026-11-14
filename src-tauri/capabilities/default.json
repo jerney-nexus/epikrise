@@ -22,7 +22,7 @@
             },
             "stdout",
             "-l",
-            "deu+eng",
+            "deu+eng+fra+ita+spa",
             "--tessdata-dir",
             {
               "validator": "^.*[/\\\\]tessdata$"
