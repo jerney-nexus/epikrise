@@ -3,7 +3,7 @@ import { expect, test } from "./fixtures";
 
 type LocaleCase = {
   locale: string;
-  heading?: string;
+  heading: string | RegExp;
 };
 
 const localeCases: LocaleCase[] = [
@@ -12,8 +12,8 @@ const localeCases: LocaleCase[] = [
   { locale: "fr", heading: "Nouvelle épicrise" },
   { locale: "it", heading: "Nuova lettera di dimissione" },
   { locale: "es", heading: "Nueva epicrisis" },
-  // Pseudo-localized preview: longer strings expose layout problems early.
-  { locale: "qps-ploc" },
+  // Pseudo-localized preview: bracketed headings prove the messages were rendered.
+  { locale: "qps-ploc", heading: /［/ },
 ];
 
 const viewports = [
@@ -89,6 +89,19 @@ async function openTemplateEditor(page: Page) {
   await openScreen(page, settingsTriggers.template);
   await page.locator(".edit-template-button").click();
   await expect(page.locator(".template-editor-dialog")).toBeVisible();
+  // The preview renders on a 180 ms timer; wait for the fixture's prompt so the layout check sees the rendered output.
+  await page.waitForFunction(() => {
+    const calls = window.__EPIKRISE_TEST__?.commands ?? [];
+    const call = calls
+      .filter(({ command }) => command === "render_template_system_prompt")
+      .pop();
+    const template = call?.args.template as { system_prompt?: string } | undefined;
+    return (
+      template?.system_prompt !== undefined &&
+      document.querySelector(".template-live-preview pre")?.textContent ===
+        template.system_prompt
+    );
+  });
   await expectLayoutFits(page);
   await page.locator(".template-editor-dialog .dialog-close").click();
 }
@@ -157,13 +170,10 @@ async function expectLayoutFits(page: Page) {
       }
     }
 
-    const clipsOverflow = (style: CSSStyleDeclaration) =>
-      ["hidden", "clip"].includes(style.overflowX) ||
-      ["hidden", "clip"].includes(style.overflowY);
-    const scrolls = (style: CSSStyleDeclaration) =>
-      ["auto", "scroll"].includes(style.overflowX) ||
-      ["auto", "scroll"].includes(style.overflowY);
-    // The part of an element that is visible through its clipping or scrolling ancestors.
+    const clips = (value: string) => ["hidden", "clip"].includes(value);
+    const scrolls = (value: string) => ["auto", "scroll"].includes(value);
+    const scrollsOrClips = (value: string) => clips(value) || scrolls(value);
+    // The part of an element that is visible through its clipping or scrolling ancestors, per axis.
     const visibleRect = (element: HTMLElement) => {
       const rect = element.getBoundingClientRect();
       let { left, top, right, bottom } = rect;
@@ -173,11 +183,13 @@ async function expectLayoutFits(page: Page) {
         node = node.parentElement
       ) {
         const style = getComputedStyle(node);
-        if (clipsOverflow(style) || scrolls(style)) {
-          const clip = node.getBoundingClientRect();
+        const clip = node.getBoundingClientRect();
+        if (scrollsOrClips(style.overflowX)) {
           left = Math.max(left, clip.left);
-          top = Math.max(top, clip.top);
           right = Math.min(right, clip.right);
+        }
+        if (scrollsOrClips(style.overflowY)) {
+          top = Math.max(top, clip.top);
           bottom = Math.min(bottom, clip.bottom);
         }
         // The top-layer modal is not clipped by its DOM ancestors.
@@ -209,18 +221,16 @@ async function expectLayoutFits(page: Page) {
           node = node.parentElement
         ) {
           const style = getComputedStyle(node);
-          if (scrolls(style)) break;
-          if (clipsOverflow(style)) {
-            const clip = node.getBoundingClientRect();
-            if (
-              box.left < clip.left - 1 ||
-              box.right > clip.right + 1 ||
-              box.top < clip.top - 1 ||
-              box.bottom > clip.bottom + 1
-            ) {
-              issues.push(`control clipped by ancestor: "${label(element)}"`);
-              break;
-            }
+          const clip = node.getBoundingClientRect();
+          // Scrolling axes are covered by the scroll sweep below; hidden or clipped axes are checked here.
+          const clipped =
+            (clips(style.overflowX) &&
+              (box.left < clip.left - 1 || box.right > clip.right + 1)) ||
+            (clips(style.overflowY) &&
+              (box.top < clip.top - 1 || box.bottom > clip.bottom + 1));
+          if (clipped) {
+            issues.push(`control clipped by ancestor: "${label(element)}"`);
+            break;
           }
           // The top-layer modal is not clipped by its DOM ancestors.
           if (node === topDialog) break;
@@ -304,9 +314,9 @@ for (const viewport of viewports) {
       }) => {
         await page.goto("/");
         await selectLocale(page, locale);
-        if (heading) {
-          await expect(page.getByRole("heading", { name: heading })).toBeVisible();
-        }
+        await expect(
+          page.getByRole("heading", { level: 2, name: heading }),
+        ).toBeVisible();
         await expectLayoutFits(page);
 
         for (const trigger of Object.values(settingsTriggers)) {
