@@ -321,6 +321,12 @@ describe("Store MSIX layout validation", () => {
       path.join(tauriDirectory, "resources/ocr/tessdata/eng.traineddata"),
       "English OCR fixture",
     );
+    for (const language of ["fra", "ita", "spa"]) {
+      await writeFile(
+        path.join(tauriDirectory, `resources/ocr/tessdata/${language}.traineddata`),
+        `${language} OCR fixture`,
+      );
+    }
     for (const asset of [
       "StoreLogo.png",
       "Square150x150Logo.png",
@@ -3155,10 +3161,12 @@ describe("signed release artifacts", () => {
       path.join(resourceRoot, "tessdata", "deu.traineddata"),
       `deu-${nativeTarget}`,
     );
-    await writeFile(
-      path.join(resourceRoot, "tessdata", "eng.traineddata"),
-      `eng-${nativeTarget}`,
-    );
+    for (const language of ["eng", "fra", "ita", "spa"]) {
+      await writeFile(
+        path.join(resourceRoot, "tessdata", `${language}.traineddata`),
+        `${language}-${nativeTarget}`,
+      );
+    }
     await writeFile(path.join(binaryRoot, tesseractName), `tesseract-${nativeTarget}`);
     return { resourceRoot, binaryRoot };
   }
@@ -3636,7 +3644,7 @@ describe("signed release artifacts", () => {
       expect(linuxIntegrity.assets).toHaveLength(
         targetSuffixes[releaseTargets[0]].length,
       );
-      expect(linuxIntegrity.resources).toHaveLength(4);
+      expect(linuxIntegrity.resources).toHaveLength(7);
       await writeFile(
         linuxIntegrityPath,
         JSON.stringify({
@@ -5007,8 +5015,13 @@ describe("native Cargo host target guard", () => {
         ? host!.replace("x86_64-", "aarch64-")
         : host!.replace("aarch64-", "x86_64-");
 
-      await writeFile(path.join(tessdataDir, "deu.traineddata"), "deu", "utf8");
-      await writeFile(path.join(tessdataDir, "eng.traineddata"), "eng", "utf8");
+      for (const language of ["deu", "eng", "fra", "ita", "spa"]) {
+        await writeFile(
+          path.join(tessdataDir, `${language}.traineddata`),
+          language,
+          "utf8",
+        );
+      }
       await writeExecutable(
         path.join(binDir, "rustc"),
         `#!/usr/bin/env bash\nprintf 'host: ${host}\\n'\n`,
@@ -5967,8 +5980,13 @@ async function createWindowsOcrFixture(
     path.join(binDir, "rustc"),
     "#!/usr/bin/env bash\nprintf 'host: x86_64-unknown-linux-gnu\\n'\n",
   );
-  await writeFile(path.join(tessdataDir, "deu.traineddata"), "deu", "utf8");
-  await writeFile(path.join(tessdataDir, "eng.traineddata"), "eng", "utf8");
+  for (const language of ["deu", "eng", "fra", "ita", "spa"]) {
+    await writeFile(
+      path.join(tessdataDir, `${language}.traineddata`),
+      language,
+      "utf8",
+    );
+  }
   await writeFile(pdfiumFixturePath, createBinaryHeader(targetTriple));
   await writeFile(tesseractFixturePath, createBinaryHeader(targetTriple));
   if (partialReportedParent) {
@@ -5993,7 +6011,9 @@ async function createWindowsOcrFixture(
         'printf "%s\\n" "$2" >> "$DPKG_LOG"',
         'if [[ "$TESSDATA_PACKAGE_METADATA_AVAILABLE" != "true" ]]; then exit 1; fi',
         'if [[ "$2" == "$TESSDATA_PACKAGE_NAME" ]]; then',
-        '  printf "%s\\n" "$TESSDATA_PACKAGE_DIR/$TESSDATA_PACKAGE_LANGUAGE.traineddata"',
+        "  for language in deu eng fra ita spa; do",
+        '    printf "%s\\n" "$TESSDATA_PACKAGE_DIR/$language.traineddata"',
+        "  done",
         "else",
         "  exit 1",
         "fi",
@@ -6068,9 +6088,8 @@ async function createWindowsOcrFixture(
       ...clearCiEnvironment({ ...process.env }),
       PATH: `${binDir}:${process.env.PATH ?? ""}`,
       TESSDATA_DIR: reportedTessdataDir,
-      TESSDATA_PACKAGE_DIR: tessdataDir,
       TESSDATA_PACKAGE_NAME: packageName,
-      TESSDATA_PACKAGE_LANGUAGE: packageName.endsWith("-eng") ? "eng" : "deu",
+      TESSDATA_PACKAGE_DIR: tessdataDir,
       TESSDATA_PACKAGE_METADATA_AVAILABLE: String(packageMetadataAvailable),
       EXPECTED_CHECKSUM: expectedChecksum,
       CURL_LOG: curlLog,
@@ -6317,6 +6336,14 @@ if (process.platform !== "win32") {
               "utf8",
             ),
           ).toBe("eng");
+          for (const language of ["fra", "ita", "spa"]) {
+            expect(
+              await readFile(
+                path.join(fixture.resourceDir, `tessdata/${language}.traineddata`),
+                "utf8",
+              ),
+            ).toBe(language);
+          }
           expect(
             await readFile(
               path.join(fixture.binaryDir, `tesseract-${targetCase.target}.exe`),
@@ -6705,11 +6732,11 @@ if (process.platform !== "win32") {
           ),
         ).rejects.toMatchObject({
           stderr: expect.stringContaining(
-            "Tesseract language data must include both deu and eng traineddata files.",
+            "Tesseract language data must include deu, eng, fra, ita, and spa traineddata files.",
           ),
         });
         expect(await readFile(fixture.dpkgLog, "utf8")).toBe(
-          "tesseract-ocr-deu\ntesseract-ocr-eng\n",
+          "tesseract-ocr-deu\ntesseract-ocr-eng\ntesseract-ocr-fra\ntesseract-ocr-ita\ntesseract-ocr-spa\n",
         );
       } finally {
         await rm(directory, { recursive: true, force: true });

@@ -9,6 +9,7 @@ import {
   getActiveLocale,
   initializeLocale,
   localePreferenceKey,
+  ocrLanguageForLocale,
   pseudoLocale,
   resolveLocale,
   setLocale,
@@ -74,6 +75,15 @@ describe("Fluent localization", () => {
     expect(initializeLocale(null, "de-CH")).toBe("de-CH");
     expect(initializeLocale(null, "de-AT")).toBe("de-CH");
     expect(initializeLocale(null, "it-CH")).toBe("it");
+  });
+
+  it("derives the default OCR language from the UI locale", () => {
+    expect(ocrLanguageForLocale("en")).toBe("english");
+    expect(ocrLanguageForLocale("fr")).toBe("french");
+    expect(ocrLanguageForLocale("it")).toBe("italian");
+    expect(ocrLanguageForLocale("es")).toBe("spanish");
+    expect(ocrLanguageForLocale("de-CH")).toBe("german");
+    expect(ocrLanguageForLocale(pseudoLocale)).toBe("german");
   });
 
   it("persists supported selections but keeps pseudo-localization temporary", () => {

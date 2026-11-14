@@ -165,7 +165,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake curl file libfuse2t64 libssl-dev libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev librsvg2-dev libxdo-dev ninja-build \
-            pkg-config patchelf ripgrep rpm tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+            pkg-config patchelf ripgrep rpm tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-fra tesseract-ocr-ita tesseract-ocr-spa
 
       - name: Install macOS OCR language data
         if: matrix.platform == 'macos'

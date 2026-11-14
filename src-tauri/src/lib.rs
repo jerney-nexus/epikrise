@@ -954,12 +954,13 @@ fn extract_file(
     file_name: String,
     bytes: Vec<u8>,
     vision_enabled: bool,
+    ocr_language: OcrLanguage,
 ) -> Result<epikrise_core::ExtractedBlock, epikrise_ingest::IngestError> {
     let pdf_for_vision = (vision_enabled
         && infer::get(&bytes).map(|kind| kind.mime_type()) == Some("application/pdf"))
     .then(|| bytes.clone());
     let result = epikrise_ingest::extract_file_with_ocr(file_name.clone(), bytes, |pdf, pages| {
-        ocr_pdf_pages(&app, temp_session.path(), pdf, pages)
+        ocr_pdf_pages(&app, temp_session.path(), pdf, pages, ocr_language)
     });
     match result {
         Ok(block) => Ok(block),
@@ -1003,9 +1004,10 @@ fn extract_image(
     file_name: String,
     bytes: Vec<u8>,
     vision_enabled: bool,
+    ocr_language: OcrLanguage,
 ) -> Result<epikrise_core::ExtractedBlock, epikrise_ingest::IngestError> {
     match epikrise_ingest::extract_image_with_ocr(file_name.clone(), &bytes, |png| {
-        ocr_image_bytes(&app, temp_session.path(), png)
+        ocr_image_bytes(&app, temp_session.path(), png, ocr_language)
     }) {
         Ok(block) => Ok(block),
         Err(error) if vision_enabled && should_fallback_to_vision(&error) => {
@@ -1367,6 +1369,7 @@ fn ocr_pdf_pages(
     temp_directory: &Path,
     bytes: &[u8],
     page_numbers: &[u32],
+    ocr_language: OcrLanguage,
 ) -> Result<Vec<String>, epikrise_ingest::IngestError> {
     let resources = app
         .path()
@@ -1384,7 +1387,8 @@ fn ocr_pdf_pages(
         &tessdata_dir,
         temp_directory,
         |image_path, tessdata_dir| {
-            run_tesseract(app, image_path, tessdata_dir).map_err(map_pdf_tesseract_error)
+            run_tesseract(app, image_path, tessdata_dir, ocr_language)
+                .map_err(map_pdf_tesseract_error)
         },
     )
 }
@@ -1393,6 +1397,7 @@ fn ocr_image_bytes(
     app: &AppHandle,
     temp_directory: &Path,
     png: &[u8],
+    ocr_language: OcrLanguage,
 ) -> Result<String, epikrise_ingest::IngestError> {
     let resources = app
         .path()
@@ -1416,7 +1421,8 @@ fn ocr_image_bytes(
         .as_file()
         .sync_all()
         .map_err(|_| epikrise_ingest::IngestError::ImageOcrUnavailable)?;
-    run_tesseract(app, temp_file.0.path(), &tessdata_dir).map_err(map_image_tesseract_error)
+    run_tesseract(app, temp_file.0.path(), &tessdata_dir, ocr_language)
+        .map_err(map_image_tesseract_error)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1510,10 +1516,36 @@ fn tesseract_path_arg(path: &Path) -> OsString {
     path.as_os_str().to_owned()
 }
 
+// Keep in sync with the `-l` validator in capabilities/default.json.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+enum OcrLanguage {
+    German,
+    English,
+    French,
+    Italian,
+    Spanish,
+}
+
+impl OcrLanguage {
+    // Pairs each document language with English so mixed-language text
+    // (for example, English terms in a French note) is still recognized.
+    fn tesseract_languages(self) -> &'static str {
+        match self {
+            Self::German => "deu+eng",
+            Self::English => "eng",
+            Self::French => "fra+eng",
+            Self::Italian => "ita+eng",
+            Self::Spanish => "spa+eng",
+        }
+    }
+}
+
 fn run_tesseract(
     app: &AppHandle,
     image_path: &Path,
     tessdata_dir: &Path,
+    ocr_language: OcrLanguage,
 ) -> Result<String, TesseractError> {
     let command = app
         .shell()
@@ -1523,7 +1555,7 @@ fn run_tesseract(
         tesseract_path_arg(image_path),
         "stdout".into(),
         "-l".into(),
-        "deu+eng".into(),
+        ocr_language.tesseract_languages().into(),
         "--tessdata-dir".into(),
         tesseract_path_arg(tessdata_dir),
     ];
@@ -1782,7 +1814,7 @@ pub fn run() -> Result<(), tauri::Error> {
 #[cfg(test)]
 mod tests {
     use super::{
-        GenerationRegistry, GenerationTask, MAX_PDF_VISION_PAGES, OcrTempSession,
+        GenerationRegistry, GenerationTask, MAX_PDF_VISION_PAGES, OcrLanguage, OcrTempSession,
         TEMPLATE_LIBRARY_SCHEMA_VERSION, TemplateLibraryFile, TesseractError,
         classify_tesseract_stderr, commit_case_generation, ensure_private_directory,
         load_template_library_from_paths, map_image_tesseract_error, map_pdf_tesseract_error,
@@ -2871,7 +2903,48 @@ author = "Tests"
     }
 
     #[test]
-    #[ignore = "requires the local PDFium, Tesseract, and deu/eng OCR resources"]
+    fn sidecar_allowlist_matches_the_runtime_ocr_languages() {
+        let capabilities: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json"))
+                .expect("capability file should be valid JSON");
+        let spawn_args: Vec<&serde_json::Value> = capabilities["permissions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|permission| permission["identifier"] == "shell:allow-spawn")
+            .flat_map(|permission| permission["allow"].as_array().into_iter().flatten())
+            .flat_map(|allow| allow["args"].as_array().into_iter().flatten())
+            .collect();
+        let language_flag = spawn_args
+            .iter()
+            .position(|arg| arg.as_str() == Some("-l"))
+            .expect("tesseract spawn should allow the -l flag");
+
+        assert_eq!(
+            spawn_args[language_flag + 1]["validator"].as_str(),
+            Some("^(deu|eng|fra|ita|spa)(\\+eng)?$")
+        );
+    }
+
+    #[test]
+    fn each_ocr_language_choice_maps_to_its_tesseract_arguments() {
+        assert_eq!(OcrLanguage::German.tesseract_languages(), "deu+eng");
+        assert_eq!(OcrLanguage::English.tesseract_languages(), "eng");
+        assert_eq!(OcrLanguage::French.tesseract_languages(), "fra+eng");
+        assert_eq!(OcrLanguage::Italian.tesseract_languages(), "ita+eng");
+        assert_eq!(OcrLanguage::Spanish.tesseract_languages(), "spa+eng");
+    }
+
+    #[test]
+    fn ocr_language_choices_deserialize_from_frontend_values() {
+        let language: OcrLanguage =
+            serde_json::from_str("\"french\"").expect("french should deserialize");
+        assert_eq!(language, OcrLanguage::French);
+        assert!(serde_json::from_str::<OcrLanguage>("\"klingon\"").is_err());
+    }
+
+    #[test]
+    #[ignore = "requires the local PDFium, Tesseract, and OCR language resources"]
     fn renders_a_synthetic_pdf_and_recognizes_its_text() {
         let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/ocr");
         let pdfium_path = resources.join("pdfium/libpdfium.so");
@@ -2888,7 +2961,11 @@ author = "Tests"
                 let output = Command::new("tesseract")
                     .arg(image_path)
                     .arg("stdout")
-                    .args(["-l", "deu+eng", "--tessdata-dir"])
+                    .args([
+                        "-l",
+                        OcrLanguage::English.tesseract_languages(),
+                        "--tessdata-dir",
+                    ])
                     .arg(tessdata_dir)
                     .output()
                     .map_err(|_| epikrise_ingest::IngestError::PdfOcrUnavailable)?;

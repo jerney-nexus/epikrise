@@ -26,9 +26,11 @@ printf '%s  %s\n' "$pdfium_sha256" "$temp_dir/pdfium.tgz" | sha256sum --check --
 tar -xzf "$temp_dir/pdfium.tgz" -C "$temp_dir" lib/libpdfium.so
 install -D -m 0644 "$temp_dir/lib/libpdfium.so" "$resource_dir/pdfium/libpdfium.so"
 
+ocr_languages=(deu eng fra ita spa)
 tessdata_dir="$(tesseract --list-langs 2>&1 | sed -n 's/^List of available languages in "\(.*\)".*/\1/p')"
-install -D -m 0644 "$tessdata_dir/deu.traineddata" "$resource_dir/tessdata/deu.traineddata"
-install -m 0644 "$tessdata_dir/eng.traineddata" "$resource_dir/tessdata/eng.traineddata"
+for language in "${ocr_languages[@]}"; do
+  install -D -m 0644 "$tessdata_dir/$language.traineddata" "$resource_dir/tessdata/$language.traineddata"
+done
 
 mkdir -p src-tauri/binaries
 ln -sfn "$(command -v tesseract)" "src-tauri/binaries/tesseract-$host_target"

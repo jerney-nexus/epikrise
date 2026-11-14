@@ -666,6 +666,50 @@ test("imports a valid synthetic file and rejects an oversized file locally", asy
   ]);
 });
 
+test("sends the locale-derived and manually selected OCR language on import", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const scanLanguage = page.getByLabel("Scan language");
+  await expect(scanLanguage).toHaveValue("english");
+
+  const fileInput = page.getByLabel("Choose clinical files");
+  await fileInput.setInputFiles({
+    name: "synthetic-default.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Synthetic file contents only."),
+  });
+  await expect(page.getByText("synthetic-default.txt")).toBeVisible();
+
+  await scanLanguage.selectOption("french");
+  await fileInput.setInputFiles({
+    name: "synthetic-scan.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("Synthetic image bytes."),
+  });
+  const readOcrCalls = () =>
+    page.evaluate(() =>
+      window.__EPIKRISE_TEST__?.commands
+        .filter(
+          ({ command }) => command === "extract_file" || command === "extract_image",
+        )
+        .map(({ command, args }) => ({
+          command,
+          fileName: args.fileName,
+          ocrLanguage: args.ocrLanguage,
+        })),
+    );
+  await expect.poll(readOcrCalls).toHaveLength(2);
+  expect(await readOcrCalls()).toEqual([
+    {
+      command: "extract_file",
+      fileName: "synthetic-default.txt",
+      ocrLanguage: "english",
+    },
+    { command: "extract_image", fileName: "synthetic-scan.png", ocrLanguage: "french" },
+  ]);
+});
+
 test("keeps copying disabled when review acknowledgement fails", async ({ page }) => {
   await completeSyntheticGeneration(page, "Synthetic review failure output.");
   await page.evaluate(() => {

@@ -8,6 +8,7 @@
     defaultLocale,
     initializeLocale,
     localePreferenceKey,
+    ocrLanguageForLocale,
     pseudoLocale,
     setLocale,
     supportedLocales,
@@ -32,6 +33,7 @@
     type AllowedModel,
     type ExtractedBlock,
     type ExtractionMethod,
+    type OcrLanguage,
     type IngestError,
     type LlmError,
     type NativeMenuAction,
@@ -202,6 +204,7 @@
   let credentialBusy = $state(false);
   let credentialRemovalPending = $state(false);
   let visionEnabled = $state(false);
+  let ocrLanguage = $state<OcrLanguage>("german");
   let outputTokenLimit = $state<number | undefined>(8192);
   let reasoningEffort = $state<ReasoningEffort | "provider_default">(
     "provider_default",
@@ -241,6 +244,7 @@
   function changeUiLocale(locale: string) {
     setLocale(locale);
     uiLocale = locale;
+    ocrLanguage = ocrLanguageForLocale(locale);
     document.documentElement.lang = locale === pseudoLocale ? "en" : locale;
     void syncNativeMenu(locale, nativeMenuListenerReady);
   }
@@ -778,6 +782,8 @@
       pdf_vision_too_many_pages:
         "This PDF has more than 12 scanned pages. Split it or provide fewer pages.",
       pdf_vision_too_large: "The scanned pages exceed the 20 MB vision limit.",
+      image_too_large:
+        "The image exceeds the 20 MB, 8,192 px, or 128 MB decoded-size limit.",
     };
     const message = messages[error.key];
     return message
@@ -825,6 +831,7 @@
     ingestBusy = true;
     ingestMessage = "Extracting input";
     ingestIsError = false;
+    const importOcrLanguage = ocrLanguage;
     try {
       for (const file of Array.from(files)) {
         if (file.size > 20 * 1024 * 1024) {
@@ -834,8 +841,18 @@
         }
         const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
         const result = file.type.startsWith("image/")
-          ? await commands.extractImage(file.name, bytes, visionEnabled)
-          : await commands.extractFile(file.name, bytes, visionEnabled);
+          ? await commands.extractImage(
+              file.name,
+              bytes,
+              visionEnabled,
+              importOcrLanguage,
+            )
+          : await commands.extractFile(
+              file.name,
+              bytes,
+              visionEnabled,
+              importOcrLanguage,
+            );
         if (result.status === "error") {
           ingestMessage = t("file-extraction-failed", {
             name: file.name,
@@ -1748,6 +1765,7 @@
     const detectedLocale = navigator.languages[0] ?? navigator.language;
     const locale = initializeLocale(storedLocale, detectedLocale);
     uiLocale = locale;
+    ocrLanguage = ocrLanguageForLocale(locale);
     document.documentElement.lang = locale;
     themePreference = readStoredThemePreference();
     applyThemePreference(themePreference);
@@ -3731,6 +3749,16 @@
             aria-label={t("Choose clinical files")}
           />
           <div class="input-tools">
+            <label class="ocr-language-setting">
+              <span>{t("Scan language")}</span>
+              <select bind:value={ocrLanguage} disabled={ingestBusy}>
+                <option value="german">{t("German")}</option>
+                <option value="english">{t("English")}</option>
+                <option value="french">{t("French")}</option>
+                <option value="italian">{t("Italian")}</option>
+                <option value="spanish">{t("Spanish")}</option>
+              </select>
+            </label>
             <button
               class="button-secondary input-tool-button"
               type="button"
@@ -5275,6 +5303,19 @@
 
   .input-tool-button {
     white-space: nowrap;
+  }
+
+  .ocr-language-setting {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #496258;
+    font-size: 12px;
+  }
+
+  .ocr-language-setting select {
+    min-width: 0;
+    flex: 1;
   }
 
   .input-tool-button:disabled {

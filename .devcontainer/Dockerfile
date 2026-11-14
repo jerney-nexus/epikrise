@@ -106,6 +106,9 @@ RUN apt-get update \
     tesseract-ocr \
     tesseract-ocr-deu \
     tesseract-ocr-eng \
+    tesseract-ocr-fra \
+    tesseract-ocr-ita \
+    tesseract-ocr-spa \
     xfonts-scalable \
     xvfb \
   && restart_manager_temp="$(mktemp)" \

@@ -12,6 +12,18 @@ $tessdataFiles = @(
   @{
     Name = "eng"
     Sha256 = "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+  },
+  @{
+    Name = "fra"
+    Sha256 = "ced037562e8c80c13122dece28dd477d399af80911a28791a66a63ac1e3445ca"
+  },
+  @{
+    Name = "ita"
+    Sha256 = "b8f89e1e785118dac4d51ae042c029a64edb5c3ee42ef73027a6d412748d8827"
+  },
+  @{
+    Name = "spa"
+    Sha256 = "6f2e04d02774a18f01bed44b1111f2cd7f3ba7ac9dc4373cd3f898a40ea6b464"
   }
 )
 
