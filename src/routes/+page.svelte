@@ -782,7 +782,8 @@
       pdf_vision_too_many_pages:
         "This PDF has more than 12 scanned pages. Split it or provide fewer pages.",
       pdf_vision_too_large: "The scanned pages exceed the 20 MB vision limit.",
-      image_too_large: "The image exceeds the 20 MB or 8,192 px limit.",
+      image_too_large:
+        "The image exceeds the 20 MB, 8,192 px, or 128 MB decoded-size limit.",
     };
     const message = messages[error.key];
     return message
@@ -830,6 +831,7 @@
     ingestBusy = true;
     ingestMessage = "Extracting input";
     ingestIsError = false;
+    const importOcrLanguage = ocrLanguage;
     try {
       for (const file of Array.from(files)) {
         if (file.size > 20 * 1024 * 1024) {
@@ -839,8 +841,18 @@
         }
         const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
         const result = file.type.startsWith("image/")
-          ? await commands.extractImage(file.name, bytes, visionEnabled, ocrLanguage)
-          : await commands.extractFile(file.name, bytes, visionEnabled, ocrLanguage);
+          ? await commands.extractImage(
+              file.name,
+              bytes,
+              visionEnabled,
+              importOcrLanguage,
+            )
+          : await commands.extractFile(
+              file.name,
+              bytes,
+              visionEnabled,
+              importOcrLanguage,
+            );
         if (result.status === "error") {
           ingestMessage = t("file-extraction-failed", {
             name: file.name,

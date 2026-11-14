@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The privacy policy is available in French, Italian, and Spanish (#297)
 - OCR recognizes French, Italian, and Spanish text in addition to German and English (#295)
 - Scanned documents and images can be read with a chosen OCR language (German, English, French, Italian, or Spanish) next to the file picker, so one language does not reduce accuracy for the others; the default follows the interface language (#295)
-- Images larger than 8,192 px in width or height are reported as too large instead of as invalid (#295)
+- Images over the 20 MB, 8,192 px, or 128 MB decoded-size limits are reported as too large instead of as invalid (#295)
 
 ### 🐛 Bug Fixes
 
