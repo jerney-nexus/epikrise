@@ -150,7 +150,10 @@ function installTauriFixture({
   };
   window.__EPIKRISE_TEST__ = fixture;
   Object.assign(globalThis, { isTauri: tauriRuntime });
-  window.localStorage.setItem("epikrise.ui-locale", uiLocale);
+  // Seed only when absent so a reload keeps the preference the app stored.
+  if (window.localStorage.getItem("epikrise.ui-locale") === null) {
+    window.localStorage.setItem("epikrise.ui-locale", uiLocale);
+  }
 
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
     unregisterListener(event, eventId) {

@@ -397,20 +397,15 @@ test("Spanish interface selection translates the UI and is stored", async ({
     .toBe("es");
 });
 
-test.describe("saved Spanish preference", () => {
-  // The fixture re-seeds the locale preference on every navigation, so a reload
-  // is checked by starting from a saved "es" preference.
-  test.use({ uiLocale: "es" });
-
-  test("reload keeps Spanish and selects es in the language control", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    await page.reload();
-    await expect(page.locator("html")).toHaveAttribute("lang", "es");
-    await page.getByRole("button", { name: "Ajustes generales" }).click();
-    await expect(page.locator("#interface-language")).toHaveValue("es");
-  });
+test("Spanish selection survives a reload", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "General settings" }).click();
+  await page.locator("#interface-language").selectOption("es");
+  await expect(page.locator("html")).toHaveAttribute("lang", "es");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("lang", "es");
+  await page.getByRole("button", { name: "Ajustes generales" }).click();
+  await expect(page.locator("#interface-language")).toHaveValue("es");
 });
 
 delayedNativeMenuListenerTest(
