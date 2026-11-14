@@ -458,7 +458,7 @@ describe("Store MSIX layout validation", () => {
       "missing Resources element",
       (manifest: string) =>
         manifest.replace(
-          '  <Resources>\n    <Resource Language="de-CH" />\n    <Resource Language="en-US" />\n  </Resources>\n',
+          '  <Resources>\n    <Resource Language="de-CH" />\n    <Resource Language="en-US" />\n    <Resource Language="fr-FR" />\n    <Resource Language="it-IT" />\n    <Resource Language="es-ES" />\n  </Resources>\n',
           "",
         ),
     ],
