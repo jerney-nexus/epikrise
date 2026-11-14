@@ -2444,7 +2444,9 @@
                   ? "language-de-ch"
                   : locale === "fr"
                     ? "language-fr"
-                    : "language-en",
+                    : locale === "it"
+                      ? "language-it"
+                      : "language-en",
               )}
             </option>
           {/each}
