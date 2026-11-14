@@ -99,7 +99,7 @@ async function expectLayoutFits(page: Page) {
       issues.push(`document scrolls horizontally (${scrollWidth} > ${viewportWidth})`);
     }
 
-    for (const dialog of document.querySelectorAll<HTMLElement>("[role='dialog']")) {
+    for (const dialog of document.querySelectorAll<HTMLElement>("dialog[open]")) {
       const box = dialog.getBoundingClientRect();
       if (box.left < -1 || box.right > viewportWidth + 1) {
         issues.push(
