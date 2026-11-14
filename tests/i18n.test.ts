@@ -2,6 +2,13 @@ import { readFile } from "node:fs/promises";
 import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  applyTranslations,
+  detectDelimiter,
+  parseCsv,
+  serializeCsv,
+  translationProblems,
+} from "../scripts/translation-review.mjs";
+import {
   activeLocale,
   compareLocales,
   createBundles,
@@ -358,5 +365,44 @@ describe("locale state and fallbacks", () => {
     const unknownSource = "A label that is not in any catalog";
     expect(translate("en", unknownSource)).toBe(unknownSource);
     expect(translate(pseudoLocale, unknownSource)).toBe(unknownSource);
+  });
+});
+
+describe("translation review CSV", () => {
+  it("round-trips quotes, semicolons, and leading spaces", () => {
+    const rows = [
+      ["id", 'say "hi"; ok'],
+      ["x", " padded "],
+    ];
+    const text = serializeCsv(rows, ";");
+    expect(parseCsv(text, ";")).toEqual(rows);
+  });
+
+  it("detects the delimiter from the header line", () => {
+    expect(detectDelimiter("message_id;english\r\n")).toBe(";");
+    expect(detectDelimiter("message_id,english\r\n")).toBe(",");
+  });
+
+  it("reports placeholder mismatches and invalid Fluent syntax", () => {
+    expect(translationProblems("a", "Hallo { $name }", "Hello { $name }")).toEqual([]);
+    expect(translationProblems("a", "Hallo { $nom }", "Hello { $name }")).toEqual([
+      "placeholders differ (expected: name; found: nom)",
+    ]);
+    expect(translationProblems("a", "{ $x", "{ $x }")).toEqual([
+      "translation is not valid Fluent syntax",
+    ]);
+  });
+
+  it("rejects blank and whitespace-padded translations", () => {
+    expect(translationProblems("a", "  ", "x")).toContain("translation is blank");
+    expect(translationProblems("a", " x", "x")).toContain(
+      "translation has leading or trailing spaces",
+    );
+  });
+
+  it("rewrites only the lines whose translation changed", () => {
+    const text = "one = Eins\ntwo = Zwei\n";
+    const replacements = new Map([["two", "Deux"]]);
+    expect(applyTranslations(text, replacements)).toBe("one = Eins\ntwo = Deux\n");
   });
 });

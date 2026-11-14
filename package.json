@@ -31,6 +31,8 @@
     "test:ui": "vitest run --exclude tests/i18n.test.ts",
     "test:ui:coverage": "vitest run --coverage",
     "test:i18n": "vitest run tests/i18n.test.ts",
+    "translation:export": "node scripts/translation-review.mjs export",
+    "translation:import": "node scripts/translation-review.mjs import",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "release:prepare": "node scripts/release-shortcuts.mjs prepare",
     "release:prepare:workflow": "node scripts/release-shortcuts.mjs prepare-workflow",

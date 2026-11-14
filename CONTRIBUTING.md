@@ -386,6 +386,16 @@ The `Approve accepted draft release` job is protected by the GitHub Actions `rel
 
 User-facing strings live in Fluent catalogs under `locales/`. Rust code returns translation keys and arguments, never localized text — the frontend resolves them. Adding a language means adding a folder; do not hardcode strings in command return paths.
 
+### Reviewing translations with non-technical reviewers
+
+Native-language reviewers can check a catalog without editing Fluent files:
+
+1. Run `pnpm run translation:export <locale>` (for example `fr`, `it`, or `es`). This writes `templates/translation-review/<locale>.csv` and a `REVIEWER-GUIDE.txt`. The CSV has the English source, the de-CH reference, the current translation, and a comment column.
+2. Send the CSV and guide to the reviewer. They edit only the `translation` column, using Excel or Google Sheets, and save as CSV.
+3. Run `pnpm run translation:import <locale> <csv>` to validate the file. It writes nothing unless it passes, and it reports blank values, placeholder mismatches, invalid Fluent syntax, and missing, duplicate, or unknown IDs. Add `--apply` to update `locales/<locale>/app.ftl`, then run `pnpm test:i18n`.
+
+`templates/` is git-ignored. Do not commit the exported CSV files.
+
 English literals that are intentionally not translated are not hardcoded UI strings and should not be flagged in review:
 
 - Brand and provider names, such as Epikrise, Ollama, OpenAI, Anthropic, Gemini, OpenRouter, Groq, and xAI.
