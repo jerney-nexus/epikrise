@@ -213,8 +213,27 @@ async function expectLayoutFits(page: Page) {
         return style.visibility !== "hidden" && box.width > 0 && box.height > 0;
       });
 
+      // Checks one axis against an ancestor and narrows the working range to what that ancestor shows.
+      const constrain = (
+        overflow: string,
+        start: number,
+        end: number,
+        clipStart: number,
+        clipEnd: number,
+      ) => ({
+        clipped: clips(overflow) && (start < clipStart - 1 || end > clipEnd + 1),
+        start: scrollsOrClips(overflow) ? Math.max(start, clipStart) : start,
+        end: scrollsOrClips(overflow) ? Math.min(end, clipEnd) : end,
+      });
+
       for (const element of controls) {
         const box = element.getBoundingClientRect();
+        let working = {
+          left: box.left,
+          right: box.right,
+          top: box.top,
+          bottom: box.bottom,
+        };
         for (
           let node = element.parentElement;
           node && node !== document.body;
@@ -222,16 +241,33 @@ async function expectLayoutFits(page: Page) {
         ) {
           const style = getComputedStyle(node);
           const clip = node.getBoundingClientRect();
-          // Scrolling axes are covered by the scroll sweep below; hidden or clipped axes are checked here.
-          const clipped =
-            (clips(style.overflowX) &&
-              (box.left < clip.left - 1 || box.right > clip.right + 1)) ||
-            (clips(style.overflowY) &&
-              (box.top < clip.top - 1 || box.bottom > clip.bottom + 1));
-          if (clipped) {
+          // Each ancestor is judged against the part of the control visible through the scrollers below it.
+          const x = constrain(
+            style.overflowX,
+            working.left,
+            working.right,
+            clip.left,
+            clip.right,
+          );
+          const y = constrain(
+            style.overflowY,
+            working.top,
+            working.bottom,
+            clip.top,
+            clip.bottom,
+          );
+          if (x.clipped || y.clipped) {
             issues.push(`control clipped by ancestor: "${label(element)}"`);
             break;
           }
+          working = {
+            left: x.start,
+            right: x.end,
+            top: y.start,
+            bottom: y.end,
+          };
+          // An empty range is out of view in a scroller; the scroll sweep below covers reaching it.
+          if (working.right < working.left || working.bottom < working.top) break;
           // The top-layer modal is not clipped by its DOM ancestors.
           if (node === topDialog) break;
         }
