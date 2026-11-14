@@ -186,80 +186,104 @@ async function expectLayoutFits(page: Page) {
     const label = (element: HTMLElement) =>
       element.textContent?.trim().slice(0, 40) || element.tagName.toLowerCase();
 
-    // Native file inputs are clipped off-screen; the visible button that opens them is checked instead.
-    const controls = Array.from(
-      root.querySelectorAll<HTMLElement>(
-        "button, [role='tab'], label, a, h1, h2, h3, input:not([type='file']), select, textarea",
-      ),
-    ).filter((element) => {
-      const style = getComputedStyle(element);
-      const box = element.getBoundingClientRect();
-      return style.visibility !== "hidden" && box.width > 0 && box.height > 0;
-    });
+    const checkControls = () => {
+      // The hidden template and source file inputs are clipped off-screen; their visible trigger buttons are checked instead.
+      const controls = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          "button, [role='tab'], label, a, h1, h2, h3, input:not(.template-file-input):not(.source-file-input), select, textarea",
+        ),
+      ).filter((element) => {
+        const style = getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        return style.visibility !== "hidden" && box.width > 0 && box.height > 0;
+      });
 
-    for (const element of controls) {
-      const box = element.getBoundingClientRect();
-      for (
-        let node = element.parentElement;
-        node && node !== document.body;
-        node = node.parentElement
-      ) {
-        const style = getComputedStyle(node);
-        if (scrolls(style)) break;
-        if (!clipsOverflow(style)) continue;
-        const clip = node.getBoundingClientRect();
-        if (
-          box.left < clip.left - 1 ||
-          box.right > clip.right + 1 ||
-          box.top < clip.top - 1 ||
-          box.bottom > clip.bottom + 1
+      for (const element of controls) {
+        const box = element.getBoundingClientRect();
+        for (
+          let node = element.parentElement;
+          node && node !== document.body;
+          node = node.parentElement
         ) {
-          issues.push(`control clipped by ancestor: "${label(element)}"`);
-          break;
+          const style = getComputedStyle(node);
+          if (scrolls(style)) break;
+          if (!clipsOverflow(style)) continue;
+          const clip = node.getBoundingClientRect();
+          if (
+            box.left < clip.left - 1 ||
+            box.right > clip.right + 1 ||
+            box.top < clip.top - 1 ||
+            box.bottom > clip.bottom + 1
+          ) {
+            issues.push(`control clipped by ancestor: "${label(element)}"`);
+            break;
+          }
         }
       }
-    }
 
-    const selector = "button, [role='tab'], label, a, h1, h2, h3";
-    for (const element of root.querySelectorAll<HTMLElement>(selector)) {
-      const style = getComputedStyle(element);
-      const box = element.getBoundingClientRect();
-      if (style.visibility === "hidden" || box.width === 0 || box.height === 0)
-        continue;
-      // Intentional single-line truncation is allowed to exceed its box.
-      if (style.textOverflow === "ellipsis") continue;
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      const text = range.getBoundingClientRect();
-      if (text.width === 0 || text.height === 0) continue;
-      const overflows =
-        text.left < box.left - 1 ||
-        text.right > box.right + 1 ||
-        text.top < box.top - 1 ||
-        text.bottom > box.bottom + 1;
-      if (overflows) {
-        issues.push(`clipped or overflowing text: "${label(element)}"`);
-      }
-    }
-
-    // Unrelated controls must not paint over each other; ancestor/descendant pairs are expected.
-    for (let i = 0; i < controls.length; i += 1) {
-      for (let j = i + 1; j < controls.length; j += 1) {
-        const a = controls[i];
-        const b = controls[j];
-        if (a.contains(b) || b.contains(a)) continue;
-        const first = visibleRect(a);
-        const second = visibleRect(b);
-        const overlapX =
-          Math.min(first.right, second.right) - Math.max(first.left, second.left);
-        const overlapY =
-          Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top);
-        if (overlapX > 1 && overlapY > 1) {
-          issues.push(`controls overlap: "${label(a)}" and "${label(b)}"`);
+      const selector = "button, [role='tab'], label, a, h1, h2, h3";
+      for (const element of root.querySelectorAll<HTMLElement>(selector)) {
+        const style = getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        if (style.visibility === "hidden" || box.width === 0 || box.height === 0)
+          continue;
+        // Intentional single-line truncation is allowed to exceed its box.
+        if (style.textOverflow === "ellipsis") continue;
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect();
+        if (text.width === 0 || text.height === 0) continue;
+        const overflows =
+          text.left < box.left - 1 ||
+          text.right > box.right + 1 ||
+          text.top < box.top - 1 ||
+          text.bottom > box.bottom + 1;
+        if (overflows) {
+          issues.push(`clipped or overflowing text: "${label(element)}"`);
         }
       }
+
+      // Unrelated controls must not paint over each other; ancestor/descendant pairs are expected.
+      for (let i = 0; i < controls.length; i += 1) {
+        for (let j = i + 1; j < controls.length; j += 1) {
+          const a = controls[i];
+          const b = controls[j];
+          if (a.contains(b) || b.contains(a)) continue;
+          const first = visibleRect(a);
+          const second = visibleRect(b);
+          const overlapX =
+            Math.min(first.right, second.right) - Math.max(first.left, second.left);
+          const overlapY =
+            Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top);
+          if (overlapX > 1 && overlapY > 1) {
+            issues.push(`controls overlap: "${label(a)}" and "${label(b)}"`);
+          }
+        }
+      }
+    };
+
+    checkControls();
+    // Content below the fold in a scroll container only renders after scrolling, so check each scroll position.
+    const candidates = root instanceof HTMLElement ? [root] : [];
+    const scrollers = [
+      ...candidates,
+      ...root.querySelectorAll<HTMLElement>("*"),
+    ].filter(
+      (element) =>
+        scrolls(getComputedStyle(element)) &&
+        element.scrollHeight > element.clientHeight + 1,
+    );
+    for (const scroller of scrollers) {
+      const initialTop = scroller.scrollTop;
+      const step = Math.max(1, scroller.clientHeight);
+      for (let top = 0; ; top += step) {
+        scroller.scrollTop = top;
+        checkControls();
+        if (top + step >= scroller.scrollHeight) break;
+      }
+      scroller.scrollTop = initialTop;
     }
-    return issues;
+    return [...new Set(issues)];
   });
   expect(problems).toEqual([]);
 }
