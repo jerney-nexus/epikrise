@@ -458,7 +458,7 @@ describe("Store MSIX layout validation", () => {
       "missing Resources element",
       (manifest: string) =>
         manifest.replace(
-          '  <Resources>\n    <Resource Language="de-CH" />\n    <Resource Language="en-US" />\n  </Resources>\n',
+          '  <Resources>\n    <Resource Language="de-CH" />\n    <Resource Language="en-US" />\n    <Resource Language="fr-FR" />\n    <Resource Language="it-IT" />\n    <Resource Language="es-ES" />\n  </Resources>\n',
           "",
         ),
     ],
@@ -787,6 +787,14 @@ describe("CalVer release versions", () => {
       await expect(
         execFile("node", [script, submissionPath, basePath]),
       ).rejects.toMatchObject({ stderr: expect.stringContaining("icon.png") });
+
+      await writeFile(basePath, JSON.stringify(base("Uploaded")));
+      const emptyImages = JSON.parse(JSON.stringify(base("Uploaded")));
+      emptyImages.Listings["en-us"].BaseListing.Images = [];
+      await writeFile(basePath, JSON.stringify(emptyImages));
+      await expect(
+        execFile("node", [script, submissionPath, basePath]),
+      ).rejects.toMatchObject({ stderr: expect.stringContaining("no listing images") });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

@@ -61,6 +61,9 @@ for (const [locale, source] of Object.entries(base.Listings ?? {})) {
   }
 
   const images = source.BaseListing.Images ?? [];
+  if (images.length === 0) {
+    notUploaded.push(`${locale}: no listing images in base-metadata.json`);
+  }
   for (const image of images) {
     if (image.FileStatus !== "Uploaded") {
       notUploaded.push(`${locale}: ${image.FileName} (${image.FileStatus})`);
