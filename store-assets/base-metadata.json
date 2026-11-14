@@ -180,14 +180,14 @@
       "BaseListing": {
         "Keywords": [
           "Epikrise",
-          "lettre de sortie",
+          "compte-rendu de sortie",
           "documentation clinique",
           "notes cliniques",
           "courriers médicaux",
           "aide à la rédaction",
           "modèles"
         ],
-        "Description": "Epikrise est une aide à la rédaction pour les professionnels de santé. Collez du texte ou des images, importez des documents ou indiquez une adresse web. Epikrise extrait les éléments et les associe à un modèle de votre choix pour produire un brouillon structuré, par exemple une lettre de sortie, à relire.\n\nEpikrise ne rend pas anonymes les données saisies. Supprimez les éléments d’identification avant utilisation.\n\nLe texte généré est un brouillon. Un médecin responsable doit le relire et le modifier avant utilisation. Epikrise n’est pas un dispositif médical et ne constitue pas un outil de diagnostic. L’application n’est pas connectée à un système d’information hospitalier ; vous copiez vous-même le texte validé dans le système cible.\n\nLe contenu des dossiers est conservé en mémoire et n’est pas enregistré dans un historique. L’OCR peut créer des fichiers image temporaires ; ils sont écrasés avant suppression, mais des copies créées par le système d’exploitation ne peuvent pas être exclues. Les valeurs saisies dans les formulaires et les textes que vous copiez vous-même dans le presse-papiers ne sont pas concernés et restent présents jusqu’à leur modification ou jusqu’au remplacement du presse-papiers. L’application n’a pas de serveur, pas de télémétrie et pas de compte. La version Store n’envoie des requêtes qu’au point de terminaison du modèle que vous configurez et aux adresses web que vous importez, et ne recherche pas de mises à jour. Avant le premier envoi de contenu de dossier à un fournisseur externe pour chaque dossier, Epikrise demande la confirmation du fournisseur et du point de terminaison. La récupération de la liste des modèles et le test de connexion ne nécessitent pas de confirmation de dossier.\n\nFournisseurs pris en charge : OpenAI, Anthropic, Gemini, Ollama, points de terminaison compatibles OpenAI, OpenRouter, xAI et Groq. Un point de terminaison Ollama n’est considéré comme local que si le point de terminaison configuré est local. Les clés API sont enregistrées dans le trousseau du système d’exploitation.",
+        "Description": "Epikrise est une aide à la rédaction pour les professionnels de santé. Collez du texte ou des images, importez des documents ou indiquez une adresse web. Epikrise extrait les éléments et les associe à un modèle de votre choix pour produire un brouillon structuré, par exemple un compte-rendu de sortie, à relire.\n\nEpikrise ne rend pas anonymes les données saisies. Supprimez les éléments d’identification avant utilisation.\n\nLe texte généré est un brouillon. Un médecin responsable doit le relire et le modifier avant utilisation. Epikrise n’est pas un dispositif médical et ne constitue pas un outil de diagnostic. L’application n’est pas connectée à un système d’information hospitalier ; vous copiez vous-même le texte validé dans le système cible.\n\nLe contenu des dossiers est conservé en mémoire et n’est pas enregistré dans un historique. L’OCR peut créer des fichiers image temporaires ; ils sont écrasés avant suppression, mais des copies créées par le système d’exploitation ne peuvent pas être exclues. Les valeurs saisies dans les formulaires et les textes que vous copiez vous-même dans le presse-papiers ne sont pas concernés et restent présents jusqu’à leur modification ou jusqu’au remplacement du presse-papiers. L’application n’a pas de serveur, pas de télémétrie et pas de compte. La version Store n’envoie des requêtes qu’au point de terminaison du modèle que vous configurez et aux adresses web que vous importez, et ne recherche pas de mises à jour. Avant le premier envoi de contenu de dossier à un fournisseur externe pour chaque dossier, Epikrise demande la confirmation du fournisseur et du point de terminaison. La récupération de la liste des modèles et le test de connexion ne nécessitent pas de confirmation de dossier.\n\nFournisseurs pris en charge : OpenAI, Anthropic, Gemini, Ollama, points de terminaison compatibles OpenAI, OpenRouter, xAI et Groq. Un point de terminaison Ollama n’est considéré comme local que si le point de terminaison configuré est local. Les clés API sont enregistrées dans le trousseau du système d’exploitation.",
         "Features": [
           "Coller du texte ou des images, importer des fichiers (PDF, DOCX, XLSX, RTF, HTML) ou récupérer des pages web",
           "Extraire le texte des images et des pages PDF numérisées par OCR local, ou par analyse d’image si le modèle la prend en charge",
@@ -195,7 +195,7 @@
           "Aperçu du modèle en direct avec rendu MiniJinja",
           "Contrôles du modèle affichés comme avertissements, avec nouvelle génération après correction",
           "Ajouter des constats en plusieurs tours et les intégrer de façon cumulative",
-          "Diffuser les brouillons et annuler la génération à tout moment",
+          "Afficher les brouillons en continu et annuler la génération à tout moment",
           "Prend en charge OpenAI, Anthropic, Gemini, Ollama, les points de terminaison compatibles OpenAI, OpenRouter, xAI et Groq",
           "Découvrir les modèles et vérifier les connexions aux fournisseurs",
           "Saisie, résultat et commandes dans un seul espace de travail",
@@ -204,7 +204,7 @@
           "Contenu des dossiers conservé en mémoire uniquement, sans historique",
           "Clés API dans le trousseau du système d’exploitation",
           "Contenu de dossier envoyé à des points de terminaison externes seulement après confirmation par dossier, fournisseur et point de terminaison",
-          "Interface en allemand et en anglais"
+          "Interface en allemand, anglais, français, italien et espagnol"
         ],
         "ReleaseNotes": "Cette version ajoute un choix de thème dans les Paramètres généraux : Clair, Sombre ou Automatique, qui suit le système d’exploitation. La modification est appliquée immédiatement et enregistrée sur cet appareil. Le thème clair offre désormais un contraste de texte plus élevé, de sorte que les espaces réservés, les indications et les textes d’aide sont plus faciles à lire. Tous les boutons partagent un même style et ne se soulèvent plus au survol, et les boutons des sections de modèle (Monter, Descendre, Supprimer) affichent un état de survol. Sous Windows, Epikrise n’ouvre plus le fichier de stratégie de l’administrateur (policy.toml) dans un éditeur à chaque démarrage, et aucune fenêtre PowerShell ne clignote plus au lancement.",
         "Images": [],
@@ -248,7 +248,7 @@
           "Contenuti dei casi solo in memoria, non salvati come cronologia",
           "Chiavi API nel portachiavi del sistema operativo",
           "Contenuti dei casi inviati a endpoint remoti solo dopo conferma per caso, fornitore ed endpoint",
-          "Interfaccia in tedesco e inglese"
+          "Interfaccia in tedesco, inglese, francese, italiano e spagnolo"
         ],
         "ReleaseNotes": "Questa versione aggiunge una scelta del tema nelle Impostazioni generali, dove puoi selezionare Chiaro, Scuro o Automatico, che segue il sistema operativo. La modifica viene applicata subito e salvata su questo dispositivo. Il tema chiaro ha ora un contrasto del testo più elevato, quindi segnaposto, suggerimenti e testi di aiuto sono più leggibili. Tutti i pulsanti hanno ora uno stile uniforme e non si sollevano più al passaggio del mouse, e i pulsanti delle sezioni del modello (Sposta su, Sposta giù, Elimina) mostrano uno stato di passaggio del mouse. Su Windows, Epikrise non apre più il file dei criteri dell’amministratore (policy.toml) in un editor a ogni avvio e non mostra più brevemente una finestra di PowerShell all’avvio.",
         "Images": [],
@@ -283,7 +283,7 @@
           "Vista previa de la plantilla en directo con renderizado MiniJinja",
           "Comprobaciones de la plantilla mostradas como advertencias, con nueva generación tras las correcciones",
           "Añadir hallazgos en varias rondas e integrarlos de forma acumulativa",
-          "Transmitir borradores y cancelar la generación en cualquier momento",
+          "Mostrar los borradores en tiempo real y cancelar la generación en cualquier momento",
           "Compatible con OpenAI, Anthropic, Gemini, Ollama, endpoints compatibles con OpenAI, OpenRouter, xAI y Groq",
           "Descubrir modelos y comprobar las conexiones con los proveedores",
           "Entradas, resultado y controles en un solo espacio de trabajo",
@@ -292,7 +292,7 @@
           "Contenido de los casos solo en memoria, no guardado como historial",
           "Claves API guardadas en el llavero del sistema operativo",
           "Contenido de los casos enviado a endpoints remotos solo tras confirmación por caso, proveedor y endpoint",
-          "Interfaz en alemán e inglés"
+          "Interfaz en alemán, inglés, francés, italiano y español"
         ],
         "ReleaseNotes": "Esta versión añade una opción de tema en Configuración general, donde puede elegir Claro, Oscuro o Automático, que sigue al sistema operativo. El cambio se aplica de inmediato y se guarda en este dispositivo. El tema claro ahora tiene mayor contraste de texto, así que los marcadores de posición, las indicaciones y los textos de ayuda se leen mejor. Todos los botones comparten un mismo estilo y ya no se elevan al pasar el cursor, y los botones de las secciones de plantilla (Subir, Bajar, Eliminar) muestran un estado al pasar el cursor. En Windows, Epikrise ya no abre el archivo de directivas del administrador (policy.toml) en un editor en cada inicio, y ya no aparece brevemente una ventana de PowerShell al arrancar.",
         "Images": [],
