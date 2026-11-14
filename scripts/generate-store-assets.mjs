@@ -63,12 +63,13 @@ const posterScene = ({ poster }) =>
     text({ x: 720, y: 1555, size: 60, anchor: "middle", content: poster[1] }),
   ]);
 
-const superheroScene = ({ superhero }) =>
-  scene(3840, 2160, [
-    mark({ x: 3083, y: 1517, size: 1250 }),
+const superheroScene = ({ superhero }) => ({
+  ...scene(3840, 2160, [
     text({ x: 303, y: 983, size: 300, content: "Epikrise" }),
-    text({ x: 303, y: 1175, size: 110, content: superhero }),
-  ]);
+    text({ x: 303, y: 1175, size: 96, content: superhero }),
+  ]),
+  photo: join(assetRoot, "source", "superhero-background-1536x1024.png"),
+});
 
 const packagingScene = () =>
   scene(2160, 2160, [mark({ x: 1058, y: 1594, size: 1410 })]);
@@ -87,16 +88,19 @@ async function textWidth({ size, content }) {
   return Number(stdout);
 }
 
-async function render({ width, height, ops }, outputPath) {
-  const args = [
-    "-size",
-    `${width}x${height}`,
-    `xc:${background}`,
-    "-font",
-    fontName,
-    "-fill",
-    foreground,
-  ];
+async function render({ width, height, ops, photo }, outputPath) {
+  const args = photo
+    ? [
+        photo,
+        "-resize",
+        `${width}x${height}^`,
+        "-gravity",
+        "center",
+        "-extent",
+        `${width}x${height}`,
+      ]
+    : ["-size", `${width}x${height}`, `xc:${background}`];
+  args.push("+gravity", "-font", fontName, "-fill", foreground);
   for (const op of ops) {
     const x = op.anchor === "middle" ? op.x - (await textWidth(op)) / 2 : op.x;
     args.push(
