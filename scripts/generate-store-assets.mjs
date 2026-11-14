@@ -26,15 +26,15 @@ const locales = {
     poster: ["Strukturierte Entwürfe,", "von Ihnen geprüft"],
   },
   fr: {
-    superhero: "Une aide locale à la rédaction pour les professionnels de santé",
+    superhero: "Aide locale à la rédaction pour professionnels de santé",
     poster: ["Brouillons cliniques structurés,", "relus par vous"],
   },
   it: {
-    superhero: "Un supporto locale alla stesura per gli operatori sanitari",
+    superhero: "Un supporto locale alla stesura per operatori sanitari",
     poster: ["Bozze cliniche strutturate,", "riviste da te"],
   },
   es: {
-    superhero: "Una ayuda local de redacción para profesionales sanitarios",
+    superhero: "Ayuda local de redacción para profesionales sanitarios",
     poster: ["Borradores clínicos estructurados,", "revisados por usted"],
   },
 };
