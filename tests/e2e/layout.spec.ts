@@ -173,12 +173,15 @@ async function expectLayoutFits(page: Page) {
         node = node.parentElement
       ) {
         const style = getComputedStyle(node);
-        if (!clipsOverflow(style) && !scrolls(style)) continue;
-        const clip = node.getBoundingClientRect();
-        left = Math.max(left, clip.left);
-        top = Math.max(top, clip.top);
-        right = Math.min(right, clip.right);
-        bottom = Math.min(bottom, clip.bottom);
+        if (clipsOverflow(style) || scrolls(style)) {
+          const clip = node.getBoundingClientRect();
+          left = Math.max(left, clip.left);
+          top = Math.max(top, clip.top);
+          right = Math.min(right, clip.right);
+          bottom = Math.min(bottom, clip.bottom);
+        }
+        // The top-layer modal is not clipped by its DOM ancestors.
+        if (node === topDialog) break;
       }
       return { left, top, right, bottom };
     };
