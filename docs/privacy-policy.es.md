@@ -5,6 +5,8 @@ permalink: /privacy-policy/es/
 
 # Política de privacidad de Epikrise
 
+Idioma: [English](https://jerney-nexus.github.io/epikrise/privacy-policy/en/) · [Deutsch](https://jerney-nexus.github.io/epikrise/privacy-policy/de/) · [Français](https://jerney-nexus.github.io/epikrise/privacy-policy/fr/) · [Italiano](https://jerney-nexus.github.io/epikrise/privacy-policy/it/) · Español
+
 Última actualización: 2026-11-08
 
 Responsable: Pascal Jerney, Unterdorfstrasse 7, 3322 Urtenen-Schönbühl, Suiza
