@@ -210,17 +210,20 @@ async function expectLayoutFits(page: Page) {
         ) {
           const style = getComputedStyle(node);
           if (scrolls(style)) break;
-          if (!clipsOverflow(style)) continue;
-          const clip = node.getBoundingClientRect();
-          if (
-            box.left < clip.left - 1 ||
-            box.right > clip.right + 1 ||
-            box.top < clip.top - 1 ||
-            box.bottom > clip.bottom + 1
-          ) {
-            issues.push(`control clipped by ancestor: "${label(element)}"`);
-            break;
+          if (clipsOverflow(style)) {
+            const clip = node.getBoundingClientRect();
+            if (
+              box.left < clip.left - 1 ||
+              box.right > clip.right + 1 ||
+              box.top < clip.top - 1 ||
+              box.bottom > clip.bottom + 1
+            ) {
+              issues.push(`control clipped by ancestor: "${label(element)}"`);
+              break;
+            }
           }
+          // The top-layer modal is not clipped by its DOM ancestors.
+          if (node === topDialog) break;
         }
       }
 
