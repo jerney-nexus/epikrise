@@ -59,7 +59,9 @@ const longDraft = Array.from(
 ).join("\n\n");
 
 async function openCaseView(page: Page) {
+  // Generation clears the source, so check the populated source before submitting.
   await page.locator("#source-material").fill(longSource);
+  await expectContentFitsWidth(page, "#source-material");
   await page.locator(".generate-button").click();
   await page.waitForFunction(
     () => window.__EPIKRISE_TEST__?.generationRequests.length === 1,
@@ -80,6 +82,7 @@ async function openCaseView(page: Page) {
   await expect(page.locator(".draft-output")).toContainText(
     "Synthetic draft section 8",
   );
+  await expectContentFitsWidth(page, ".draft-output");
 }
 
 async function openTemplateEditor(page: Page) {
@@ -90,26 +93,127 @@ async function openTemplateEditor(page: Page) {
   await page.locator(".template-editor-dialog .dialog-close").click();
 }
 
+// Horizontal-only check for scrollable text areas: vertical scrolling is intentional.
+async function expectContentFitsWidth(page: Page, selector: string) {
+  const problems = await page.locator(selector).evaluate((container) => {
+    const issues: string[] = [];
+    const box = container.getBoundingClientRect();
+    if (container.scrollWidth > container.clientWidth + 1) {
+      issues.push("container scrolls horizontally");
+    }
+    for (const element of container.querySelectorAll<HTMLElement>("*")) {
+      const rect = element.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) continue;
+      // Content inside an intentional horizontal scroller may extend past the box.
+      let insideScroller = false;
+      for (
+        let node = element.parentElement;
+        node && node !== container;
+        node = node.parentElement
+      ) {
+        if (["auto", "scroll"].includes(getComputedStyle(node).overflowX)) {
+          insideScroller = true;
+          break;
+        }
+      }
+      if (insideScroller) continue;
+      if (rect.left < box.left - 1 || rect.right > box.right + 1) {
+        issues.push(
+          `content exceeds container width: "${element.textContent?.trim().slice(0, 40)}"`,
+        );
+      }
+    }
+    return issues;
+  });
+  expect(problems).toEqual([]);
+}
+
+// Screen-level checks for the topmost dialog, or the whole page when none is open.
 async function expectLayoutFits(page: Page) {
   const problems = await page.evaluate(() => {
     const issues: string[] = [];
     const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
     const { scrollWidth } = document.documentElement;
     if (scrollWidth > viewportWidth) {
       issues.push(`document scrolls horizontally (${scrollWidth} > ${viewportWidth})`);
     }
 
-    for (const dialog of document.querySelectorAll<HTMLElement>("dialog[open]")) {
-      const box = dialog.getBoundingClientRect();
-      if (box.left < -1 || box.right > viewportWidth + 1) {
+    // Earlier open dialogs are covered by the topmost one and not interactive.
+    const dialogs = document.querySelectorAll<HTMLDialogElement>("dialog[open]");
+    const topDialog = dialogs.item(dialogs.length - 1);
+    const root: ParentNode = topDialog ?? document.body;
+    if (topDialog) {
+      const box = topDialog.getBoundingClientRect();
+      if (
+        box.left < -1 ||
+        box.top < -1 ||
+        box.right > viewportWidth + 1 ||
+        box.bottom > viewportHeight + 1
+      ) {
         issues.push(
-          `dialog leaves the viewport: ${dialog.getAttribute("aria-labelledby")}`,
+          `dialog leaves the viewport: ${topDialog.getAttribute("aria-labelledby")}`,
         );
       }
     }
 
+    const clipsOverflow = (style: CSSStyleDeclaration) =>
+      ["hidden", "clip"].includes(style.overflowX) ||
+      ["hidden", "clip"].includes(style.overflowY);
+    const scrolls = (style: CSSStyleDeclaration) =>
+      ["auto", "scroll"].includes(style.overflowX) ||
+      ["auto", "scroll"].includes(style.overflowY);
+    // Ancestors that scroll are intentional; content inside them is not checked for clipping.
+    const isInsideScroller = (element: HTMLElement) => {
+      for (let node = element.parentElement; node; node = node.parentElement) {
+        if (scrolls(getComputedStyle(node))) return true;
+      }
+      return false;
+    };
+
+    const label = (element: HTMLElement) =>
+      element.textContent?.trim().slice(0, 40) || element.tagName.toLowerCase();
+
+    const controls = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        "button, [role='tab'], label, a, h1, h2, h3, input, select, textarea",
+      ),
+    ).filter((element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return (
+        style.visibility !== "hidden" &&
+        box.width > 0 &&
+        box.height > 0 &&
+        !isInsideScroller(element)
+      );
+    });
+
+    for (const element of controls) {
+      const box = element.getBoundingClientRect();
+      for (
+        let node = element.parentElement;
+        node && node !== document.body;
+        node = node.parentElement
+      ) {
+        const style = getComputedStyle(node);
+        if (scrolls(style)) break;
+        if (!clipsOverflow(style)) continue;
+        const clip = node.getBoundingClientRect();
+        if (
+          box.left < clip.left - 1 ||
+          box.right > clip.right + 1 ||
+          box.top < clip.top - 1 ||
+          box.bottom > clip.bottom + 1
+        ) {
+          issues.push(`control clipped by ancestor: "${label(element)}"`);
+          break;
+        }
+      }
+    }
+
     const selector = "button, [role='tab'], label, a, h1, h2, h3";
-    for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+    for (const element of root.querySelectorAll<HTMLElement>(selector)) {
       const style = getComputedStyle(element);
       const box = element.getBoundingClientRect();
       if (style.visibility === "hidden" || box.width === 0 || box.height === 0)
@@ -126,7 +230,25 @@ async function expectLayoutFits(page: Page) {
         text.top < box.top - 1 ||
         text.bottom > box.bottom + 1;
       if (overflows) {
-        issues.push(`clipped or overflowing text: "${element.textContent?.trim()}"`);
+        issues.push(`clipped or overflowing text: "${label(element)}"`);
+      }
+    }
+
+    // Unrelated controls must not paint over each other; ancestor/descendant pairs are expected.
+    for (let i = 0; i < controls.length; i += 1) {
+      for (let j = i + 1; j < controls.length; j += 1) {
+        const a = controls[i];
+        const b = controls[j];
+        if (a.contains(b) || b.contains(a)) continue;
+        const first = a.getBoundingClientRect();
+        const second = b.getBoundingClientRect();
+        const overlapX =
+          Math.min(first.right, second.right) - Math.max(first.left, second.left);
+        const overlapY =
+          Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top);
+        if (overlapX > 1 && overlapY > 1) {
+          issues.push(`controls overlap: "${label(a)}" and "${label(b)}"`);
+        }
       }
     }
     return issues;
