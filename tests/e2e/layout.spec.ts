@@ -43,6 +43,53 @@ async function closeScreen(page: Page) {
   await expect(page.getByRole("dialog")).toHaveCount(0);
 }
 
+// Long synthetic text fills the source panel and draft output so wrapping is exercised.
+const longSource = Array.from(
+  { length: 6 },
+  (_, index) =>
+    `Synthetic paragraph ${index + 1}: patient stable, observations recorded, ` +
+    "follow-up arranged with the community team and results reviewed before discharge.",
+).join("\n\n");
+
+const longDraft = Array.from(
+  { length: 8 },
+  (_, index) =>
+    `Synthetic draft section ${index + 1} with extended wording that must wrap cleanly ` +
+    "inside the draft output panel at every supported width without clipping controls.",
+).join("\n\n");
+
+async function openCaseView(page: Page) {
+  await page.locator("#source-material").fill(longSource);
+  await page.locator(".generate-button").click();
+  await page.waitForFunction(
+    () => window.__EPIKRISE_TEST__?.generationRequests.length === 1,
+  );
+  const requestId = await page.evaluate(
+    () => window.__EPIKRISE_TEST__?.generationRequests[0]?.requestId,
+  );
+  await page.evaluate(
+    ({ requestId, output }) => {
+      window.__EPIKRISE_TEST__?.emit("generation://done", {
+        requestId,
+        content: output,
+        violations: [],
+      });
+    },
+    { requestId, output: longDraft },
+  );
+  await expect(page.locator(".draft-output")).toContainText(
+    "Synthetic draft section 8",
+  );
+}
+
+async function openTemplateEditor(page: Page) {
+  await openScreen(page, settingsTriggers.template);
+  await page.locator(".edit-template-button").click();
+  await expect(page.locator(".template-editor-dialog")).toBeVisible();
+  await expectLayoutFits(page);
+  await page.locator(".template-editor-dialog .dialog-close").click();
+}
+
 async function expectLayoutFits(page: Page) {
   const problems = await page.evaluate(() => {
     const issues: string[] = [];
@@ -92,7 +139,7 @@ for (const viewport of viewports) {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
     for (const { locale, heading } of localeCases) {
-      test(`${locale} fits the workspace, settings, help, and template screens`, async ({
+      test(`${locale} fits the workspace, settings, case view, and template editor`, async ({
         page,
       }) => {
         await page.goto("/");
@@ -107,6 +154,11 @@ for (const viewport of viewports) {
           await expectLayoutFits(page);
           await closeScreen(page);
         }
+
+        await openCaseView(page);
+        await expectLayoutFits(page);
+
+        await openTemplateEditor(page);
       });
     }
   });

@@ -3010,7 +3010,7 @@
           </select>
           {@render createTemplateButton()}
           <button
-            class="button-secondary template-settings-action"
+            class="button-secondary template-settings-action edit-template-button"
             type="button"
             onclick={openTemplateEditor}
             disabled={!activeTemplate ||
