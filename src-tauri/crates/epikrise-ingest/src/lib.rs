@@ -356,7 +356,10 @@ fn normalize_image(bytes: &[u8]) -> Result<(Vec<u8>, String), IngestError> {
     limits.max_image_height = Some(MAX_IMAGE_DIMENSION);
     limits.max_alloc = Some(128 * 1024 * 1024);
     reader.limits(limits);
-    let decoded = reader.decode().map_err(|_| IngestError::InvalidImage)?;
+    let decoded = reader.decode().map_err(|error| match error {
+        image::ImageError::Limits(_) => IngestError::ImageTooLarge,
+        _ => IngestError::InvalidImage,
+    })?;
     let mut normalized = Cursor::new(Vec::new());
     decoded
         .write_to(&mut normalized, image::ImageFormat::Png)
@@ -698,10 +701,10 @@ pub fn extract_raw_text(text: String) -> Result<ExtractedBlock, IngestError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        IngestError, MAX_DOCX_DOCUMENT_XML_BYTES, MAX_IMAGE_INPUT_BYTES, extract_fetched_text,
-        extract_file, extract_file_with_ocr, extract_image_for_vision, extract_image_with_ocr,
-        extract_raw_text, extract_readable_html, extract_text_file, extract_url, is_public_ip,
-        pdf_page_texts_and_ocr_targets, resolve_redirect, validate_url,
+        IngestError, MAX_DOCX_DOCUMENT_XML_BYTES, MAX_IMAGE_DIMENSION, MAX_IMAGE_INPUT_BYTES,
+        extract_fetched_text, extract_file, extract_file_with_ocr, extract_image_for_vision,
+        extract_image_with_ocr, extract_raw_text, extract_readable_html, extract_text_file,
+        extract_url, is_public_ip, pdf_page_texts_and_ocr_targets, resolve_redirect, validate_url,
     };
     use epikrise_core::{ExtractionMethod, InputProvenance};
     use std::{
@@ -1282,6 +1285,18 @@ mod tests {
         assert_eq!(
             extract_image_for_vision("huge.png".to_owned(), &vec![0u8; MAX_IMAGE_INPUT_BYTES + 1])
                 .err(),
+            Some(IngestError::ImageTooLarge)
+        );
+    }
+
+    #[test]
+    fn reports_images_over_the_dimension_limit_as_too_large() {
+        let mut png = Cursor::new(Vec::new());
+        image::RgbImage::new(MAX_IMAGE_DIMENSION + 1, 1)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .expect("encode test image");
+        assert_eq!(
+            extract_image_for_vision("wide.png".to_owned(), &png.into_inner()).err(),
             Some(IngestError::ImageTooLarge)
         );
     }

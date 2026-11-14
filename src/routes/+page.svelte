@@ -8,6 +8,7 @@
     defaultLocale,
     initializeLocale,
     localePreferenceKey,
+    ocrLanguageForLocale,
     pseudoLocale,
     setLocale,
     supportedLocales,
@@ -243,6 +244,7 @@
   function changeUiLocale(locale: string) {
     setLocale(locale);
     uiLocale = locale;
+    ocrLanguage = ocrLanguageForLocale(locale);
     document.documentElement.lang = locale === pseudoLocale ? "en" : locale;
     void syncNativeMenu(locale, nativeMenuListenerReady);
   }
@@ -780,6 +782,7 @@
       pdf_vision_too_many_pages:
         "This PDF has more than 12 scanned pages. Split it or provide fewer pages.",
       pdf_vision_too_large: "The scanned pages exceed the 20 MB vision limit.",
+      image_too_large: "The image exceeds the 20 MB or 8,192 px limit.",
     };
     const message = messages[error.key];
     return message
@@ -1750,6 +1753,7 @@
     const detectedLocale = navigator.languages[0] ?? navigator.language;
     const locale = initializeLocale(storedLocale, detectedLocale);
     uiLocale = locale;
+    ocrLanguage = ocrLanguageForLocale(locale);
     document.documentElement.lang = locale;
     themePreference = readStoredThemePreference();
     applyThemePreference(themePreference);

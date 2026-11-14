@@ -187,6 +187,7 @@ ui-unknown-exit-code = desconocido
 ui-this-pdf-contains-scanned-pages-that-could-not-be-extracted = Este PDF contiene páginas escaneadas que no se pudieron extraer.
 ui-this-pdf-has-more-than-12-scanned-pages-split-it-or-provide-fewer-pages = Este PDF tiene más de 12 páginas escaneadas. Divídalo o proporcione menos páginas.
 ui-the-scanned-pages-exceed-the-20-mb-vision-limit = Las páginas escaneadas superan el límite de 20 MB para visión.
+ui-the-image-exceeds-the-20-mb-or-8-192-px-limit = La imagen supera el límite de 20 MB o 8.192 px.
 ui-input-extraction-failed = Error al extraer la entrada: { $error }.
 ui-no-text-could-be-extracted-from-the-input = No se pudo extraer texto de la entrada.
 ui-added-image-for-provider-vision-analysis = Imagen añadida para el análisis de visión del proveedor
