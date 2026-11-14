@@ -37,6 +37,7 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - Use the commands listed in the "Commands" section below for development, testing, and formatting tasks.
 - When working in the dev container, use `/workspaces/epikrise` as the project root.
 - Follow nearby patterns and keep changes focused.
+- Localization: user-facing strings go through Fluent (`t()`). Intentionally English items (brand names, model prompts, persisted template data, Fluent source strings) are listed in [CONTRIBUTING.md](CONTRIBUTING.md) under "Localization" and are not hardcoded-string findings.
 - Do not hand-edit generated files in `build/`, `src-tauri/target/`, or generated bindings.
 - Report checks that cannot run.
 - See `README.md` and `CONTRIBUTING.md` for setup and project conventions.
