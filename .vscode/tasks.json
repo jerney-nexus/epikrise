@@ -247,6 +247,15 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Export Translation Review CSV",
+      "detail": "Exports a locale catalog to templates/translation-review/ for reviewers (git-ignored).",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["translation:export", "${input:translationLocale}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Crowdin Upload Translations",
       "detail": "Uploads the fr, es, and it catalogs to Crowdin (requires CROWDIN_PROJECT_ID and CROWDIN_PERSONAL_TOKEN in the environment).",
       "type": "process",
@@ -261,6 +270,19 @@
       "type": "process",
       "command": "pnpm",
       "args": ["crowdin:download"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Import Translation Review CSV",
+      "detail": "Validates a reviewed CSV without changing the catalog (dry run). Run pnpm translation:import with --apply to write changes.",
+      "type": "process",
+      "command": "pnpm",
+      "args": [
+        "translation:import",
+        "${input:translationLocale}",
+        "${input:translationCsv}"
+      ],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     },
@@ -338,6 +360,18 @@
     }
   ],
   "inputs": [
+    {
+      "id": "translationLocale",
+      "type": "promptString",
+      "description": "Target locale to export or import: fr, it, or es",
+      "default": "fr"
+    },
+    {
+      "id": "translationCsv",
+      "type": "promptString",
+      "description": "Path to the reviewed CSV, for example templates/translation-review/fr.csv",
+      "default": "templates/translation-review/fr.csv"
+    },
     {
       "id": "releaseVersion",
       "type": "promptString",
