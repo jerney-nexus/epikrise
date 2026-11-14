@@ -10,7 +10,7 @@ A desktop drafting aid that turns user-supplied clinical material into a structu
 
 ## What it does
 
-Paste text or images, import documents, or provide a URL. Epikrise extracts text from plain-text files, PDF, DOCX, XLSX, RTF and HTML. PNG/JPEG images and sparse PDF pages can use local OCR or, when enabled and supported by the selected model, vision analysis. URLs are fetched and converted to readable text. Text clipboard access uses Tauri's clipboard plugin; image paste is handled by the webview and sent to Rust over IPC.
+Paste text or images, import documents, or provide a URL. Epikrise extracts text from plain-text files, PDF, DOCX, XLSX, RTF and HTML. PNG/JPEG images and sparse PDF pages can use local OCR or, when enabled and supported by the selected model, vision analysis. Images are limited to 20 MB and 8,192 pixels in width and in height; larger images are rejected, and an image that cannot be decoded is reported as an invalid image. URLs are fetched and converted to readable text. Text clipboard access uses Tauri's clipboard plugin; image paste is handled by the webview and sent to Rust over IPC.
 
 The extracted material and your template are sent to the selected model. The app supports OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI and Groq. It can discover models, check a connection, stream a draft, and cancel generation. Findings can be added in several rounds and integrated cumulatively. Template-defined output checks are shown as warnings, with an option to regenerate with corrections.
 
