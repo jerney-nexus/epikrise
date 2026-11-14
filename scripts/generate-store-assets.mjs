@@ -63,13 +63,33 @@ const posterScene = ({ poster }) =>
     text({ x: 720, y: 1555, size: 60, anchor: "middle", content: poster[1] }),
   ]);
 
-const superheroScene = ({ superhero }) => ({
-  ...scene(3840, 2160, [
-    text({ x: 303, y: 983, size: 300, content: "Epikrise" }),
-    text({ x: 303, y: 1175, size: 96, content: superhero }),
-  ]),
-  photo: join(assetRoot, "source", "superhero-background-1536x1024.png"),
-});
+const splitInTwo = (content) => {
+  const words = content.split(" ");
+  let best = 1;
+  let bestDiff = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const diff = Math.abs(
+      words.slice(0, i).join(" ").length - words.slice(i).join(" ").length,
+    );
+    if (diff < bestDiff) {
+      best = i;
+      bestDiff = diff;
+    }
+  }
+  return [words.slice(0, best).join(" "), words.slice(best).join(" ")];
+};
+
+const superheroScene = ({ superhero }) => {
+  const [firstLine, secondLine] = splitInTwo(superhero);
+  return {
+    ...scene(3840, 2160, [
+      text({ x: 560, y: 983, size: 300, content: "Epikrise" }),
+      text({ x: 560, y: 1175, size: 96, content: firstLine }),
+      text({ x: 560, y: 1300, size: 96, content: secondLine }),
+    ]),
+    photo: join(assetRoot, "source", "superhero-background-1536x1024.png"),
+  };
+};
 
 const packagingScene = () =>
   scene(2160, 2160, [mark({ x: 1058, y: 1594, size: 1410 })]);
