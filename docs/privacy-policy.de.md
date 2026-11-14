@@ -31,7 +31,7 @@ Für die Texterkennung (OCR) können temporäre Bilddateien in privaten temporä
 
 - Importierte Vorlagen werden lokal in der App gespeichert.
 - API-Schlüssel werden im Schlüsselbund des Betriebssystems abgelegt (unter Linux über den Secret Service).
-- Anbieter, Modell, Endpunkt sowie Ausgabe- und Begründungseinstellungen werden von der aktuellen Oberfläche nicht dauerhaft gespeichert.
+- Anbieter, Modell, Endpunkt sowie Ausgabe- und Denkaufwand-Einstellungen werden von der aktuellen Oberfläche nicht dauerhaft gespeichert.
 
 ## 5. Übermittlung an KI-Anbieter
 
@@ -50,7 +50,7 @@ Epikrise anonymisiert oder pseudonymisiert Inhalte nicht und erkennt keine ident
 
 ## 8. Administratorrichtlinien
 
-Organisationen können über eine `policy.toml` Anbieter, Endpunkte, URL-Import, Vorlagenfunktionen und Updates einschränken. Die Richtlinie liegt in Verantwortung der jeweiligen Organisation.
+Organisationen können über eine `policy.toml`-Datei Anbieter, Endpunkte, URL-Import, Vorlagenfunktionen und Updates einschränken. Die Richtlinie liegt in Verantwortung der jeweiligen Organisation.
 
 ## 9. Ihre Rechte
 
