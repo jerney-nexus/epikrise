@@ -18,23 +18,23 @@ const fontName = "Liberation-Serif";
 
 const locales = {
   en: {
-    superhero: "A local drafting aid for clinicians",
+    superhero: "A local drafting aid for health professionals",
     poster: ["Structured clinical drafts,", "reviewed by you"],
   },
   de: {
-    superhero: "Lokale Entwurfshilfe für medizinisches Personal",
+    superhero: "Lokale Entwurfshilfe für Gesundheitsfachpersonen",
     poster: ["Strukturierte Entwürfe,", "von Ihnen geprüft"],
   },
   fr: {
-    superhero: "Une aide locale à la rédaction pour les cliniciens",
+    superhero: "Une aide locale à la rédaction pour les professionnels de santé",
     poster: ["Brouillons cliniques structurés,", "relus par vous"],
   },
   it: {
-    superhero: "Un supporto locale alla stesura per i clinici",
-    poster: ["Bozze cliniche strutturate,", "riviste da Lei"],
+    superhero: "Un supporto locale alla stesura per gli operatori sanitari",
+    poster: ["Bozze cliniche strutturate,", "riviste da te"],
   },
   es: {
-    superhero: "Una ayuda local de redacción para clínicos",
+    superhero: "Una ayuda local de redacción para profesionales sanitarios",
     poster: ["Borradores clínicos estructurados,", "revisados por usted"],
   },
 };
