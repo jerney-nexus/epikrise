@@ -398,9 +398,9 @@ Native startup dialogs run before the webview exists, so `src-tauri/src/startup_
 
 ### Crowdin decision
 
-Status: approved by the maintainer for sending UI strings to Crowdin, but not yet set up. The team has a free Crowdin account (up to 40K words). Project setup is pending; until it is complete and documented, the local CSV workflow above is the only translation review path.
+Status: approved by the maintainer for sending UI strings to Crowdin. The file-based project `epikrise` (slug `epikrise`) exists, with source `en` and targets `fr`, `es-ES`, `it`, and `de-CH`. Only `locales/en/app.ftl` has been uploaded so far (Crowdin type `ftl`). Translations are not yet imported or downloaded, and the round trip is not yet documented or tested. Until that is done, the local CSV workflow above is the only translation review path.
 
-Crowdin is an optional hosted review path next to the CSV workflow, not a replacement. Its setup, the locale mapping (fr, it, es, with de-CH and en as references), and the round-trip import must be documented and tested with synthetic strings only, and no patient data, clinical text, or credentials may be sent. The CSV workflow remains the fallback.
+Crowdin is an optional hosted review path next to the CSV workflow, not a replacement. The repo catalog `es` corresponds to Crowdin's `es-ES` target. Its setup, the round-trip import, and the locale mapping must be documented and tested with synthetic strings only, and no patient data, clinical text, or credentials may be sent. The CSV workflow remains the fallback.
 
 ## Templates and test data
 
