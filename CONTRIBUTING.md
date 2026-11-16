@@ -396,11 +396,23 @@ English literals that are intentionally not translated are not hardcoded UI stri
 
 Native startup dialogs run before the webview exists, so `src-tauri/src/startup_dialog.rs` resolves them from the catalogs using the OS locale. This can differ from the in-app language, which is stored in the webview and defaults to `de-CH`. The static `<title>` in `src/app.html` is a pre-mount fallback; the runtime title is set from `t()` once the app mounts.
 
-### Crowdin decision
+### Reviewing translations in Crowdin
 
-Status: approved by the maintainer for sending UI strings to Crowdin. The file-based project `epikrise` (id 946799) has source `en` and targets `fr`, `es-ES`, and `it`; the `de-CH` target was removed. `locales/en/app.ftl` is the source file (Crowdin type `ftl`), and the existing `fr`, `es`, and `it` catalogs have been uploaded as translations with `crowdin upload translations` (CLI v5). Crowdin reports 384/395 fr, 391/395 es-ES, and 388/395 it strings translated; the rest match the English source. `crowdin.yml` at the repo root maps `es-ES` to the repo folder `es` through `%two_letters_code%` (Crowdin reports `es` for `es-ES`). The config reads the project ID and token from `CROWDIN_PROJECT_ID` and `CROWDIN_PERSONAL_TOKEN`; never commit a token. A synthetic `ui-provider-rejected` translation was uploaded and then deleted to confirm that `{ $status }` survives Crowdin storage. The source lives at the repo path `/locales/en/app.ftl` in Crowdin, so `crowdin.yml` needs no `dest` override. `npx -y @crowdin/cli@5 download translations -c crowdin.yml` runs cleanly and extracts `locales/{fr,es,it}/app.ftl`; the repo catalogs already matched the Crowdin translations, so the download changed no files. Shortcuts run the same commands: `pnpm crowdin:upload:sources`, `pnpm crowdin:upload:translations`, and `pnpm crowdin:download`, also available as the "Epikrise: Crowdin ..." tasks in `.vscode/tasks.json`. They need `CROWDIN_PROJECT_ID` and `CROWDIN_PERSONAL_TOKEN` in the environment. Until a reviewed translation is merged, the local CSV workflow above remains the translation review path.
+Crowdin is the main review path for translations. Send only UI strings; never send patient data, clinical text, or credentials.
 
-Crowdin is an optional hosted review path next to the CSV workflow, not a replacement. The repo catalog `es` corresponds to Crowdin's `es-ES` target. Its setup, the round-trip import, and the locale mapping must be documented and tested with synthetic strings only, and no patient data, clinical text, or credentials may be sent. The CSV workflow remains the fallback.
+The file-based project `epikrise` (id 946799) uses `en` as its source and `fr`, `es-ES`, and `it` as targets. `de-CH` is not a Crowdin target: it is the app's default and reference locale, so `locales/de-CH/app.ftl` is the authored German text that the other catalogs are checked against, not a translation to be produced. It stays in the repo as the reference locale. The source is `locales/en/app.ftl`, uploaded in Crowdin's `ftl` format at the same repo path, so `crowdin.yml` needs no `dest` override. `crowdin.yml` maps `es-ES` to the repo folder `es` through `%two_letters_code%`, because Crowdin reports the code as `es`.
+
+Run the Crowdin CLI through these shortcuts. It is pinned as the `@crowdin/cli` dev dependency (5.6.0). The config reads `CROWDIN_PROJECT_ID` and `CROWDIN_PERSONAL_TOKEN` from the environment; never commit a token.
+
+```sh
+pnpm crowdin:upload:sources        # uploads the English source
+pnpm crowdin:upload:translations   # uploads the fr, es, and it catalogs
+pnpm crowdin:download              # extracts locales/{fr,es,it}/app.ftl
+```
+
+The same commands are available as "Epikrise: Crowdin ..." tasks in `.vscode/tasks.json`.
+
+A download ran cleanly and changed no repo files. A synthetic `ui-provider-rejected` translation confirmed that `{ $status }` survives Crowdin storage, and it was deleted afterwards.
 
 ## Templates and test data
 
