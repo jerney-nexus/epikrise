@@ -396,6 +396,12 @@ English literals that are intentionally not translated are not hardcoded UI stri
 
 Native startup dialogs run before the webview exists, so `src-tauri/src/startup_dialog.rs` resolves them from the catalogs using the OS locale. This can differ from the in-app language, which is stored in the webview and defaults to `de-CH`. The static `<title>` in `src/app.html` is a pre-mount fallback; the runtime title is set from `t()` once the app mounts.
 
+### Crowdin decision
+
+Status: approved by the maintainer for sending UI strings to Crowdin, but not yet set up. The team has a free Crowdin account (up to 40K words). Project setup is pending; until it is complete and documented, the local CSV workflow above is the only translation review path.
+
+Crowdin is an optional hosted review path next to the CSV workflow, not a replacement. Its setup, the locale mapping (fr, it, es, with de-CH and en as references), and the round-trip import must be documented and tested with synthetic strings only, and no patient data, clinical text, or credentials may be sent. The CSV workflow remains the fallback.
+
 ## Templates and test data
 
 Never commit real or realistic clinical material, not even as a test fixture. The `templates/` and `fixtures/clinical/` directories are git-ignored for this reason. Fixtures used by tests must be synthetic.
