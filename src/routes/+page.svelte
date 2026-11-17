@@ -2439,7 +2439,13 @@
         >
           {#each supportedLocales as locale (locale)}
             <option value={locale}>
-              {t(locale === "de-CH" ? "language-de-ch" : "language-en")}
+              {t(
+                locale === "de-CH"
+                  ? "language-de-ch"
+                  : locale === "fr"
+                    ? "language-fr"
+                    : "language-en",
+              )}
             </option>
           {/each}
           {#if import.meta.env.DEV}

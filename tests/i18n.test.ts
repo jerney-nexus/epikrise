@@ -71,7 +71,7 @@ describe("Fluent localization", () => {
     expect(initializeLocale("en", "de-CH")).toBe("en");
     expect(initializeLocale(null, "de-CH")).toBe("de-CH");
     expect(initializeLocale(null, "de-AT")).toBe("de-CH");
-    expect(initializeLocale(null, "fr-CH")).toBe(defaultLocale);
+    expect(initializeLocale(null, "it-CH")).toBe(defaultLocale);
   });
 
   it("persists supported selections but keeps pseudo-localization temporary", () => {
@@ -261,7 +261,7 @@ describe("locale state and fallbacks", () => {
   it("ignores unsupported locale selections without touching storage or state", () => {
     const writes: string[] = [];
     withLocalStorage({ setItem: (key: string) => void writes.push(key) }, () => {
-      setLocale("fr");
+      setLocale("it");
     });
     expect(writes).toEqual([]);
     expect(getActiveLocale()).toBe(defaultLocale);
@@ -302,7 +302,7 @@ describe("locale state and fallbacks", () => {
   });
 
   it("returns the source text for locales without a bundle", () => {
-    expect(translate("fr", "Settings")).toBe("Settings");
+    expect(translate("it", "Settings")).toBe("Settings");
     expect(translate("zz", "Settings")).toBe("Settings");
   });
 

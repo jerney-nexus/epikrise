@@ -243,6 +243,7 @@ ui-add-section-heading = New section
 ui-language = Interface language
 ui-language-de-ch = German (Switzerland)
 ui-language-en = English
+ui-language-fr = French
 ui-language-pseudo = Pseudo-localization (development)
 ui-theme = Theme
 ui-light = Light
