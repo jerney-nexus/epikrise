@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The interface language can be set to French (#287)
 - The interface language can be set to Italian (#288)
 - The interface language can be set to Spanish (#289)
+- The privacy policy is available in French, Italian, and Spanish (#297)
 
 ### 🐛 Bug Fixes
 
