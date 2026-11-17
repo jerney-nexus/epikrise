@@ -396,6 +396,24 @@ English literals that are intentionally not translated are not hardcoded UI stri
 
 Native startup dialogs run before the webview exists, so `src-tauri/src/startup_dialog.rs` resolves them from the catalogs using the OS locale. This can differ from the in-app language, which is stored in the webview and defaults to `de-CH`. The static `<title>` in `src/app.html` is a pre-mount fallback; the runtime title is set from `t()` once the app mounts.
 
+### Reviewing translations in Crowdin
+
+Crowdin is the main review path for translations. Send only UI strings; never send patient data, clinical text, or credentials.
+
+The file-based project `epikrise` (id 946799) uses `en` as its source and `fr`, `es-ES`, and `it` as targets. `de-CH` is not a Crowdin target: it is the app's default and reference locale, so `locales/de-CH/app.ftl` is the authored German text that the other catalogs are checked against, not a translation to be produced. It stays in the repo as the reference locale. The source is `locales/en/app.ftl`, uploaded in Crowdin's `ftl` format at the same repo path, so `crowdin.yml` needs no `dest` override. `crowdin.yml` maps `es-ES` to the repo folder `es` through `%two_letters_code%`, because Crowdin reports the code as `es`.
+
+Run the Crowdin CLI through these shortcuts. It is pinned as the `@crowdin/cli` dev dependency (5.6.0). The config reads `CROWDIN_PROJECT_ID` and `CROWDIN_PERSONAL_TOKEN` from the environment; never commit a token.
+
+```sh
+pnpm crowdin:upload:sources        # uploads the English source
+pnpm crowdin:upload:translations   # uploads the fr, es, and it catalogs
+pnpm crowdin:download              # extracts locales/{fr,es,it}/app.ftl
+```
+
+The same commands are available as "Epikrise: Crowdin ..." tasks in `.vscode/tasks.json`.
+
+A download ran cleanly and changed no repo files. A synthetic `ui-provider-rejected` translation confirmed that `{ $status }` survives Crowdin storage, and it was deleted afterwards.
+
 ## Templates and test data
 
 Never commit real or realistic clinical material, not even as a test fixture. The `templates/` and `fixtures/clinical/` directories are git-ignored for this reason. Fixtures used by tests must be synthetic.

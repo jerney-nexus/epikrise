@@ -238,6 +238,33 @@
       "problemMatcher": []
     },
     {
+      "label": "Epikrise: Crowdin Upload Sources",
+      "detail": "Uploads locales/en/app.ftl to Crowdin (requires CROWDIN_PROJECT_ID and CROWDIN_PERSONAL_TOKEN in the environment).",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["crowdin:upload:sources"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Crowdin Upload Translations",
+      "detail": "Uploads the fr, es, and it catalogs to Crowdin (requires CROWDIN_PROJECT_ID and CROWDIN_PERSONAL_TOKEN in the environment).",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["crowdin:upload:translations"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Epikrise: Crowdin Download Translations",
+      "detail": "Downloads translations from Crowdin into locales/{fr,es,it}/app.ftl (requires CROWDIN_PROJECT_ID and CROWDIN_PERSONAL_TOKEN in the environment).",
+      "type": "process",
+      "command": "pnpm",
+      "args": ["crowdin:download"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
       "label": "Epikrise: Prepare Release",
       "detail": "Prepares a new release.",
       "type": "process",
