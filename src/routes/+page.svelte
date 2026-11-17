@@ -1720,7 +1720,10 @@
   async function exportActiveTemplate() {
     if (!activeTemplate) return;
     try {
-      const result = await commands.exportTemplate(activeTemplate);
+      const result = await commands.exportTemplate(
+        activeTemplate,
+        t("Epikrise template"),
+      );
       if (result.status === "error") {
         templateMessage = formatTemplateError(result.error);
         templateIsError = true;
@@ -3714,7 +3717,9 @@
               <p class="eyebrow">{t("01 / Source")}</p>
               <h3 id="source-title">{t("Clinical material")}</h3>
             </div>
-            <span class="field-count">{inputCharacterCount} chars</span>
+            <span class="field-count"
+              >{t("count-chars", { count: inputCharacterCount })}</span
+            >
           </div>
 
           <input
@@ -3782,7 +3787,7 @@
                 <li class="source-input-item">
                   <div class="source-input-meta">
                     <span title={provenanceLabel}>{provenanceLabel}</span>
-                    <span>{block.content.length} chars</span>
+                    <span>{t("count-chars", { count: block.content.length })}</span>
                   </div>
                   <div class="source-input-details">
                     <span

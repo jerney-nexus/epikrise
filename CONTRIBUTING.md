@@ -383,6 +383,16 @@ The `Approve accepted draft release` job is protected by the GitHub Actions `rel
 
 User-facing strings live in Fluent catalogs under `locales/`. Rust code returns translation keys and arguments, never localized text — the frontend resolves them. Adding a language means adding a folder; do not hardcode strings in command return paths.
 
+English literals that are intentionally not translated are not hardcoded UI strings and should not be flagged in review:
+
+- Brand and provider names, such as Epikrise, Ollama, OpenAI, Anthropic, Gemini, OpenRouter, Groq, and xAI.
+- Text sent to the model, such as the correction prompt built in `regenerateWithCorrections` in `src/routes/+page.svelte`.
+- Persisted template data, such as the default section heading and `labels` written by `addTemplateEditorSection`. Stored data must not follow the UI language.
+- Fluent source strings passed to `t()` or assigned to status state, such as `generationMessage = "Draft ready"`. `t()` resolves them through the catalogs, and missing keys fall back to the English source, so keys must be added to every catalog.
+- CSS font names and placeholder URL examples.
+
+Native startup dialogs run before the webview exists, so `src-tauri/src/startup_dialog.rs` resolves them from the catalogs using the OS locale. This can differ from the in-app language, which is stored in the webview and defaults to `de-CH`. The static `<title>` in `src/app.html` is a pre-mount fallback; the runtime title is set from `t()` once the app mounts.
+
 ## Templates and test data
 
 Never commit real or realistic clinical material, not even as a test fixture. The `templates/` and `fixtures/clinical/` directories are git-ignored for this reason. Fixtures used by tests must be synthetic.

@@ -841,6 +841,9 @@ describe("CalVer release versions", () => {
           path.join(repoRoot, "package.json"),
           path.join(directory, "package.json"),
         );
+        await cp(path.join(repoRoot, "locales"), path.join(directory, "locales"), {
+          recursive: true,
+        });
         await cp(path.join(repoRoot, "src-tauri"), tauriDirectory, {
           recursive: true,
           filter: (source) =>

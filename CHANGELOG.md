@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The interface language can be set to Italian (#288)
 - The interface language can be set to Spanish (#289)
 
+### 🐛 Bug Fixes
+
+- Generation status, the desktop/preview session label, and character counts follow the selected interface language (#291)
+- Startup error dialogs and the template export save filter are localized; startup dialogs follow the OS language (#291)
+
 ## [2026.11.5] - 2026-11-11
 
 ### 🚀 Features
