@@ -25,7 +25,7 @@
           "Entwurfshilfe",
           "Vorlagen"
         ],
-        "Description": "Epikrise ist eine Entwurfshilfe für medizinisches Personal. Fügen Sie Text oder Bilder ein, importieren Sie Dokumente oder geben Sie eine Webadresse an. Epikrise extrahiert das Material und erstellt mit einer von Ihnen gewählten Vorlage einen strukturierten Entwurf, zum Beispiel einen Entlassungsbericht, zur Prüfung.\n\nEpikrise anonymisiert die Eingaben nicht. Entfernen Sie identifizierende Angaben vor der Verwendung.\n\nErzeugter Text ist ein Entwurf. Eine verantwortliche Ärztin oder ein verantwortlicher Arzt muss ihn vor der Verwendung prüfen und bearbeiten. Epikrise ist kein Medizinprodukt und kein Diagnoseinstrument. Die App ist nicht mit einem Krankenhausinformationssystem verbunden; den freigegebenen Text kopieren Sie selbst in das Zielsystem.\n\nFallinhalte werden im Arbeitsspeicher gehalten und nicht als Verlauf gespeichert. OCR kann temporäre Bilddateien anlegen; sie werden vor dem Entfernen überschrieben. Kopien durch das Betriebssystem lassen sich jedoch nicht ausschliessen. Formularwerte und Texte, die Sie selbst in die Zwischenablage kopieren, sind davon nicht erfasst und bleiben erhalten, bis Sie sie ändern oder die Zwischenablage überschrieben wird. Die App hat kein Backend, keine Telemetrie und kein Konto. Die Store-Version sendet Anfragen nur an den von Ihnen konfigurierten Modell-Endpunkt und an Webadressen, die Sie importieren, und prüft nicht auf Updates. Vor dem ersten Versand von Fallinhalten an einen externen Anbieter je Fall bittet Epikrise um Bestätigung von Anbieter und Endpunkt. Das Abrufen der Modellliste und das Testen der Verbindung erfordern keine Fallbestätigung.\n\nUnterstützte Anbieter: OpenAI, Anthropic, Gemini, Ollama, OpenAI-kompatible Endpunkte, OpenRouter, xAI und Groq. Ein Ollama-Endpunkt gilt nur dann als lokal, wenn der konfigurierte Endpunkt lokal ist. API-Schlüssel werden im Schlüsselbund des Betriebssystems gespeichert.",
+        "Description": "Epikrise ist eine Entwurfshilfe für medizinisches Personal. Fügen Sie Text oder Bilder ein, importieren Sie Dokumente oder geben Sie eine Webadresse an. Epikrise extrahiert das Material und erstellt mit einer von Ihnen gewählten Vorlage einen strukturierten Entwurf, zum Beispiel einen Entlassungsbericht, zur Prüfung.\n\nEpikrise anonymisiert die Eingaben nicht. Entfernen Sie identifizierende Angaben vor der Verwendung.\n\nErzeugter Text ist ein Entwurf. Eine verantwortliche Gesundheitsfachperson muss ihn vor der Verwendung prüfen und bearbeiten. Epikrise ist kein Medizinprodukt und kein Diagnoseinstrument. Die App ist nicht mit einem Krankenhausinformationssystem verbunden; den freigegebenen Text kopieren Sie selbst in das Zielsystem.\n\nFallinhalte werden im Arbeitsspeicher gehalten und nicht als Verlauf gespeichert. OCR kann temporäre Bilddateien anlegen; sie werden vor dem Entfernen überschrieben. Kopien durch das Betriebssystem lassen sich jedoch nicht ausschliessen. Formularwerte und Texte, die Sie selbst in die Zwischenablage kopieren, sind davon nicht erfasst und bleiben erhalten, bis Sie sie ändern oder die Zwischenablage überschrieben wird. Die App hat kein Backend, keine Telemetrie und kein Konto. Die Store-Version sendet Anfragen nur an den von Ihnen konfigurierten Modell-Endpunkt und an Webadressen, die Sie importieren, und prüft nicht auf Updates. Vor dem ersten Versand von Fallinhalten an einen externen Anbieter je Fall bittet Epikrise um Bestätigung von Anbieter und Endpunkt. Das Abrufen der Modellliste und das Testen der Verbindung erfordern keine Fallbestätigung.\n\nUnterstützte Anbieter: OpenAI, Anthropic, Gemini, Ollama, OpenAI-kompatible Endpunkte, OpenRouter, xAI und Groq. Ein Ollama-Endpunkt gilt nur dann als lokal, wenn der konfigurierte Endpunkt lokal ist. API-Schlüssel werden im Schlüsselbund des Betriebssystems gespeichert.",
         "Features": [
           "Text oder Bilder einfügen, Dateien (PDF, DOCX, XLSX, RTF, HTML) importieren oder Webseiten abrufen",
           "Text aus Bildern und gescannten PDF-Seiten lokal per OCR erkennen oder per Bildanalyse, sofern das Modell sie unterstützt",
@@ -38,11 +38,11 @@
           "Modelle ermitteln und Anbieterverbindungen prüfen",
           "Eingaben, Ergebnis und Steuerung in einem Arbeitsbereich",
           "Vorschau des Ergebnisses als Klartext oder formatiert",
-          "Ergebnis erst nach ärztlicher Bestätigung formatiert kopieren",
+          "Ergebnis erst nach Bestätigung durch eine Gesundheitsfachperson formatiert kopieren",
           "Fallinhalte im Arbeitsspeicher, nicht als Verlauf gespeichert",
           "API-Schlüssel im Schlüsselbund des Betriebssystems",
           "Fallinhalte an externe Endpunkte nur nach Bestätigung je Fall, Anbieter und Endpunkt",
-          "Oberfläche auf Deutsch und Englisch"
+          "Oberfläche auf Deutsch, Englisch, Französisch, Italienisch und Spanisch"
         ],
         "ReleaseNotes": "In dieser Version können Sie in den Allgemeinen Einstellungen zwischen Hell, Dunkel und Automatisch wählen; Automatisch folgt dem Betriebssystem. Die Änderung wird sofort übernommen und auf diesem Gerät gespeichert. Im hellen Design ist der Textkontrast höher, sodass Platzhalter, Hinweise und Hilfstexte besser lesbar sind. Alle Schaltflächen haben jetzt einen einheitlichen Stil und heben sich beim Darüberfahren nicht mehr an, und die Schaltflächen der Vorlagenabschnitte (Nach oben, Nach unten, Löschen) zeigen beim Darüberfahren einen Hover-Zustand. Unter Windows öffnet Epikrise die Richtliniendatei des Administrators (policy.toml) nicht mehr bei jedem Start in einem Editor, und beim Start blitzt kein PowerShell-Fenster mehr auf.",
         "Images": [
@@ -88,7 +88,7 @@
         "Title": "Epikrise",
         "LicenseTerms": "MIT-Lizenz. Copyright (c) 2026 Pascal Jerney. Volltext: https://github.com/jerney-nexus/epikrise/blob/main/LICENSE",
         "CopyrightAndTrademarkInfo": "© 2026 Pascal Jerney",
-        "ShortDescription": "Erstellt aus von Ihnen anonymisierten klinischen Unterlagen einen strukturierten Entwurf zur ärztlichen Prüfung. Läuft auf Ihrem Gerät; Fallinhalte an externe Modellanbieter gehen nur an den gewählten Anbieter und erst nach Ihrer Bestätigung.",
+        "ShortDescription": "Erstellt aus von Ihnen anonymisierten klinischen Unterlagen einen strukturierten Entwurf zur Prüfung durch Gesundheitsfachpersonen. Läuft auf Ihrem Gerät; Fallinhalte an externe Modellanbieter gehen nur an den gewählten Anbieter und erst nach Ihrer Bestätigung.",
         "ShortTitle": null,
         "VoiceTitle": null,
         "DevStudio": "Pascal Jerney"
@@ -106,7 +106,7 @@
           "drafting aid",
           "templates"
         ],
-        "Description": "Epikrise is a drafting aid for clinicians. Paste text or images, import documents, or provide a web address. Epikrise extracts the material and combines it with a template you choose to produce a structured draft, such as a discharge summary, for your review.\n\nEpikrise does not anonymize input. Remove identifying details before use.\n\nGenerated text is a draft. A responsible clinician must review and edit it before use. Epikrise is not a medical device and not a diagnostic tool. It does not connect to a hospital information system; you copy the approved text and paste it into the target system yourself.\n\nCase content is held in memory and is not saved as history. OCR may write temporary image files; they are overwritten before removal, but operating-system copies cannot be ruled out. Form values and text you copy to the clipboard yourself are not covered and remain until you change them or the clipboard is overwritten. The app has no hosted backend, no telemetry, and no account. The Store version sends requests only to the model endpoint you configure and to web addresses you choose to import, and does not check for updates. Before case content is first sent to a remote provider in each case, Epikrise asks you to confirm the provider and endpoint. Retrieving the model list and testing the connection do not require case confirmation.\n\nSupported providers: OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI, and Groq. Ollama is local only when its configured endpoint is local. API keys are stored in the operating system keychain.",
+        "Description": "Epikrise is a drafting aid for health professionals. Paste text or images, import documents, or provide a web address. Epikrise extracts the material and combines it with a template you choose to produce a structured draft, such as a discharge summary, for your review.\n\nEpikrise does not anonymize input. Remove identifying details before use.\n\nGenerated text is a draft. A responsible health professional must review and edit it before use. Epikrise is not a medical device and not a diagnostic tool. It does not connect to a hospital information system; you copy the approved text and paste it into the target system yourself.\n\nCase content is held in memory and is not saved as history. OCR may write temporary image files; they are overwritten before removal, but operating-system copies cannot be ruled out. Form values and text you copy to the clipboard yourself are not covered and remain until you change them or the clipboard is overwritten. The app has no hosted backend, no telemetry, and no account. The Store version sends requests only to the model endpoint you configure and to web addresses you choose to import, and does not check for updates. Before case content is first sent to a remote provider in each case, Epikrise asks you to confirm the provider and endpoint. Retrieving the model list and testing the connection do not require case confirmation.\n\nSupported providers: OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI, and Groq. Ollama is local only when its configured endpoint is local. API keys are stored in the operating system keychain.",
         "Features": [
           "Paste text or images, import PDF, DOCX, XLSX, RTF and HTML files, or fetch a web page",
           "Extract text from images and scanned PDF pages with local OCR, or with vision analysis where the model supports it",
@@ -119,11 +119,11 @@
           "Discover models and check provider connections",
           "Inputs, output and controls in one workspace",
           "Plain and formatted output preview",
-          "Copy output as formatted text only after clinician acknowledgment",
+          "Copy output as formatted text only after health professional acknowledgment",
           "Case content kept in memory only, not saved as history",
           "API keys stored in the operating system keychain",
           "Case content sent to remote endpoints only after confirmation per case, provider and endpoint",
-          "Interface in German and English"
+          "Interface in German, English, French, Italian and Spanish"
         ],
         "ReleaseNotes": "This version adds a theme choice to General settings, where you can pick Light, Dark, or Auto, which follows your operating system. The change applies immediately and is saved on this device. The light theme now has higher text contrast, so placeholders, hints, and helper text are easier to read. All buttons share one style and no longer lift on hover, and the template section buttons (Move up, Move down, Delete) show a hover state. On Windows, Epikrise no longer opens the administrator policy file in an editor on every launch, and it no longer briefly shows a PowerShell window at startup.",
         "Images": [
@@ -169,7 +169,139 @@
         "Title": "Epikrise",
         "LicenseTerms": "MIT License. Copyright (c) 2026 Pascal Jerney. Full text: https://github.com/jerney-nexus/epikrise/blob/main/LICENSE",
         "CopyrightAndTrademarkInfo": "© 2026 Pascal Jerney",
-        "ShortDescription": "Turns clinical material you have anonymized into a structured draft for clinician review. Runs on your device; content sent to a remote model provider goes only to the provider you choose, after you confirm.",
+        "ShortDescription": "Turns clinical material you have anonymized into a structured draft for health professional review. Runs on your device; content sent to a remote model provider goes only to the provider you choose, after you confirm.",
+        "ShortTitle": null,
+        "VoiceTitle": null,
+        "DevStudio": "Pascal Jerney"
+      },
+      "PlatformOverrides": {}
+    },
+    "fr-fr": {
+      "BaseListing": {
+        "Keywords": [
+          "Epikrise",
+          "compte-rendu de sortie",
+          "documentation clinique",
+          "notes cliniques",
+          "courriers médicaux",
+          "aide à la rédaction",
+          "modèles"
+        ],
+        "Description": "Epikrise est une aide à la rédaction pour les professionnels de santé. Collez du texte ou des images, importez des documents ou indiquez une adresse web. Epikrise extrait les éléments et les associe à un modèle de votre choix pour produire un brouillon structuré, par exemple un compte-rendu de sortie, à relire.\n\nEpikrise ne rend pas anonymes les données saisies. Supprimez les éléments d’identification avant utilisation.\n\nLe texte généré est un brouillon. Un professionnel de santé responsable doit le relire et le modifier avant utilisation. Epikrise n’est pas un dispositif médical et ne constitue pas un outil de diagnostic. L’application n’est pas connectée à un système d’information hospitalier ; vous copiez vous-même le texte validé dans le système cible.\n\nLe contenu des dossiers est conservé en mémoire et n’est pas enregistré dans un historique. L’OCR peut créer des fichiers image temporaires ; ils sont écrasés avant suppression, mais des copies créées par le système d’exploitation ne peuvent pas être exclues. Les valeurs saisies dans les formulaires et les textes que vous copiez vous-même dans le presse-papiers ne sont pas concernés et restent présents jusqu’à leur modification ou jusqu’au remplacement du presse-papiers. L’application n’a pas de serveur, pas de télémétrie et pas de compte. La version Store n’envoie des requêtes qu’au point de terminaison du modèle que vous configurez et aux adresses web que vous importez, et ne recherche pas de mises à jour. Avant le premier envoi de contenu de dossier à un fournisseur externe pour chaque dossier, Epikrise demande la confirmation du fournisseur et du point de terminaison. La récupération de la liste des modèles et le test de connexion ne nécessitent pas de confirmation de dossier.\n\nFournisseurs pris en charge : OpenAI, Anthropic, Gemini, Ollama, points de terminaison compatibles OpenAI, OpenRouter, xAI et Groq. Un point de terminaison Ollama n’est considéré comme local que si le point de terminaison configuré est local. Les clés API sont enregistrées dans le trousseau du système d’exploitation.",
+        "Features": [
+          "Coller du texte ou des images, importer des fichiers (PDF, DOCX, XLSX, RTF, HTML) ou récupérer des pages web",
+          "Extraire le texte des images et des pages PDF numérisées par OCR local, ou par analyse d’image si le modèle la prend en charge",
+          "Créer des brouillons structurés à partir de vos propres modèles",
+          "Aperçu du modèle en direct avec rendu MiniJinja",
+          "Contrôles du modèle affichés comme avertissements, avec nouvelle génération après correction",
+          "Ajouter des constats par étapes successives et les intégrer de façon cumulative",
+          "Afficher les brouillons en continu et annuler la génération à tout moment",
+          "Prend en charge OpenAI, Anthropic, Gemini, Ollama, les points de terminaison compatibles OpenAI, OpenRouter, xAI et Groq",
+          "Découvrir les modèles et vérifier les connexions aux fournisseurs",
+          "Saisie, résultat et commandes dans un seul espace de travail",
+          "Aperçu du résultat en texte brut ou mis en forme",
+          "Copier le résultat mis en forme seulement après confirmation par le professionnel de santé",
+          "Contenu des dossiers conservé en mémoire uniquement, sans historique",
+          "Clés API dans le trousseau du système d’exploitation",
+          "Contenu de dossier envoyé à des points de terminaison externes seulement après confirmation par dossier, fournisseur et point de terminaison",
+          "Interface en allemand, anglais, français, italien et espagnol"
+        ],
+        "ReleaseNotes": "Cette version ajoute un choix de thème dans les Paramètres généraux : Clair, Sombre ou Automatique, qui suit le système d’exploitation. La modification est appliquée immédiatement et enregistrée sur cet appareil. Le thème clair offre désormais un contraste de texte plus élevé, de sorte que les espaces réservés, les indications et les textes d’aide sont plus faciles à lire. Tous les boutons partagent un même style et ne se soulèvent plus au survol, et les boutons des sections de modèle (Monter, Descendre, Supprimer) affichent un état de survol. Sous Windows, Epikrise n’ouvre plus le fichier de stratégie de l’administrateur (policy.toml) dans un éditeur à chaque démarrage, et aucune fenêtre PowerShell ne clignote plus au lancement.",
+        "Images": [],
+        "RecommendedHardware": [],
+        "MinimumHardware": [],
+        "Title": "Epikrise",
+        "LicenseTerms": "Licence MIT. Copyright (c) 2026 Pascal Jerney. Texte intégral : https://github.com/jerney-nexus/epikrise/blob/main/LICENSE",
+        "CopyrightAndTrademarkInfo": "© 2026 Pascal Jerney",
+        "ShortDescription": "Transforme les documents cliniques que vous avez anonymisés en brouillon structuré à relire par un professionnel de santé. Fonctionne sur votre appareil ; les contenus envoyés à un fournisseur de modèle externe ne partent que vers le fournisseur choisi, et seulement après votre confirmation.",
+        "ShortTitle": null,
+        "VoiceTitle": null,
+        "DevStudio": "Pascal Jerney"
+      },
+      "PlatformOverrides": {}
+    },
+    "it-it": {
+      "BaseListing": {
+        "Keywords": [
+          "Epikrise",
+          "lettera di dimissione",
+          "documentazione clinica",
+          "note cliniche",
+          "lettere mediche",
+          "ausilio alla redazione",
+          "modelli"
+        ],
+        "Description": "Epikrise è un ausilio alla redazione per il personale clinico. Incolla testo o immagini, importa documenti oppure indica un indirizzo web. Epikrise estrae il materiale e lo combina con un modello a tua scelta per produrre una bozza strutturata, ad esempio una lettera di dimissione, da verificare.\n\nEpikrise non rende anonimi i dati inseriti. Rimuovi i dati identificativi prima dell’uso.\n\nIl testo generato è una bozza. Un operatore sanitario responsabile deve verificarla e modificarla prima dell’uso. Epikrise non è un dispositivo medico né uno strumento diagnostico. L’app non è collegata a un sistema informativo ospedaliero; il testo approvato va copiato manualmente nel sistema di destinazione.\n\nI contenuti dei casi sono mantenuti in memoria e non salvati come cronologia. L’OCR può creare file immagine temporanei; vengono sovrascritti prima della rimozione, ma non si possono escludere copie create dal sistema operativo. I valori dei moduli e i testi che copi tu stesso negli appunti non sono coperti e restano finché non li modifichi o gli appunti non vengono sovrascritti. L’app non ha un backend ospitato, telemetria o account. La versione Store invia richieste solo all’endpoint del modello che configuri e agli indirizzi web che scegli di importare, e non verifica la presenza di aggiornamenti. Prima che i contenuti di un caso vengano inviati per la prima volta a un fornitore remoto, Epikrise chiede di confermare fornitore ed endpoint. Il recupero dell’elenco dei modelli e il test della connessione non richiedono la conferma del caso.\n\nFornitori supportati: OpenAI, Anthropic, Gemini, Ollama, endpoint compatibili con OpenAI, OpenRouter, xAI e Groq. Un endpoint Ollama è considerato locale solo se l’endpoint configurato è locale. Le chiavi API sono archiviate nel portachiavi del sistema operativo.",
+        "Features": [
+          "Incollare testo o immagini, importare file (PDF, DOCX, XLSX, RTF, HTML) o recuperare pagine web",
+          "Estrarre il testo da immagini e pagine PDF scansionate con OCR locale, oppure con analisi visiva se il modello la supporta",
+          "Creare bozze strutturate dai tuoi modelli",
+          "Anteprima del modello in tempo reale con rendering MiniJinja",
+          "Controlli del modello mostrati come avvisi, con rigenerazione dopo le correzioni",
+          "Aggiungere reperti in più fasi e integrarli in modo cumulativo",
+          "Visualizzare le bozze in tempo reale e annullare la generazione in qualsiasi momento",
+          "Supporta OpenAI, Anthropic, Gemini, Ollama, endpoint compatibili con OpenAI, OpenRouter, xAI e Groq",
+          "Individuare i modelli e verificare le connessioni ai fornitori",
+          "Input, risultato e comandi in un unico spazio di lavoro",
+          "Anteprima del risultato in testo semplice o formattato",
+          "Copiare il risultato formattato solo dopo la conferma dell’operatore sanitario",
+          "Contenuti dei casi solo in memoria, non salvati come cronologia",
+          "Chiavi API nel portachiavi del sistema operativo",
+          "Contenuti dei casi inviati a endpoint remoti solo dopo conferma per caso, fornitore ed endpoint",
+          "Interfaccia in tedesco, inglese, francese, italiano e spagnolo"
+        ],
+        "ReleaseNotes": "Questa versione aggiunge una scelta del tema nelle Impostazioni generali, dove puoi selezionare Chiaro, Scuro o Automatico, che segue il sistema operativo. La modifica viene applicata subito e salvata su questo dispositivo. Il tema chiaro ha ora un contrasto del testo più elevato, quindi segnaposto, suggerimenti e testi di aiuto sono più leggibili. Tutti i pulsanti hanno ora uno stile uniforme e non si sollevano più al passaggio del mouse, e i pulsanti delle sezioni del modello (Sposta su, Sposta giù, Elimina) mostrano uno stato di passaggio del mouse. Su Windows, Epikrise non apre più il file dei criteri dell’amministratore (policy.toml) in un editor a ogni avvio e non mostra più brevemente una finestra di PowerShell all’avvio.",
+        "Images": [],
+        "RecommendedHardware": [],
+        "MinimumHardware": [],
+        "Title": "Epikrise",
+        "LicenseTerms": "Licenza MIT. Copyright (c) 2026 Pascal Jerney. Testo completo: https://github.com/jerney-nexus/epikrise/blob/main/LICENSE",
+        "CopyrightAndTrademarkInfo": "© 2026 Pascal Jerney",
+        "ShortDescription": "Trasforma il materiale clinico che hai anonimizzato in una bozza strutturata da verificare da parte dell’operatore sanitario. Funziona sul tuo dispositivo; i contenuti inviati a un fornitore di modelli remoto vanno solo al fornitore che scegli, e solo dopo la tua conferma.",
+        "ShortTitle": null,
+        "VoiceTitle": null,
+        "DevStudio": "Pascal Jerney"
+      },
+      "PlatformOverrides": {}
+    },
+    "es-es": {
+      "BaseListing": {
+        "Keywords": [
+          "Epikrise",
+          "informe de alta",
+          "documentación clínica",
+          "notas clínicas",
+          "cartas médicas",
+          "ayuda para la redacción",
+          "plantillas"
+        ],
+        "Description": "Epikrise es una herramienta de ayuda a la redacción para profesionales sanitarios. Pegue texto o imágenes, importe documentos o indique una dirección web. Epikrise extrae el material y lo combina con una plantilla que usted elija para generar un borrador estructurado, por ejemplo un informe de alta, para su revisión.\n\nEpikrise no anonimiza los datos introducidos. Elimine los datos identificativos antes de usarlo.\n\nEl texto generado es un borrador. Un profesional sanitario responsable debe revisarlo y editarlo antes de usarlo. Epikrise no es un producto sanitario ni una herramienta de diagnóstico. La aplicación no se conecta a un sistema de información hospitalario; usted copia el texto aprobado y lo pega en el sistema de destino.\n\nEl contenido de los casos se mantiene en memoria y no se guarda como historial. El OCR puede crear archivos de imagen temporales; se sobrescriben antes de eliminarse, pero no se pueden descartar copias del sistema operativo. Los valores de los formularios y los textos que copie usted mismo al portapapeles no están cubiertos y permanecen hasta que los cambie o se sobrescriba el portapapeles. La aplicación no tiene backend alojado, ni telemetría, ni cuenta. La versión de Store envía solicitudes solo al endpoint del modelo que configure y a las direcciones web que importe, y no busca actualizaciones. Antes de enviar por primera vez contenido de un caso a un proveedor remoto, Epikrise le pide que confirme el proveedor y el endpoint. Obtener la lista de modelos y probar la conexión no requieren confirmación del caso.\n\nProveedores compatibles: OpenAI, Anthropic, Gemini, Ollama, endpoints compatibles con OpenAI, OpenRouter, xAI y Groq. Un endpoint de Ollama solo se considera local si el endpoint configurado es local. Las claves API se guardan en el llavero del sistema operativo.",
+        "Features": [
+          "Pegar texto o imágenes, importar archivos (PDF, DOCX, XLSX, RTF, HTML) o recuperar páginas web",
+          "Extraer texto de imágenes y páginas PDF escaneadas mediante OCR local, o mediante análisis visual si el modelo lo admite",
+          "Crear borradores estructurados a partir de sus propias plantillas",
+          "Vista previa de la plantilla en directo con renderizado MiniJinja",
+          "Comprobaciones de la plantilla mostradas como advertencias, con nueva generación tras las correcciones",
+          "Añadir hallazgos en varias rondas e integrarlos de forma acumulativa",
+          "Mostrar los borradores en tiempo real y cancelar la generación en cualquier momento",
+          "Compatible con OpenAI, Anthropic, Gemini, Ollama, endpoints compatibles con OpenAI, OpenRouter, xAI y Groq",
+          "Descubrir modelos y comprobar las conexiones con los proveedores",
+          "Entradas, resultado y controles en un solo espacio de trabajo",
+          "Vista previa del resultado en texto sin formato o con formato",
+          "Copiar el resultado con formato solo tras la confirmación del profesional sanitario",
+          "Contenido de los casos solo en memoria, no guardado como historial",
+          "Claves API guardadas en el llavero del sistema operativo",
+          "Contenido de los casos enviado a endpoints remotos solo tras confirmación por caso, proveedor y endpoint",
+          "Interfaz en alemán, inglés, francés, italiano y español"
+        ],
+        "ReleaseNotes": "Esta versión añade una opción de tema en Configuración general, donde puede elegir Claro, Oscuro o Automático, que sigue al sistema operativo. El cambio se aplica de inmediato y se guarda en este dispositivo. El tema claro ahora tiene mayor contraste de texto, así que los marcadores de posición, las indicaciones y los textos de ayuda se leen mejor. Todos los botones comparten un mismo estilo y ya no se elevan al pasar el cursor, y los botones de las secciones de plantilla (Subir, Bajar, Eliminar) muestran un estado al pasar el cursor. En Windows, Epikrise ya no abre el archivo de directivas del administrador (policy.toml) en un editor en cada inicio, y ya no aparece brevemente una ventana de PowerShell al arrancar.",
+        "Images": [],
+        "RecommendedHardware": [],
+        "MinimumHardware": [],
+        "Title": "Epikrise",
+        "LicenseTerms": "Licencia MIT. Copyright (c) 2026 Pascal Jerney. Texto completo: https://github.com/jerney-nexus/epikrise/blob/main/LICENSE",
+        "CopyrightAndTrademarkInfo": "© 2026 Pascal Jerney",
+        "ShortDescription": "Convierte el material clínico que ha anonimizado en un borrador estructurado para revisión clínica. Se ejecuta en su dispositivo; el contenido enviado a un proveedor de modelos remoto va solo al proveedor que elija, y únicamente tras su confirmación.",
         "ShortTitle": null,
         "VoiceTitle": null,
         "DevStudio": "Pascal Jerney"
