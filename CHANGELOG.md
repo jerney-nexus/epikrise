@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2026.11.6] - 2026-11-17
+
 ### 🚀 Features
 
 - Epikrise is available on the Microsoft Store
@@ -22,6 +24,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Generation status, the desktop/preview session label, and character counts follow the selected interface language (#291)
 - Startup error dialogs and the template export save filter are localized; startup dialogs follow the OS language (#291)
+
+### 🐛 Bug Fixes
+
+- _(deps)_ Update quinn-proto and quinn-udp for RUSTSEC advisories (#309)
+
+### ⚙️ Miscellaneous Tasks
+
+- Pass App client-id to release preparation token (#269)
+- Add Buy Me a Coffee funding link (#284)
 
 ## [2026.11.5] - 2026-11-11
 
@@ -545,4 +556,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 [2026.11.3]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.2...v2026.11.3
 [2026.11.4]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.3...v2026.11.4
 [2026.11.5]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.4...v2026.11.5
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.5...HEAD
+[2026.11.6]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.5...v2026.11.6
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.6...HEAD
