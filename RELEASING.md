@@ -161,10 +161,10 @@ In the Entra admin center, open the app registration used for Partner Center (it
 ```powershell
 $pfxPassword = Read-Host -AsSecureString "PFX password"
 Export-PfxCertificate -Cert $cert -FilePath "$dir\epikrise-msstore.pfx" -Password $pfxPassword
-Format-Hex -Path "$dir\epikrise-msstore.pfx" -Count 16
+[BitConverter]::ToString([IO.File]::ReadAllBytes("$dir\epikrise-msstore.pfx")[0..15])
 ```
 
-A valid PFX has `02 01 03` after the length header, near the start of the output. If the first bytes are `30`, the file is a `.cer`, not a PFX; repeat the export. Never commit the PFX or the password.
+A valid PFX prints `30-82-xx-xx-02-01-03`, where `xx-xx` is the length. A `.cer` file prints `30-82-xx-xx-30-82` instead; if you see that, repeat the export. Never commit the PFX or the password.
 
 ### Set the CI secrets
 
