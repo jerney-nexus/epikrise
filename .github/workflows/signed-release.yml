@@ -74,13 +74,23 @@ jobs:
     permissions:
       contents: read
 
-  build:
+  approve-builds:
+    name: Approve release builds
     needs:
       - validate
       - verify-frontend
       - verify-rust
       - verify-security
       - verify-quality
+    runs-on: ubuntu-24.04
+    environment:
+      name: release
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+    steps:
+      - run: echo "Release builds approved."
+
+  build:
+    needs: approve-builds
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     environment: release
@@ -412,19 +422,9 @@ jobs:
           retention-days: 3
           compression-level: 0
 
-  approve-store-msix:
-    name: Approve Store MSIX build
-    needs: [validate, verify-frontend, verify-rust, verify-security, verify-quality]
-    runs-on: ubuntu-24.04
-    environment:
-      name: release
-      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
-    steps:
-      - run: echo "Store MSIX build approved."
-
   store-msix:
     name: Build Store MSIX packages
-    needs: [approve-store-msix]
+    needs: [approve-builds]
     uses: ./.github/workflows/store-msix.yml
     permissions:
       contents: read
@@ -536,7 +536,7 @@ jobs:
 
   approve:
     name: Approve accepted draft release
-    needs: stage
+    needs: [stage, store-msix]
     runs-on: ubuntu-24.04
     environment:
       name: release

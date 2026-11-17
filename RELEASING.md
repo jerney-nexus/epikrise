@@ -93,7 +93,7 @@ Updater checks cannot be tested on a draft. The updater endpoint only serves the
 Only after the acceptance evidence is recorded:
 
 1. Open the **Signed updater release** run.
-2. Approve the **Approve accepted draft release** job. It is protected by the `release` environment.
+2. Approve the **Approve accepted draft release** job. It is protected by the `release` environment and runs only after the draft release and the Store `.msixbundle` are produced.
 3. The **Publish accepted draft release** job publishes the draft to opted-in installations.
 
 If any target you are claiming as supported fails its checks, do not approve.
