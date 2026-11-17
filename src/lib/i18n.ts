@@ -1,5 +1,6 @@
 import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { get, writable } from "svelte/store";
+import type { OcrLanguage } from "../bindings";
 
 export const defaultLocale = "de-CH";
 export const pseudoLocale = "qps-ploc";
@@ -89,6 +90,22 @@ export function resolveLocale(candidate: string | null): string {
       (locale) => locale.toLowerCase().split("-")[0] === language,
     ) ?? defaultLocale
   );
+}
+
+export function ocrLanguageForLocale(locale: string): OcrLanguage {
+  const language = locale.split("-")[0];
+  switch (language) {
+    case "en":
+      return "english";
+    case "fr":
+      return "french";
+    case "it":
+      return "italian";
+    case "es":
+      return "spanish";
+    default:
+      return "german";
+  }
 }
 
 export function setLocale(locale: string): void {

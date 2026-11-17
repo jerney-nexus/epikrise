@@ -390,14 +390,10 @@ export async function stageReleaseArtifacts({
   const resourceFiles = await Promise.all(
     [
       [path.join(resourceRoot, "pdfium", pdfiumName), `pdfium/${pdfiumName}`],
-      [
-        path.join(resourceRoot, "tessdata", "deu.traineddata"),
-        "tessdata/deu.traineddata",
-      ],
-      [
-        path.join(resourceRoot, "tessdata", "eng.traineddata"),
-        "tessdata/eng.traineddata",
-      ],
+      ...["deu", "eng", "fra", "ita", "spa"].map((language) => [
+        path.join(resourceRoot, "tessdata", `${language}.traineddata`),
+        `tessdata/${language}.traineddata`,
+      ]),
       [path.join(binaryRoot, tesseractName), `binaries/${tesseractName}`],
     ].map(([filePath, relativePath]) => fileEvidence(filePath, relativePath)),
   );
@@ -535,7 +531,7 @@ export async function createLatestManifest({
       "Integrity manifest entries are invalid.",
     );
     assert(
-      integrity.resources.length === 4,
+      integrity.resources.length === 7,
       `OCR resource evidence is incomplete for ${target}.`,
     );
     const assetNames = new Set(integrity.assets.map((asset) => asset.path));

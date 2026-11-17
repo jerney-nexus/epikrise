@@ -13,8 +13,8 @@ export const commands = {
 	createTemplate: (template: ClinicalTemplate) => typedError<null, TemplateError>(__TAURI_INVOKE("create_template", { template })),
 	deleteTemplate: (templateId: string) => typedError<null, TemplateError>(__TAURI_INVOKE("delete_template", { templateId })),
 	deleteProviderCredential: (credentialId: string) => typedError<null, LlmError>(__TAURI_INVOKE("delete_provider_credential", { credentialId })),
-	extractFile: (fileName: string, bytes: number[], visionEnabled: boolean) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_file", { fileName, bytes, visionEnabled })),
-	extractImage: (fileName: string, bytes: number[], visionEnabled: boolean) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_image", { fileName, bytes, visionEnabled })),
+	extractFile: (fileName: string, bytes: number[], visionEnabled: boolean, ocrLanguage: OcrLanguage) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_file", { fileName, bytes, visionEnabled, ocrLanguage })),
+	extractImage: (fileName: string, bytes: number[], visionEnabled: boolean, ocrLanguage: OcrLanguage) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_image", { fileName, bytes, visionEnabled, ocrLanguage })),
 	extractRawText: (text: string) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_raw_text", { text })),
 	extractTextFile: (fileName: string, bytes: number[]) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_text_file", { fileName, bytes })),
 	extractUrl: (address: string) => typedError<ExtractedBlock, IngestError>(__TAURI_INVOKE("extract_url", { address })),
@@ -207,6 +207,8 @@ export type NativeMenuStatus = {
 };
 
 export type OcrDiagnosticCategory = "language_data" | "language_data_file" | "language_load" | "no_languages_loaded" | "language_engine_components_missing" | "input_image" | "tiff_support_warning" | "no_stderr" | "other";
+
+export type OcrLanguage = "german" | "english" | "french" | "italian" | "spanish";
 
 export type OutputRules = {
 	forbidden_terms?: string[],

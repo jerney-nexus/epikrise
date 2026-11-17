@@ -87,10 +87,10 @@ sudo apt-get update
 sudo apt-get install -y \
   build-essential cmake curl file libayatana-appindicator3-dev libssl-dev \
   libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev ninja-build pkg-config \
-  tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+  tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-fra tesseract-ocr-ita tesseract-ocr-spa
 ```
 
-For another Linux distribution, install the equivalent packages listed in the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux) and install Tesseract with German (`deu`) and English (`eng`) language data.
+For another Linux distribution, install the equivalent packages listed in the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux) and install Tesseract with German (`deu`), English (`eng`), French (`fra`), Italian (`ita`), and Spanish (`spa`) language data.
 
 #### macOS
 
@@ -107,7 +107,7 @@ Use the [native Windows setup](#native-build-from-windows) below. It covers Visu
 
 #### Install dependencies and run
 
-`pnpm tauri dev` first prepares local OCR and PDFium resources. The build uses the installed Tesseract command to find its language-data folder, and requires both `deu.traineddata` and `eng.traineddata`. It then builds the app's own Tesseract sidecar from pinned, checksum-verified sources. If the language data is in a custom folder, set `EPIKRISE_TESSDATA_DIR` to that folder before building.
+`pnpm tauri dev` first prepares local OCR and PDFium resources. The build uses the installed Tesseract command to find its language-data folder, and requires `deu.traineddata`, `eng.traineddata`, `fra.traineddata`, `ita.traineddata`, and `spa.traineddata`. It then builds the app's own Tesseract sidecar from pinned, checksum-verified sources. If the language data is in a custom folder, set `EPIKRISE_TESSDATA_DIR` to that folder before building.
 
 From the repository root:
 
@@ -117,7 +117,7 @@ pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-On Linux and macOS, verify that `tesseract --list-langs` lists both `deu` and `eng`. If it does not, install the missing language data or set `EPIKRISE_TESSDATA_DIR` to a folder containing both `.traineddata` files. Keep that environment variable set in the same terminal where you run pnpm.
+On Linux and macOS, verify that `tesseract --list-langs` lists `deu`, `eng`, `fra`, `ita`, and `spa`. If it does not, install the missing language data or set `EPIKRISE_TESSDATA_DIR` to a folder containing all five `.traineddata` files. Keep that environment variable set in the same terminal where you run pnpm.
 
 ### Windows native development and installers
 
@@ -144,7 +144,7 @@ Install these prerequisites before building:
 
   After installation, open a new PowerShell window and confirm that `cmake --version` and `ninja --version` print versions. Visual Studio's bundled CMake may not be added to the regular PATH; the wrapper adds its standard bundled-tools directory to the build-shell PATH automatically. It then checks that CMake and Ninja are available before building.
 
-- Tesseract language data containing both `deu.traineddata` and `eng.traineddata`. You do not need an installed Tesseract executable if you set `EPIKRISE_TESSDATA_DIR` to that data directory.
+- Tesseract language data containing `deu.traineddata`, `eng.traineddata`, `fra.traineddata`, `ita.traineddata`, and `spa.traineddata`. You do not need an installed Tesseract executable if you set `EPIKRISE_TESSDATA_DIR` to that data directory.
 
 Run the following in **PowerShell** from the repository root. A regular PowerShell or Command Prompt is sufficient; the wrapper locates Visual Studio and initializes its developer environment itself. Do not use WSL or run these commands inside the Dev Container. Do not run `pnpm windows:setup` here; that command provisions the separate Linux Dev Container cross-build.
 
@@ -164,7 +164,7 @@ The user-local Corepack shim avoids writing under `C:\Program Files`. Use `pnpm.
 
 The version commands should report Node 22 and pnpm 12.15.0; `rustc -vV` must report the native host triple listed above. The wrapper locates and verifies Git Bash for standard installations. For a custom installation, add its `cmd` or `bin` folder to this PowerShell session's `PATH` and retry the wrapper. Install Git for Windows if it is not installed.
 
-Set `EPIKRISE_TESSDATA_DIR` to a folder containing both `deu.traineddata` and `eng.traineddata`. If Tesseract is installed with both languages, point it to that installation's `tessdata` folder. Otherwise, download the project-pinned language files into a user-local folder and verify their checksums:
+Set `EPIKRISE_TESSDATA_DIR` to a folder containing `deu.traineddata`, `eng.traineddata`, `fra.traineddata`, `ita.traineddata`, and `spa.traineddata`. If Tesseract is installed with all five languages, point it to that installation's `tessdata` folder. Otherwise, download the project-pinned language files into a user-local folder and verify their checksums:
 
 ```powershell
 $tessdataDir = Join-Path $env:LOCALAPPDATA 'Epikrise\tessdata'
@@ -173,8 +173,11 @@ $tessdataCommit = '65727574dfcd264acbb0c3e07860e4e9e9b22185'
 $expectedSha256 = @{
   deu = '19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d'
   eng = '7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2'
+  fra = 'ced037562e8c80c13122dece28dd477d399af80911a28791a66a63ac1e3445ca'
+  ita = 'b8f89e1e785118dac4d51ae042c029a64edb5c3ee42ef73027a6d412748d8827'
+  spa = '6f2e04d02774a18f01bed44b1111f2cd7f3ba7ac9dc4373cd3f898a40ea6b464'
 }
-foreach ($language in @('deu', 'eng')) {
+foreach ($language in @('deu', 'eng', 'fra', 'ita', 'spa')) {
   $file = Join-Path $tessdataDir "$language.traineddata"
   $url = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/$tessdataCommit/$language.traineddata"
   Invoke-WebRequest -Uri $url -OutFile $file

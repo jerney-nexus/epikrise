@@ -10,7 +10,7 @@ A desktop drafting aid that turns user-supplied clinical material into a structu
 
 ## What it does
 
-Paste text or images, import documents, or provide a URL. Epikrise extracts text from plain-text files, PDF, DOCX, XLSX, RTF and HTML. PNG/JPEG images and sparse PDF pages can use local OCR or, when enabled and supported by the selected model, vision analysis. URLs are fetched and converted to readable text. Text clipboard access uses Tauri's clipboard plugin; image paste is handled by the webview and sent to Rust over IPC.
+Paste text or images, import documents, or provide a URL. Epikrise extracts text from plain-text files, PDF, DOCX, XLSX, RTF and HTML. PNG/JPEG images and sparse PDF pages can use local OCR or, when enabled and supported by the selected model, vision analysis. Images are limited to 20 MB, 8,192 pixels in width and in height, and 128 MB of decoded pixel data; larger images are rejected, and an image that cannot be decoded is reported as an invalid image. URLs are fetched and converted to readable text. Text clipboard access uses Tauri's clipboard plugin; image paste is handled by the webview and sent to Rust over IPC.
 
 The extracted material and your template are sent to the selected model. The app supports OpenAI, Anthropic, Gemini, Ollama, OpenAI-compatible endpoints, OpenRouter, xAI and Groq. It can discover models, check a connection, stream a draft, and cancel generation. Findings can be added in several rounds and integrated cumulatively. Template-defined output checks are shown as warnings, with an option to regenerate with corrections.
 
@@ -42,7 +42,7 @@ A [dev container](.devcontainer/devcontainer.json) with everything preinstalled 
 
 ## Getting started
 
-Before building, complete the operating-system-specific prerequisites in [Local native setup](CONTRIBUTING.md#local-native-setup). In particular, a native build needs Tesseract and both German (`deu`) and English (`eng`) language data. The build compiles its own Tesseract sidecar, but uses the installed Tesseract command to locate that data.
+Before building, complete the operating-system-specific prerequisites in [Local native setup](CONTRIBUTING.md#local-native-setup). In particular, a native build needs Tesseract and German (`deu`), English (`eng`), French (`fra`), Italian (`ita`), and Spanish (`spa`) language data. The build compiles its own Tesseract sidecar, but uses the installed Tesseract command to locate that data.
 
 ```sh
 corepack enable pnpm
@@ -52,7 +52,7 @@ pnpm tauri dev
 
 ### macOS Installers
 
-Build on macOS after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) and Tesseract with German and English language data. See [Local setup in CONTRIBUTING.md](CONTRIBUTING.md#local-setup) for OCR setup details:
+Build on macOS after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) and Tesseract with German, English, French, Italian, and Spanish language data. See [Local setup in CONTRIBUTING.md](CONTRIBUTING.md#local-setup) for OCR setup details:
 
 ```sh
 pnpm tauri build
@@ -64,7 +64,7 @@ macOS Intel runtime support is unverified. On Catalina 10.15.7, the app opened t
 
 ### Linux Installers
 
-Build on Linux after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), Tesseract, and German and English language data. The dev container includes these dependencies. Run:
+Build on Linux after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), Tesseract, and German, English, French, Italian, and Spanish language data. The dev container includes these dependencies. Run:
 
 ```sh
 pnpm tauri build
@@ -88,7 +88,7 @@ GNOME Keyring provides the Secret Service backend; Seahorse is the graphical too
 
 Use a normal PowerShell window at the repository root. The wrapper initializes Visual Studio itself, so a Developer shell is not required. Windows x64 builds x64; Windows ARM64 builds ARM64. Cross-target builds are not supported by this native command.
 
-Prerequisites are Node.js 22, Corepack/pnpm `12.15.0`, Rust for the native Windows architecture, Visual Studio's **Desktop development with C++** workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`, `cl`, `dumpbin`, `curl`, `tar`, and `rg` on `PATH`. On ARM64, include native ARM64 C++ tools. In Visual Studio Installer, add **C++ CMake tools for Windows** and **Ninja: build system** under **Individual components** if CMake or Ninja is missing. If CMake remains missing, install it with `winget install --id Kitware.CMake --exact --source winget`. Install missing Ninja separately with `winget install --id Ninja-build.Ninja --exact --source winget`. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact steps. Provide Tesseract's German and English language data either through an installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder containing `deu.traineddata` and `eng.traineddata`.
+Prerequisites are Node.js 22, Corepack/pnpm `12.15.0`, Rust for the native Windows architecture, Visual Studio's **Desktop development with C++** workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`, `cl`, `dumpbin`, `curl`, `tar`, and `rg` on `PATH`. On ARM64, include native ARM64 C++ tools. In Visual Studio Installer, add **C++ CMake tools for Windows** and **Ninja: build system** under **Individual components** if CMake or Ninja is missing. If CMake remains missing, install it with `winget install --id Kitware.CMake --exact --source winget`. Install missing Ninja separately with `winget install --id Ninja-build.Ninja --exact --source winget`. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact steps. Provide Tesseract's German, English, French, Italian, and Spanish language data either through an installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder containing `deu.traineddata`, `eng.traineddata`, `fra.traineddata`, `ita.traineddata`, and `spa.traineddata`.
 
 From the repository root:
 
@@ -105,9 +105,12 @@ pnpm.cmd install --frozen-lockfile
 $env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
 Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'deu.traineddata')
 Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'eng.traineddata')
+Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'fra.traineddata')
+Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'ita.traineddata')
+Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'spa.traineddata')
 ```
 
-If Corepack cannot write under `C:\Program Files`, this user-local shim keeps pnpm in your profile and avoids changing PowerShell's execution policy. The version commands should report Node 22 and pnpm 12.15.0. Both `Test-Path` commands must print `True`; if not, see the language-data setup in [Contributing](CONTRIBUTING.md#native-build-from-windows). Run one build command matching the host architecture.
+If Corepack cannot write under `C:\Program Files`, this user-local shim keeps pnpm in your profile and avoids changing PowerShell's execution policy. The version commands should report Node 22 and pnpm 12.15.0. All five `Test-Path` commands must print `True`; if not, see the language-data setup in [Contributing](CONTRIBUTING.md#native-build-from-windows). Run one build command matching the host architecture.
 
 If CMake remains missing after installing **C++ CMake tools for Windows** in Visual Studio Installer, install it with `winget install --id Kitware.CMake --exact --source winget`. Install missing Ninja separately with `winget install --id Ninja-build.Ninja --exact --source winget`. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact steps.
 
