@@ -237,6 +237,49 @@ jobs:
           msstore publish $env:STORE_BUNDLE_PATH -id $env:STORE_PRODUCT_ID --noCommit
           if ($LASTEXITCODE -ne 0) { throw "msstore publish failed." }
 
+  metadata:
+    needs: submit
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    name: Sync listing metadata and submit for certification
+    environment:
+      name: store-partner-center-metadata
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    env:
+      RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+      STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
+
+      - name: Configure Partner Center credentials
+        env:
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          SELLER_ID: ${{ secrets.SELLER_ID }}
+          AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          AZURE_AD_CERTIFICATE_PFX_BASE64: ${{ secrets.AZURE_AD_CERTIFICATE_PFX_BASE64 }}
+          AZURE_AD_CERTIFICATE_PASSWORD: ${{ secrets.AZURE_AD_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "partner-center.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:AZURE_AD_CERTIFICATE_PFX_BASE64))
+          msstore reconfigure `
+            --tenantId $env:AZURE_AD_TENANT_ID `
+            --sellerId $env:SELLER_ID `
+            --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID `
+            --certificateFilePath $pfxPath `
+            --certificatePassword $env:AZURE_AD_CERTIFICATE_PASSWORD
+          if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed." }
+
       - name: Sync listing metadata from store-assets
         shell: pwsh
         run: |
