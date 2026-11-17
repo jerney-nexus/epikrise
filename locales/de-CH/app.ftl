@@ -243,6 +243,7 @@ ui-add-section-heading = Neuer Abschnitt
 ui-language = Oberflächensprache
 ui-language-de-ch = Deutsch (Schweiz)
 ui-language-en = Englisch
+ui-language-es = Spanisch
 ui-language-fr = Französisch
 ui-language-it = Italienisch
 ui-language-pseudo = Pseudo-Lokalisierung (Entwicklung)

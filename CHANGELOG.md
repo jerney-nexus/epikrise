@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Tagged releases build a Microsoft Store `.msixbundle` and submit it to Partner Center automatically, with store listing metadata synced from the repository (#274)
 - The interface language can be set to French (#287)
 - The interface language can be set to Italian (#288)
+- The interface language can be set to Spanish (#289)
 
 ## [2026.11.5] - 2026-11-11
 
