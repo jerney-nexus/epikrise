@@ -301,6 +301,43 @@ describe("locale state and fallbacks", () => {
     expect(resolveLocale("zz")).toBe(defaultLocale);
   });
 
+  it("maps regional OS tags for the added catalogs to their language", () => {
+    expect(resolveLocale("fr-CH")).toBe("fr");
+    expect(resolveLocale("it-CH")).toBe("it");
+    expect(resolveLocale("es-ES")).toBe("es");
+  });
+
+  it("round-trips a stored French, Italian, or Spanish preference", () => {
+    const originalStorage = globalThis.localStorage;
+    const values = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+      },
+    });
+
+    try {
+      for (const locale of ["fr", "it", "es"]) {
+        setLocale(locale);
+        expect(values.get(localePreferenceKey)).toBe(locale);
+        expect(initializeLocale(values.get(localePreferenceKey) ?? null, "de-CH")).toBe(
+          locale,
+        );
+      }
+    } finally {
+      if (originalStorage === undefined) {
+        delete (globalThis as { localStorage?: Storage }).localStorage;
+      } else {
+        Object.defineProperty(globalThis, "localStorage", {
+          configurable: true,
+          value: originalStorage,
+        });
+      }
+    }
+  });
+
   it("returns the source text for locales without a bundle", () => {
     expect(translate("zz", "Settings")).toBe("Settings");
   });
