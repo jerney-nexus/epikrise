@@ -806,6 +806,49 @@ describe("CalVer release versions", () => {
     }
   });
 
+  it("keeps draft images for locales without base images", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "epikrise-store-metadata-draft-"),
+    );
+    const basePath = path.join(directory, "base-metadata.json");
+    const submissionPath = path.join(directory, "submission.json");
+    const script = path.join(process.cwd(), "scripts", "update-store-metadata.mjs");
+    const uploaded = {
+      FileName: "fr.png",
+      FileStatus: "Uploaded",
+      ImageType: "StoreLogoSquare",
+    };
+    const base = {
+      Listings: { "fr-fr": { BaseListing: { Title: "Epikrise", Images: [] } } },
+    };
+    const submission = (fileStatus: string) => ({
+      Listings: {
+        "fr-fr": {
+          BaseListing: {
+            Title: "Ancien",
+            Images: [{ ...uploaded, FileStatus: fileStatus }],
+          },
+        },
+      },
+    });
+
+    try {
+      await writeFile(basePath, JSON.stringify(base));
+      await writeFile(submissionPath, JSON.stringify(submission("Uploaded")));
+      const { stdout } = await execFile("node", [script, submissionPath, basePath]);
+      const merged = JSON.parse(stdout);
+      expect(merged.Listings["fr-fr"].BaseListing.Title).toBe("Epikrise");
+      expect(merged.Listings["fr-fr"].BaseListing.Images).toEqual([uploaded]);
+
+      await writeFile(submissionPath, JSON.stringify(submission("PendingUpload")));
+      await expect(
+        execFile("node", [script, submissionPath, basePath]),
+      ).rejects.toMatchObject({ stderr: expect.stringContaining("fr.png") });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("fails closed when the submission lists no readable package versions", () => {
     expect(() => assertReleaseAdvancesStoreVersions("2026.10.0", {})).toThrow(
       "No package versions",

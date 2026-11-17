@@ -2,8 +2,8 @@
 // Copies listing text and images from store-assets/base-metadata.json into a
 // Partner Center submission JSON. The submission keeps its own packages.
 // Usage: node scripts/update-store-metadata.mjs <submission.json> <base-metadata.json>
-// Writes the updated submission JSON to stdout and fails when a base image is
-// not uploaded.
+// Writes the updated submission JSON to stdout and fails when a listing image is
+// not uploaded. Locales without base images keep the draft's uploaded images.
 
 import { readFileSync } from "node:fs";
 
@@ -60,9 +60,13 @@ for (const [locale, source] of Object.entries(base.Listings ?? {})) {
     }
   }
 
-  const images = source.BaseListing.Images ?? [];
+  // Locales without base images keep the images uploaded to the draft in Partner Center.
+  const baseImages = source.BaseListing.Images ?? [];
+  const images = baseImages.length > 0 ? baseImages : (target.Images ?? []);
   if (images.length === 0) {
-    notUploaded.push(`${locale}: no listing images in base-metadata.json`);
+    notUploaded.push(
+      `${locale}: no listing images in base-metadata.json or the submission`,
+    );
   }
   for (const image of images) {
     if (image.FileStatus !== "Uploaded") {
