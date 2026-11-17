@@ -435,8 +435,8 @@ jobs:
       release_tag: ${{ github.ref_name }}
 
   stage:
-    name: Stage signed updater release
-    needs: build
+    name: Stage signed updater and Store release
+    needs: [build, store-msix]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -473,6 +473,21 @@ jobs:
           pattern: release-*
           path: release-artifacts
           merge-multiple: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: epikrise-store-msix*
+          path: store-artifacts
+          merge-multiple: true
+
+      - name: Collect Store MSIX packages and bundle as release assets
+        run: |
+          set -euo pipefail
+          store_dir="release-artifacts/release-store-msix"
+          mkdir -p "$store_dir"
+          find store-artifacts -type f -name 'Epikrise_*' -exec cp {} "$store_dir"/ \;
+          # Two architectures, each with a .msix and .msix.manifest.json, plus the bundle and its .sha256.
+          [[ "$(find "$store_dir" -maxdepth 1 -type f | wc -l)" -eq 6 ]]
 
       - name: Generate static updater manifest
         run: |

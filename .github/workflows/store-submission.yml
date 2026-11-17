@@ -21,7 +21,7 @@ jobs:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
-    name: Attach Store packages to GitHub Release
+    name: Verify Store packages on GitHub Release
     runs-on: ubuntu-24.04
     permissions:
       actions: read
@@ -85,7 +85,7 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
-      - name: Stage Store bundle as a release asset
+      - name: Check Store bundle checksum
         shell: bash
         run: |
           set -euo pipefail
@@ -93,7 +93,6 @@ jobs:
           [[ ${#bundles[@]} -eq 1 && -f "${bundles[0]}" ]]
           bundle_name="$(basename "${bundles[0]}")"
           (cd store-bundle && sha256sum -c "$bundle_name.sha256")
-          cp "${bundles[0]}" "store-bundle/$bundle_name.sha256" store-release-assets/
 
       - name: Verify Store bundle provenance
         env:
@@ -129,13 +128,12 @@ jobs:
           }
           NODE
 
-      - name: Attach and verify Store submission assets
+      - name: Verify Store submission assets on the release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release upload "$RELEASE_TAG" store-release-assets/* --clobber
           downloaded="$RUNNER_TEMP/store-release-assets"
           mkdir -p "$downloaded"
           gh release download "$RELEASE_TAG" \

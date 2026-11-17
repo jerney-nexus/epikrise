@@ -37,6 +37,9 @@ export const releaseTargets = /** @type {const} */ ([
   "aarch64-pc-windows-msvc",
 ]);
 
+/** Store MSIX packages and bundle, attached to the release alongside the updater assets. */
+export const storeMsixReleaseDirectory = "release-store-msix";
+
 const targetConfig = /** @type {Record<string, ReleaseTargetConfig>} */ ({
   "x86_64-unknown-linux-gnu": {
     platform: "linux-x86_64",
@@ -603,9 +606,22 @@ export async function createLatestManifest({
 async function collectExpectedReleaseAssets({ artifactsRoot, latestPath }) {
   /** @type {Map<string, { size_bytes: number, sha256: string }>} */
   const expected = new Map();
-  for (const target of releaseTargets) {
-    const directory = path.join(artifactsRoot, `release-${target}`);
-    for (const name of await readdir(directory)) {
+  const directories = [
+    ...releaseTargets.map((target) => `release-${target}`),
+    storeMsixReleaseDirectory,
+  ];
+  for (const directoryName of directories) {
+    const directory = path.join(artifactsRoot, directoryName);
+    let names;
+    try {
+      names = await readdir(directory);
+    } catch (error) {
+      if (directoryName === storeMsixReleaseDirectory && isNotFoundError(error)) {
+        continue;
+      }
+      throw error;
+    }
+    for (const name of names) {
       assert(
         path.basename(name) === name,
         `Unsafe staged release asset name: ${name}.`,

@@ -3299,8 +3299,10 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).not.toContain("cargo-xwin");
     expect(releaseWorkflow).not.toContain("EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD");
     expect(releaseWorkflow).toMatch(
-      /build:\s+needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality/,
+      /approve-builds:\s+[\s\S]*?needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality/,
     );
+    expect(releaseWorkflow).toMatch(/build:\s+needs: approve-builds/);
+    expect(releaseWorkflow).toMatch(/store-msix:\s+[\s\S]*?needs: \[approve-builds\]/);
     const frontendWorkflow = await readFile(
       path.join(repoRoot, ".github/workflows/frontend-tests.yml"),
       "utf8",
@@ -3348,14 +3350,14 @@ describe("signed release artifacts", () => {
     const stageJob = releaseWorkflow.slice(stageJobStart, approveJobStart);
     const approveJob = releaseWorkflow.slice(approveJobStart, publishJobStart);
     const publishJob = releaseWorkflow.slice(publishJobStart);
-    expect(stageJob).toContain("needs: build");
+    expect(stageJob).toContain("needs: [build, store-msix]");
     expect(stageJob).toContain("Create or recover draft and verify release assets");
     expect(stageJob).toContain("verify-uploaded");
     expect(stageJob).not.toContain("-F draft=false");
     expect(stageJob).toContain("asset-evidence");
     expect(stageJob).toContain("name: acceptance-evidence-${{ github.run_id }}");
     expect(stageJob).toContain("overwrite: true");
-    expect(approveJob).toContain("needs: stage");
+    expect(approveJob).toContain("needs: [stage, store-msix]");
     expect(approveJob).toContain("environment:\n      name: release");
     expect(approveJob).not.toContain("concurrency:");
     expect(publishJob).toContain("needs: [stage, approve, store-msix]");
@@ -3481,7 +3483,8 @@ describe("signed release artifacts", () => {
     expect(workflow).not.toContain("desktop-builds.yml");
     expect(storeMsixWorkflow).toContain("--package-family store-msix");
     expect(workflow).toContain("stage-store-release");
-    expect(workflow).toContain("gh release upload");
+    expect(workflow).not.toContain("gh release upload");
+    expect(workflow).toContain("gh release download");
     expect(workflow).toContain("verify-store-release");
     expect(workflow).toContain("release.body.includes(marker)");
 
