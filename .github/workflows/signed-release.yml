@@ -412,9 +412,19 @@ jobs:
           retention-days: 3
           compression-level: 0
 
+  approve-store-msix:
+    name: Approve Store MSIX build
+    needs: [validate, verify-frontend, verify-rust, verify-security, verify-quality]
+    runs-on: ubuntu-24.04
+    environment:
+      name: release
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+    steps:
+      - run: echo "Store MSIX build approved."
+
   store-msix:
     name: Build Store MSIX packages
-    needs: [validate, verify-frontend, verify-rust, verify-security, verify-quality]
+    needs: [approve-store-msix]
     uses: ./.github/workflows/store-msix.yml
     permissions:
       contents: read
