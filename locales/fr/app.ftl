@@ -244,6 +244,7 @@ ui-language = Langue de l’interface
 ui-language-de-ch = Allemand (Suisse)
 ui-language-en = Anglais
 ui-language-fr = Français
+ui-language-it = Italien
 ui-language-pseudo = Pseudo-localisation (développement)
 ui-theme = Thème
 ui-light = Clair
