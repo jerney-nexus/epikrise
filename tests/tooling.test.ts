@@ -3524,6 +3524,7 @@ describe("signed release artifacts", () => {
       "github.event_name == 'workflow_dispatch' && inputs.commit",
     );
     expect(workflow).not.toContain("msstore publish");
+    expect(workflow).toContain("env.SUBMISSION_STATUS == 'PendingCommit'");
   });
 
   it("builds and attaches Store packages after successful tagged updater releases", async () => {

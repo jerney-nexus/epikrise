@@ -87,6 +87,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
           node scripts/check-store-submission-state.mjs submission.json
           if ($LASTEXITCODE -ne 0) { throw "Store submission state guard failed." }
+          $status = (Get-Content submission.json -Raw | ConvertFrom-Json).Status
+          "SUBMISSION_STATUS=$status" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Merge listing metadata from store-assets
         shell: pwsh
@@ -126,8 +128,13 @@ jobs:
           $updated | msstore submission updateMetadata $env:STORE_PRODUCT_ID - | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "msstore submission updateMetadata failed." }
 
+      # An unchanged listing is still committed when a draft is already pending, so an
+      # earlier run's draft or a failed commit can be retried. A Published submission
+      # with nothing to change is never republished.
       - name: Commit submission and wait for certification
-        if: env.METADATA_CHANGED == 'true' && env.DRY_RUN != 'true' && env.COMMIT_SUBMISSION == 'true'
+        if: >-
+          env.DRY_RUN != 'true' && env.COMMIT_SUBMISSION == 'true' &&
+          (env.METADATA_CHANGED == 'true' || env.SUBMISSION_STATUS == 'PendingCommit')
         shell: pwsh
         run: |
           msstore submission publish $env:STORE_PRODUCT_ID
