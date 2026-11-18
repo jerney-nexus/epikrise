@@ -247,19 +247,8 @@ jobs:
           msstore publish $env:STORE_BUNDLE_PATH -id $env:STORE_PRODUCT_ID --noCommit
           if ($LASTEXITCODE -ne 0) { throw "msstore publish failed." }
 
-      - name: Sync listing metadata from store-assets
-        shell: pwsh
-        run: |
-          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission.json -Encoding utf8
-          if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
-          node scripts/update-store-metadata.mjs submission.json store-assets/base-metadata.json | Out-File -FilePath submission-updated.json -Encoding utf8
-          if ($LASTEXITCODE -ne 0) { throw "update-store-metadata.mjs failed." }
-          $updated = Get-Content submission-updated.json -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
-          # Pass the JSON on stdin: an inline argument is capped by the 32,767-character Windows command line.
-          # The returned submission includes FileUploadUrl (an upload SAS); keep it out of the log.
-          $updated | msstore submission updateMetadata $env:STORE_PRODUCT_ID - | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "msstore submission updateMetadata failed." }
-
+      # Listing text and images are synced separately by the Store metadata
+      # workflow, so a missing locale or screenshot cannot block the package.
       - name: Commit submission and wait for certification
         shell: pwsh
         run: |
