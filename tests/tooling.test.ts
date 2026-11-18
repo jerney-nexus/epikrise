@@ -3351,6 +3351,12 @@ describe("signed release artifacts", () => {
     const approveJob = releaseWorkflow.slice(approveJobStart, publishJobStart);
     const publishJob = releaseWorkflow.slice(publishJobStart);
     expect(stageJob).toContain("needs: [build, store-msix]");
+    expect(stageJob).toContain("attestations: read");
+    expect(stageJob).toContain('gh attestation verify "${bundles[0]}"');
+    expect(stageJob).toContain("node scripts/desktop-builds.mjs stage-store-release");
+    expect(stageJob.indexOf("gh attestation verify")).toBeLessThan(
+      stageJob.indexOf("gh release create"),
+    );
     expect(stageJob).toContain("Create or recover draft and verify release assets");
     expect(stageJob).toContain("verify-uploaded");
     expect(stageJob).not.toContain("-F draft=false");
