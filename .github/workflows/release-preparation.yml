@@ -42,6 +42,21 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: node scripts/prepare-release.mjs "$RELEASE_VERSION"
+      - name: Check release branch does not already exist
+        env:
+          RELEASE_VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --heads origin \
+            "refs/heads/release/$RELEASE_VERSION" >/dev/null; then
+            echo "::error::Release branch release/$RELEASE_VERSION already exists."
+            echo "::error::Update it manually instead of rerunning preparation."
+            exit 1
+          else
+            status=$?
+            if [[ "$status" -ne 2 ]]; then
+              exit "$status"
+            fi
+          fi
       - name: Verify release metadata formatting
         run: pnpm format:check:file CHANGELOG.md src-tauri/tauri.conf.json
       - name: Write release PR body

@@ -3550,6 +3550,18 @@ describe("signed release artifacts", () => {
     );
     expect(workflow).toContain("node scripts/check-store-release-notes.mjs");
     expect(workflow).toContain("body-path: ${{ runner.temp }}/release-pr-body.md");
+    const branchCheck = workflow.indexOf(
+      "Check release branch does not already exist",
+    );
+    const pullRequestAction = workflow.indexOf(
+      "peter-evans/create-pull-request@v8",
+    );
+    expect(branchCheck).toBeGreaterThan(-1);
+    expect(branchCheck).toBeLessThan(pullRequestAction);
+    expect(workflow).toContain(
+      'git ls-remote --exit-code --heads origin "refs/heads/release/$RELEASE_VERSION"',
+    );
+    expect(workflow).toContain('if [[ "$status" -ne 2 ]]; then');
   });
 
   it("syncs Store metadata in a separate workflow that only commits on request", async () => {
