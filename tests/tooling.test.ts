@@ -3301,7 +3301,10 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toMatch(
       /approve-builds:\s+[\s\S]*?needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality/,
     );
-    expect(releaseWorkflow).toMatch(/build:\s+needs: approve-builds/);
+    expect(releaseWorkflow).toMatch(
+      /\n  build:\s+needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality\s+name: Build/,
+    );
+    expect(releaseWorkflow).not.toMatch(/build:\s+needs: approve-builds/);
     expect(releaseWorkflow).toMatch(/store-msix:\s+[\s\S]*?needs: \[approve-builds\]/);
     const frontendWorkflow = await readFile(
       path.join(repoRoot, ".github/workflows/frontend-tests.yml"),

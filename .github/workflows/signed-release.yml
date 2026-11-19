@@ -74,6 +74,9 @@ jobs:
     permissions:
       contents: read
 
+  # The updater matrix is gated by its own `environment: release`. This job waits
+  # on the same environment at the same time, so one approval releases both the
+  # updater builds and the Store MSIX build instead of requiring a second round.
   approve-builds:
     name: Approve release builds
     needs:
@@ -90,7 +93,12 @@ jobs:
       - run: echo "Release builds approved."
 
   build:
-    needs: approve-builds
+    needs:
+      - validate
+      - verify-frontend
+      - verify-rust
+      - verify-security
+      - verify-quality
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     environment: release
