@@ -3492,6 +3492,7 @@ describe("signed release artifacts", () => {
     expect(workflow).not.toContain("gh release upload");
     expect(workflow).toContain("gh release download");
     expect(workflow).toContain("verify-store-release");
+    expect(workflow).toContain('cmp "${bundles[0]}" "$downloaded/$bundle_name"');
     expect(workflow).toContain("release.body.includes(marker)");
 
     const publishJob = workflow.slice(workflow.indexOf("  publish:"));
@@ -3789,6 +3790,20 @@ describe("signed release artifacts", () => {
         }
       }
       await cp(latestPath, path.join(uploadedRoot, "latest.json"));
+      const storeAssetNames = [
+        "Epikrise_2026.9.4_x64.msix",
+        "Epikrise_2026.9.4_x64.msix.manifest.json",
+        "Epikrise_2026.9.4_arm64.msix",
+        "Epikrise_2026.9.4_arm64.msix.manifest.json",
+        "Epikrise_2026.9.4_bundle.msixbundle",
+        "Epikrise_2026.9.4_bundle.msixbundle.sha256",
+      ];
+      const storeDirectory = path.join(artifactsRoot, "release-store-msix");
+      await mkdir(storeDirectory, { recursive: true });
+      for (const name of storeAssetNames) {
+        await writeFile(path.join(storeDirectory, name), `store-${name}`);
+        await cp(path.join(storeDirectory, name), path.join(uploadedRoot, name));
+      }
       const uploadedNames = await readdir(uploadedRoot);
       const releaseAssets = await Promise.all(
         uploadedNames
@@ -3848,6 +3863,34 @@ describe("signed release artifacts", () => {
         }),
       ).rejects.toThrow("does not match staged bytes");
       await writeFile(uploadedBundle, uploadedContents);
+
+      expect(Object.keys(releaseAssetEvidence)).toEqual(
+        expect.arrayContaining(storeAssetNames),
+      );
+      const storeBundleName = "Epikrise_2026.9.4_bundle.msixbundle";
+      const uploadedStoreBundle = path.join(uploadedRoot, storeBundleName);
+      const storeBundleContents = await readFile(uploadedStoreBundle);
+      const tamperedStoreBundle = Buffer.from(storeBundleContents);
+      tamperedStoreBundle[0] = tamperedStoreBundle[0]! ^ 1;
+      await writeFile(uploadedStoreBundle, tamperedStoreBundle);
+      await expect(
+        verifyUploadedReleaseAssets({
+          uploadedRoot,
+          releaseAssets,
+          expectedAssets: releaseAssetEvidence,
+        }),
+      ).rejects.toThrow("does not match staged bytes");
+      await rm(uploadedStoreBundle);
+      await expect(
+        verifyUploadedReleaseAssets({
+          uploadedRoot,
+          releaseAssets: releaseAssets.filter(
+            (asset) => asset.name !== storeBundleName,
+          ),
+          expectedAssets: releaseAssetEvidence,
+        }),
+      ).rejects.toThrow("names do not match staged assets");
+      await writeFile(uploadedStoreBundle, storeBundleContents);
       await expect(
         verifyUploadedReleaseAssets({
           artifactsRoot,

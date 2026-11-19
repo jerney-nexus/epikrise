@@ -143,6 +143,18 @@ jobs:
             --pattern 'Epikrise_*_bundle.msixbundle.sha256' \
             --dir "$downloaded"
           (cd "$downloaded" && sha256sum -c Epikrise_*_bundle.msixbundle.sha256)
+          # The attestation covers the workflow artifact, so the published bytes must match
+          # the verified bundle and the packages and manifests staged from the artifacts.
+          bundles=(store-bundle/Epikrise_*_bundle.msixbundle)
+          bundle_name="$(basename "${bundles[0]}")"
+          cmp "${bundles[0]}" "$downloaded/$bundle_name"
+          cmp "store-bundle/$bundle_name.sha256" "$downloaded/$bundle_name.sha256"
+          staged=(store-release-assets/Epikrise_*)
+          [[ ${#staged[@]} -eq 4 ]]
+          for file in "${staged[@]}"; do
+            cmp "$file" "$downloaded/$(basename "$file")"
+          done
+          [[ "$(find "$downloaded" -maxdepth 1 -type f | wc -l)" -eq 6 ]]
           request_id="$(node --input-type=module <<'NODE'
             const sha = process.env.RELEASE_SHA;
             process.stdout.write(`${sha.slice(0, 8)}-${sha.slice(8, 12)}-${sha.slice(12, 16)}-${sha.slice(16, 20)}-${sha.slice(20, 32)}`);
