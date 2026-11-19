@@ -36,6 +36,10 @@ import {
   updateWorkspaceLockVersions,
   validateCalverVersion,
 } from "../scripts/prepare-release.mjs";
+import {
+  localesNeedingReleaseNotes,
+  renderReleaseNotesChecklist,
+} from "../scripts/check-store-release-notes.mjs";
 import { assertSubmissionAcceptsMetadata } from "../scripts/check-store-submission-state.mjs";
 import { assertReleaseAdvancesStoreVersions } from "../scripts/check-store-version.mjs";
 import { redactFileUploadUrls } from "../scripts/redact-store-submission.mjs";
@@ -3504,6 +3508,48 @@ describe("signed release artifacts", () => {
     );
 
     expect(workflow).toContain("environment:\n      name: store-partner-center");
+
+    const pullRequestJob = workflow.slice(workflow.indexOf("  open-pull-request:"));
+    expect(pullRequestJob).toContain("needs: get-base-metadata");
+    expect(pullRequestJob).not.toContain("environment:");
+    expect(pullRequestJob).not.toContain("AZURE_AD");
+    expect(pullRequestJob).toContain("peter-evans/create-pull-request@v8");
+    expect(pullRequestJob).toContain("add-paths: store-assets/base-metadata.json");
+    expect(pullRequestJob).toContain("fileuploadurl");
+  });
+
+  it("reports Store release notes that still match the previous release", () => {
+    const metadata = (notes: Record<string, string>) => ({
+      Listings: Object.fromEntries(
+        Object.entries(notes).map(([locale, ReleaseNotes]) => [
+          locale,
+          { BaseListing: { ReleaseNotes } },
+        ]),
+      ),
+    });
+    const previous = metadata({ "de-ch": "alt", "en-us": "old", "fr-fr": "ancien" });
+    const current = metadata({ "de-ch": "neu", "en-us": "old", "fr-fr": " " });
+    expect(localesNeedingReleaseNotes(current, previous)).toEqual(["en-us", "fr-fr"]);
+    expect(localesNeedingReleaseNotes(metadata({ "de-ch": "neu" }), previous)).toEqual(
+      [],
+    );
+
+    const checklist = renderReleaseNotesChecklist({
+      locales: ["de-ch", "en-us", "fr-fr"],
+      needing: ["en-us"],
+      previousTag: "v2026.11.6",
+    });
+    expect(checklist).toContain("- [ ] Update `ReleaseNotes`");
+    expect(checklist).toContain("unchanged since `v2026.11.6`: `en-us`");
+  });
+
+  it("adds the Store release notes checklist to the release pull request", async () => {
+    const workflow = await readFile(
+      path.join(repoRoot, ".github/workflows/release-preparation.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain("node scripts/check-store-release-notes.mjs");
+    expect(workflow).toContain("body-path: ${{ runner.temp }}/release-pr-body.md");
   });
 
   it("syncs Store metadata in a separate workflow that only commits on request", async () => {
