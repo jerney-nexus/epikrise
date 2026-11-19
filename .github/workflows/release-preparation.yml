@@ -46,8 +46,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.prepare.outputs.version }}
         run: |
-          if git ls-remote --exit-code --heads origin \
-            "refs/heads/release/$RELEASE_VERSION" >/dev/null; then
+          if git ls-remote --exit-code --heads origin "refs/heads/release/$RELEASE_VERSION" >/dev/null; then
             echo "::error::Release branch release/$RELEASE_VERSION already exists."
             echo "::error::Update it manually instead of rerunning preparation."
             exit 1

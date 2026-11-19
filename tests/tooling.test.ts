@@ -3550,12 +3550,8 @@ describe("signed release artifacts", () => {
     );
     expect(workflow).toContain("node scripts/check-store-release-notes.mjs");
     expect(workflow).toContain("body-path: ${{ runner.temp }}/release-pr-body.md");
-    const branchCheck = workflow.indexOf(
-      "Check release branch does not already exist",
-    );
-    const pullRequestAction = workflow.indexOf(
-      "peter-evans/create-pull-request@v8",
-    );
+    const branchCheck = workflow.indexOf("Check release branch does not already exist");
+    const pullRequestAction = workflow.indexOf("peter-evans/create-pull-request@v8");
     expect(branchCheck).toBeGreaterThan(-1);
     expect(branchCheck).toBeLessThan(pullRequestAction);
     expect(workflow).toContain(
