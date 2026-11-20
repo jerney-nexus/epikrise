@@ -44,6 +44,7 @@ import { assertSubmissionAcceptsMetadata } from "../scripts/check-store-submissi
 import {
   createClientAssertion,
   createTokenProvider,
+  describeTokenError,
   fetchSubmissionStatus,
   waitForPublished,
 } from "../scripts/wait-store-submission.mjs";
@@ -1146,6 +1147,19 @@ describe("CalVer release versions", () => {
     clock = 50 * 60_000;
     await expect(getToken()).resolves.toBe("second");
     expect(requestToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("describes token rejections without echoing the response body", () => {
+    expect(
+      describeTokenError(
+        JSON.stringify({
+          error: "invalid_client",
+          error_description: "AADSTS700027: secret eyJhbGciOi... rejected",
+        }),
+      ),
+    ).toBe(" (invalid_client, AADSTS700027)");
+    expect(describeTokenError("<html>gateway</html>")).toBe("");
+    expect(describeTokenError(JSON.stringify({ error: "a b" }))).toBe("");
   });
 
   it("fails closed when the submission lists no readable package versions", () => {

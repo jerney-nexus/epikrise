@@ -203,8 +203,9 @@ export async function fetchAccessToken({ tenantId, clientId, assertion }) {
     }),
   });
   if (!response.ok) {
+    const detail = describeTokenError(await response.text());
     throw new Error(
-      `Partner Center token request failed with HTTP ${response.status}.`,
+      `Partner Center token request failed with HTTP ${response.status}${detail}.`,
     );
   }
   const body = await response.json();
@@ -212,6 +213,27 @@ export async function fetchAccessToken({ tenantId, clientId, assertion }) {
     throw new Error("Partner Center token response has no access token.");
   }
   return body.access_token;
+}
+
+/**
+ * Extracts only the OAuth error code and the AADSTS number from an error body, so the
+ * log explains the rejection without echoing tokens, assertions, or full descriptions.
+ * @param {string} body
+ * @returns {string} e.g. " (invalid_client, AADSTS700027)", or "" when unavailable
+ */
+export function describeTokenError(body) {
+  let parsed;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return "";
+  }
+  const error = typeof parsed?.error === "string" ? parsed.error : "";
+  const description =
+    typeof parsed?.error_description === "string" ? parsed.error_description : "";
+  const aadsts = description.match(/AADSTS\d+/)?.[0] ?? "";
+  const parts = [error, aadsts].filter((part) => /^[A-Za-z0-9_]+$/.test(part));
+  return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }
 
 /** @param {string} tenantId */
