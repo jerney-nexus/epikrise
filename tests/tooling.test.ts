@@ -1151,10 +1151,10 @@ describe("CalVer release versions", () => {
   });
 
   it("sends the RFC 7523 client assertion type when requesting a token", async () => {
-    const requests = [];
+    const requests: { url: string; body: string }[] = [];
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (url, init) => {
-      requests.push({ url: String(url), body: String(init.body) });
+      requests.push({ url: String(url), body: String(init?.body) });
       return new Response(JSON.stringify({ access_token: "t" }), { status: 200 });
     };
     try {
