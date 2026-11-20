@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2026.11.7] - 2026-11-20
+
 ### 🐛 Bug Fixes
 
 - Store listing metadata is synced by a separate workflow, so a missing locale or screenshot no longer leaves the Microsoft Store package submission uncommitted
@@ -561,4 +563,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 [2026.11.4]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.3...v2026.11.4
 [2026.11.5]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.4...v2026.11.5
 [2026.11.6]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.5...v2026.11.6
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.6...HEAD
+[2026.11.7]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.6...v2026.11.7
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.7...HEAD
