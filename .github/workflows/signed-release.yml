@@ -74,6 +74,24 @@ jobs:
     permissions:
       contents: read
 
+  # The updater matrix is gated by its own `environment: release`. This job waits
+  # on the same environment at the same time, so one approval releases both the
+  # updater builds and the Store MSIX build instead of requiring a second round.
+  approve-builds:
+    name: Approve release builds
+    needs:
+      - validate
+      - verify-frontend
+      - verify-rust
+      - verify-security
+      - verify-quality
+    runs-on: ubuntu-24.04
+    environment:
+      name: release
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+    steps:
+      - run: echo "Release builds approved."
+
   build:
     needs:
       - validate
@@ -414,7 +432,7 @@ jobs:
 
   store-msix:
     name: Build Store MSIX packages
-    needs: [validate, verify-frontend, verify-rust, verify-security, verify-quality]
+    needs: [approve-builds]
     uses: ./.github/workflows/store-msix.yml
     permissions:
       contents: read
@@ -425,10 +443,11 @@ jobs:
       release_tag: ${{ github.ref_name }}
 
   stage:
-    name: Stage signed updater release
-    needs: build
+    name: Stage signed updater and Store release
+    needs: [build, store-msix]
     runs-on: ubuntu-24.04
     permissions:
+      attestations: read
       contents: write
     steps:
       - uses: actions/checkout@v7
@@ -463,6 +482,48 @@ jobs:
           pattern: release-*
           path: release-artifacts
           merge-multiple: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: epikrise-store-msix-*
+          path: store-artifacts
+          merge-multiple: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: epikrise-store-msixbundle
+          path: store-bundle
+
+      - name: Verify Store bundle checksum and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bundles=(store-bundle/Epikrise_*_bundle.msixbundle)
+          [[ ${#bundles[@]} -eq 1 && -f "${bundles[0]}" ]]
+          bundle_name="$(basename "${bundles[0]}")"
+          (cd store-bundle && sha256sum -c "$bundle_name.sha256")
+          gh attestation verify "${bundles[0]}" --repo "$GITHUB_REPOSITORY"
+
+      - name: Stage Store MSIX packages and bundle as release assets
+        run: |
+          set -euo pipefail
+          request_id="$(node --input-type=module <<'NODE'
+            const sha = process.env.GITHUB_SHA;
+            process.stdout.write(`${sha.slice(0, 8)}-${sha.slice(8, 12)}-${sha.slice(12, 16)}-${sha.slice(16, 20)}-${sha.slice(20, 32)}`);
+          NODE
+          )"
+          store_dir="release-artifacts/release-store-msix"
+          node scripts/desktop-builds.mjs stage-store-release \
+            --x64-root store-artifacts/epikrise-store-msix-x64 \
+            --arm64-root store-artifacts/epikrise-store-msix-arm64 \
+            --output-root "$store_dir" \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --request-id "$request_id"
+          cp store-bundle/Epikrise_*_bundle.msixbundle store-bundle/Epikrise_*_bundle.msixbundle.sha256 "$store_dir"/
+          # Two architectures, each with a .msix and .msix.manifest.json, plus the bundle and its .sha256.
+          [[ "$(find "$store_dir" -maxdepth 1 -type f | wc -l)" -eq 6 ]]
 
       - name: Generate static updater manifest
         run: |
@@ -526,7 +587,7 @@ jobs:
 
   approve:
     name: Approve accepted draft release
-    needs: stage
+    needs: [stage, store-msix]
     runs-on: ubuntu-24.04
     environment:
       name: release

@@ -3299,8 +3299,13 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).not.toContain("cargo-xwin");
     expect(releaseWorkflow).not.toContain("EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD");
     expect(releaseWorkflow).toMatch(
-      /build:\s+needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality/,
+      /approve-builds:\s+[\s\S]*?needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality/,
     );
+    expect(releaseWorkflow).toMatch(
+      /\n {2}build:\s+needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality\s+name: Build/,
+    );
+    expect(releaseWorkflow).not.toMatch(/build:\s+needs: approve-builds/);
+    expect(releaseWorkflow).toMatch(/store-msix:\s+[\s\S]*?needs: \[approve-builds\]/);
     const frontendWorkflow = await readFile(
       path.join(repoRoot, ".github/workflows/frontend-tests.yml"),
       "utf8",
@@ -3348,14 +3353,20 @@ describe("signed release artifacts", () => {
     const stageJob = releaseWorkflow.slice(stageJobStart, approveJobStart);
     const approveJob = releaseWorkflow.slice(approveJobStart, publishJobStart);
     const publishJob = releaseWorkflow.slice(publishJobStart);
-    expect(stageJob).toContain("needs: build");
+    expect(stageJob).toContain("needs: [build, store-msix]");
+    expect(stageJob).toContain("attestations: read");
+    expect(stageJob).toContain('gh attestation verify "${bundles[0]}"');
+    expect(stageJob).toContain("node scripts/desktop-builds.mjs stage-store-release");
+    expect(stageJob.indexOf("gh attestation verify")).toBeLessThan(
+      stageJob.indexOf("gh release create"),
+    );
     expect(stageJob).toContain("Create or recover draft and verify release assets");
     expect(stageJob).toContain("verify-uploaded");
     expect(stageJob).not.toContain("-F draft=false");
     expect(stageJob).toContain("asset-evidence");
     expect(stageJob).toContain("name: acceptance-evidence-${{ github.run_id }}");
     expect(stageJob).toContain("overwrite: true");
-    expect(approveJob).toContain("needs: stage");
+    expect(approveJob).toContain("needs: [stage, store-msix]");
     expect(approveJob).toContain("environment:\n      name: release");
     expect(approveJob).not.toContain("concurrency:");
     expect(publishJob).toContain("needs: [stage, approve, store-msix]");
@@ -3481,8 +3492,10 @@ describe("signed release artifacts", () => {
     expect(workflow).not.toContain("desktop-builds.yml");
     expect(storeMsixWorkflow).toContain("--package-family store-msix");
     expect(workflow).toContain("stage-store-release");
-    expect(workflow).toContain("gh release upload");
+    expect(workflow).not.toContain("gh release upload");
+    expect(workflow).toContain("gh release download");
     expect(workflow).toContain("verify-store-release");
+    expect(workflow).toContain('cmp "${bundles[0]}" "$downloaded/$bundle_name"');
     expect(workflow).toContain("release.body.includes(marker)");
 
     const publishJob = workflow.slice(workflow.indexOf("  publish:"));
@@ -3780,6 +3793,20 @@ describe("signed release artifacts", () => {
         }
       }
       await cp(latestPath, path.join(uploadedRoot, "latest.json"));
+      const storeAssetNames = [
+        "Epikrise_2026.9.4_x64.msix",
+        "Epikrise_2026.9.4_x64.msix.manifest.json",
+        "Epikrise_2026.9.4_arm64.msix",
+        "Epikrise_2026.9.4_arm64.msix.manifest.json",
+        "Epikrise_2026.9.4_bundle.msixbundle",
+        "Epikrise_2026.9.4_bundle.msixbundle.sha256",
+      ];
+      const storeDirectory = path.join(artifactsRoot, "release-store-msix");
+      await mkdir(storeDirectory, { recursive: true });
+      for (const name of storeAssetNames) {
+        await writeFile(path.join(storeDirectory, name), `store-${name}`);
+        await cp(path.join(storeDirectory, name), path.join(uploadedRoot, name));
+      }
       const uploadedNames = await readdir(uploadedRoot);
       const releaseAssets = await Promise.all(
         uploadedNames
@@ -3839,6 +3866,34 @@ describe("signed release artifacts", () => {
         }),
       ).rejects.toThrow("does not match staged bytes");
       await writeFile(uploadedBundle, uploadedContents);
+
+      expect(Object.keys(releaseAssetEvidence)).toEqual(
+        expect.arrayContaining(storeAssetNames),
+      );
+      const storeBundleName = "Epikrise_2026.9.4_bundle.msixbundle";
+      const uploadedStoreBundle = path.join(uploadedRoot, storeBundleName);
+      const storeBundleContents = await readFile(uploadedStoreBundle);
+      const tamperedStoreBundle = Buffer.from(storeBundleContents);
+      tamperedStoreBundle[0] = tamperedStoreBundle[0]! ^ 1;
+      await writeFile(uploadedStoreBundle, tamperedStoreBundle);
+      await expect(
+        verifyUploadedReleaseAssets({
+          uploadedRoot,
+          releaseAssets,
+          expectedAssets: releaseAssetEvidence,
+        }),
+      ).rejects.toThrow("does not match staged bytes");
+      await rm(uploadedStoreBundle);
+      await expect(
+        verifyUploadedReleaseAssets({
+          uploadedRoot,
+          releaseAssets: releaseAssets.filter(
+            (asset) => asset.name !== storeBundleName,
+          ),
+          expectedAssets: releaseAssetEvidence,
+        }),
+      ).rejects.toThrow("names do not match staged assets");
+      await writeFile(uploadedStoreBundle, storeBundleContents);
       await expect(
         verifyUploadedReleaseAssets({
           artifactsRoot,
