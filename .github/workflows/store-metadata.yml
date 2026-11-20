@@ -6,6 +6,7 @@ run-name: Store metadata ${{ github.event.workflow_run.head_branch || github.ref
 # so a missing locale or screenshot cannot block a package upload. Automatic
 # runs follow a successful package submission and only update the draft; commit
 # the draft by hand in Partner Center, or dispatch this workflow with commit.
+# A published commit then refreshes store-assets/base-metadata.json.
 
 on:
   workflow_dispatch:
@@ -42,6 +43,8 @@ jobs:
       name: store-partner-center
     runs-on: windows-latest
     timeout-minutes: 30
+    outputs:
+      published: ${{ steps.commit.outputs.published }}
     env:
       STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
       COMMIT_SUBMISSION: ${{ github.event_name == 'workflow_dispatch' && inputs.commit }}
@@ -148,6 +151,7 @@ jobs:
       # earlier run's draft or a failed commit can be retried. A Published submission
       # with nothing to change is never republished.
       - name: Commit submission and wait for certification
+        id: commit
         if: >-
           env.DRY_RUN != 'true' && env.COMMIT_SUBMISSION == 'true' &&
           (env.METADATA_CHANGED == 'true' || env.SUBMISSION_STATUS == 'PendingCommit')
@@ -157,3 +161,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "msstore submission publish failed." }
           msstore submission poll $env:STORE_PRODUCT_ID
           if ($LASTEXITCODE -ne 0) { throw "msstore submission poll failed." }
+          "published=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+  refresh-base-metadata:
+    name: Refresh base metadata after commit
+    needs: sync-metadata
+    if: needs.sync-metadata.outputs.published == 'true'
+    uses: ./.github/workflows/store-base-metadata.yml
+    secrets: inherit

@@ -1,13 +1,15 @@
 name: Store base metadata
 
-# Manual helper: fetches the current Partner Center submission metadata, which
-# is the source for store-assets/base-metadata.json. The first job holds the
+# Fetches the current Partner Center submission metadata, which is the source for
+# store-assets/base-metadata.json. It runs by hand (workflow_dispatch) and after
+# Store metadata publishes a commit (workflow_call). The first job holds the
 # Partner Center credentials and uploads the redacted output as a workflow
 # artifact. The second job has no Partner Center credentials; it opens a pull
 # request that replaces store-assets/base-metadata.json with that artifact.
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
