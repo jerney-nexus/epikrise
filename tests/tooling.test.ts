@@ -941,13 +941,19 @@ describe("CalVer release versions", () => {
     expect(() => assertSubmissionAcceptsMetadata({})).toThrow("no readable Status");
   });
 
-  it("waits through certification until the submission is Published", async () => {
-    const statuses = ["Certification", "Certification", "Published"];
+  it("waits through certification until the captured submission is Published", async () => {
+    const responses = [
+      { id: "sub-2", status: "Certification" },
+      { id: "sub-2", status: "Certification" },
+      { id: "sub-2", status: "Published" },
+    ];
     const sleeps: number[] = [];
     let clock = 0;
 
     const status = await waitForPublished({
-      fetchStatus: async () => statuses.shift(),
+      submissionId: "sub-2",
+      fetchSubmission: async () =>
+        responses.shift() ?? { id: "sub-2", status: undefined },
       sleep: async (ms) => {
         sleeps.push(ms);
         clock += ms;
@@ -961,10 +967,59 @@ describe("CalVer release versions", () => {
     expect(sleeps).toEqual([60_000, 60_000]);
   });
 
+  it("ignores an older Published submission while the captured one is in certification", async () => {
+    const responses = [
+      { id: "sub-1", status: "Published" },
+      { id: "sub-1", status: "Published" },
+      { id: "sub-2", status: "Published" },
+    ];
+    const sleeps: number[] = [];
+    let clock = 0;
+
+    const status = await waitForPublished({
+      submissionId: "sub-2",
+      fetchSubmission: async () =>
+        responses.shift() ?? { id: "sub-2", status: undefined },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+      now: () => clock,
+      timeoutMs: 3_600_000,
+      intervalMs: 60_000,
+    });
+
+    expect(status).toBe("Published");
+    expect(sleeps).toEqual([60_000, 60_000]);
+  });
+
+  it("fails closed when the submission ID is missing from the response", async () => {
+    await expect(
+      waitForPublished({
+        submissionId: "sub-2",
+        fetchSubmission: async () => ({ id: undefined, status: "Published" }),
+        sleep: async () => {},
+        timeoutMs: 3_600_000,
+      }),
+    ).rejects.toThrow("no submission ID");
+  });
+
+  it("fails closed when no submission ID was captured before publish", async () => {
+    await expect(
+      waitForPublished({
+        submissionId: "",
+        fetchSubmission: async () => ({ id: "sub-2", status: "Published" }),
+        sleep: async () => {},
+        timeoutMs: 3_600_000,
+      }),
+    ).rejects.toThrow("No submission ID was captured");
+  });
+
   it("fails when the submission is rejected", async () => {
     await expect(
       waitForPublished({
-        fetchStatus: async () => "Failed",
+        submissionId: "sub-2",
+        fetchSubmission: async () => ({ id: "sub-2", status: "Failed" }),
         sleep: async () => {},
         timeoutMs: 3_600_000,
       }),
@@ -976,7 +1031,8 @@ describe("CalVer release versions", () => {
 
     await expect(
       waitForPublished({
-        fetchStatus: async () => "Certification",
+        submissionId: "sub-2",
+        fetchSubmission: async () => ({ id: "sub-2", status: "Certification" }),
         sleep: async (ms) => {
           clock += ms;
         },

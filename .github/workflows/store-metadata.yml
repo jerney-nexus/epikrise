@@ -157,6 +157,9 @@ jobs:
           (env.METADATA_CHANGED == 'true' || env.SUBMISSION_STATUS == 'PendingCommit')
         shell: pwsh
         run: |
+          # Capture the pending draft ID first; the Published status must match this ID.
+          $env:STORE_SUBMISSION_ID = node scripts/wait-store-submission.mjs --capture-id
+          if ($LASTEXITCODE -ne 0) { throw "Could not capture the pending submission ID." }
           msstore submission publish $env:STORE_PRODUCT_ID
           if ($LASTEXITCODE -ne 0) { throw "msstore submission publish failed." }
           # Wait for Status Published; the single-check poll subcommand can report the old Published submission.
