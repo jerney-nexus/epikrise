@@ -31,7 +31,7 @@ const locales = {
   },
   it: {
     superhero: "Un supporto locale alla stesura per operatori sanitari",
-    poster: ["Bozze cliniche strutturate,", "riviste da te"],
+    poster: ["Bozze cliniche strutturate,", "riviste da Lei"],
   },
   es: {
     superhero: "Ayuda local de redacción para profesionales sanitarios",
