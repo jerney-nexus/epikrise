@@ -7,6 +7,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/signed-release.yml"
+      - ".github/workflows/updater-build.yml"
       - ".github/workflows/store-submission.yml"
       - ".github/workflows/store-msix.yml"
       - ".github/workflows/windows-release-workspace.yml"

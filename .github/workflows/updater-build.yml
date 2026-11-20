@@ -1,0 +1,340 @@
+name: Build signed updater packages
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    environment: release
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            release_target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            platform: linux
+            bundles: deb rpm appimage
+          - target: aarch64-unknown-linux-gnu
+            release_target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            platform: linux
+            bundles: deb rpm appimage
+          - target: x86_64-apple-darwin
+            release_target: x86_64-apple-darwin
+            runner: macos-15-intel
+            platform: macos
+            bundles: app dmg
+          - target: aarch64-apple-darwin
+            release_target: aarch64-apple-darwin
+            runner: macos-15
+            platform: macos
+            bundles: app dmg
+          - target: x86_64-pc-windows-msvc
+            release_target: x86_64-pc-windows-msvc
+            runner: windows-2025
+            platform: windows
+            windows_arch: x64
+          - target: aarch64-pc-windows-msvc
+            release_target: aarch64-pc-windows-msvc
+            runner: windows-11-vs2026-arm
+            platform: windows
+            windows_arch: arm64
+
+    env:
+      TARGET: ${{ matrix.target }}
+      RELEASE_TARGET: ${{ matrix.release_target }}
+      PLATFORM: ${{ matrix.platform }}
+      EPIKRISE_NATIVE_BUILD_TARGET: ${{ matrix.target }}
+      EPIKRISE_BUILD_MODE: signed-release
+
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.15.0
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install source tooling
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify native build host and target
+        env:
+          EPIKRISE_RUNNER_OS: ${{ runner.os }}
+          EPIKRISE_RUNNER_ARCH: ${{ runner.arch }}
+        shell: bash
+        run: bash scripts/with-cargo-host-target.sh --native-only --validate-only
+
+      - name: Prepare normalized release workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_root="$RUNNER_TEMP/epikrise-release"
+          source_archive_sha256="$(
+            node scripts/prepare-release-workspace.mjs "$GITHUB_SHA" "$build_root"
+          )"
+          printf 'RELEASE_BUILD_ROOT=%s\n' "$build_root" >> "$GITHUB_ENV"
+          printf 'EPIKRISE_SOURCE_ARCHIVE_SHA256=%s\n' "$source_archive_sha256" >> "$GITHUB_ENV"
+
+      - name: Cache native OCR and Cargo inputs
+        id: native-ocr-cache
+        if: matrix.platform != 'windows'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/epikrise/native-ocr
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-signed-release-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh', 'scripts/verify-native-build-environment.mjs') }}
+
+      - name: Cache Windows OCR sources and toolchain
+        id: windows-ocr-cache
+        if: matrix.platform == 'windows'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/epikrise/windows-ocr-native-msvc
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-signed-release-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
+
+      - name: Install release workspace dependencies
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend without signing secrets
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: pnpm build
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake curl file libfuse2t64 libssl-dev libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev ninja-build \
+            pkg-config patchelf ripgrep rpm tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-fra tesseract-ocr-ita tesseract-ocr-spa
+
+      - name: Install macOS OCR language data
+        if: matrix.platform == 'macos'
+        run: brew install ripgrep tesseract tesseract-lang
+
+      - name: Install native Windows bundle dependencies
+        if: matrix.platform == 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        shell: pwsh
+        run: ./scripts/setup-native-windows-runner.ps1
+
+      - name: Prepare target OCR resources
+        if: matrix.platform != 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        run: bash scripts/prepare-ocr.sh --target "$TARGET"
+
+      - name: Build signed Windows updater bundles
+        if: matrix.platform == 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          WINDOWS_ARCH: ${{ matrix.windows_arch }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: pwsh
+        run: |
+          $hostTarget = (rustc -vV | Select-String '^host: ').ToString().Substring(6)
+          $bundleRoot = Join-Path $PWD "src-tauri/target/host-$hostTarget/$env:TARGET/release/bundle/nsis"
+          $packageHashes = @{}
+          foreach ($mode in @("embedBootstrapper", "offlineInstaller")) {
+            $env:EPIKRISE_WINDOWS_WEBVIEW_MODE = $mode
+            if (Test-Path -LiteralPath $bundleRoot) {
+              Remove-Item -LiteralPath $bundleRoot -Recurse -Force
+            }
+            & cmd /c "scripts\build-native-windows.cmd $env:WINDOWS_ARCH release"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Windows NSIS $mode build failed with exit code $LASTEXITCODE."
+            }
+            node scripts/verify-binary-architecture.mjs $env:TARGET "src-tauri/target/host-$hostTarget/$env:TARGET/release/epikrise.exe"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Windows NSIS $mode app payload architecture check failed with exit code $LASTEXITCODE."
+            }
+            $variantDirectory = Join-Path $PWD "release-bundles/nsis/$mode"
+            ./scripts/write-nsis-webview-record.ps1 -BundleRoot $bundleRoot -VariantDirectory $variantDirectory -WebViewMode $mode
+            if ($LASTEXITCODE -ne 0) {
+              throw "Writing the WebView2 mode record for $mode failed with exit code $LASTEXITCODE."
+            }
+            $packageHashes[$mode] = (Get-Content -LiteralPath (Join-Path $variantDirectory "webview-mode.json") -Raw | ConvertFrom-Json).package_sha256
+          }
+          if (($packageHashes.Values | Select-Object -Unique).Count -ne $packageHashes.Count) {
+            throw "Windows NSIS embedBootstrapper and offlineInstaller packages are byte-identical; the WebView2 mode setting was not applied."
+          }
+
+      - name: Build signed Linux or macOS updater bundles
+        if: matrix.platform != 'windows'
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          BUNDLE_TARGETS: ${{ matrix.bundles }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            printf 'TAURI_SIGNING_PRIVATE_KEY is required for signed releases.\n' >&2
+            exit 1
+          fi
+          signing_private_key="$TAURI_SIGNING_PRIVATE_KEY"
+          signing_private_key_password="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          if [[ "$PLATFORM" == 'linux' ]]; then
+            bundle_root="src-tauri/target/host-$host_target/$TARGET/release/bundle"
+            saved_appimage="$RUNNER_TEMP/$TARGET-appimage"
+            TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
+              TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+              bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
+                pnpm exec tauri build \
+                  --target "$TARGET" \
+                  --config src-tauri/tauri.release.conf.json \
+                  --config '{"build":{"beforeBuildCommand":null}}' \
+                  --bundles appimage \
+                  --ci
+            cp -a "$bundle_root/appimage" "$saved_appimage"
+            bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
+              pnpm exec tauri build \
+                --target "$TARGET" \
+                --config '{"build":{"beforeBuildCommand":null,"features":[]}}' \
+                --bundles deb rpm \
+                --ci \
+                --no-sign
+            rm -rf "$bundle_root/appimage"
+            mv "$saved_appimage" "$bundle_root/appimage"
+          else
+            read -r -a bundles <<< "$BUNDLE_TARGETS"
+            TAURI_SIGNING_PRIVATE_KEY="$signing_private_key" \
+              TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$signing_private_key_password" \
+              bash scripts/with-cargo-host-target.sh --native-only --tauri-build \
+                pnpm exec tauri build \
+                  --target "$TARGET" \
+                  --config src-tauri/tauri.release.conf.json \
+                  --config '{"build":{"beforeBuildCommand":null}}' \
+                  --bundles "${bundles[@]}" \
+                  --ci
+          fi
+          unset signing_private_key signing_private_key_password
+
+      - name: Verify staged OCR architectures
+        working-directory: ${{ runner.temp }}/epikrise-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_binary="$(bash scripts/tauri-build-output.sh "$TARGET" --target "$TARGET")"
+          test -s "$app_binary"
+          node scripts/verify-binary-architecture.mjs "$TARGET" "$app_binary"
+          case "$TARGET" in
+            x86_64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'Advanced Micro Devices X86-64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'Advanced Micro Devices X86-64'
+              ;;
+            aarch64-unknown-linux-gnu)
+              readelf -h "src-tauri/binaries/tesseract-$TARGET" | grep -F 'AArch64'
+              readelf -h src-tauri/resources/ocr/pdfium/libpdfium.so | grep -F 'AArch64'
+              ;;
+            x86_64-apple-darwin)
+              lipo "src-tauri/binaries/tesseract-$TARGET" -archs | grep -qw x86_64
+              lipo src-tauri/resources/ocr/pdfium/libpdfium.dylib -archs | grep -qw x86_64
+              ;;
+            aarch64-apple-darwin)
+              lipo "src-tauri/binaries/tesseract-$TARGET" -archs | grep -qw arm64
+              lipo src-tauri/resources/ocr/pdfium/libpdfium.dylib -archs | grep -qw arm64
+              ;;
+            x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)
+              node scripts/verify-binary-architecture.mjs "$TARGET" "src-tauri/binaries/tesseract-$TARGET.exe"
+              node scripts/verify-binary-architecture.mjs "$TARGET" src-tauri/resources/ocr/pdfium/pdfium.dll
+              ;;
+          esac
+          if [[ "$PLATFORM" != 'windows' ]]; then
+            case "$PLATFORM" in
+              linux)
+                pdfium="src-tauri/resources/ocr/pdfium/libpdfium.so"
+                tesseract="src-tauri/binaries/tesseract-$TARGET"
+                ;;
+              macos)
+                pdfium="src-tauri/resources/ocr/pdfium/libpdfium.dylib"
+                tesseract="src-tauri/binaries/tesseract-$TARGET"
+                ;;
+            esac
+            node scripts/verify-runtime-dependencies.mjs \
+              "$TARGET" "$pdfium" "$tesseract" "$app_binary"
+          fi
+
+      - name: Stage and verify updater packages
+        working-directory: ${{ runner.temp }}/epikrise-release
+        env:
+          EPIKRISE_SOURCE_ARCHIVE_SHA256: ${{ env.EPIKRISE_SOURCE_ARCHIVE_SHA256 }}
+          EPIKRISE_NATIVE_CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-signed-release-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-ocr.sh', 'scripts/verify-native-build-environment.mjs') }}
+          EPIKRISE_WINDOWS_CACHE_KEY: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ matrix.target }}-signed-release-windows-ocr-${{ hashFiles('pnpm-lock.yaml', 'src-tauri/Cargo.lock', 'scripts/build-native-windows.cmd', 'scripts/build-native-windows-ocr.sh', 'scripts/build-native-windows.sh', 'scripts/detect-windows-os-architecture.sh', 'scripts/verify-native-build-environment.mjs') }}
+          EPIKRISE_NATIVE_CACHE_HIT: ${{ steps.native-ocr-cache.outputs.cache-hit }}
+          EPIKRISE_WINDOWS_CACHE_HIT: ${{ steps.windows-ocr-cache.outputs.cache-hit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          if [[ "$PLATFORM" == 'windows' ]]; then
+            bundle_root="release-bundles/nsis/offlineInstaller"
+            stage_args=(--bootstrapper-root "release-bundles/nsis/embedBootstrapper")
+            cache_key="$EPIKRISE_WINDOWS_CACHE_KEY"
+            cache_restored="${EPIKRISE_WINDOWS_CACHE_HIT:-false}"
+          else
+            bundle_root="src-tauri/target/host-$host_target/$TARGET/release/bundle"
+            stage_args=()
+            cache_key="$EPIKRISE_NATIVE_CACHE_KEY"
+            cache_restored="${EPIKRISE_NATIVE_CACHE_HIT:-false}"
+          fi
+          stage_args+=(
+            --target "$RELEASE_TARGET"
+            --native-target "$TARGET"
+            --bundle-root "$bundle_root"
+            --stage-root "release-staging/$RELEASE_TARGET"
+            --commit "$GITHUB_SHA"
+            --resource-root src-tauri/resources/ocr
+            --binary-root src-tauri/binaries
+            --runner-os "$RUNNER_OS"
+            --runner-arch "$RUNNER_ARCH"
+            --rust-host "$host_target"
+            --build-mode "$EPIKRISE_BUILD_MODE"
+            --source-archive-sha256 "$EPIKRISE_SOURCE_ARCHIVE_SHA256"
+            --cache-key "$cache_key"
+            --cache-restored "$cache_restored"
+          )
+          node scripts/release-artifacts.mjs stage "${stage_args[@]}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.release_target }}
+          path: ${{ runner.temp }}/epikrise-release/release-staging/${{ matrix.release_target }}/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
