@@ -155,6 +155,10 @@ jobs:
         if: >-
           env.DRY_RUN != 'true' && env.COMMIT_SUBMISSION == 'true' &&
           (env.METADATA_CHANGED == 'true' || env.SUBMISSION_STATUS == 'PendingCommit')
+        env:
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          AZURE_AD_CERTIFICATE_PASSWORD: ${{ secrets.AZURE_AD_CERTIFICATE_PASSWORD }}
         shell: pwsh
         run: |
           # Capture the pending draft ID first; the Published status must match this ID.
@@ -163,6 +167,8 @@ jobs:
           msstore submission publish $env:STORE_PRODUCT_ID
           if ($LASTEXITCODE -ne 0) { throw "msstore submission publish failed." }
           # Wait for Status Published; the single-check poll subcommand can report the old Published submission.
+          $env:STORE_CERT_PFX_PATH = Join-Path $env:RUNNER_TEMP "partner-center.pfx"
+          $env:STORE_CERT_PASSWORD = $env:AZURE_AD_CERTIFICATE_PASSWORD
           node scripts/wait-store-submission.mjs
           if ($LASTEXITCODE -ne 0) { throw "The submission did not reach Published." }
           "published=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8

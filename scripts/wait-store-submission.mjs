@@ -3,16 +3,31 @@
 // `msstore submission get <productId>` falls back to the last Published submission
 // when no draft is pending, so a Published status only counts when its ID matches the
 // ID captured from the draft before publish.
+// The wait polls the Partner Center REST status endpoint for the captured ID, because
+// msstore cannot query a submission by ID. The access token is a client-credentials
+// token obtained with a certificate client assertion (the same PFX as msstore).
 // Usage:
 //   STORE_PRODUCT_ID=<id> node scripts/wait-store-submission.mjs --capture-id
-//   STORE_PRODUCT_ID=<id> STORE_SUBMISSION_ID=<id> node scripts/wait-store-submission.mjs [timeout-minutes]
+//   STORE_PRODUCT_ID=<id> STORE_SUBMISSION_ID=<id> AZURE_AD_TENANT_ID=<id>
+//     AZURE_AD_APPLICATION_CLIENT_ID=<id> STORE_CERT_PFX_PATH=<path>
+//     STORE_CERT_PASSWORD=<secret> node scripts/wait-store-submission.mjs [timeout-minutes]
 
 import { execFile } from "node:child_process";
+import {
+  createHash,
+  createPrivateKey,
+  randomUUID,
+  sign,
+  X509Certificate,
+} from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const DEFAULT_TIMEOUT_MINUTES = 300;
 const INTERVAL_MS = 60_000;
 const FAILED_STATUS = /fail|reject|cancel/i;
+const PARTNER_CENTER_RESOURCE = "https://manage.devcenter.microsoft.com";
+const TOKEN_REFRESH_MS = 50 * 60_000;
+const ASSERTION_LIFETIME_S = 300;
 
 /**
  * @param {{
@@ -92,6 +107,163 @@ export function fetchSubmission(productId) {
   });
 }
 
+/**
+ * Reads the private key and the matching certificate from a PFX with openssl. The
+ * password is passed through the environment, and the PEM output stays in memory.
+ * @param {string} pfxPath
+ * @param {string} password
+ * @returns {Promise<{ privateKey: import("node:crypto").KeyObject, certificate: X509Certificate }>}
+ */
+export function readPfxIdentity(pfxPath, password) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "openssl",
+      ["pkcs12", "-in", pfxPath, "-nodes", "-passin", "env:STORE_CERT_PASSWORD"],
+      {
+        env: { ...process.env, STORE_CERT_PASSWORD: password },
+        maxBuffer: 16 * 1024 * 1024,
+      },
+      (error, stdout) => {
+        // openssl errors can echo file paths; report only that the read failed.
+        if (error) {
+          reject(new Error("openssl could not read the Partner Center certificate."));
+          return;
+        }
+        try {
+          const keyPem = stdout.match(
+            /-----BEGIN PRIVATE KEY-----[\s\S]*?-----END PRIVATE KEY-----/,
+          )?.[0];
+          const certPems =
+            stdout.match(
+              /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g,
+            ) ?? [];
+          if (!keyPem) throw new Error("no private key");
+          const privateKey = createPrivateKey(keyPem);
+          const certificate = certPems
+            .map((pem) => new X509Certificate(pem))
+            .find((cert) => cert.checkPrivateKey(privateKey));
+          if (!certificate) throw new Error("no matching certificate");
+          resolve({ privateKey, certificate });
+        } catch {
+          reject(new Error("The Partner Center certificate has no usable key pair."));
+        }
+      },
+    );
+  });
+}
+
+/**
+ * Builds an RS256 client assertion signed with the certificate's private key.
+ * @param {{ clientId: string, tokenUrl: string, privateKey: import("node:crypto").KeyObject, certificate: { raw: Buffer }, nowMs?: number }} options
+ */
+export function createClientAssertion({
+  clientId,
+  tokenUrl,
+  privateKey,
+  certificate,
+  nowMs = Date.now(),
+}) {
+  const issued = Math.floor(nowMs / 1000);
+  const header = {
+    alg: "RS256",
+    typ: "JWT",
+    x5t: createHash("sha1").update(certificate.raw).digest("base64url"),
+  };
+  const payload = {
+    aud: tokenUrl,
+    iss: clientId,
+    sub: clientId,
+    nbf: issued,
+    exp: issued + ASSERTION_LIFETIME_S,
+    jti: randomUUID(),
+  };
+  const signingInput = [header, payload]
+    .map((part) => Buffer.from(JSON.stringify(part)).toString("base64url"))
+    .join(".");
+  const signature = sign("sha256", Buffer.from(signingInput), privateKey).toString(
+    "base64url",
+  );
+  return `${signingInput}.${signature}`;
+}
+
+/**
+ * @param {{ tenantId: string, clientId: string, assertion: string }} options
+ * @returns {Promise<string>}
+ */
+export async function fetchAccessToken({ tenantId, clientId, assertion }) {
+  const response = await fetch(tokenEndpoint(tenantId), {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: clientId,
+      client_assertion_type: "urn:ietf:params:oauth2:client-assertion-type:jwt-bearer",
+      client_assertion: assertion,
+      resource: PARTNER_CENTER_RESOURCE,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Partner Center token request failed with HTTP ${response.status}.`,
+    );
+  }
+  const body = await response.json();
+  if (typeof body.access_token !== "string" || body.access_token === "") {
+    throw new Error("Partner Center token response has no access token.");
+  }
+  return body.access_token;
+}
+
+/** @param {string} tenantId */
+export function tokenEndpoint(tenantId) {
+  return `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/token`;
+}
+
+/**
+ * Returns the cached token, requesting a new one once it is older than the refresh age.
+ * Access tokens last 60 minutes and a wait can run longer than that.
+ * @param {() => Promise<string>} requestToken
+ * @param {() => number} [now]
+ */
+export function createTokenProvider(requestToken, now = Date.now) {
+  /** @type {string | undefined} */
+  let token;
+  let fetchedAt = 0;
+  return async () => {
+    if (token === undefined || now() - fetchedAt >= TOKEN_REFRESH_MS) {
+      token = await requestToken();
+      fetchedAt = now();
+    }
+    return token;
+  };
+}
+
+/**
+ * @param {{ applicationId: string, submissionId: string, accessToken: string }} options
+ * @returns {Promise<{ id: string, status: string }>}
+ */
+export async function fetchSubmissionStatus({
+  applicationId,
+  submissionId,
+  accessToken,
+}) {
+  const url = `https://manage.devcenter.microsoft.com/v1.0/my/applications/${encodeURIComponent(applicationId)}/submissions/${encodeURIComponent(submissionId)}/status`;
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Partner Center status request failed with HTTP ${response.status}.`,
+    );
+  }
+  const body = await response.json();
+  if (typeof body.status !== "string") {
+    throw new Error("Partner Center status response has no status.");
+  }
+  // The status endpoint is queried by ID, so the requested ID is the reported one.
+  return { id: submissionId, status: body.status };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const productId = process.env.STORE_PRODUCT_ID ?? "";
   const capture = process.argv[2] === "--capture-id";
@@ -112,9 +284,40 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       }
       process.stdout.write(`${id}\n`);
     } else {
+      const tenantId = process.env.AZURE_AD_TENANT_ID ?? "";
+      const clientId = process.env.AZURE_AD_APPLICATION_CLIENT_ID ?? "";
+      const pfxPath = process.env.STORE_CERT_PFX_PATH ?? "";
+      const password = process.env.STORE_CERT_PASSWORD ?? "";
+      const submissionId = process.env.STORE_SUBMISSION_ID ?? "";
+      if (!/^[A-Za-z0-9-]+$/.test(tenantId) || !/^[A-Za-z0-9-]+$/.test(clientId)) {
+        throw new Error(
+          "AZURE_AD_TENANT_ID and AZURE_AD_APPLICATION_CLIENT_ID are required.",
+        );
+      }
+      if (!pfxPath || !password) {
+        throw new Error("STORE_CERT_PFX_PATH and STORE_CERT_PASSWORD are required.");
+      }
+      const { privateKey, certificate } = await readPfxIdentity(pfxPath, password);
+      const getAccessToken = createTokenProvider(async () =>
+        fetchAccessToken({
+          tenantId,
+          clientId,
+          assertion: createClientAssertion({
+            clientId,
+            tokenUrl: tokenEndpoint(tenantId),
+            privateKey,
+            certificate,
+          }),
+        }),
+      );
       await waitForPublished({
-        submissionId: process.env.STORE_SUBMISSION_ID ?? "",
-        fetchSubmission: () => fetchSubmission(productId),
+        submissionId,
+        fetchSubmission: async () =>
+          fetchSubmissionStatus({
+            applicationId: productId,
+            submissionId,
+            accessToken: await getAccessToken(),
+          }),
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         timeoutMs: timeoutMinutes * 60_000,
         log: (message) => process.stdout.write(`${message}\n`),
