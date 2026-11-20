@@ -125,8 +125,24 @@ jobs:
           $updated = Get-Content submission-updated.json -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
           # Pass the JSON on stdin: an inline argument is capped by the 32,767-character Windows command line.
           # The returned submission includes FileUploadUrl (an upload SAS); keep it out of the log.
-          $updated | msstore submission updateMetadata $env:STORE_PRODUCT_ID - | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "msstore submission updateMetadata failed." }
+          $output = $updated | msstore submission updateMetadata $env:STORE_PRODUCT_ID - 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            $output | ForEach-Object { "$_" -replace 'https?://[^"\s]+', 'URL_REDACTED' }
+            throw "msstore submission updateMetadata failed."
+          }
+
+      # Read the draft back from Partner Center: a successful exit code alone does not
+      # prove the listings were stored. A mismatch stops the run before any commit.
+      - name: Verify listings in the pending submission
+        if: >-
+          env.DRY_RUN != 'true' &&
+          (env.METADATA_CHANGED == 'true' || env.SUBMISSION_STATUS == 'PendingCommit')
+        shell: pwsh
+        run: |
+          msstore submission get $env:STORE_PRODUCT_ID -m listings | Out-File -FilePath listings-readback.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission get (listings) failed." }
+          node scripts/verify-store-listings.mjs listings-readback.json store-assets/base-metadata.json
+          if ($LASTEXITCODE -ne 0) { throw "Store listings do not match store-assets/base-metadata.json." }
 
       # An unchanged listing is still committed when a draft is already pending, so an
       # earlier run's draft or a failed commit can be retried. A Published submission
