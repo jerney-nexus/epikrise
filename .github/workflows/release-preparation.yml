@@ -42,8 +42,29 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: node scripts/prepare-release.mjs "$RELEASE_VERSION"
+      - name: Check release branch does not already exist
+        env:
+          RELEASE_VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --heads origin "refs/heads/release/$RELEASE_VERSION" >/dev/null; then
+            echo "::error::Release branch release/$RELEASE_VERSION already exists."
+            echo "::error::Update it manually instead of rerunning preparation."
+            exit 1
+          else
+            status=$?
+            if [[ "$status" -ne 2 ]]; then
+              exit "$status"
+            fi
+          fi
       - name: Verify release metadata formatting
         run: pnpm format:check:file CHANGELOG.md src-tauri/tauri.conf.json
+      - name: Write release PR body
+        run: |
+          {
+            echo "Automated CalVer version bump and changelog update."
+            echo
+            node scripts/check-store-release-notes.mjs
+          } > "$RUNNER_TEMP/release-pr-body.md"
       # Pull requests opened with GITHUB_TOKEN do not trigger workflows, which
       # leaves the release PR macOS updater gate without an opened event.
       - uses: actions/create-github-app-token@v3
@@ -62,4 +83,4 @@ jobs:
           branch: release/${{ steps.prepare.outputs.version }}
           commit-message: "chore(release): ${{ steps.prepare.outputs.version }}"
           title: Release ${{ steps.prepare.outputs.version }}
-          body: Automated CalVer version bump and changelog update.
+          body-path: ${{ runner.temp }}/release-pr-body.md
