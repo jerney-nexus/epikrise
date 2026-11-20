@@ -1229,6 +1229,26 @@ describe("CalVer release versions", () => {
     ).toBe("");
   });
 
+  it("rejects oversized token errors even when stream cancellation never settles", async () => {
+    const originalFetch = globalThis.fetch;
+    const body = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(9_000));
+      },
+      cancel() {
+        return new Promise(() => {});
+      },
+    });
+    globalThis.fetch = async () => new Response(body, { status: 400 });
+    try {
+      await expect(
+        fetchAccessToken({ tenantId: "tenant", clientId: "client", assertion: "a" }),
+      ).rejects.toThrow("Partner Center token request failed with HTTP 400.");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("fails closed when the submission lists no readable package versions", () => {
     expect(() => assertReleaseAdvancesStoreVersions("2026.10.0", {})).toThrow(
       "No package versions",

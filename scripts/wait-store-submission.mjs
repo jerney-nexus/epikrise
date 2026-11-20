@@ -244,7 +244,7 @@ async function readBodyBestEffort(response) {
         result === null ||
         (!result.done && total + result.value.byteLength > ERROR_BODY_MAX_BYTES)
       ) {
-        await reader.cancel().catch(() => {});
+        reader.cancel().catch(() => {});
         return "";
       }
       if (result.done) {
