@@ -3611,6 +3611,7 @@ describe("signed release artifacts", () => {
     expect(pullRequestJob).toContain("peter-evans/create-pull-request@v8");
     expect(pullRequestJob).toContain("add-paths: store-assets/base-metadata.json");
     expect(pullRequestJob).toContain("fileuploadurl");
+    expect(workflow).toContain("workflow_call:");
   });
 
   it("reports Store release notes that still match the previous release", () => {
@@ -3678,6 +3679,15 @@ describe("signed release artifacts", () => {
     );
     expect(workflow).not.toContain("msstore publish");
     expect(workflow).toContain("env.SUBMISSION_STATUS == 'PendingCommit'");
+    expect(workflow).toContain("id: commit");
+    expect(workflow).toContain(
+      '"published=true" | Out-File -FilePath $env:GITHUB_OUTPUT',
+    );
+    const refreshJob = workflow.slice(workflow.indexOf("  refresh-base-metadata:"));
+    expect(refreshJob).toContain("needs: sync-metadata");
+    expect(refreshJob).toContain("if: needs.sync-metadata.outputs.published == 'true'");
+    expect(refreshJob).toContain("uses: ./.github/workflows/store-base-metadata.yml");
+    expect(refreshJob).toContain("secrets: inherit");
   });
 
   it("builds and attaches Store packages after successful tagged updater releases", async () => {
