@@ -215,17 +215,49 @@ export async function fetchAccessToken({ tenantId, clientId, assertion }) {
   return body.access_token;
 }
 
+const ERROR_BODY_TIMEOUT_MS = 5_000;
+const ERROR_BODY_MAX_BYTES = 8_192;
+
 /**
- * Reads an error response body, returning "" when the stream is unreadable so the
- * HTTP status still reports the failure.
+ * Reads an error response body for diagnostics only. Returns "" when the stream is
+ * unreadable, slower than the time limit, or larger than the byte limit, so the HTTP
+ * status still reports the failure without delaying the polling deadline.
  * @param {Response} response
  * @returns {Promise<string>}
  */
 async function readBodyBestEffort(response) {
+  if (!response.body) {
+    return "";
+  }
+  const reader = response.body.getReader();
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  const timedOut = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), ERROR_BODY_TIMEOUT_MS);
+  });
   try {
-    return await response.text();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const result = await Promise.race([reader.read(), timedOut]);
+      if (
+        result === null ||
+        (!result.done && total + result.value.byteLength > ERROR_BODY_MAX_BYTES)
+      ) {
+        await reader.cancel().catch(() => {});
+        return "";
+      }
+      if (result.done) {
+        break;
+      }
+      total += result.value.byteLength;
+      chunks.push(result.value);
+    }
+    return new TextDecoder().decode(Buffer.concat(chunks));
   } catch {
     return "";
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -266,7 +298,7 @@ export function describeTokenError(body) {
       : "";
   const description =
     typeof parsed?.error_description === "string" ? parsed.error_description : "";
-  const aadsts = description.match(/AADSTS\d+/)?.[0] ?? "";
+  const aadsts = description.match(/\bAADSTS\d{1,10}\b/)?.[0] ?? "";
   const parts = [error, aadsts].filter((part) => part !== "");
   return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }

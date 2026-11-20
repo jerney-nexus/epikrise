@@ -1191,13 +1191,14 @@ describe("CalVer release versions", () => {
   it("keeps the HTTP status when the token error body is unreadable", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () =>
-      ({
-        ok: false,
-        status: 400,
-        text: async () => {
-          throw new TypeError("body stream interrupted");
-        },
-      }) as unknown as Response;
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            controller.error(new TypeError("body stream interrupted"));
+          },
+        }),
+        { status: 400 },
+      );
     try {
       await expect(
         fetchAccessToken({ tenantId: "tenant", clientId: "client", assertion: "a" }),
@@ -1205,6 +1206,27 @@ describe("CalVer release versions", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("omits oversized token error bodies and oversized AADSTS numbers", async () => {
+    const originalFetch = globalThis.fetch;
+    const oversized = JSON.stringify({
+      error: "invalid_client",
+      error_description: "AADSTS700027 ".padEnd(9_000, "x"),
+    });
+    globalThis.fetch = async () => new Response(oversized, { status: 400 });
+    try {
+      await expect(
+        fetchAccessToken({ tenantId: "tenant", clientId: "client", assertion: "a" }),
+      ).rejects.toThrow("Partner Center token request failed with HTTP 400.");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(
+      describeTokenError(
+        JSON.stringify({ error_description: `AADSTS${"7".repeat(1_000)}` }),
+      ),
+    ).toBe("");
   });
 
   it("fails closed when the submission lists no readable package versions", () => {
