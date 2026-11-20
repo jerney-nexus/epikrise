@@ -1183,6 +1183,28 @@ describe("CalVer release versions", () => {
     ).toBe(" (invalid_client, AADSTS700027)");
     expect(describeTokenError("<html>gateway</html>")).toBe("");
     expect(describeTokenError(JSON.stringify({ error: "a b" }))).toBe("");
+    expect(
+      describeTokenError(JSON.stringify({ error: "synthetic_private_value" })),
+    ).toBe("");
+  });
+
+  it("keeps the HTTP status when the token error body is unreadable", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      ({
+        ok: false,
+        status: 400,
+        text: async () => {
+          throw new TypeError("body stream interrupted");
+        },
+      }) as unknown as Response;
+    try {
+      await expect(
+        fetchAccessToken({ tenantId: "tenant", clientId: "client", assertion: "a" }),
+      ).rejects.toThrow("Partner Center token request failed with HTTP 400.");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("fails closed when the submission lists no readable package versions", () => {

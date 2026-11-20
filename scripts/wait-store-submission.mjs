@@ -203,7 +203,7 @@ export async function fetchAccessToken({ tenantId, clientId, assertion }) {
     }),
   });
   if (!response.ok) {
-    const detail = describeTokenError(await response.text());
+    const detail = describeTokenError(await readBodyBestEffort(response));
     throw new Error(
       `Partner Center token request failed with HTTP ${response.status}${detail}.`,
     );
@@ -216,8 +216,40 @@ export async function fetchAccessToken({ tenantId, clientId, assertion }) {
 }
 
 /**
+ * Reads an error response body, returning "" when the stream is unreadable so the
+ * HTTP status still reports the failure.
+ * @param {Response} response
+ * @returns {Promise<string>}
+ */
+async function readBodyBestEffort(response) {
+  try {
+    return await response.text();
+  } catch {
+    return "";
+  }
+}
+
+/** OAuth 2.0 and Microsoft identity platform error codes that are safe to log. */
+const KNOWN_TOKEN_ERRORS = new Set([
+  "access_denied",
+  "authorization_pending",
+  "expired_token",
+  "invalid_client",
+  "invalid_grant",
+  "invalid_request",
+  "invalid_resource",
+  "invalid_scope",
+  "interaction_required",
+  "server_error",
+  "temporarily_unavailable",
+  "unauthorized_client",
+  "unsupported_grant_type",
+]);
+
+/**
  * Extracts only the OAuth error code and the AADSTS number from an error body, so the
  * log explains the rejection without echoing tokens, assertions, or full descriptions.
+ * Unknown error codes are omitted rather than logged verbatim.
  * @param {string} body
  * @returns {string} e.g. " (invalid_client, AADSTS700027)", or "" when unavailable
  */
@@ -228,11 +260,14 @@ export function describeTokenError(body) {
   } catch {
     return "";
   }
-  const error = typeof parsed?.error === "string" ? parsed.error : "";
+  const error =
+    typeof parsed?.error === "string" && KNOWN_TOKEN_ERRORS.has(parsed.error)
+      ? parsed.error
+      : "";
   const description =
     typeof parsed?.error_description === "string" ? parsed.error_description : "";
   const aadsts = description.match(/AADSTS\d+/)?.[0] ?? "";
-  const parts = [error, aadsts].filter((part) => /^[A-Za-z0-9_]+$/.test(part));
+  const parts = [error, aadsts].filter((part) => part !== "");
   return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }
 
