@@ -197,7 +197,7 @@ export async function fetchAccessToken({ tenantId, clientId, assertion }) {
     body: new URLSearchParams({
       grant_type: "client_credentials",
       client_id: clientId,
-      client_assertion_type: "urn:ietf:params:oauth2:client-assertion-type:jwt-bearer",
+      client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
       client_assertion: assertion,
       resource: PARTNER_CENTER_RESOURCE,
     }),

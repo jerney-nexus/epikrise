@@ -45,6 +45,7 @@ import {
   createClientAssertion,
   createTokenProvider,
   describeTokenError,
+  fetchAccessToken,
   fetchSubmissionStatus,
   waitForPublished,
 } from "../scripts/wait-store-submission.mjs";
@@ -1147,6 +1148,28 @@ describe("CalVer release versions", () => {
     clock = 50 * 60_000;
     await expect(getToken()).resolves.toBe("second");
     expect(requestToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends the RFC 7523 client assertion type when requesting a token", async () => {
+    const requests = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), body: String(init.body) });
+      return new Response(JSON.stringify({ access_token: "t" }), { status: 200 });
+    };
+    try {
+      await fetchAccessToken({
+        tenantId: "tenant",
+        clientId: "client",
+        assertion: "a",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const params = new URLSearchParams(requests[0].body);
+    expect(params.get("client_assertion_type")).toBe(
+      "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+    );
   });
 
   it("describes token rejections without echoing the response body", () => {
