@@ -44,6 +44,8 @@ import { assertSubmissionAcceptsMetadata } from "../scripts/check-store-submissi
 import {
   createClientAssertion,
   createTokenProvider,
+  describeTokenError,
+  fetchAccessToken,
   fetchSubmissionStatus,
   waitForPublished,
 } from "../scripts/wait-store-submission.mjs";
@@ -1146,6 +1148,137 @@ describe("CalVer release versions", () => {
     clock = 50 * 60_000;
     await expect(getToken()).resolves.toBe("second");
     expect(requestToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends the RFC 7523 client assertion type when requesting a token", async () => {
+    const requests: { url: string; body: string }[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), body: String(init?.body) });
+      return new Response(JSON.stringify({ access_token: "t" }), { status: 200 });
+    };
+    try {
+      await fetchAccessToken({
+        tenantId: "tenant",
+        clientId: "client",
+        assertion: "a",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const params = new URLSearchParams(requests[0].body);
+    expect(params.get("client_assertion_type")).toBe(
+      "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+    );
+  });
+
+  it("describes token rejections without echoing the response body", () => {
+    expect(
+      describeTokenError(
+        JSON.stringify({
+          error: "invalid_client",
+          error_description: "AADSTS700027: secret eyJhbGciOi... rejected",
+        }),
+      ),
+    ).toBe(" (invalid_client, AADSTS700027)");
+    expect(describeTokenError("<html>gateway</html>")).toBe("");
+    expect(describeTokenError(JSON.stringify({ error: "a b" }))).toBe("");
+    expect(
+      describeTokenError(JSON.stringify({ error: "synthetic_private_value" })),
+    ).toBe("");
+  });
+
+  it("keeps the HTTP status when the token error body is unreadable", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            controller.error(new TypeError("body stream interrupted"));
+          },
+        }),
+        { status: 400 },
+      );
+    try {
+      await expect(
+        fetchAccessToken({ tenantId: "tenant", clientId: "client", assertion: "a" }),
+      ).rejects.toThrow("Partner Center token request failed with HTTP 400.");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("omits oversized token error bodies and oversized AADSTS numbers", async () => {
+    const originalFetch = globalThis.fetch;
+    const oversized = JSON.stringify({
+      error: "invalid_client",
+      error_description: "AADSTS700027 ".padEnd(9_000, "x"),
+    });
+    globalThis.fetch = async () => new Response(oversized, { status: 400 });
+    try {
+      await expect(
+        fetchAccessToken({ tenantId: "tenant", clientId: "client", assertion: "a" }),
+      ).rejects.toThrow("Partner Center token request failed with HTTP 400.");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(
+      describeTokenError(
+        JSON.stringify({ error_description: `AADSTS${"7".repeat(1_000)}` }),
+      ),
+    ).toBe("");
+  });
+
+  it("rejects oversized token errors even when stream cancellation never settles", async () => {
+    const originalFetch = globalThis.fetch;
+    const body = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(9_000));
+      },
+      cancel() {
+        return new Promise(() => {});
+      },
+    });
+    globalThis.fetch = async () => new Response(body, { status: 400 });
+    try {
+      await expect(
+        fetchAccessToken({ tenantId: "tenant", clientId: "client", assertion: "a" }),
+      ).rejects.toThrow("Partner Center token request failed with HTTP 400.");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("rejects a stalled token error body after five seconds without awaiting cancellation", async () => {
+    vi.useFakeTimers();
+    const originalFetch = globalThis.fetch;
+    const stalled = new ReadableStream({
+      pull() {
+        return new Promise(() => {});
+      },
+      cancel() {
+        return new Promise(() => {});
+      },
+    });
+    globalThis.fetch = async () => new Response(stalled, { status: 400 });
+    let rejection: string | undefined;
+    const outcome = fetchAccessToken({
+      tenantId: "tenant",
+      clientId: "client",
+      assertion: "a",
+    }).catch((error: Error) => {
+      rejection = error.message;
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(rejection).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      await outcome;
+      expect(rejection).toBe("Partner Center token request failed with HTTP 400.");
+    } finally {
+      globalThis.fetch = originalFetch;
+      vi.useRealTimers();
+    }
   });
 
   it("fails closed when the submission lists no readable package versions", () => {

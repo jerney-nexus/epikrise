@@ -197,14 +197,15 @@ export async function fetchAccessToken({ tenantId, clientId, assertion }) {
     body: new URLSearchParams({
       grant_type: "client_credentials",
       client_id: clientId,
-      client_assertion_type: "urn:ietf:params:oauth2:client-assertion-type:jwt-bearer",
+      client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
       client_assertion: assertion,
       resource: PARTNER_CENTER_RESOURCE,
     }),
   });
   if (!response.ok) {
+    const detail = describeTokenError(await readBodyBestEffort(response));
     throw new Error(
-      `Partner Center token request failed with HTTP ${response.status}.`,
+      `Partner Center token request failed with HTTP ${response.status}${detail}.`,
     );
   }
   const body = await response.json();
@@ -212,6 +213,94 @@ export async function fetchAccessToken({ tenantId, clientId, assertion }) {
     throw new Error("Partner Center token response has no access token.");
   }
   return body.access_token;
+}
+
+const ERROR_BODY_TIMEOUT_MS = 5_000;
+const ERROR_BODY_MAX_BYTES = 8_192;
+
+/**
+ * Reads an error response body for diagnostics only. Returns "" when the stream is
+ * unreadable, slower than the time limit, or larger than the byte limit, so the HTTP
+ * status still reports the failure without delaying the polling deadline.
+ * @param {Response} response
+ * @returns {Promise<string>}
+ */
+async function readBodyBestEffort(response) {
+  if (!response.body) {
+    return "";
+  }
+  const reader = response.body.getReader();
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  const timedOut = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), ERROR_BODY_TIMEOUT_MS);
+  });
+  try {
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const result = await Promise.race([reader.read(), timedOut]);
+      if (
+        result === null ||
+        (!result.done && total + result.value.byteLength > ERROR_BODY_MAX_BYTES)
+      ) {
+        reader.cancel().catch(() => {});
+        return "";
+      }
+      if (result.done) {
+        break;
+      }
+      total += result.value.byteLength;
+      chunks.push(result.value);
+    }
+    return new TextDecoder().decode(Buffer.concat(chunks));
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** OAuth 2.0 and Microsoft identity platform error codes that are safe to log. */
+const KNOWN_TOKEN_ERRORS = new Set([
+  "access_denied",
+  "authorization_pending",
+  "expired_token",
+  "invalid_client",
+  "invalid_grant",
+  "invalid_request",
+  "invalid_resource",
+  "invalid_scope",
+  "interaction_required",
+  "server_error",
+  "temporarily_unavailable",
+  "unauthorized_client",
+  "unsupported_grant_type",
+]);
+
+/**
+ * Extracts only the OAuth error code and the AADSTS number from an error body, so the
+ * log explains the rejection without echoing tokens, assertions, or full descriptions.
+ * Unknown error codes are omitted rather than logged verbatim.
+ * @param {string} body
+ * @returns {string} e.g. " (invalid_client, AADSTS700027)", or "" when unavailable
+ */
+export function describeTokenError(body) {
+  let parsed;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return "";
+  }
+  const error =
+    typeof parsed?.error === "string" && KNOWN_TOKEN_ERRORS.has(parsed.error)
+      ? parsed.error
+      : "";
+  const description =
+    typeof parsed?.error_description === "string" ? parsed.error_description : "";
+  const aadsts = description.match(/\bAADSTS\d{1,10}\b/)?.[0] ?? "";
+  const parts = [error, aadsts].filter((part) => part !== "");
+  return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }
 
 /** @param {string} tenantId */
