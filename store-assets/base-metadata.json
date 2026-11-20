@@ -44,7 +44,7 @@
           "Fallinhalte an externe Endpunkte nur nach Bestätigung je Fall, Anbieter und Endpunkt",
           "Oberfläche auf Deutsch, Englisch, Französisch, Italienisch und Spanisch"
         ],
-        "ReleaseNotes": "Wartungsversion ohne Änderungen an der App selbst. Sie aktualisiert, wie Epikrise für den Microsoft Store vorbereitet und eingereicht wird.",
+        "ReleaseNotes": "Wartungsversion ohne Änderungen an der App selbst. Aktualisierungen der Store-Angaben werden nach der Veröffentlichung geprüft, und die Synchronisierung wartet, bis die Einreichung veröffentlicht ist.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-09 014756.png",
@@ -125,7 +125,7 @@
           "Case content sent to remote endpoints only after confirmation per case, provider and endpoint",
           "Interface in German, English, French, Italian and Spanish"
         ],
-        "ReleaseNotes": "Maintenance release with no changes to the app itself. It updates how Epikrise is prepared and submitted to the Microsoft Store.",
+        "ReleaseNotes": "Maintenance release with no changes to the app itself. Store listing updates are verified after publication, and the sync waits until the submission is published.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-09 023845.png",
@@ -206,7 +206,7 @@
           "Contenu de dossier envoyé à des points de terminaison externes seulement après confirmation par dossier, fournisseur et point de terminaison",
           "Interface en allemand, anglais, français, italien et espagnol"
         ],
-        "ReleaseNotes": "Version de maintenance sans modification de l’application elle-même. Elle met à jour la préparation et la soumission d’Epikrise sur le Microsoft Store.",
+        "ReleaseNotes": "Version de maintenance sans modification de l’application elle-même. Les mises à jour de la fiche du Microsoft Store sont vérifiées après publication, et la synchronisation attend la publication de la soumission.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-17 155300.png",
@@ -287,7 +287,7 @@
           "Contenuti dei casi inviati a endpoint remoti solo dopo conferma per caso, fornitore ed endpoint",
           "Interfaccia in tedesco, inglese, francese, italiano e spagnolo"
         ],
-        "ReleaseNotes": "Versione di manutenzione senza modifiche all’app stessa. Aggiorna la preparazione e l’invio di Epikrise al Microsoft Store.",
+        "ReleaseNotes": "Versione di manutenzione senza modifiche all’app stessa. Gli aggiornamenti della scheda del Microsoft Store vengono verificati dopo la pubblicazione, e la sincronizzazione attende la pubblicazione dell’invio.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-17 155540.png",
@@ -368,7 +368,7 @@
           "Contenido de los casos enviado a endpoints remotos solo tras confirmación por caso, proveedor y endpoint",
           "Interfaz en alemán, inglés, francés, italiano y español"
         ],
-        "ReleaseNotes": "Versión de mantenimiento sin cambios en la propia aplicación. Actualiza cómo se prepara y envía Epikrise a Microsoft Store.",
+        "ReleaseNotes": "Versión de mantenimiento sin cambios en la propia aplicación. Las actualizaciones de la ficha de Microsoft Store se verifican tras la publicación, y la sincronización espera a que el envío se publique.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-17 155604.png",
