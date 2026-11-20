@@ -12,8 +12,7 @@ on:
   workflow_call:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: store-base-metadata
