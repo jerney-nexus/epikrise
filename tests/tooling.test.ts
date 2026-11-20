@@ -41,6 +41,7 @@ import {
   renderReleaseNotesChecklist,
 } from "../scripts/check-store-release-notes.mjs";
 import { assertSubmissionAcceptsMetadata } from "../scripts/check-store-submission-state.mjs";
+import { waitForPublished } from "../scripts/wait-store-submission.mjs";
 import { assertReleaseAdvancesStoreVersions } from "../scripts/check-store-version.mjs";
 import { redactFileUploadUrls } from "../scripts/redact-store-submission.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
@@ -938,6 +939,52 @@ describe("CalVer release versions", () => {
       "submission is Certification",
     );
     expect(() => assertSubmissionAcceptsMetadata({})).toThrow("no readable Status");
+  });
+
+  it("waits through certification until the submission is Published", async () => {
+    const statuses = ["Certification", "Certification", "Published"];
+    const sleeps = [];
+    let clock = 0;
+
+    const status = await waitForPublished({
+      fetchStatus: async () => statuses.shift(),
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+      now: () => clock,
+      timeoutMs: 3_600_000,
+      intervalMs: 60_000,
+    });
+
+    expect(status).toBe("Published");
+    expect(sleeps).toEqual([60_000, 60_000]);
+  });
+
+  it("fails when the submission is rejected", async () => {
+    await expect(
+      waitForPublished({
+        fetchStatus: async () => "Failed",
+        sleep: async () => {},
+        timeoutMs: 3_600_000,
+      }),
+    ).rejects.toThrow("submission is Failed");
+  });
+
+  it("times out when the submission never reaches Published", async () => {
+    let clock = 0;
+
+    await expect(
+      waitForPublished({
+        fetchStatus: async () => "Certification",
+        sleep: async (ms) => {
+          clock += ms;
+        },
+        now: () => clock,
+        timeoutMs: 180_000,
+        intervalMs: 60_000,
+      }),
+    ).rejects.toThrow("last status Certification");
   });
 
   it("fails closed when the submission lists no readable package versions", () => {
@@ -3700,6 +3747,8 @@ describe("signed release artifacts", () => {
     expect(workflow).not.toContain("updateMetadata");
     expect(workflow).not.toContain("update-store-metadata");
     expect(workflow).toContain("msstore submission publish");
+    expect(workflow).toContain("node scripts/wait-store-submission.mjs");
+    expect(workflow).not.toContain("msstore submission poll");
     expect(workflow).toContain("- Signed updater release");
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(workflow).toContain(
