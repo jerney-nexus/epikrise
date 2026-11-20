@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2026.11.8] - 2026-11-20
+
 ## [2026.11.7] - 2026-11-20
 
 ### 🐛 Bug Fixes
@@ -564,4 +566,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 [2026.11.5]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.4...v2026.11.5
 [2026.11.6]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.5...v2026.11.6
 [2026.11.7]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.6...v2026.11.7
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.7...HEAD
+[2026.11.8]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.7...v2026.11.8
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.8...HEAD
