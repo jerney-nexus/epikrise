@@ -29,9 +29,16 @@ if (!listingsPath || !basePath) {
 
 const listings = readJson(listingsPath).Listings ?? {};
 const base = readJson(basePath);
+const baseLocales = Object.entries(base.Listings ?? {});
+if (baseLocales.length === 0) {
+  process.stderr.write(
+    `verify-store-listings: ${basePath} has no locale listings to verify\n`,
+  );
+  process.exit(2);
+}
 const mismatches = [];
 
-for (const [locale, source] of Object.entries(base.Listings ?? {})) {
+for (const [locale, source] of baseLocales) {
   const target = listings[locale]?.BaseListing;
   if (!target) {
     mismatches.push(`${locale}: missing from the submission`);

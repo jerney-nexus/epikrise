@@ -856,13 +856,13 @@ describe("CalVer release versions", () => {
       },
     };
 
-    async function runVerifier(listings: unknown) {
+    async function runVerifier(listings: unknown, baseMetadata: unknown = base) {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-store-verify-"));
       try {
         const listingsPath = path.join(directory, "listings.json");
         const basePath = path.join(directory, "base.json");
         await writeFile(listingsPath, JSON.stringify(listings));
-        await writeFile(basePath, JSON.stringify(base));
+        await writeFile(basePath, JSON.stringify(baseMetadata));
         try {
           const { stdout } = await execFile("node", [verifier, listingsPath, basePath]);
           return { code: 0, stdout, stderr: "" };
@@ -916,6 +916,16 @@ describe("CalVer release versions", () => {
 
       expect(result.code).toBe(1);
       expect(result.stderr).toContain("en-us: missing from the submission");
+    });
+
+    it("fails closed when the base metadata has no locale listings", async () => {
+      const result = await runVerifier(
+        { Listings: { "en-us": { BaseListing: {} } } },
+        { Listings: {} },
+      );
+
+      expect(result.code).toBe(2);
+      expect(result.stdout).toBe("");
     });
   });
 
