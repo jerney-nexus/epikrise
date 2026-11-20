@@ -3172,7 +3172,7 @@ describe("signed release artifacts", () => {
 
   it("requests updater-enabled app bundles for both macOS release targets", async () => {
     const workflow = await readFile(
-      path.join(repoRoot, ".github/workflows/signed-release.yml"),
+      path.join(repoRoot, ".github/workflows/updater-build.yml"),
       "utf8",
     );
     for (const target of ["x86_64-apple-darwin", "aarch64-apple-darwin"]) {
@@ -3282,10 +3282,17 @@ describe("signed release artifacts", () => {
   });
 
   it("keeps signed release publication separate from diagnostic builds", async () => {
-    const releaseWorkflow = await readFile(
+    // The matrix build lives in the reusable workflow; prepend it so the signed-release
+    // job slices below stay contiguous.
+    const updaterBuildWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/updater-build.yml"),
+      "utf8",
+    );
+    const signedReleaseWorkflow = await readFile(
       path.join(repoRoot, ".github/workflows/signed-release.yml"),
       "utf8",
     );
+    const releaseWorkflow = `${updaterBuildWorkflow}\n${signedReleaseWorkflow}`;
     const diagnosticWorkflow = await readFile(
       path.join(repoRoot, ".github/workflows/desktop-builds.yml"),
       "utf8",
@@ -3347,8 +3354,8 @@ describe("signed release artifacts", () => {
     expect(releaseWorkflow).toMatch(
       /approve-builds:\s+[\s\S]*?needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality/,
     );
-    expect(releaseWorkflow).toMatch(
-      /\n {2}build:\s+needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality\s+name: Build/,
+    expect(signedReleaseWorkflow).toMatch(
+      /\n {2}build:\s+name: Build signed updater packages\s+needs:\s+- validate\s+- verify-frontend\s+- verify-rust\s+- verify-security\s+- verify-quality\s+permissions:\s+contents: read\s+uses: \.\/\.github\/workflows\/updater-build\.yml\s+secrets: inherit/,
     );
     expect(releaseWorkflow).not.toMatch(/build:\s+needs: approve-builds/);
     expect(releaseWorkflow).toMatch(/store-msix:\s+[\s\S]*?needs: \[approve-builds\]/);
