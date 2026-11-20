@@ -841,6 +841,94 @@ describe("CalVer release versions", () => {
     }
   });
 
+  describe("Store listing read-back verification", () => {
+    const verifier = path.join(process.cwd(), "scripts", "verify-store-listings.mjs");
+    const base = {
+      Listings: {
+        "en-us": {
+          BaseListing: {
+            Features: ["Feature one"],
+            Keywords: ["keyword"],
+            ReleaseNotes: "Notes",
+            Images: [{ FileName: "icon.png" }],
+          },
+        },
+      },
+    };
+
+    async function runVerifier(listings: unknown, baseMetadata: unknown = base) {
+      const directory = await mkdtemp(path.join(tmpdir(), "epikrise-store-verify-"));
+      try {
+        const listingsPath = path.join(directory, "listings.json");
+        const basePath = path.join(directory, "base.json");
+        await writeFile(listingsPath, JSON.stringify(listings));
+        await writeFile(basePath, JSON.stringify(baseMetadata));
+        try {
+          const { stdout } = await execFile("node", [verifier, listingsPath, basePath]);
+          return { code: 0, stdout, stderr: "" };
+        } catch (error) {
+          const failure = error as { code: number; stderr: string };
+          return { code: failure.code, stdout: "", stderr: failure.stderr };
+        }
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+
+    it("passes when every base text field matches the submission", async () => {
+      const result = await runVerifier({
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              Features: ["Feature one"],
+              Keywords: ["keyword"],
+              ReleaseNotes: "Notes",
+            },
+          },
+        },
+      });
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("matches base-metadata.json");
+    });
+
+    it("names the stale field and locale without printing values", async () => {
+      const result = await runVerifier({
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              Features: ["Feature one"],
+              Keywords: [],
+              ReleaseNotes: "Old 2026.11.6 notes",
+            },
+          },
+        },
+      });
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("en-us Keywords");
+      expect(result.stderr).toContain("en-us ReleaseNotes");
+      expect(result.stderr).not.toContain("2026.11.6");
+    });
+
+    it("fails when a base locale is absent from the submission", async () => {
+      const result = await runVerifier({ Listings: {} });
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("en-us: missing from the submission");
+    });
+
+    it("fails closed when the base metadata has no locale listings", async () => {
+      const result = await runVerifier(
+        { Listings: { "en-us": { BaseListing: {} } } },
+        { Listings: {} },
+      );
+
+      expect(result.code).toBe(2);
+      expect(result.stdout).toBe("");
+    });
+  });
+
   it("only updates metadata on a published or uncommitted Store submission", () => {
     expect(assertSubmissionAcceptsMetadata({ Status: "Published" })).toBe("Published");
     expect(assertSubmissionAcceptsMetadata({ Status: "PendingCommit" })).toBe(
@@ -3580,7 +3668,11 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain("environment:\n      name: store-partner-center");
     expect(workflow).toMatch(/commit:[\s\S]*?default: false/);
     expect(workflow).toContain("check-store-submission-state.mjs");
-    expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - | Out-Null");
+    expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - 2>&1");
+    expect(workflow).toContain("verify-store-listings.mjs listings-readback.json");
+    expect(workflow).toContain(
+      "msstore submission get $env:STORE_PRODUCT_ID -m listings",
+    );
     expect(workflow).toContain(
       "github.event_name == 'workflow_dispatch' && inputs.commit",
     );
