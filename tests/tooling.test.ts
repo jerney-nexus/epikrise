@@ -1249,6 +1249,38 @@ describe("CalVer release versions", () => {
     }
   });
 
+  it("rejects a stalled token error body after five seconds without awaiting cancellation", async () => {
+    vi.useFakeTimers();
+    const originalFetch = globalThis.fetch;
+    const stalled = new ReadableStream({
+      pull() {
+        return new Promise(() => {});
+      },
+      cancel() {
+        return new Promise(() => {});
+      },
+    });
+    globalThis.fetch = async () => new Response(stalled, { status: 400 });
+    let rejection: string | undefined;
+    const outcome = fetchAccessToken({
+      tenantId: "tenant",
+      clientId: "client",
+      assertion: "a",
+    }).catch((error: Error) => {
+      rejection = error.message;
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(rejection).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      await outcome;
+      expect(rejection).toBe("Partner Center token request failed with HTTP 400.");
+    } finally {
+      globalThis.fetch = originalFetch;
+      vi.useRealTimers();
+    }
+  });
+
   it("fails closed when the submission lists no readable package versions", () => {
     expect(() => assertReleaseAdvancesStoreVersions("2026.10.0", {})).toThrow(
       "No package versions",
