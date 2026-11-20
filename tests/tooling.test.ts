@@ -943,7 +943,7 @@ describe("CalVer release versions", () => {
 
   it("waits through certification until the submission is Published", async () => {
     const statuses = ["Certification", "Certification", "Published"];
-    const sleeps = [];
+    const sleeps: number[] = [];
     let clock = 0;
 
     const status = await waitForPublished({
