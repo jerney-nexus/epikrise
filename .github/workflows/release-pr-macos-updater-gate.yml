@@ -16,7 +16,7 @@ jobs:
   release-pr-macos-updater-bundle-smoke:
     name: Release PR macOS updater bundle smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 65
+    timeout-minutes: 125
     steps:
       - name: Pass non-release pull requests immediately
         if: ${{ !startsWith(github.head_ref, 'release/') }}

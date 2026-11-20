@@ -25,7 +25,7 @@ import { pathToFileURL } from "node:url";
 
 const requiredJobs = ["Build x86_64-apple-darwin", "Build aarch64-apple-darwin"];
 const workflowFile = "macos-updater-bundle-smoke.yml";
-const timeoutMs = 60 * 60 * 1000;
+const timeoutMs = 120 * 60 * 1000;
 const pollIntervalMs = 60 * 1000;
 const requestTimeoutMs = 30 * 1000;
 const workflowPath = ".github/workflows/macos-updater-bundle-smoke.yml";
