@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, verify } from "node:crypto";
 import { execFile as execFileCallback } from "node:child_process";
 import {
   chmod,
@@ -41,6 +41,12 @@ import {
   renderReleaseNotesChecklist,
 } from "../scripts/check-store-release-notes.mjs";
 import { assertSubmissionAcceptsMetadata } from "../scripts/check-store-submission-state.mjs";
+import {
+  createClientAssertion,
+  createTokenProvider,
+  fetchSubmissionStatus,
+  waitForPublished,
+} from "../scripts/wait-store-submission.mjs";
 import { assertReleaseAdvancesStoreVersions } from "../scripts/check-store-version.mjs";
 import { redactFileUploadUrls } from "../scripts/redact-store-submission.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
@@ -938,6 +944,208 @@ describe("CalVer release versions", () => {
       "submission is Certification",
     );
     expect(() => assertSubmissionAcceptsMetadata({})).toThrow("no readable Status");
+  });
+
+  it("waits through certification until the captured submission is Published", async () => {
+    const responses = [
+      { id: "sub-2", status: "Certification" },
+      { id: "sub-2", status: "Certification" },
+      { id: "sub-2", status: "Published" },
+    ];
+    const sleeps: number[] = [];
+    let clock = 0;
+
+    const status = await waitForPublished({
+      submissionId: "sub-2",
+      fetchSubmission: async () =>
+        responses.shift() ?? { id: "sub-2", status: undefined },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+      now: () => clock,
+      timeoutMs: 3_600_000,
+      intervalMs: 60_000,
+    });
+
+    expect(status).toBe("Published");
+    expect(sleeps).toEqual([60_000, 60_000]);
+  });
+
+  it("ignores an older Published submission while the captured one is in certification", async () => {
+    const responses = [
+      { id: "sub-1", status: "Published" },
+      { id: "sub-1", status: "Published" },
+      { id: "sub-2", status: "Published" },
+    ];
+    const sleeps: number[] = [];
+    let clock = 0;
+
+    const status = await waitForPublished({
+      submissionId: "sub-2",
+      fetchSubmission: async () =>
+        responses.shift() ?? { id: "sub-2", status: undefined },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+      now: () => clock,
+      timeoutMs: 3_600_000,
+      intervalMs: 60_000,
+    });
+
+    expect(status).toBe("Published");
+    expect(sleeps).toEqual([60_000, 60_000]);
+  });
+
+  it("fails closed when the submission ID is missing from the response", async () => {
+    await expect(
+      waitForPublished({
+        submissionId: "sub-2",
+        fetchSubmission: async () => ({ id: undefined, status: "Published" }),
+        sleep: async () => {},
+        timeoutMs: 3_600_000,
+      }),
+    ).rejects.toThrow("no submission ID");
+  });
+
+  it("fails closed when no submission ID was captured before publish", async () => {
+    await expect(
+      waitForPublished({
+        submissionId: "",
+        fetchSubmission: async () => ({ id: "sub-2", status: "Published" }),
+        sleep: async () => {},
+        timeoutMs: 3_600_000,
+      }),
+    ).rejects.toThrow("No submission ID was captured");
+  });
+
+  it("fails when the submission is rejected", async () => {
+    await expect(
+      waitForPublished({
+        submissionId: "sub-2",
+        fetchSubmission: async () => ({ id: "sub-2", status: "Failed" }),
+        sleep: async () => {},
+        timeoutMs: 3_600_000,
+      }),
+    ).rejects.toThrow("submission is Failed");
+  });
+
+  it("times out when the submission never reaches Published", async () => {
+    let clock = 0;
+
+    await expect(
+      waitForPublished({
+        submissionId: "sub-2",
+        fetchSubmission: async () => ({ id: "sub-2", status: "Certification" }),
+        sleep: async (ms) => {
+          clock += ms;
+        },
+        now: () => clock,
+        timeoutMs: 180_000,
+        intervalMs: 60_000,
+      }),
+    ).rejects.toThrow("last status Certification");
+  });
+
+  it("signs a certificate client assertion that verifies with the certificate key", () => {
+    const { publicKey, privateKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+    });
+    const raw = Buffer.from("certificate-der");
+
+    const assertion = createClientAssertion({
+      clientId: "client-1",
+      tokenUrl: "https://login.example/tenant/oauth2/token",
+      privateKey,
+      certificate: { raw },
+      nowMs: 1_700_000_000_000,
+    });
+    const [headerPart, payloadPart, signaturePart] = assertion.split(".");
+    const decode = (part: string) =>
+      JSON.parse(Buffer.from(part, "base64url").toString());
+
+    expect(decode(headerPart)).toEqual({
+      alg: "RS256",
+      typ: "JWT",
+      x5t: createHash("sha1").update(raw).digest("base64url"),
+    });
+    expect(decode(payloadPart)).toMatchObject({
+      aud: "https://login.example/tenant/oauth2/token",
+      iss: "client-1",
+      sub: "client-1",
+      nbf: 1_700_000_000,
+      exp: 1_700_000_300,
+    });
+    expect(
+      verify(
+        "sha256",
+        Buffer.from(`${headerPart}.${payloadPart}`),
+        publicKey,
+        Buffer.from(signaturePart, "base64url"),
+      ),
+    ).toBe(true);
+  });
+
+  it("reads the submission status for the captured ID and fails closed on errors", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    try {
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: "Published", statusDetails: {} }), {
+          status: 200,
+        }),
+      );
+      await expect(
+        fetchSubmissionStatus({
+          applicationId: "9NJKHXWSZ8LJ",
+          submissionId: "sub-2",
+          accessToken: "token-1",
+        }),
+      ).resolves.toEqual({ id: "sub-2", status: "Published" });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        "https://manage.devcenter.microsoft.com/v1.0/my/applications/9NJKHXWSZ8LJ/submissions/sub-2/status",
+      );
+      expect((init?.headers as Record<string, string>).Authorization).toBe(
+        "Bearer token-1",
+      );
+
+      fetchMock.mockResolvedValueOnce(new Response("{}", { status: 404 }));
+      await expect(
+        fetchSubmissionStatus({
+          applicationId: "9NJKHXWSZ8LJ",
+          submissionId: "sub-2",
+          accessToken: "token-1",
+        }),
+      ).rejects.toThrow("HTTP 404");
+
+      fetchMock.mockResolvedValueOnce(new Response("{}", { status: 200 }));
+      await expect(
+        fetchSubmissionStatus({
+          applicationId: "9NJKHXWSZ8LJ",
+          submissionId: "sub-2",
+          accessToken: "token-1",
+        }),
+      ).rejects.toThrow("no status");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("reuses the access token until it nears expiry", async () => {
+    const requestToken = vi
+      .fn()
+      .mockResolvedValueOnce("first")
+      .mockResolvedValueOnce("second");
+    let clock = 0;
+    const getToken = createTokenProvider(requestToken, () => clock);
+
+    await expect(getToken()).resolves.toBe("first");
+    clock = 49 * 60_000;
+    await expect(getToken()).resolves.toBe("first");
+    clock = 50 * 60_000;
+    await expect(getToken()).resolves.toBe("second");
+    expect(requestToken).toHaveBeenCalledTimes(2);
   });
 
   it("fails closed when the submission lists no readable package versions", () => {
@@ -3700,6 +3908,8 @@ describe("signed release artifacts", () => {
     expect(workflow).not.toContain("updateMetadata");
     expect(workflow).not.toContain("update-store-metadata");
     expect(workflow).toContain("msstore submission publish");
+    expect(workflow).toContain("node scripts/wait-store-submission.mjs");
+    expect(workflow).not.toContain("msstore submission poll");
     expect(workflow).toContain("- Signed updater release");
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(workflow).toContain(
