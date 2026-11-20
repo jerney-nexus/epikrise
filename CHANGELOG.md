@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- Store listing metadata is synced by a separate workflow, so a missing locale or screenshot no longer leaves the Microsoft Store package submission uncommitted
+
 ## [2026.11.6] - 2026-11-17
 
 ### 🚀 Features

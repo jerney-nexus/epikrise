@@ -36,6 +36,7 @@ import {
   updateWorkspaceLockVersions,
   validateCalverVersion,
 } from "../scripts/prepare-release.mjs";
+import { assertSubmissionAcceptsMetadata } from "../scripts/check-store-submission-state.mjs";
 import { assertReleaseAdvancesStoreVersions } from "../scripts/check-store-version.mjs";
 import { redactFileUploadUrls } from "../scripts/redact-store-submission.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
@@ -804,6 +805,47 @@ describe("CalVer release versions", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it("writes nothing when the base metadata already matches the submission", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-store-metadata-"));
+    const script = path.join(process.cwd(), "scripts", "update-store-metadata.mjs");
+    const listing = {
+      BaseListing: {
+        Title: "Epikrise",
+        Images: [{ FileName: "icon.png", FileStatus: "Uploaded" }],
+      },
+    };
+
+    try {
+      const submissionPath = path.join(directory, "submission.json");
+      const basePath = path.join(directory, "base-metadata.json");
+      await writeFile(
+        submissionPath,
+        JSON.stringify({ Listings: { "en-us": listing } }),
+      );
+      await writeFile(basePath, JSON.stringify({ Listings: { "en-us": listing } }));
+      const { stdout, stderr } = await execFile("node", [
+        script,
+        submissionPath,
+        basePath,
+      ]);
+      expect(stdout).toBe("");
+      expect(stderr).toContain("nothing to update");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("only updates metadata on a published or uncommitted Store submission", () => {
+    expect(assertSubmissionAcceptsMetadata({ Status: "Published" })).toBe("Published");
+    expect(assertSubmissionAcceptsMetadata({ Status: "PendingCommit" })).toBe(
+      "PendingCommit",
+    );
+    expect(() => assertSubmissionAcceptsMetadata({ Status: "Certification" })).toThrow(
+      "submission is Certification",
+    );
+    expect(() => assertSubmissionAcceptsMetadata({})).toThrow("no readable Status");
   });
 
   it("fails closed when the submission lists no readable package versions", () => {
@@ -3464,6 +3506,27 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain("environment:\n      name: store-partner-center");
   });
 
+  it("syncs Store metadata in a separate workflow that only commits on request", async () => {
+    const workflow = await readFile(
+      path.join(repoRoot, ".github/workflows/store-metadata.yml"),
+      "utf8",
+    );
+
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("- Store submission packages");
+    expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
+    expect(workflow).toContain("group: store-partner-center-submission");
+    expect(workflow).toContain("environment:\n      name: store-partner-center");
+    expect(workflow).toMatch(/commit:[\s\S]*?default: false/);
+    expect(workflow).toContain("check-store-submission-state.mjs");
+    expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - | Out-Null");
+    expect(workflow).toContain(
+      "github.event_name == 'workflow_dispatch' && inputs.commit",
+    );
+    expect(workflow).not.toContain("msstore publish");
+    expect(workflow).toContain("env.SUBMISSION_STATUS == 'PendingCommit'");
+  });
+
   it("builds and attaches Store packages after successful tagged updater releases", async () => {
     const workflow = await readFile(
       path.join(repoRoot, ".github/workflows/store-submission.yml"),
@@ -3471,7 +3534,9 @@ describe("signed release artifacts", () => {
     );
 
     expect(workflow).toContain("workflow_run:");
-    expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - | Out-Null");
+    expect(workflow).not.toContain("updateMetadata");
+    expect(workflow).not.toContain("update-store-metadata");
+    expect(workflow).toContain("msstore submission publish");
     expect(workflow).toContain("- Signed updater release");
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(workflow).toContain(

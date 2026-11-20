@@ -3,9 +3,11 @@
 // Partner Center submission JSON. The submission keeps its own packages.
 // Usage: node scripts/update-store-metadata.mjs <submission.json> <base-metadata.json>
 // Writes the updated submission JSON to stdout and fails when a base image is
-// not uploaded.
+// not uploaded. Writes nothing (exit 0) when the listings already match, so the
+// caller does not create a draft for a no-op.
 
 import { readFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 
 // Every BaseListing field msstore accepts, except Images (handled below).
 const LISTING_FIELDS = [
@@ -46,6 +48,7 @@ const submission = readJson(submissionPath);
 const base = readJson(basePath);
 
 const listings = submission.Listings ?? {};
+const original = structuredClone(listings);
 const notUploaded = [];
 
 for (const [locale, source] of Object.entries(base.Listings ?? {})) {
@@ -76,4 +79,10 @@ if (notUploaded.length > 0) {
   fail(`images not uploaded in Partner Center:\n  ${notUploaded.join("\n  ")}`);
 }
 
-process.stdout.write(`${JSON.stringify(submission, null, 2)}\n`);
+if (isDeepStrictEqual(original, listings)) {
+  process.stderr.write(
+    "update-store-metadata: listings already match; nothing to update\n",
+  );
+} else {
+  process.stdout.write(`${JSON.stringify(submission, null, 2)}\n`);
+}

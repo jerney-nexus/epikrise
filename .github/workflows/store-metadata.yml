@@ -1,0 +1,143 @@
+name: Store metadata
+run-name: Store metadata ${{ github.event.workflow_run.head_branch || github.ref_name }}
+
+# Syncs the listing text and images from store-assets/base-metadata.json into
+# the Partner Center submission. It is separate from Store submission packages,
+# so a missing locale or screenshot cannot block a package upload. Automatic
+# runs follow a successful package submission and only update the draft; commit
+# the draft by hand in Partner Center, or dispatch this workflow with commit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit the updated submission and wait for certification
+        type: boolean
+        default: false
+      dry_run:
+        description: Upload the merged submission (without upload URLs) as an artifact and change nothing in Partner Center
+        type: boolean
+        default: false
+  workflow_run:
+    workflows:
+      - Store submission packages
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-partner-center-submission
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  sync-metadata:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    name: Sync Store listing metadata
+    environment:
+      name: store-partner-center
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
+      COMMIT_SUBMISSION: ${{ github.event_name == 'workflow_dispatch' && inputs.commit }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Require Store product ID
+        shell: pwsh
+        run: |
+          if (-not $env:STORE_PRODUCT_ID) {
+            throw "STORE_PRODUCT_ID repository variable is not set."
+          }
+
+      - uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
+
+      - name: Configure Partner Center credentials
+        env:
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          SELLER_ID: ${{ secrets.SELLER_ID }}
+          AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          AZURE_AD_CERTIFICATE_PFX_BASE64: ${{ secrets.AZURE_AD_CERTIFICATE_PFX_BASE64 }}
+          AZURE_AD_CERTIFICATE_PASSWORD: ${{ secrets.AZURE_AD_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "partner-center.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:AZURE_AD_CERTIFICATE_PFX_BASE64))
+          msstore reconfigure `
+            --tenantId $env:AZURE_AD_TENANT_ID `
+            --sellerId $env:SELLER_ID `
+            --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID `
+            --certificateFilePath $pfxPath `
+            --certificatePassword $env:AZURE_AD_CERTIFICATE_PASSWORD
+          if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed." }
+
+      - name: Require an editable submission
+        shell: pwsh
+        run: |
+          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
+          node scripts/check-store-submission-state.mjs submission.json
+          if ($LASTEXITCODE -ne 0) { throw "Store submission state guard failed." }
+          $status = (Get-Content submission.json -Raw | ConvertFrom-Json).Status
+          "SUBMISSION_STATUS=$status" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Merge listing metadata from store-assets
+        shell: pwsh
+        run: |
+          $merged = node scripts/update-store-metadata.mjs submission.json store-assets/base-metadata.json
+          if ($LASTEXITCODE -ne 0) { throw "update-store-metadata.mjs failed." }
+          if (-not $merged) {
+            "METADATA_CHANGED=false" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            return
+          }
+          $merged | Out-File -FilePath submission-updated.json -Encoding utf8
+          "METADATA_CHANGED=true" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Redact merged submission for review
+        if: env.METADATA_CHANGED == 'true' && env.DRY_RUN == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path store-metadata-preview | Out-Null
+          node scripts/redact-store-submission.mjs submission-updated.json | Out-File -FilePath store-metadata-preview/submission-updated.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "redact-store-submission.mjs failed." }
+
+      - uses: actions/upload-artifact@v7
+        if: env.METADATA_CHANGED == 'true' && env.DRY_RUN == 'true'
+        with:
+          name: epikrise-store-metadata-preview
+          path: store-metadata-preview/submission-updated.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Update submission metadata
+        if: env.METADATA_CHANGED == 'true' && env.DRY_RUN != 'true'
+        shell: pwsh
+        run: |
+          $updated = Get-Content submission-updated.json -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
+          # Pass the JSON on stdin: an inline argument is capped by the 32,767-character Windows command line.
+          # The returned submission includes FileUploadUrl (an upload SAS); keep it out of the log.
+          $updated | msstore submission updateMetadata $env:STORE_PRODUCT_ID - | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission updateMetadata failed." }
+
+      # An unchanged listing is still committed when a draft is already pending, so an
+      # earlier run's draft or a failed commit can be retried. A Published submission
+      # with nothing to change is never republished.
+      - name: Commit submission and wait for certification
+        if: >-
+          env.DRY_RUN != 'true' && env.COMMIT_SUBMISSION == 'true' &&
+          (env.METADATA_CHANGED == 'true' || env.SUBMISSION_STATUS == 'PendingCommit')
+        shell: pwsh
+        run: |
+          msstore submission publish $env:STORE_PRODUCT_ID
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission publish failed." }
+          msstore submission poll $env:STORE_PRODUCT_ID
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission poll failed." }
