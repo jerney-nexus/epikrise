@@ -1,5 +1,5 @@
 {
-  "Id": "1152921505702430162",
+  "Id": "1152921505702468075",
   "ApplicationCategory": "Productivity",
   "Pricing": {
     "TrialPeriod": "NoFreeTrial",
@@ -455,10 +455,10 @@
   },
   "ApplicationPackages": [
     {
-      "FileName": "Epikrise_2026.11.6.0_bundle.msixbundle",
+      "FileName": "Epikrise_2026.11.9.0_bundle.msixbundle",
       "FileStatus": "Uploaded",
-      "Id": "2000000000100835401",
-      "Version": "2026.11.6.0",
+      "Id": "2000000000101058208",
+      "Version": "2026.11.9.0",
       "Architecture": "neutral",
       "Languages": [
         "de-CH",
@@ -488,13 +488,12 @@
   "EnterpriseLicensing": "Online",
   "AllowMicrosoftDecideAppAvailabilityToFutureDeviceFamilies": true,
   "AllowTargetFutureDeviceFamilies": {
-    "7": false,
     "Desktop": true,
     "Mobile": false,
     "Xbox": false,
     "Team": false,
     "Holographic": false
   },
-  "FriendlyName": "Submission 3",
+  "FriendlyName": "Submission 8",
   "Trailers": []
 }
