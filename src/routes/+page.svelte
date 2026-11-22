@@ -4367,6 +4367,12 @@
     line-height: 1;
   }
 
+  .dialog-close:hover {
+    border-color: #287562;
+    color: #1d5547;
+    background: #eaf3ec;
+  }
+
   .settings-dialog .provider-settings {
     margin: 0;
     gap: 9px;
@@ -5988,6 +5994,12 @@
 
     .button-secondary:focus-visible {
       outline-color: #a8e0c8;
+    }
+
+    .dialog-close:hover {
+      border-color: #496354;
+      color: #c5e0d1;
+      background: #294637;
     }
 
     .button-secondary:disabled {
