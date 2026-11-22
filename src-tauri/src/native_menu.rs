@@ -17,7 +17,7 @@ use crate::{NativeMenuAction, NativeMenuLabels, NativeMenuRequest, NativeMenuSta
 const HELP_ID: &str = "native-help";
 const SPONSORING_ID: &str = "native-help-sponsoring";
 const FEEDBACK_ID: &str = "native-help-feedback";
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 const WEBSITE_ID: &str = "native-help-website";
 const REPOSITORY_URL: &str = "https://github.com/jerney-nexus/epikrise";
 #[cfg(not(target_os = "macos"))]
@@ -46,7 +46,7 @@ struct NativeMenuItems {
     help: MenuItem<Wry>,
     sponsoring: MenuItem<Wry>,
     feedback: MenuItem<Wry>,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     website: MenuItem<Wry>,
     general_settings: MenuItem<Wry>,
     provider_settings: MenuItem<Wry>,
@@ -308,7 +308,7 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
         true,
         None::<&str>,
     )?;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let website = MenuItem::with_id(
         app,
         WEBSITE_ID,
@@ -388,7 +388,7 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
     help_menu.append(&help)?;
     help_menu.append(&sponsoring)?;
     help_menu.append(&feedback)?;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     help_menu.append(&website)?;
     for item in [
         &help,
@@ -408,7 +408,7 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
         help,
         sponsoring,
         feedback,
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         website,
         general_settings,
         provider_settings,
@@ -449,7 +449,7 @@ pub(crate) fn sync(
             .map_err(|_| "Native menu could not be synchronized".to_owned())?;
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     items
         .website
         .set_text(escaped_label(&labels.website_action))
@@ -607,8 +607,11 @@ fn replace_about_in_submenu(app: &AppHandle<Wry>, submenu: &Submenu<Wry>) -> tau
                         Some(&text),
                         Some(AboutMetadata {
                             name: app.config().product_name.clone(),
-                            website: Some(REPOSITORY_URL.to_owned()),
-                            website_label: Some(REPOSITORY_LABEL.to_owned()),
+                            // Windows prints the website as plain text in its About dialog, so the link lives in Help → Website there.
+                            website: (!cfg!(target_os = "windows"))
+                                .then(|| REPOSITORY_URL.to_owned()),
+                            website_label: (!cfg!(target_os = "windows"))
+                                .then(|| REPOSITORY_LABEL.to_owned()),
                             icon: app.default_window_icon().cloned(),
                             ..Default::default()
                         }),
@@ -671,7 +674,7 @@ pub(crate) fn dispatch(app: &AppHandle<Wry>, id: &str) {
     let external_url = match id {
         SPONSORING_ID => Some(SPONSORING_URL),
         FEEDBACK_ID => Some(FEEDBACK_URL),
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         WEBSITE_ID => Some(REPOSITORY_URL),
         _ => None,
     };
