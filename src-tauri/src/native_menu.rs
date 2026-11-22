@@ -18,6 +18,7 @@ const FEEDBACK_ID: &str = "native-help-feedback";
 #[cfg(target_os = "macos")]
 const WEBSITE_ID: &str = "native-help-website";
 const REPOSITORY_URL: &str = "https://github.com/jerney-nexus/epikrise";
+#[cfg(not(target_os = "macos"))]
 const REPOSITORY_LABEL: &str = "github.com/jerney-nexus/epikrise";
 const SPONSORING_URL: &str = "https://buymeacoffee.com/jerney.nexus";
 const FEEDBACK_URL: &str = "https://github.com/jerney-nexus/epikrise/discussions";
@@ -143,14 +144,9 @@ enum NativeMenuLabel {
 }
 
 impl NativeMenuLabel {
+    #[cfg(not(target_os = "macos"))]
     fn is_about(self) -> bool {
-        match self {
-            #[cfg(not(target_os = "macos"))]
-            Self::About => true,
-            #[cfg(target_os = "macos")]
-            Self::AboutApp => true,
-            _ => false,
-        }
+        matches!(self, Self::About)
     }
 
     fn from_default_text(text: &str) -> Option<Self> {
@@ -584,6 +580,7 @@ fn replace_linux_window_actions(
     Ok(items)
 }
 
+#[cfg(not(target_os = "macos"))]
 fn replace_about_items(app: &AppHandle<Wry>, menu: &Menu<Wry>) -> tauri::Result<()> {
     for item in menu.items()? {
         if let MenuItemKind::Submenu(submenu) = item {
@@ -593,6 +590,7 @@ fn replace_about_items(app: &AppHandle<Wry>, menu: &Menu<Wry>) -> tauri::Result<
     Ok(())
 }
 
+#[cfg(not(target_os = "macos"))]
 fn replace_about_in_submenu(app: &AppHandle<Wry>, submenu: &Submenu<Wry>) -> tauri::Result<()> {
     for (position, item) in submenu.items()?.into_iter().enumerate() {
         match item {
