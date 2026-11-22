@@ -192,6 +192,8 @@ export type NativeMenuLabels = {
 	startDictationAction: string,
 	emojiAndSymbolsAction: string,
 	helpAction: string,
+	sponsorAction: string,
+	feedbackAction: string,
 	generalSettingsAction: string,
 	providerSettingsAction: string,
 	modelSettingsAction: string,

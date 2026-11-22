@@ -137,6 +137,7 @@ zeroize = { workspace = true }
 infer = "0.19"
 async-trait = { workspace = true }
 sys-locale = "0.3.2"
+tauri-plugin-opener = "2"
 
 [dev-dependencies]
 tokio = { workspace = true }

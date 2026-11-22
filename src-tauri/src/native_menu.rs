@@ -3,15 +3,22 @@ use std::sync::Mutex;
 use tauri::{
     AppHandle, EventTarget, Manager, Wry,
     menu::{
-        HELP_SUBMENU_ID, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu,
+        AboutMetadata, HELP_SUBMENU_ID, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu,
         WINDOW_SUBMENU_ID,
     },
 };
+use tauri_plugin_opener::OpenerExt;
 use tauri_specta::Event;
 
 use crate::{NativeMenuAction, NativeMenuLabels, NativeMenuRequest, NativeMenuStatus};
 
 const HELP_ID: &str = "native-help";
+const SPONSORING_ID: &str = "native-help-sponsoring";
+const FEEDBACK_ID: &str = "native-help-feedback";
+const REPOSITORY_URL: &str = "https://github.com/jerney-nexus/epikrise";
+const REPOSITORY_LABEL: &str = "github.com/jerney-nexus/epikrise";
+const SPONSORING_URL: &str = "https://buymeacoffee.com/jerney.nexus";
+const FEEDBACK_URL: &str = "https://github.com/jerney-nexus/epikrise/discussions";
 const GENERAL_SETTINGS_ID: &str = "native-settings-general";
 const PROVIDER_SETTINGS_ID: &str = "native-settings-provider";
 const MODEL_SETTINGS_ID: &str = "native-settings-model";
@@ -32,6 +39,8 @@ struct NativeMenuItems {
     #[cfg(target_os = "linux")]
     menu: Menu<Wry>,
     help: MenuItem<Wry>,
+    sponsoring: MenuItem<Wry>,
+    feedback: MenuItem<Wry>,
     general_settings: MenuItem<Wry>,
     provider_settings: MenuItem<Wry>,
     model_settings: MenuItem<Wry>,
@@ -130,6 +139,16 @@ enum NativeMenuLabel {
 }
 
 impl NativeMenuLabel {
+    fn is_about(self) -> bool {
+        match self {
+            #[cfg(not(target_os = "macos"))]
+            Self::About => true,
+            #[cfg(target_os = "macos")]
+            Self::AboutApp => true,
+            _ => false,
+        }
+    }
+
     fn from_default_text(text: &str) -> Option<Self> {
         let text = if text == "Emoji & Symbols" {
             text.to_owned()
@@ -233,6 +252,7 @@ impl NativeMenuLabel {
 
 pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
     let menu = Menu::default(app)?;
+    replace_about_items(app, &menu)?;
     let labels = NativeMenuLabels::english();
     let edit_menu = find_submenu(&menu, "Edit")?;
     let window_menu = find_submenu_by_id(&menu, WINDOW_SUBMENU_ID)?;
@@ -270,6 +290,20 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
     }
 
     let help = menu_item(app, HELP_ID, &labels.help_action, help_accelerator())?;
+    let sponsoring = MenuItem::with_id(
+        app,
+        SPONSORING_ID,
+        escaped_label(&labels.sponsor_action),
+        true,
+        None::<&str>,
+    )?;
+    let feedback = MenuItem::with_id(
+        app,
+        FEEDBACK_ID,
+        escaped_label(&labels.feedback_action),
+        true,
+        None::<&str>,
+    )?;
     let general_settings = menu_item(
         app,
         GENERAL_SETTINGS_ID,
@@ -340,6 +374,8 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
     }
 
     help_menu.append(&help)?;
+    help_menu.append(&sponsoring)?;
+    help_menu.append(&feedback)?;
     for item in [
         &help,
         &general_settings,
@@ -356,6 +392,8 @@ pub(crate) fn install(app: &AppHandle<Wry>) -> tauri::Result<NativeMenuState> {
         #[cfg(target_os = "linux")]
         menu,
         help,
+        sponsoring,
+        feedback,
         general_settings,
         provider_settings,
         model_settings,
@@ -398,6 +436,16 @@ pub(crate) fn sync(
     items
         .help
         .set_text(escaped_label(&labels.help_action))
+        .and_then(|()| {
+            items
+                .sponsoring
+                .set_text(escaped_label(&labels.sponsor_action))
+        })
+        .and_then(|()| {
+            items
+                .feedback
+                .set_text(escaped_label(&labels.feedback_action))
+        })
         .and_then(|()| {
             items
                 .general_settings
@@ -513,6 +561,42 @@ fn replace_linux_window_actions(
     Ok(items)
 }
 
+fn replace_about_items(app: &AppHandle<Wry>, menu: &Menu<Wry>) -> tauri::Result<()> {
+    for item in menu.items()? {
+        if let MenuItemKind::Submenu(submenu) = item {
+            replace_about_in_submenu(app, &submenu)?;
+        }
+    }
+    Ok(())
+}
+
+fn replace_about_in_submenu(app: &AppHandle<Wry>, submenu: &Submenu<Wry>) -> tauri::Result<()> {
+    for (position, item) in submenu.items()?.into_iter().enumerate() {
+        match item {
+            MenuItemKind::Submenu(child) => replace_about_in_submenu(app, &child)?,
+            MenuItemKind::Predefined(item) => {
+                let text = item.text()?;
+                if NativeMenuLabel::from_default_text(&text).is_some_and(NativeMenuLabel::is_about)
+                {
+                    let about = PredefinedMenuItem::about(
+                        app,
+                        Some(&text),
+                        Some(AboutMetadata {
+                            website: Some(REPOSITORY_URL.to_owned()),
+                            website_label: Some(REPOSITORY_LABEL.to_owned()),
+                            ..Default::default()
+                        }),
+                    )?;
+                    submenu.insert(&about, position)?;
+                    submenu.remove_at(position + 1)?;
+                }
+            }
+            MenuItemKind::MenuItem(_) | MenuItemKind::Check(_) | MenuItemKind::Icon(_) => {}
+        }
+    }
+    Ok(())
+}
+
 fn collect_predefined_labels(
     menu: &Menu<Wry>,
     labels: &mut Vec<(PredefinedMenuItem<Wry>, NativeMenuLabel)>,
@@ -555,6 +639,16 @@ pub(crate) fn dispatch(app: &AppHandle<Wry>, id: &str) {
         if result.is_err() {
             emit_unavailable(app);
         }
+        return;
+    }
+
+    let external_url = match id {
+        SPONSORING_ID => Some(SPONSORING_URL),
+        FEEDBACK_ID => Some(FEEDBACK_URL),
+        _ => None,
+    };
+    if let Some(url) = external_url {
+        let _ = app.opener().open_url(url, None::<&str>);
         return;
     }
 

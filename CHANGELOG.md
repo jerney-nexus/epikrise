@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### 🚀 Features
 
 - The Close button in popup dialogs shows a hover highlight in both light and dark themes (#296)
+- The Help menu has Sponsoring and Feedback items that open in the system browser, and the About panel links to the GitHub repository (#340)
 
 ## [2026.11.9] - 2026-11-20
 
