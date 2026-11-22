@@ -4368,9 +4368,9 @@
   }
 
   .dialog-close:hover {
-    border-color: #287562;
-    color: #1d5547;
-    background: #eaf3ec;
+    border-color: #e4b6a8;
+    color: #9a4938;
+    background: #f9e9e3;
   }
 
   .settings-dialog .provider-settings {
@@ -5997,9 +5997,9 @@
     }
 
     .dialog-close:hover {
-      border-color: #496354;
-      color: #c5e0d1;
-      background: #294637;
+      border-color: #805447;
+      color: #ffc2ae;
+      background: #4a2f27;
     }
 
     .button-secondary:disabled {
