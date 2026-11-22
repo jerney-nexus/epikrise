@@ -161,15 +161,16 @@ impl NativeMenuLabel {
             #[cfg(not(target_os = "macos"))]
             "About" => Some(Self::About),
             #[cfg(target_os = "macos")]
-            "About Epikrise" => Some(Self::AboutApp),
-            #[cfg(target_os = "macos")]
             "Services" => Some(Self::Services),
             #[cfg(target_os = "macos")]
-            "Hide Epikrise" => Some(Self::HideApp),
-            #[cfg(target_os = "macos")]
             "Hide Others" => Some(Self::HideOthers),
+            // Tauri names these items after the Cargo package, not the product name.
             #[cfg(target_os = "macos")]
-            "Quit Epikrise" => Some(Self::QuitApp),
+            _ if text.starts_with("About ") => Some(Self::AboutApp),
+            #[cfg(target_os = "macos")]
+            _ if text.starts_with("Hide ") => Some(Self::HideApp),
+            #[cfg(target_os = "macos")]
+            _ if text.starts_with("Quit ") => Some(Self::QuitApp),
             #[cfg(target_os = "windows")]
             "Close" => Some(Self::Close),
             #[cfg(not(target_os = "windows"))]
