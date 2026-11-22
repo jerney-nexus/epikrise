@@ -605,6 +605,7 @@ fn replace_about_in_submenu(app: &AppHandle<Wry>, submenu: &Submenu<Wry>) -> tau
                         app,
                         Some(&text),
                         Some(AboutMetadata {
+                            name: app.config().product_name.clone(),
                             website: Some(REPOSITORY_URL.to_owned()),
                             website_label: Some(REPOSITORY_LABEL.to_owned()),
                             icon: app.default_window_icon().cloned(),
