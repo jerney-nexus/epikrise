@@ -316,6 +316,7 @@
       helpAction: t("Help"),
       sponsorAction: t("Sponsoring"),
       feedbackAction: t("Feedback"),
+      websiteAction: t("Website"),
       generalSettingsAction: t("General settings"),
       providerSettingsAction: t("Provider settings"),
       modelSettingsAction: t("Model settings"),

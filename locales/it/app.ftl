@@ -346,6 +346,7 @@ ui-confirm-install = Conferma installazione
 ui-help = Aiuto
 ui-sponsoring = Sponsorizzazione
 ui-feedback = Feedback
+ui-website = Sito web
 ui-close-help = Chiudi aiuto
 ui-using-epikrise = Uso di Epikrise
 ui-workflow = Flusso di lavoro

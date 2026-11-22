@@ -194,6 +194,7 @@ export type NativeMenuLabels = {
 	helpAction: string,
 	sponsorAction: string,
 	feedbackAction: string,
+	websiteAction: string,
 	generalSettingsAction: string,
 	providerSettingsAction: string,
 	modelSettingsAction: string,

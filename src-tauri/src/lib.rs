@@ -141,6 +141,8 @@ pub struct NativeMenuLabels {
     help_action: String,
     sponsor_action: String,
     feedback_action: String,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    website_action: String,
     general_settings_action: String,
     provider_settings_action: String,
     model_settings_action: String,
@@ -189,6 +191,7 @@ impl NativeMenuLabels {
             help_action: "Help".to_owned(),
             sponsor_action: "Sponsoring".to_owned(),
             feedback_action: "Feedback".to_owned(),
+            website_action: "Website".to_owned(),
             general_settings_action: "General settings".to_owned(),
             provider_settings_action: "Provider settings".to_owned(),
             model_settings_action: "Model settings".to_owned(),
