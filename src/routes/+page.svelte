@@ -5045,7 +5045,7 @@
   }
 
   .button-secondary:disabled {
-    color: #65766e;
+    color: #5b6b63;
     background: #f0f3f1;
   }
 
@@ -6014,6 +6014,19 @@
     .button-secondary:disabled {
       color: #a7b7ad;
       background: #26362d;
+    }
+
+    .eyebrow {
+      color: #a7b7ad;
+    }
+
+    .egress-indicator > strong {
+      color: #dce7df;
+    }
+
+    .egress-state.local,
+    .settings-trigger {
+      color: #8fdcc4;
     }
 
     .draft-tag {

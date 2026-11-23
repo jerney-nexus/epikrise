@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The Help menu has Sponsoring and Feedback items that open in the system browser, and the About panel links to the Epikrise website on Linux (#340, #343)
 - On macOS and Windows, the Help menu has a Website item that opens the Epikrise website at epikrise.jerney.nexus in the system browser (#340, #343)
 
+### 🐛 Bug Fixes
+
+- Dark theme text for labels, the Help and settings buttons, the local egress status, and the Ollama provider name meets WCAG 2.1 AA contrast; the disabled Add URL button in light theme does too (#200)
+
 ## [2026.11.9] - 2026-11-20
 
 ## [2026.11.8] - 2026-11-20
