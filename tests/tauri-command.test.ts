@@ -36,7 +36,7 @@ describe("Tauri command detection", () => {
     const fakeBash = path.join(binDirectory, "bash");
     const fakeNode = path.join(binDirectory, "node");
     const fakeAppBinary = path.join(directory, "epikrise");
-    const preparationLog = path.join(directory, "prepare.log");
+    const eventLog = path.join(directory, "events.log");
 
     try {
       await mkdir(binDirectory);
@@ -47,9 +47,11 @@ describe("Tauri command detection", () => {
           'script="${1##*/}"',
           'case "$script" in',
           '  tauri-command.sh) exec /bin/bash "$@" ;;',
-          "  with-cargo-host-target.sh) exit 0 ;;",
+          "  with-cargo-host-target.sh)",
+          '    [[ " $* " == *" --validate-only "* ]] && printf "validated\\n" >> "$TAURI_TEST_EVENT_LOG"',
+          "    exit 0 ;;",
           '  tauri-build-output.sh) printf "%s\\n" "$TAURI_TEST_APP_BINARY" ;;',
-          '  prepare-ocr.sh) printf "prepared\\n" >> "$OCR_PREP_LOG" ;;',
+          '  prepare-ocr.sh) printf "prepared\\n" >> "$TAURI_TEST_EVENT_LOG" ;;',
           '  *) exec /bin/bash "$@" ;;',
           "esac",
           "",
@@ -75,23 +77,13 @@ describe("Tauri command detection", () => {
         env: {
           ...process.env,
           PATH: `${binDirectory}${path.delimiter}${process.env.PATH}`,
-          OCR_PREP_LOG: preparationLog,
+          TAURI_TEST_EVENT_LOG: eventLog,
           TAURI_TEST_APP_BINARY: fakeAppBinary,
         },
       });
 
-      const preparation = await readFile(preparationLog, "utf8").catch((error) => {
-        if (
-          error &&
-          typeof error === "object" &&
-          "code" in error &&
-          error.code === "ENOENT"
-        ) {
-          return "";
-        }
-        throw error;
-      });
-      expect(preparation).toBe(shouldPrepare ? "prepared\n" : "");
+      const events = await readFile(eventLog, "utf8");
+      expect(events).toBe(shouldPrepare ? "validated\nprepared\n" : "validated\n");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
