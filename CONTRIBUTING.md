@@ -127,44 +127,7 @@ pnpm audit:rust
 pnpm audit:pnpm
 ```
 
-The dev container installs the required Rust tools during setup. For a local setup, install them once:
-
-```sh
-rustup component add clippy rustfmt llvm-tools-preview
-cargo install cargo-deny --locked
-cargo install cargo-nextest --locked
-cargo install cargo-llvm-cov --locked
-cargo install cargo-audit --locked
-```
-
-`cargo-deny` is required by `pnpm check`; `cargo-nextest` is required by `pnpm test:rust`; `cargo-audit` is required by `pnpm audit:rust`; and `cargo-llvm-cov` plus `llvm-tools-preview` are required for Rust coverage. `pnpm lint:actions` requires `actionlint`, and `pnpm lint:shell` requires `shellcheck`; both are installed in the dev container. For local setup, follow the [actionlint installation instructions](https://github.com/rhysd/actionlint#installation) and the [shellcheck installation instructions](https://github.com/koalaman/shellcheck#installing).
-
-In CI, the workflow linting is done by the `raven-actions/actionlint` action in the `actionlint` job of `quality-checks.yml`, and shell scripts are linted by `pnpm lint:shell` in the `quality` job. `pnpm lint:actions` remains available for local use.
-
-`pnpm test` includes the full Playwright browser suite in addition to UI, i18n, and Rust tests.
-
-### Integration tests
-
-`pnpm test:integration` runs `tests/**/*.integration.test.ts`, which need external tools that the unit suites do not require. It is excluded from `pnpm test:ui` and coverage. It currently needs PowerShell 7 (`pwsh`) to run the Windows WebView2 record round-trip. Install PowerShell before running it, then run:
-
-```sh
-pnpm test:integration
-```
-
-CI installs PowerShell and runs this command in the "UI and i18n" job of the "Frontend tests" workflow after the UI and i18n tests.
-
-### Browser tests
-
-Run only the Playwright suite with `pnpm test:e2e`, or its focused accessibility selection with `pnpm test:a11y`:
-
-```sh
-pnpm test:e2e
-pnpm test:a11y
-```
-
-The tests use synthetic IPC, event, and clipboard fixtures and reject unexpected external requests. Never add real or realistic clinical data to a browser fixture. If Chromium is not installed locally, run `pnpm exec playwright install chromium`. Browser mocks verify UI behavior, not native Rust policy enforcement, updater signatures, or platform installation.
-
-Lint levels live in `[workspace.lints]` in src-tauri/Cargo.toml. Tests are exempted from the panic and printing rules via `src-tauri/clippy.toml`.
+Tool installation, the individual suites, coverage, and CI details are in the [Testing wiki page](https://github.com/jerney-nexus/epikrise/wiki/Testing).
 
 ## Commits and changelog
 
@@ -184,25 +147,7 @@ English literals that are intentionally not translated are not hardcoded UI stri
 - Fluent source strings passed to `t()` or assigned to status state, such as `generationMessage = "Draft ready"`. `t()` resolves them through the catalogs, and missing keys fall back to the English source, so keys must be added to every catalog.
 - CSS font names and placeholder URL examples.
 
-Native startup dialogs run before the webview exists, so `src-tauri/src/startup_dialog.rs` resolves them from the catalogs using the OS locale. This can differ from the in-app language, which is stored in the webview and defaults to `de-CH`. The static `<title>` in `src/app.html` is a pre-mount fallback; the runtime title is set from `t()` once the app mounts.
-
-### Reviewing translations in Crowdin
-
-Crowdin is the main review path for translations. Send only UI strings; never send patient data, clinical text, or credentials.
-
-The file-based project `epikrise` (id 946799) uses `en` as its source and `fr`, `es-ES`, and `it` as targets. `de-CH` is not a Crowdin target: it is the app's default and reference locale, so `locales/de-CH/app.ftl` is the authored German text that the other catalogs are checked against, not a translation to be produced. It stays in the repo as the reference locale. The source is `locales/en/app.ftl`, uploaded in Crowdin's `ftl` format at the same repo path, so `crowdin.yml` needs no `dest` override. `crowdin.yml` maps `es-ES` to the repo folder `es` through `%two_letters_code%`, because Crowdin reports the code as `es`.
-
-Run the Crowdin CLI through these shortcuts. It is pinned as the `@crowdin/cli` dev dependency (5.6.0). The config reads `CROWDIN_PROJECT_ID` and `CROWDIN_PERSONAL_TOKEN` from the environment; never commit a token.
-
-```sh
-pnpm crowdin:upload:sources        # uploads the English source
-pnpm crowdin:upload:translations   # uploads the fr, es, and it catalogs
-pnpm crowdin:download              # extracts locales/{fr,es,it}/app.ftl
-```
-
-The same commands are available as "Epikrise: Crowdin ..." tasks in `.vscode/tasks.json`.
-
-A download ran cleanly and changed no repo files. A synthetic `ui-provider-rejected` translation confirmed that `{ $status }` survives Crowdin storage, and it was deleted afterwards.
+Startup dialogs, the window title, and the Crowdin translation review are described in the [Localization wiki page](https://github.com/jerney-nexus/epikrise/wiki/Localization).
 
 ## Templates and test data
 
