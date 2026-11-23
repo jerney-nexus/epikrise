@@ -3986,7 +3986,9 @@ describe("signed release artifacts", () => {
       "utf8",
     );
 
-    expect(workflow).toContain("environment:\n      name: store-partner-center");
+    expect(workflow).toContain(
+      "environment:\n      name: store-partner-center-metadata",
+    );
 
     const pullRequestJob = workflow.slice(workflow.indexOf("  open-pull-request:"));
     expect(pullRequestJob).toContain("needs: get-base-metadata");

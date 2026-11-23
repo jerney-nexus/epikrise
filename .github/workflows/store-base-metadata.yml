@@ -22,7 +22,7 @@ jobs:
   get-base-metadata:
     name: Get Store base metadata
     environment:
-      name: store-partner-center
+      name: store-partner-center-metadata
     runs-on: windows-latest
     timeout-minutes: 15
     env:
