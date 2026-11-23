@@ -607,6 +607,7 @@ fn replace_about_in_submenu(app: &AppHandle<Wry>, submenu: &Submenu<Wry>) -> tau
                         Some(&text),
                         Some(AboutMetadata {
                             name: app.config().product_name.clone(),
+                            version: Some(app.package_info().version.to_string()),
                             // Windows prints the website as plain text in its About dialog, so the link lives in Help → Website there.
                             website: (!cfg!(target_os = "windows"))
                                 .then(|| REPOSITORY_URL.to_owned()),
