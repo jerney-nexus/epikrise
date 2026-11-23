@@ -39,20 +39,15 @@ The three library crates deliberately have no Tauri dependency. Business logic b
 
 ## Quality gates
 
-Run before opening a pull request:
+Before opening a pull request, run at least:
 
 ```sh
-pnpm format:rust:fmt
 pnpm check
 pnpm test
 pnpm build
-pnpm lint:actions
-pnpm lint:shell
-pnpm audit:rust
-pnpm audit:pnpm
 ```
 
-Tool installation, the individual suites, coverage, and CI details are in the [Testing wiki page](https://github.com/jerney-nexus/epikrise/wiki/Testing).
+The full gate list, including formatting, linting, and audit commands, is on the [Testing wiki page](https://github.com/jerney-nexus/epikrise/wiki/Testing).
 
 ## Commits and changelog
 
