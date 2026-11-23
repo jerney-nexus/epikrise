@@ -103,7 +103,7 @@ brew install cmake ninja tesseract tesseract-lang
 
 #### Windows x64 or ARM64
 
-Use the [native Windows setup](#native-build-from-windows) below. It covers Visual Studio's C++ tools, Git for Windows, OCR language data, and the architecture-specific build commands. Do not use WSL for a native Windows build.
+Use the [native Windows setup](https://github.com/jerney-nexus/epikrise/wiki/Windows-Native-Build) guide. It covers Visual Studio's C++ tools, Git for Windows, OCR language data, and the architecture-specific build commands. Do not use WSL for a native Windows build.
 
 #### Install dependencies and run
 
@@ -119,168 +119,13 @@ pnpm tauri dev
 
 On Linux and macOS, verify that `tesseract --list-langs` lists `deu`, `eng`, `fra`, `ita`, and `spa`. If it does not, install the missing language data or set `EPIKRISE_TESSDATA_DIR` to a folder containing all five `.traineddata` files. Keep that environment variable set in the same terminal where you run pnpm.
 
-### Windows native development and installers
+### Windows native development, installers, and Store packages
 
-Native Windows builds run on matching Windows x64 or ARM64 hosts. Windows cross-builds are not supported here. The separate Linux ARM64 Dev Container cross-build is for diagnostic NSIS installers only.
+Windows native builds, diagnostic installers, the Linux ARM64 cross-build, the cross-platform Actions builds, and the Store `.msixbundle` steps are documented in the wiki:
 
-#### Native build from Windows
-
-Use PowerShell on Windows x64 to build x64, or on Windows ARM64 to build ARM64. The wrapper initializes Visual Studio for you. Do not use WSL or the Dev Container for a native Windows build.
-
-Install these prerequisites before building:
-
-- Node.js 22 and Corepack. The repository pins pnpm `12.15.0`.
-- Rust for the Windows host architecture with the MSVC toolchain. On ARM64, `rustc -vV` must report `host: aarch64-pc-windows-msvc`; on x64 it must report `host: x86_64-pc-windows-msvc`.
-- Windows ARM64 builds also need `clang.exe` for the locked `ring` dependency. In Visual Studio Installer, select **C++ Clang tools for Windows** under **Desktop development with C++**. The build wrapper searches Visual Studio's LLVM tools and adds the compiler to `PATH`.
-- Visual Studio or Visual Studio Build Tools. In Visual Studio Installer, select **Desktop development with C++**, the Windows SDK, and the MSVC C++ compiler, headers, and libraries for the host architecture. On ARM64, make sure the native ARM64 C++ tools are selected; x64-emulated tools are not sufficient. The Visual Studio Installer's `vswhere.exe` and `VC\Auxiliary\Build\vcvarsall.bat` must be present. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) and [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
-- Git for Windows, which provides Git Bash. The wrapper locates and verifies Git Bash itself, then starts it after initializing Visual Studio; you do not need to open a Git Bash window or add Bash to `PATH` for a standard installation. If Git for Windows is installed in a custom location and the wrapper cannot find it, add its `cmd` or `bin` folder to this PowerShell session's `PATH`. CMake, Ninja, `cl`, `dumpbin`, `curl`, `tar`, and `rg` must also be available to the build shell. To install CMake with Visual Studio, open **Visual Studio Installer**, select **Modify** for the installed Visual Studio or Build Tools instance, ensure **Desktop development with C++** is selected, then open **Individual components** and select **C++ CMake tools for Windows**. If the build still reports CMake missing, install the standalone version from the WinGet community repository so `cmake.exe` is added to `PATH`. Ninja is also a separate tool. Visual Studio Installer can provide both **C++ CMake tools for Windows** and **Ninja: build system** under **Individual components**; if either is unavailable on `PATH`, use the WinGet commands below.
-
-  ```powershell
-  winget show --id Kitware.CMake --exact --source winget
-  winget install --id Kitware.CMake --exact --source winget
-  winget show --id Ninja-build.Ninja --exact --source winget
-  winget install --id Ninja-build.Ninja --exact --source winget
-  ```
-
-  After installation, open a new PowerShell window and confirm that `cmake --version` and `ninja --version` print versions. Visual Studio's bundled CMake may not be added to the regular PATH; the wrapper adds its standard bundled-tools directory to the build-shell PATH automatically. It then checks that CMake and Ninja are available before building.
-
-- Tesseract language data containing `deu.traineddata`, `eng.traineddata`, `fra.traineddata`, `ita.traineddata`, and `spa.traineddata`. You do not need an installed Tesseract executable if you set `EPIKRISE_TESSDATA_DIR` to that data directory.
-
-Run the following in **PowerShell** from the repository root. A regular PowerShell or Command Prompt is sufficient; the wrapper locates Visual Studio and initializes its developer environment itself. Do not use WSL or run these commands inside the Dev Container. Do not run `pnpm windows:setup` here; that command provisions the separate Linux Dev Container cross-build.
-
-```powershell
-$pnpmShimDir = Join-Path $env:LOCALAPPDATA 'Epikrise\corepack'
-New-Item -ItemType Directory -Path $pnpmShimDir -Force | Out-Null
-corepack.cmd enable --install-directory $pnpmShimDir pnpm
-$env:Path = "$pnpmShimDir;$env:Path"
-
-node --version
-pnpm.cmd --version
-rustc -vV
-pnpm.cmd install --frozen-lockfile
-```
-
-The user-local Corepack shim avoids writing under `C:\Program Files`. Use `pnpm.cmd` in PowerShell to avoid a blocked `pnpm.ps1`; the wrapper inherits this session's `PATH` and can find the same pnpm command.
-
-The version commands should report Node 22 and pnpm 12.15.0; `rustc -vV` must report the native host triple listed above. The wrapper locates and verifies Git Bash for standard installations. For a custom installation, add its `cmd` or `bin` folder to this PowerShell session's `PATH` and retry the wrapper. Install Git for Windows if it is not installed.
-
-Set `EPIKRISE_TESSDATA_DIR` to a folder containing `deu.traineddata`, `eng.traineddata`, `fra.traineddata`, `ita.traineddata`, and `spa.traineddata`. If Tesseract is installed with all five languages, point it to that installation's `tessdata` folder. Otherwise, download the project-pinned language files into a user-local folder and verify their checksums:
-
-```powershell
-$tessdataDir = Join-Path $env:LOCALAPPDATA 'Epikrise\tessdata'
-New-Item -ItemType Directory -Path $tessdataDir -Force | Out-Null
-$tessdataCommit = '65727574dfcd264acbb0c3e07860e4e9e9b22185'
-$expectedSha256 = @{
-  deu = '19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d'
-  eng = '7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2'
-  fra = 'ced037562e8c80c13122dece28dd477d399af80911a28791a66a63ac1e3445ca'
-  ita = 'b8f89e1e785118dac4d51ae042c029a64edb5c3ee42ef73027a6d412748d8827'
-  spa = '6f2e04d02774a18f01bed44b1111f2cd7f3ba7ac9dc4373cd3f898a40ea6b464'
-}
-foreach ($language in @('deu', 'eng', 'fra', 'ita', 'spa')) {
-  $file = Join-Path $tessdataDir "$language.traineddata"
-  $url = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/$tessdataCommit/$language.traineddata"
-  Invoke-WebRequest -Uri $url -OutFile $file
-  $actualSha256 = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
-  if ($actualSha256 -ne $expectedSha256[$language]) {
-    throw "$language.traineddata SHA-256 mismatch."
-  }
-}
-$env:EPIKRISE_TESSDATA_DIR = $tessdataDir
-```
-
-The data is stored under your local application data directory, not in the repository. Keep using the same PowerShell session so the environment variable and user-local pnpm shim remain available during the build.
-
-To start the app for development, run:
-
-```powershell
-pnpm.cmd tauri dev
-```
-
-To build an unsigned diagnostic installer, run **one** command matching the Windows host:
-
-On Windows ARM64:
-
-```powershell
-.\scripts\build-native-windows.cmd arm64 diagnostic
-```
-
-On Windows x64:
-
-```powershell
-.\scripts\build-native-windows.cmd x64 diagnostic
-```
-
-The wrapper locates Git Bash and checks that the Rust host, MSVC host, MSVC target, and requested target architecture all match.
-
-Native-only Tauri `build` and `dev` commands reject custom runners such as `cargo-xwin`; the default `cargo` runner remains available. They also validate cross-target Cargo configuration from Cargo config files, `CARGO_BUILD_TARGET`, and forwarded Cargo `--config` overrides against the effective command target before OCR preparation.
-
-The generic `pnpm tauri build` and `pnpm tauri dev` commands also initialize Visual Studio automatically when launched from a regular PowerShell, Command Prompt, or Git Bash session. They select the current Windows architecture and preserve the Tauri arguments; the explicit wrapper commands above remain the recommended path for diagnostic native builds. Native-only Tauri `build` and `dev` commands reject custom runners such as `cargo-xwin`; the default `cargo` runner remains available. They also validate cross-target Cargo configuration from Cargo config files, `CARGO_BUILD_TARGET`, and forwarded Cargo `--config` overrides against the effective command target before OCR preparation.
-
-The first build needs network access to download and checksum-verify the OCR source archives and PDFium. The unsigned diagnostic installer is written under `src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The wrapper returns a non-zero exit code if setup, compilation, bundling, or architecture verification fails. Diagnostic builds disable release LTO, use 16 codegen units, and compile at optimization level 2 to reduce peak memory use. Signed release builds retain the optimized release profile configured in `src-tauri/Cargo.toml`. Build caches are kept between runs: Cargo artifacts live under `src-tauri/target/host-<host-triple>/`, and the native OCR CMake/Ninja build cache lives under `%USERPROFILE%\.cache\epikrise\windows-ocr-native-msvc\`. Cargo reuses outputs that are still up to date; changes to Rust sources, toolchain/profile settings, or build inputs may require affected crates to compile again. The diagnostic profile has just changed to reduce memory, so its first run rebuilds artifacts for the new profile. Avoid `cargo clean` or deleting these cache directories unless you intentionally want a full rebuild.
-
-Build caches are kept between runs: Cargo artifacts live under `src-tauri/target/host-<host-triple>/`, and the native OCR CMake/Ninja build cache lives under `%USERPROFILE%\.cache\epikrise\windows-ocr-native-msvc\`. Cargo reuses outputs that are still up to date; changes to Rust sources, toolchain/profile settings, or build inputs may require affected crates to compile again. The diagnostic profile has just changed to reduce memory, so its first run rebuilds artifacts for the new profile. Avoid `cargo clean` or deleting these cache directories unless you intentionally want a full rebuild.
-
-If compilation reports that `vcruntime.h` cannot be found, the installed MSVC toolset or its C++ headers are missing or inconsistent. Use Visual Studio Installer to add or repair the C++ build tools and Windows SDK for the host architecture, open a new PowerShell window, and rerun the native wrapper.
-
-#### Manual Linux ARM64 cross-build
-
-This path builds diagnostic Windows installers, not a native Windows app. Use it only from the native Linux ARM64 Dev Container. It requires LLVM, CMake, Ninja, NSIS, `cargo-xwin`, and Tauri's NSIS Restart Manager include. Do not use CPU emulation. Run setup in an interactive terminal; it installs `cargo-xwin` if needed before displaying the Microsoft SDK/CRT license link. Review the license and type `ACCEPT` to allow downloading the pinned Windows SDK package `10.0.26100` and Visual C++ toolset component `14.44.17.14`. This acceptance gates the SDK/CRT download, not installation of `cargo-xwin`. The interactive path is for local setup; GitHub Actions uses the separate `--ci` path only when `EPIKRISE_WINDOWS_SDK_LICENSE_APPROVED=true`.
-
-```sh
-pnpm windows:setup
-```
-
-Then explicitly opt in to the manual, unsigned diagnostic NSIS cross-build in the current shell. Build one architecture or both:
-
-```sh
-export EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD=true
-pnpm windows:build:x64
-pnpm windows:build:arm64
-pnpm windows:build
-```
-
-The build scripts reject CI, unsupported hosts, release mode, MSI/MSIX, and other non-NSIS package selections before downloading assets or compiling. Generic `pnpm tauri build` stays native; signed Windows release builds also remain on their native Windows runner.
-
-Installers are written to `src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`. Each includes the offline WebView2 installer, adding about 127 MB. The first cross-build downloads and verifies the host-matched LLVM-MinGW archive, Tesseract, its dependencies, and PDFium after the setup license gate; subsequent builds use isolated host/target caches. Tesseract's CMake TIFF capability probe is given an explicit cross-build result, so no Windows executable is run in Linux. TIFF input is not needed by the app's OCR path, which passes PNG images to Tesseract.
-
-For runtime validation, use a native host for each target whose support you intend to claim: install and launch the package, verify PDFium loading, run synthetic German and English OCR, check credentials and clipboard, then uninstall. A successful cross-build alone does not verify installation or runtime behavior. The NSIS installer is configured for offline WebView2 installation in `src-tauri/tauri.windows.conf.json`; a separate install test starting without WebView2 is not required. macOS Intel runtime support remains explicitly unverified and deferred.
-
-For uninstall testing, use **Settings > Apps > Installed apps > Epikrise > Uninstall**. The NSIS setup executable's same-version maintenance page runs the uninstaller and then continues into setup when its Uninstall option is chosen; that upstream behavior is not a completed uninstall flow.
-
-## Cross-platform Actions builds
-
-The manual **Desktop builds** workflow produces six target-specific packages: Linux x64 and ARM64 (`.deb`, `.rpm`, AppImage), macOS x64 and ARM64 (`.dmg`), and Windows x64 and ARM64 (NSIS `.exe` with offline WebView2). Linux and macOS use native GitHub-hosted runners. Windows jobs run on Windows GitHub-hosted runners and use the native Windows build wrapper above; they do not use the Dev Container or `cargo-xwin`. OCR sidecars are built from pinned source archives, and downloaded source/PDFium files are checksum-verified. Native Linux OCR is statically linked; macOS OCR links its third-party dependencies statically and checks that remaining dynamic libraries are provided by macOS.
-
-Run `pnpm build:all` only after the workflow is present and enabled on GitHub. The worktree must be clean, and `HEAD` must be the exact commit pushed to the current `origin` branch or tag. The command does not commit or push. `gh` authentication must permit workflow dispatch and artifact download; the container and Actions runners need network access. Six isolated jobs can run in parallel. Completed outputs and their manifests are downloaded to `.artifacts/desktop-builds/<request-id>/`, which is Git-ignored; the command rejects missing jobs, wrong SHAs/versions/targets, incomplete packages, and manifest or SHA-256 mismatches. Windows NSIS and Store MSIX packages are downloaded and verified separately; their manifests bind the request, commit, version, runner architecture, and Rust target. GitHub retains the uploaded artifacts for 14 days.
-
-Windows jobs in this workflow use native Windows runners; the manual Linux cross-build setup is not available in Actions and never accepts the SDK/CRT license on a user's behalf.
-
-Separately from the NSIS installers, the reusable `store-msix` job (called by both Desktop builds and the signed release) builds an unsigned, architecture-specific MSIX artifact for each Windows architecture. These MSIX files are for Partner Center submission only: they use the reserved Store identity, are versioned as `year.month.patch.0`, and are not the local installation path. After a successful tagged signed release, the signed release attaches each package, the bundle, and the SHA-256/provenance manifests to the draft GitHub Release before the publish approval, so they are published with it. The signed release builds them once through the reusable `.github/workflows/store-msix.yml`; it starts after the `Approve release builds` job, which waits on the `release` environment together with the six-target updater matrix (defined in the reusable `.github/workflows/updater-build.yml` and called by the signed release, so the Actions sidebar groups it), so nothing is packaged before the single approval. The Store submission workflow runs after the release is published, downloads the assets from that published release, and verifies them. It then uploads the bundle to Partner Center as a draft with `msstore publish --noCommit` and commits with `msstore submission publish`. The listing is synced separately by the **Store metadata** workflow, which copies the listing text and images from `store-assets/base-metadata.json` into the submission with `msstore submission updateMetadata` (the listing images must already be uploaded for each locale), then reads the listings back and only commits when dispatched with `commit` and the read-back matches; a missing locale or screenshot therefore cannot block a package upload. The upload job runs on `windows-latest` and fails if `STORE_PRODUCT_ID` is empty. It needs the `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_CERTIFICATE_PFX_BASE64`, `AZURE_AD_CERTIFICATE_PASSWORD`, `AZURE_AD_TENANT_ID`, and `SELLER_ID` secrets and the `STORE_PRODUCT_ID` variable, all in the `store-partner-center` environment; the **Store metadata** sync uses the `store-partner-center-metadata` environment with the same names. See [Microsoft Store setup in RELEASING.md](RELEASING.md#microsoft-store-setup). The Store upload does not depend on the six-target NSIS build matrix. When dispatching Desktop builds directly, provide `previous_store_version` if a prior Store submission exists so the build rejects a non-advancing version. Microsoft signs submitted Store packages and manages Store updates. The first submission and any manual resubmission are done in Partner Center by hand. Partner Center certification is a separate Microsoft process: creating the MSIX or `.msixbundle`, and passing the MSIX identity and content checks, do not establish certification. The Store package does not include the WebView2 Evergreen Runtime, which must be available on the Windows device. Continue using the NSIS `.exe` for local installation; it includes the offline WebView2 installer and remains separate from the Store package and Store update model. To package the x64 and ARM64 MSIX files for Partner Center, see [Building the Store `.msixbundle`](#building-the-store-msixbundle).
-
-Build artifacts are unsigned and macOS packages are not notarized. Expect SmartScreen/Gatekeeper warnings or installation restrictions; do not distribute them into a clinical environment as trusted installers. The workflow creates diagnostic artifacts; it does not publish releases or configure updates.
-
-### Building the Store `.msixbundle`
-
-Partner Center accepts one `.msixbundle` that contains the x64 and ARM64 Store packages. The Store packages are built by the shared `store-msix.yml` workflow, which the signed release and manual Desktop builds call. It builds the bundle automatically with `scripts/package-store-msixbundle.ps1` on a Windows runner. The manual steps below are for reproducing or repairing a bundle on Windows after both architecture-specific MSIX packages for the same release are downloaded and verified. Use a Windows 10/11 machine with the Windows SDK installed, and run the commands in a Developer PowerShell (or call `makeappx.exe` by its full path).
-
-1. Download the `Epikrise_<version>_x64.msix` and `Epikrise_<version>_arm64.msix` files, with their `.msix.manifest.json` files, from the GitHub Release for the tagged version. The Store submission workflow attaches them after a successful tagged signed release. Check each package against its manifest. If the release is not yet published, use the `epikrise-store-msix-x64` and `epikrise-store-msix-arm64` artifacts from the same Desktop builds run instead. Each contains the package under `files/` and a single root `manifest.json` with its SHA-256; there are no per-package `.msix.manifest.json` files in the artifacts.
-2. Create an empty folder, for example `C:\StoreBundle`, and copy only the two `Epikrise_<version>_<arch>.msix` files into it. `makeappx` bundles only packages that share the same identity and version, so the folder must not contain anything else.
-3. Run `makeappx` from the SDK, replacing the folder and output paths. `<version>` is the four-part version shared by both packages (`year.month.patch.0`). Pass it with `/bv`; without it, MakeAppx stamps the bundle with the current date-time instead.
-
-   ```powershell
-   makeappx.exe bundle /d C:\StoreBundle /p C:\StoreBundle\Epikrise_<version>.msixbundle /bv <version>
-   ```
-
-   If `makeappx.exe` is not on `PATH`, call it by its full SDK path with PowerShell's call operator, for example `& "C:\Program Files (x86)\Windows Kits\10\bin\<sdk-version>\x64\makeappx.exe" bundle /d C:\StoreBundle /p C:\StoreBundle\Epikrise_<version>.msixbundle /bv <version>`. The script `scripts/package-store-msix.ps1` searches the same SDK location and prefers the newest version.
-
-4. Confirm the output file exists. The bundle is unsigned. Microsoft signs submitted Store packages, as described above.
-
-The `store-msix.yml` bundle job attaches a GitHub build provenance attestation to the `.msixbundle`. The release's Store publish job verifies it with `gh attestation verify` before attaching the bundle. To verify a downloaded copy, run `gh attestation verify Epikrise_<version>_bundle.msixbundle --repo jerney-nexus/epikrise`.
-
-Keep the bundle and its inputs out of the repository and out of any clinical environment. Upload the bundle to Partner Center manually.
-
-The Store packages do not bundle the WebView2 Evergreen Runtime and do not include a WebView2 bootstrapper. Devices must already have the runtime installed. The NSIS installer is the offline-WebView2 path. Keep the Store listing's requirements consistent with this.
+- [Windows native build](https://github.com/jerney-nexus/epikrise/wiki/Windows-Native-Build)
+- [Cross-platform builds](https://github.com/jerney-nexus/epikrise/wiki/Cross-Platform-Builds)
+- [Installers](https://github.com/jerney-nexus/epikrise/wiki/Installers)
 
 ## Project layout
 

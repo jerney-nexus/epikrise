@@ -6,7 +6,7 @@ A desktop drafting aid that turns user-supplied clinical material into a structu
 
 <!-- prettier-ignore -->
 > [!IMPORTANT]
-> Epikrise is a **drafting aid**, not a medical device and not a diagnostic tool. Every generated text must be reviewed by the responsible clinician before use. See [Safety and scope](#safety-and-scope).
+> Epikrise is a **drafting aid**, not a medical device and not a diagnostic tool. Every generated text must be reviewed by the responsible clinician before use. See [Safety and scope](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#safety-and-scope).
 
 ## What it does
 
@@ -50,195 +50,41 @@ pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-### macOS Installers
+### Installers
 
-Build on macOS after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) and Tesseract with German, English, French, Italian, and Spanish language data. See [Local setup in CONTRIBUTING.md](CONTRIBUTING.md#local-setup) for OCR setup details:
-
-```sh
-pnpm tauri build
-```
-
-This creates the macOS app and disk image in `src-tauri/target/host-<host-triple>/release/bundle/`.
-
-macOS Intel runtime support is unverified. On Catalina 10.15.7, the app opened to a gray window without rendering; Intel runtime testing remains deferred. A successful build does not establish runtime compatibility.
-
-### Linux Installers
-
-Build on Linux after installing the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), Tesseract, and German, English, French, Italian, and Spanish language data. The dev container includes these dependencies. Run:
-
-```sh
-pnpm tauri build
-```
-
-This creates AppImage, Debian (`.deb`), and RPM packages under `src-tauri/target/host-<host-triple>/release/bundle/`.
-
-#### Linux Credential Storage
-
-Epikrise stores provider credentials in the desktop's Secret Service keyring. Some lightweight desktop installations, including Lubuntu, may not include a keyring service by default. On Debian or Ubuntu, install GNOME Keyring and Seahorse if needed:
-
-```sh
-sudo apt install gnome-keyring seahorse
-```
-
-GNOME Keyring provides the Secret Service backend; Seahorse is the graphical tool for managing its stored passwords. Make sure the keyring service starts with your desktop session before using credential storage in Epikrise.
-
-### Windows Installers
-
-#### Local Windows build
-
-Use a normal PowerShell window at the repository root. The wrapper initializes Visual Studio itself, so a Developer shell is not required. Windows x64 builds x64; Windows ARM64 builds ARM64. Cross-target builds are not supported by this native command.
-
-Prerequisites are Node.js 22, Corepack/pnpm `12.15.0`, Rust for the native Windows architecture, Visual Studio's **Desktop development with C++** workload and Windows SDK, Git for Windows (Git Bash), plus `cmake`, `ninja`, `cl`, `dumpbin`, `curl`, `tar`, and `rg` on `PATH`. On ARM64, include native ARM64 C++ tools. In Visual Studio Installer, add **C++ CMake tools for Windows** and **Ninja: build system** under **Individual components** if CMake or Ninja is missing. If CMake remains missing, install it with `winget install --id Kitware.CMake --exact --source winget`. Install missing Ninja separately with `winget install --id Ninja-build.Ninja --exact --source winget`. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact steps. Provide Tesseract's German, English, French, Italian, and Spanish language data either through an installed Tesseract or by setting `EPIKRISE_TESSDATA_DIR` to the folder containing `deu.traineddata`, `eng.traineddata`, `fra.traineddata`, `ita.traineddata`, and `spa.traineddata`.
-
-From the repository root:
-
-```powershell
-$pnpmShimDir = Join-Path $env:LOCALAPPDATA 'Epikrise\corepack'
-New-Item -ItemType Directory -Path $pnpmShimDir -Force | Out-Null
-corepack.cmd enable --install-directory $pnpmShimDir pnpm
-$env:Path = "$pnpmShimDir;$env:Path"
-
-node --version
-pnpm.cmd --version
-rustc -vV
-pnpm.cmd install --frozen-lockfile
-$env:EPIKRISE_TESSDATA_DIR = 'C:\Program Files\Tesseract-OCR\tessdata'
-Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'deu.traineddata')
-Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'eng.traineddata')
-Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'fra.traineddata')
-Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'ita.traineddata')
-Test-Path (Join-Path $env:EPIKRISE_TESSDATA_DIR 'spa.traineddata')
-```
-
-If Corepack cannot write under `C:\Program Files`, this user-local shim keeps pnpm in your profile and avoids changing PowerShell's execution policy. The version commands should report Node 22 and pnpm 12.15.0. All five `Test-Path` commands must print `True`; if not, see the language-data setup in [Contributing](CONTRIBUTING.md#native-build-from-windows). Run one build command matching the host architecture.
-
-If CMake remains missing after installing **C++ CMake tools for Windows** in Visual Studio Installer, install it with `winget install --id Kitware.CMake --exact --source winget`. Install missing Ninja separately with `winget install --id Ninja-build.Ninja --exact --source winget`. See the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) and [Contributing](CONTRIBUTING.md#native-build-from-windows) for the exact steps.
-
-Windows ARM64:
-
-```powershell
-.\scripts\build-native-windows.cmd arm64 diagnostic
-```
-
-Windows x64:
-
-```powershell
-.\scripts\build-native-windows.cmd x64 diagnostic
-```
-
-The command produces an unsigned diagnostic installer under `src-tauri/target/host-<host-triple>/<target>/release/bundle/`. The first build needs network access to download and verify OCR sources and PDFium. See [Contributing: native Windows build](CONTRIBUTING.md#native-build-from-windows) for full prerequisites, the x64 command, verification, and troubleshooting.
-
-#### Dev Container cross-build
-
-From the native Linux ARM64 Dev Container (not Linux x64 or CPU emulation), run `pnpm windows:setup` interactively. The setup script installs `cargo-xwin` if needed, then prompts you to review the Microsoft SDK/CRT license. Typing `ACCEPT` gates downloading the pinned SDK/CRT; it is not required to install `cargo-xwin`. The manual setup path is for local interactive use, not CI; the approved CI setup path is described below.
-
-Then explicitly opt in for the current shell and build diagnostic NSIS installers:
-
-```sh
-export EPIKRISE_ALLOW_LINUX_WINDOWS_CROSS_BUILD=true
-pnpm windows:build:x64
-pnpm windows:build:arm64
-pnpm windows:build
-```
-
-This exception is limited to unsigned diagnostic NSIS builds. Release builds, MSI/MSIX, other package selections, generic `pnpm tauri build`, and Actions cross-builds are not supported; normal and release builds remain native. The installers are written under `src-tauri/target/host-<host-triple>/<target>/release/bundle/nsis/`. They include local OCR resources and the offline WebView2 installer. Initial tool and asset downloads require network access after the opt-in and setup license gate. See [CONTRIBUTING.md](CONTRIBUTING.md#building-windows-installers).
-
-To uninstall an installed Windows build, use **Settings > Apps > Installed apps > Epikrise > Uninstall**. The NSIS setup executable's same-version maintenance page currently runs the uninstaller and then continues into setup, so do not select its Uninstall option when you intend to remove the app and close the installer.
-
-Local `pnpm tauri build` compiles Epikrise and OCR for the physical host OS and architecture; native host/target mismatches fail closed. The only cross-build exception is an explicit human Linux x64/ARM64 Windows NSIS build. GitHub Actions and release builds never cross-compile.
-
-### Cross-platform Actions builds
-
-`pnpm build:all` dispatches the manual **Desktop builds** GitHub Actions workflow for the current pushed commit from either an ARM64 or x64 dev container. It builds Linux ARM64/x64 (`.deb`, `.rpm`, AppImage), macOS ARM64/x64 (`.dmg`), and Windows ARM64/x64 (NSIS `.exe` with offline WebView2) in six isolated jobs on matching native runners. Each Windows job also uploads a separate unsigned, architecture-specific MSIX artifact for manual Partner Center submission. The workflow must be enabled on GitHub, and the commit must contain the workflow. It never commits or pushes changes.
-
-After a successful tagged signed release, a separate Store submission workflow attaches the x64 and ARM64 Store packages and the `.msixbundle` that the signed release run built from the same commit, with SHA-256 and build-provenance manifests, as individual assets on that same GitHub Release. The packages are built once, so the uploaded bundle is the one the release gate checked. This avoids running the six-target diagnostic workflow to obtain Partner Center packages. The same workflow then uploads the bundle to Partner Center as a draft with `msstore publish --noCommit` and commits with `msstore submission publish`. A separate **Store metadata** workflow syncs the listing text and images from `store-assets/base-metadata.json` with `msstore submission updateMetadata` after a successful submission, or on manual dispatch. It leaves the draft uncommitted unless dispatched with `commit`, and fails without changes if a locale or listing image is missing in Partner Center, so listing problems never block a package upload. After `updateMetadata`, it reads the pending submission back and compares each locale's listing text with `store-assets/base-metadata.json` through `scripts/verify-store-listings.mjs`; a mismatch fails the job before any commit, so a stale listing is never reported as synced. It needs the secrets `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_CERTIFICATE_PFX_BASE64`, `AZURE_AD_CERTIFICATE_PASSWORD`, `AZURE_AD_TENANT_ID`, and `SELLER_ID`, and the variable `STORE_PRODUCT_ID`, all stored in the `store-partner-center` GitHub environment. The metadata sync and the **Store base metadata** helper use the `store-partner-center-metadata` environment, which holds the same names and requires approval before the upload or metadata sync.
-
-The command requires a clean worktree, the current branch or tag pushed to `origin` at exactly `HEAD`, the GitHub CLI authenticated with Actions dispatch and artifact-read permissions, and network access to GitHub Actions. It waits for all six jobs, then verifies the request ID, commit, version, target, package completeness and SHA-256 values. Windows NSIS and Store MSIX artifacts are downloaded and verified as separate package families, with manifests binding each package to its runner architecture and Rust target. Verified manifests and packages are written to `.artifacts/desktop-builds/<request-id>/`; partial, stale, wrong-target or modified artifacts are rejected. Each artifact expires after 14 days.
-
-Windows jobs use native Windows runners; the human-only Linux cross-build setup is rejected in CI. The CI builds are unsigned and unnotarized: Windows SmartScreen and macOS Gatekeeper may warn or block installation. This workflow does not publish releases or use the separate direct-release updater configuration. The MSIX artifact uses the reserved `JerneyNexus.Epikrise` identity and the `year.month.patch.0` Store package version. It is unsigned and intended for Partner Center submission, not local installation or direct sideloading. Microsoft signs accepted Store packages and manages Store updates. The optional `previous_store_version` input rejects a package version that does not advance the last submitted Store version. MSIX requires the Microsoft Edge WebView2 Evergreen Runtime; it is not bundled. Use the NSIS `.exe` for local installation; it includes the offline WebView2 installer. See [CONTRIBUTING.md](CONTRIBUTING.md#cross-platform-actions-builds).
-
-On macOS, copy `Epikrise.app` from the mounted image to `/Applications` first. If Gatekeeper then reports that the app is damaged and refuses to open, and you trust the artifact's source (verify its published SHA-256 checksum when available), remove the quarantine attribute from this app bundle:
-
-```sh
-xattr -dr com.apple.quarantine /Applications/Epikrise.app
-```
-
-This removes download quarantine only from Epikrise; it does not disable Gatekeeper globally. Only use this workaround for an artifact you trust.
+Local installers for macOS, Linux, and Windows, the Dev Container cross-build, and uninstall steps are in the [Installers wiki page](https://github.com/jerney-nexus/epikrise/wiki/Installers).
 
 ## Software updates
 
-The standard application build reports updates as unavailable. The separate `src-tauri/tauri.release.conf.json` overlay enables updater code for direct release builds. In an updater-enabled build, users must opt in under General settings and manually request each check; there are no background or startup checks. Administrator policy can prohibit opt-in, checks, and installs. Installing an update requires a separate confirmation and is blocked while a case or generation is active. Update requests use the fixed GitHub Releases endpoint and do not send case or template content.
-
-Tauri updater artifacts require their own signature. This signature verifies the update payload; it is not Authenticode, Apple Developer ID signing, notarization, or Linux package signing. See [CONTRIBUTING.md](CONTRIBUTING.md#release-and-update-workflow) for release configuration details.
-
-On Linux, only the AppImage supports direct-release updates. Debian (`.deb`) and RPM packages are built without the updater, so they report updates as unavailable. Package-managed installs are owned by dpkg or rpm; replacing their files in place would bypass the package database. Update those installs through the system package manager or a future package repository.
-
-Tauri must be able to find `cargo` on `PATH`. If the build fails while running `cargo metadata` with “No such file or directory”, see the [local Rust setup instructions](CONTRIBUTING.md#local-setup).
+Update behavior, administrator policy, and Linux package-manager notes are in the [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#software-updates) wiki page.
 
 ## Testing
 
-For Rust tool prerequisites, including `cargo-deny` required by `pnpm check`, see [Quality gates in CONTRIBUTING.md](CONTRIBUTING.md#quality-gates). Run the full test suite from the project root with `pnpm test` (UI, i18n, Rust, and Playwright browser tests). Use these commands for coverage or focused browser runs:
-
-```sh
-pnpm test:coverage
-pnpm test:e2e
-pnpm test:a11y
-```
-
-The combined coverage command runs UI tests with V8 coverage and the Rust workspace with `cargo-llvm-cov`. It writes an HTML report to `coverage/index.html` and an LCOV report to `lcov.info`, which is read by the recommended Coverage Gutters VS Code extension. Use `pnpm test:ui:coverage` or `pnpm test:rust:coverage` for a targeted coverage run. Rust tests, Clippy, and Tauri builds keep Cargo artifacts in a host-triple-specific directory under `src-tauri/target`, so macOS builds and dev-container builds do not share incompatible host artifacts.
-
-Additional project checks are `pnpm check`, `pnpm build`, `pnpm lint`, `pnpm lint:actions` (GitHub Actions workflows), `pnpm lint:shell` (shell scripts), and `pnpm format:check`.
+Test commands and coverage are in the [Testing](https://github.com/jerney-nexus/epikrise/wiki/Testing) wiki page.
 
 ## Templates
 
-No clinical templates ship with Epikrise. The formatting rules used in a hospital encode institutional know-how and stay with the institution, so the app ships only a minimal generic starter template.
-
-On first run you can import your own template as an `.epitpl` file or start from the generic template. `.epitpl` files and the app's `templates.toml` library use versioned TOML; template objects cross the Rust/UI boundary as JSON. A template defines the system prompt, its variables, toggleable sections and output rules. The app validates and previews a template before saving it. Older JSON `.epitpl` files and an existing `templates.json` library are migrated when read.
-
-To convert a plain-text prompt locally, provide section labels explicitly:
-
-```sh
-  pnpm template:convert templates/prompt.txt templates/imported.epitpl \
-  --name "Institutional template" --locale de-CH \
-  --section diagnoses=Diagnosen --section findings=Befunde
-```
-
-The converter preserves the prompt text, writes TOML, and creates enabled sections from the labels you provide. It refuses to overwrite an existing output unless `--force` is supplied. Specialty/category examples are not required defaults; the converter does not infer sections or template variables, and prompts containing MiniJinja expressions must be converted manually. Both `templates/` and `.epitpl` files are ignored by Git.
+Template import, conversion, and format details are in the [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#templates) wiki page.
 
 ## Provider generation settings
 
-The provider settings include an output-token limit, defaulting to 8,192 tokens and configurable from 1 to 1,000,000. This is a ceiling, not a promise that a provider will return that many tokens; model and provider limits may be lower. Reasoning tokens can use part of this same output budget, depending on the provider, so raise the limit or choose a lower reasoning effort if the report is cut short.
-
-Reasoning effort can be left at the provider default or set to none, minimal, low, medium, high, extra high, or maximum. These are provider hints: supported values and their effect vary by provider and model, and unsupported settings may be ignored or rejected.
+Output-token limits and reasoning effort are described in the [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#provider-generation-settings) wiki page.
 
 ## Interface language
 
-The interface defaults to German (Switzerland) and also supports English, French, Italian, and Spanish. On first launch, Epikrise uses the operating-system language when it is supported; otherwise it uses the default. Choose a language in General settings to save an override on this device. In General settings, the Theme option chooses Light, Dark, or Auto; Auto, the default, follows the operating-system appearance. The choice applies immediately and is saved on this device. Template names, field labels and clinical content continue to use the locale defined by each template.
-
-Interface messages live in `locales/<locale>/app.ftl`. Keep message IDs aligned between shipped catalogs and run `pnpm test:i18n` after editing them. During development, the settings dialog also offers a temporary pseudo-localized preview to expose untranslated or layout-sensitive text.
+Language and theme options are described in the [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#interface-language) wiki page.
 
 ## Safety and scope
 
-Epikrise sends material and a template to the selected language model to create a draft. The model may interpret findings or suggest diagnoses, and its output may be incomplete or incorrect. Epikrise does not independently validate clinical correctness and makes no claim of conformity with MDR, IVDR or any comparable regulation. Output cannot be copied until you explicitly confirm that you have reviewed it; that confirmation is reset when the output or case changes.
-
-Material you ingest — especially fetched web pages — is untrusted input that may contain text crafted to influence the model. Epikrise labels and delimits every block to mitigate this, but the mitigation is not a guarantee. Review the output.
-
-## Administrator Egress Policy
-
-IT can install a machine-wide `policy.toml` to restrict providers and URL ingestion. The app reads it once at startup; the UI cannot loosen it. A malformed policy prevents startup rather than silently disabling the restrictions. Supported locations are `/etc/epikrise/policy.toml` on Linux, `/Library/Application Support/Epikrise/policy.toml` on macOS, and `%ProgramData%\Epikrise\policy.toml` on Windows. The file and containing directory should be administrator-owned and not writable by standard users. Epikrise warns when it cannot verify that protection. On Linux and macOS, use a root-owned directory (mode `0755`) and policy file (mode `0644`). On Windows, grant write/modify access only to Administrators and SYSTEM; standard users should have read access only.
-
-Start from [`policy.example.toml`](policy.example.toml). `allowed_providers` uses adapter IDs (`open_ai`, `anthropic`, `gemini`, `ollama`, `open_ai_compatible`, `open_router`, `xai`, `groq`); omitted means all providers. `local_only = true` additionally restricts endpoints to `localhost` or a loopback IP, regardless of the allowlist. `allow_url_ingestion = false` disables URL extraction. In updater-enabled builds, `allow_updater = false` prevents opting in, checking, or installing updates; standard builds report the updater as unavailable. Set `allow_template_import`, `allow_template_export`, `allow_template_edit`, `allow_template_creation`, or `allow_template_deletion` to `false` to independently block template imports, exports, edits, direct creation, or deletion from settings. These restrictions are enforced by the backend as well as the settings UI.
-
-`allowed_models` optionally lists exact, case-sensitive model identifiers scoped by provider, for example `[{ adapter = "ollama", model = "llama3.2" }]`; omitting it allows every model under the provider policy. `max_output_tokens` sets a hard ceiling on generated output tokens. `max_reasoning_effort` caps the selected reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `x_high`, or `max`); a provider-default selection is also capped. `fixed_endpoint` forces all provider operations to use one validated HTTP(S) endpoint, overriding the endpoint entered in settings. `allow_credential_management = false` prevents adding or removing credentials from the OS keychain. The review gate remains mandatory even if a policy sets `require_review_gate = false`.
-
-The webview CSP restricts network connections to Tauri IPC. The app does not configure clinical-content logging; debug representations of case, extraction, image and chat payloads redact their contents. Production devtools and the context menu are disabled.
+Read [Safety and scope](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#safety-and-scope) before using Epikrise. Administrator egress policy is in the [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#administrator-egress-policy) wiki page.
 
 ## Versioning
 
-Epikrise uses [Calendar Versioning](https://calver.org). Versions follow **`YYYY.M.MICRO`**; for example, `2026.10.0` is the first release of October 2026, and the final number counts fixes within that month.
+Epikrise uses [Calendar Versioning](https://calver.org). Versions follow **`YYYY.M.MICRO`**; for example, `2026.10.0` is the first release of October 2026, and the final number counts fixes within that month. Release steps are in the [Releasing](https://github.com/jerney-nexus/epikrise/wiki/Releasing) wiki page.
 
 ## Documentation
 
+- [Wiki](https://github.com/jerney-nexus/epikrise/wiki) — user guide, installers, native and cross-platform builds, testing, and releasing
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup, project layout, quality gates
 - [CHANGELOG.md](CHANGELOG.md) — release history
 
