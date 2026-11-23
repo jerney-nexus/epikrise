@@ -103,7 +103,7 @@ brew install cmake ninja tesseract tesseract-lang
 
 #### Windows x64 or ARM64
 
-Use the [native Windows setup](https://github.com/jerney-nexus/epikrise/wiki/Windows-Native-Build) guide. It covers Visual Studio's C++ tools, Git for Windows, OCR language data, and the architecture-specific build commands. Do not use WSL for a native Windows build.
+Use the [native Windows setup](https://github.com/jerney-nexus/epikrise/wiki/Installers#windows-installers) guide. It covers Visual Studio's C++ tools, Git for Windows, OCR language data, and the architecture-specific build commands. Do not use WSL for a native Windows build.
 
 #### Install dependencies and run
 
@@ -123,7 +123,7 @@ On Linux and macOS, verify that `tesseract --list-langs` lists `deu`, `eng`, `fr
 
 Windows native builds, diagnostic installers, the Linux ARM64 cross-build, the cross-platform Actions builds, and the Store `.msixbundle` steps are documented in the wiki:
 
-- [Windows native build](https://github.com/jerney-nexus/epikrise/wiki/Windows-Native-Build)
+- [Windows native build](https://github.com/jerney-nexus/epikrise/wiki/Installers#windows-installers)
 - [Cross-platform builds](https://github.com/jerney-nexus/epikrise/wiki/Cross-Platform-Builds)
 - [Installers](https://github.com/jerney-nexus/epikrise/wiki/Installers)
 
