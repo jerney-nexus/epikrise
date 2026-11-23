@@ -42,7 +42,7 @@ A [dev container](.devcontainer/devcontainer.json) with everything preinstalled 
 
 ## Getting started
 
-Before building, complete the operating-system-specific prerequisites in [Local native setup](CONTRIBUTING.md#local-native-setup). In particular, a native build needs Tesseract and German (`deu`), English (`eng`), French (`fra`), Italian (`ita`), and Spanish (`spa`) language data. The build compiles its own Tesseract sidecar, but uses the installed Tesseract command to locate that data.
+Before building, complete the operating-system-specific prerequisites in the [Development setup](https://github.com/jerney-nexus/epikrise/wiki/Development-Setup) wiki page.
 
 ```sh
 corepack enable pnpm

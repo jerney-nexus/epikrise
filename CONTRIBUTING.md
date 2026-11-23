@@ -13,46 +13,7 @@ Both rules are enforced mechanically; see [Quality gates](#quality-gates).
 
 ## Development setup
 
-### Dev container (recommended)
-
-Open the repository in VS Code and choose **Reopen in Container**. The image ships Rust, Node, the Tauri Linux dependencies and a lightweight desktop accessible through noVNC on port `6080`, so the app window can be viewed from a browser.
-
-### Local native setup
-
-Follow the steps for your operating system, then run the common commands below. Builds are native-only: use a machine and Rust toolchain for the same operating system and architecture. For the full system requirements, see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
-
-All platforms need Rust 1.90+ and Node.js 22+. Install Rust with [rustup](https://rustup.rs/) and install Node.js for your operating system. Open a new terminal after installing them. Check that `rustc -vV` reports the host triple for this machine and that `node --version` reports v22.
-
-#### Linux (Debian or Ubuntu)
-
-Install Tauri, OCR, and native sidecar build dependencies:
-
-```sh
-sudo apt-get update
-sudo apt-get install -y \
-  build-essential cmake curl file libayatana-appindicator3-dev libssl-dev \
-  libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev ninja-build pkg-config \
-  tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng tesseract-ocr-fra tesseract-ocr-ita tesseract-ocr-spa
-```
-
-For another Linux distribution, install the equivalent packages listed in the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux) and install Tesseract with German (`deu`), English (`eng`), French (`fra`), Italian (`ita`), and Spanish (`spa`) language data.
-
-#### macOS
-
-Install Xcode Command Line Tools if they are not already installed, then install the native OCR build tools and language data with Homebrew:
-
-```sh
-xcode-select --install
-brew install cmake ninja tesseract tesseract-lang
-```
-
-#### Windows x64 or ARM64
-
-Use the [native Windows setup](https://github.com/jerney-nexus/epikrise/wiki/Installers#windows-installers) guide. It covers Visual Studio's C++ tools, Git for Windows, OCR language data, and the architecture-specific build commands. Do not use WSL for a native Windows build.
-
-#### Install dependencies and run
-
-`pnpm tauri dev` first prepares local OCR and PDFium resources. The build uses the installed Tesseract command to find its language-data folder, and requires `deu.traineddata`, `eng.traineddata`, `fra.traineddata`, `ita.traineddata`, and `spa.traineddata`. It then builds the app's own Tesseract sidecar from pinned, checksum-verified sources. If the language data is in a custom folder, set `EPIKRISE_TESSDATA_DIR` to that folder before building.
+Use the [dev container](.devcontainer/devcontainer.json), which has everything preinstalled. For a native setup, follow the [Development setup](https://github.com/jerney-nexus/epikrise/wiki/Development-Setup) wiki page for your operating system, including OCR language data. Native builds need Rust 1.90+ and Node.js 22+.
 
 From the repository root:
 
@@ -61,16 +22,6 @@ corepack enable pnpm
 pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
-
-On Linux and macOS, verify that `tesseract --list-langs` lists `deu`, `eng`, `fra`, `ita`, and `spa`. If it does not, install the missing language data or set `EPIKRISE_TESSDATA_DIR` to a folder containing all five `.traineddata` files. Keep that environment variable set in the same terminal where you run pnpm.
-
-### Windows native development, installers, and Store packages
-
-Windows native builds, diagnostic installers, the Linux ARM64 cross-build, the cross-platform Actions builds, and the Store `.msixbundle` steps are documented in the wiki:
-
-- [Windows native build](https://github.com/jerney-nexus/epikrise/wiki/Installers#windows-installers)
-- [Cross-platform builds](https://github.com/jerney-nexus/epikrise/wiki/Cross-Platform-Builds)
-- [Installers](https://github.com/jerney-nexus/epikrise/wiki/Installers)
 
 ## Project layout
 
