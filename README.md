@@ -34,7 +34,7 @@ The full privacy policy is available in [English](docs/privacy-policy.en.md), [D
 
 | Tool | Version | Notes |
 | --- | --- | --- |
-| Rust | 1.98+ | stable toolchain, edition 2024 |
+| Rust | 1.90+ | stable toolchain, edition 2024 |
 | Node.js | 22+ | pnpm 12.15.0, activated through Corepack |
 | Platform deps | — | see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
 

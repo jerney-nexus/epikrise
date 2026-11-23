@@ -17,33 +17,13 @@ Both rules are enforced mechanically; see [Quality gates](#quality-gates).
 
 Open the repository in VS Code and choose **Reopen in Container**. The image ships Rust, Node, the Tauri Linux dependencies and a lightweight desktop accessible through noVNC on port `6080`, so the app window can be viewed from a browser.
 
-#### GitHub CLI and Git credentials
-
-`gh auth login` signs the GitHub CLI in to GitHub. If you accept its prompt to authenticate Git over HTTPS, it configures Git too. If you skipped that prompt, or Git's credential helper configuration was lost, a `git fetch` or `git push` over HTTPS can fail with `unable to get password from user` even when `gh auth status` reports a valid login.
-
-To set up or repair Git's credential helper, run this in the dev container:
-
-```bash
-gh auth setup-git
-```
-
-The command registers GitHub CLI as Git's credential helper for each authenticated host. Run it again after logging in to a new host, or if the container's Git configuration has been reset.
-
-To check the setup without printing tokens:
-
-```bash
-gh auth status
-git config --get-all credential.https://github.com.helper
-git ls-remote origin HEAD
-```
-
-`gh auth status` masks the token by default; do not add `--show-token`. The `git config` command should print the GitHub CLI helper. `git ls-remote` reads the remote without changing it, but this repository is public, so it succeeds without credentials and only shows that the remote is reachable. To confirm that Git can authenticate, run `git push --dry-run` on a branch you can push to, or run `git ls-remote` against a private repository you can access.
+GitHub CLI and Git credential setup is covered in the [Troubleshooting](https://github.com/jerney-nexus/epikrise/wiki/Troubleshooting#github-cli-and-git-credentials) wiki page.
 
 ### Local native setup
 
 Follow the steps for your operating system, then run the common commands below. Builds are native-only: use a machine and Rust toolchain for the same operating system and architecture. For the full system requirements, see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
-All platforms need Rust 1.98+ and Node.js 22+. Install Rust with [rustup](https://rustup.rs/) and install Node.js for your operating system. Open a new terminal after installing them. Check that `rustc -vV` reports the host triple for this machine and that `node --version` reports v22.
+All platforms need Rust 1.90+ and Node.js 22+. Install Rust with [rustup](https://rustup.rs/) and install Node.js for your operating system. Open a new terminal after installing them. Check that `rustc -vV` reports the host triple for this machine and that `node --version` reports v22.
 
 #### Linux (Debian or Ubuntu)
 
