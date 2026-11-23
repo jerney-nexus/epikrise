@@ -4358,13 +4358,19 @@
     height: 36px;
     flex: 0 0 36px;
     place-items: center;
-    border: 1px solid #d4ded7;
+    border: 1px solid #e4b6a8;
     border-radius: 4px;
-    color: #4b6157;
-    background: transparent;
+    color: #9a4938;
+    background: #fff8f5;
     cursor: pointer;
     font-size: 22px;
     line-height: 1;
+  }
+
+  .dialog-close:hover {
+    border-color: #e4b6a8;
+    color: #9a4938;
+    background: #f9e9e3;
   }
 
   .settings-dialog .provider-settings {
@@ -5988,6 +5994,18 @@
 
     .button-secondary:focus-visible {
       outline-color: #a8e0c8;
+    }
+
+    .dialog-close {
+      border-color: #805447;
+      color: #ffc2ae;
+      background: #38251f;
+    }
+
+    .dialog-close:hover {
+      border-color: #805447;
+      color: #ffc2ae;
+      background: #4a2f27;
     }
 
     .button-secondary:disabled {

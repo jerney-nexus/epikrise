@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### 🚀 Features
+
+- The Close button in popup dialogs shows a hover highlight in both light and dark themes (#296)
+
 ## [2026.11.9] - 2026-11-20
 
 ## [2026.11.8] - 2026-11-20
