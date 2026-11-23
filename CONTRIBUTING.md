@@ -13,15 +13,7 @@ Both rules are enforced mechanically; see [Quality gates](#quality-gates).
 
 ## Development setup
 
-Use the [dev container](.devcontainer/devcontainer.json), which has everything preinstalled. For a native setup, follow the [Development setup](https://github.com/jerney-nexus/epikrise/wiki/Development-Setup) wiki page for your operating system, including OCR language data. Native builds need Rust 1.90+ and Node.js 22+.
-
-From the repository root:
-
-```sh
-corepack enable pnpm
-pnpm install --frozen-lockfile
-pnpm tauri dev
-```
+Use the [dev container](.devcontainer/devcontainer.json), which has everything preinstalled. For a native setup, follow the [Development setup](https://github.com/jerney-nexus/epikrise/wiki/Development-Setup) wiki page for your operating system, including OCR language data. Toolchain versions are in the [README requirements](README.md#requirements), and the first commands are in [Getting started](README.md#getting-started).
 
 ## Project layout
 

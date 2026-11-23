@@ -50,43 +50,17 @@ pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-### Installers
-
-Local installers for macOS, Linux, and Windows, the Dev Container cross-build, and uninstall steps are in the [Installers wiki page](https://github.com/jerney-nexus/epikrise/wiki/Installers).
-
-## Software updates
-
-Update behavior, administrator policy, and Linux package-manager notes are in the [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#software-updates) wiki page.
-
-## Testing
-
-Test commands and coverage are in the [Testing](https://github.com/jerney-nexus/epikrise/wiki/Testing) wiki page.
-
-## Templates
-
-Template import, conversion, and format details are in the [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#templates) wiki page.
-
-## Provider generation settings
-
-Output-token limits and reasoning effort are described in the [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#provider-generation-settings) wiki page.
-
-## Interface language
-
-Language and theme options are described in the [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#interface-language) wiki page.
-
-## Safety and scope
-
-Read [Safety and scope](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#safety-and-scope) before using Epikrise. Administrator egress policy is in the [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#administrator-egress-policy) wiki page.
-
-## Versioning
-
-Epikrise uses [Calendar Versioning](https://calver.org) in the `YYYY.M.MICRO` form. Release steps are in the [Releasing](https://github.com/jerney-nexus/epikrise/wiki/Releasing) wiki page.
-
 ## Documentation
 
-- [Wiki](https://github.com/jerney-nexus/epikrise/wiki) — user guide, installers, native and cross-platform builds, testing, and releasing
-- [CONTRIBUTING.md](CONTRIBUTING.md) — development setup, project layout, quality gates
-- [CHANGELOG.md](CHANGELOG.md) — release history
+Detailed guides are in the [wiki](https://github.com/jerney-nexus/epikrise/wiki):
+
+- [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide) — software updates, templates, provider generation settings, interface language, safety and scope, administrator egress policy
+- [Installers](https://github.com/jerney-nexus/epikrise/wiki/Installers) — local macOS, Linux, and Windows installers, Dev Container cross-build, uninstall
+- [Cross-Platform Builds](https://github.com/jerney-nexus/epikrise/wiki/Cross-Platform-Builds) — native and cross-platform builds, Store `.msixbundle`
+- [Testing](https://github.com/jerney-nexus/epikrise/wiki/Testing) — test commands and quality gates
+- [Releasing](https://github.com/jerney-nexus/epikrise/wiki/Releasing) — release steps for [Calendar Versioning](https://calver.org) (`YYYY.M.MICRO`)
+
+Also see [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and project layout, and [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 
