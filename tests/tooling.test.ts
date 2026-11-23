@@ -4050,7 +4050,9 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain("- Store submission packages");
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(workflow).toContain("group: store-partner-center-submission");
-    expect(workflow).toContain("environment:\n      name: store-partner-center");
+    expect(workflow).toContain(
+      "environment:\n      name: store-partner-center-metadata",
+    );
     expect(workflow).toMatch(/commit:[\s\S]*?default: false/);
     expect(workflow).toContain("check-store-submission-state.mjs");
     expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - 2>&1");
