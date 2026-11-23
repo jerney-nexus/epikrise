@@ -338,6 +338,9 @@ test("native menu labels follow locale changes and failures show a fallback", as
       startDictationAction: "Diktat starten…",
       emojiAndSymbolsAction: "Emoji & Symbole",
       helpAction: "Hilfe",
+      sponsorAction: "Sponsoring",
+      feedbackAction: "Feedback",
+      websiteAction: "Website",
     });
 
   await page.locator("#interface-language").selectOption("qps-ploc");

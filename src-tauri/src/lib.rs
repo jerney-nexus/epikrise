@@ -139,6 +139,10 @@ pub struct NativeMenuLabels {
     start_dictation_action: String,
     emoji_and_symbols_action: String,
     help_action: String,
+    sponsor_action: String,
+    feedback_action: String,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    website_action: String,
     general_settings_action: String,
     provider_settings_action: String,
     model_settings_action: String,
@@ -185,6 +189,9 @@ impl NativeMenuLabels {
             start_dictation_action: "Start Dictation…".to_owned(),
             emoji_and_symbols_action: "Emoji & Symbols".to_owned(),
             help_action: "Help".to_owned(),
+            sponsor_action: "Sponsoring".to_owned(),
+            feedback_action: "Feedback".to_owned(),
+            website_action: "Website".to_owned(),
             general_settings_action: "General settings".to_owned(),
             provider_settings_action: "Provider settings".to_owned(),
             model_settings_action: "Model settings".to_owned(),
@@ -1768,6 +1775,7 @@ pub fn run() -> Result<(), tauri::Error> {
 
     let app_builder = tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init());
     #[cfg(feature = "direct-release-updater")]
     let app_builder = app_builder.plugin(tauri_plugin_updater::Builder::new().build());
