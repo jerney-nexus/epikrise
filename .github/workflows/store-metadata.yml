@@ -40,7 +40,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
     name: Sync Store listing metadata
     environment:
-      name: store-partner-center
+      name: store-partner-center-metadata
     runs-on: windows-latest
     timeout-minutes: 330
     outputs:

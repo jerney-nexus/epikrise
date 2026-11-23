@@ -63,9 +63,13 @@ for (const [locale, source] of Object.entries(base.Listings ?? {})) {
     }
   }
 
-  const images = source.BaseListing.Images ?? [];
+  // Locales without base images keep the images uploaded to the draft.
+  const baseImages = source.BaseListing.Images ?? [];
+  const images = baseImages.length > 0 ? baseImages : (target.Images ?? []);
   if (images.length === 0) {
-    notUploaded.push(`${locale}: no listing images in base-metadata.json`);
+    notUploaded.push(
+      `${locale}: no listing images in base-metadata.json or the submission`,
+    );
   }
   for (const image of images) {
     if (image.FileStatus !== "Uploaded") {
