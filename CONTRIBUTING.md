@@ -17,8 +17,6 @@ Both rules are enforced mechanically; see [Quality gates](#quality-gates).
 
 Open the repository in VS Code and choose **Reopen in Container**. The image ships Rust, Node, the Tauri Linux dependencies and a lightweight desktop accessible through noVNC on port `6080`, so the app window can be viewed from a browser.
 
-GitHub CLI and Git credential setup is covered in the [Troubleshooting](https://github.com/jerney-nexus/epikrise/wiki/Troubleshooting#github-cli-and-git-credentials) wiki page.
-
 ### Local native setup
 
 Follow the steps for your operating system, then run the common commands below. Builds are native-only: use a machine and Rust toolchain for the same operating system and architecture. For the full system requirements, see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
