@@ -80,7 +80,7 @@ Read [Safety and scope](https://github.com/jerney-nexus/epikrise/wiki/User-Guide
 
 ## Versioning
 
-Epikrise uses [Calendar Versioning](https://calver.org). Versions follow **`YYYY.M.MICRO`**; for example, `2026.10.0` is the first release of October 2026, and the final number counts fixes within that month. Release steps are in the [Releasing](https://github.com/jerney-nexus/epikrise/wiki/Releasing) wiki page.
+Epikrise uses [Calendar Versioning](https://calver.org) in the `YYYY.M.MICRO` form. Release steps are in the [Releasing](https://github.com/jerney-nexus/epikrise/wiki/Releasing) wiki page.
 
 ## Documentation
 
