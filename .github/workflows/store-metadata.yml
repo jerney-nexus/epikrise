@@ -59,7 +59,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:STORE_PRODUCT_ID) {
-            throw "STORE_PRODUCT_ID repository variable is not set."
+            throw "STORE_PRODUCT_ID environment variable is not set in the store-partner-center-metadata environment."
           }
 
       - uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
