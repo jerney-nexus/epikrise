@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       release_tag:
-        description: Release tag to validate against the commit (empty for diagnostic builds)
+        description: Release tag to validate against the package version and commit (empty for diagnostic builds)
         required: false
         type: string
         default: ""
@@ -65,11 +65,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bundle_version="$(node -p 'require("./package.json").version')"
           if [[ -n "$RELEASE_TAG" ]]; then
-            bundle_version="${RELEASE_TAG#v}"
+            [[ "$RELEASE_TAG" == "v${bundle_version}" ]]
             bundle_suffix=""
           else
-            bundle_version="$(node -p 'require("./package.json").version')"
             bundle_suffix="-diagnostic"
           fi
           printf 'BUNDLE_VERSION=%s\n' "$bundle_version" >> "$GITHUB_ENV"
