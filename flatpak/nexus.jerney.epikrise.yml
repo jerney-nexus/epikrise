@@ -15,6 +15,7 @@ finish-args:
 modules:
   - name: zlib
     buildsystem: cmake-ninja
+    builddir: true
     config-opts:
       - -DCMAKE_INSTALL_PREFIX=/app
       - -DCMAKE_INSTALL_LIBDIR=lib
@@ -28,6 +29,7 @@ modules:
 
   - name: libpng
     buildsystem: cmake-ninja
+    builddir: true
     config-opts:
       - -DCMAKE_INSTALL_PREFIX=/app
       - -DCMAKE_INSTALL_LIBDIR=lib
@@ -45,6 +47,7 @@ modules:
 
   - name: leptonica
     buildsystem: cmake-ninja
+    builddir: true
     config-opts:
       - -DCMAKE_INSTALL_PREFIX=/app
       - -DCMAKE_INSTALL_LIBDIR=lib
@@ -67,6 +70,7 @@ modules:
 
   - name: tesseract
     buildsystem: cmake-ninja
+    builddir: true
     config-opts:
       - -DCMAKE_INSTALL_PREFIX=/app
       - -DCMAKE_INSTALL_LIBDIR=lib
