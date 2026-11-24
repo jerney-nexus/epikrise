@@ -1,0 +1,26 @@
+// Colors follow the app's palette in src/routes/+page.svelte so the site and the app match.
+:root {
+  --color-bg: #f2f5f1;
+  --color-surface: #f9fbf8;
+  --color-text: #1d2926;
+  --color-muted: #566a61;
+  --color-heading: #14231e;
+  --color-brand: #176c5c;
+  --color-brand-text: #f8fbf7;
+  --color-link: #1f6656;
+  --color-border: #dce4de;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --color-bg: #151f1a;
+  --color-surface: #1b2921;
+  --color-text: #e3ebe5;
+  --color-muted: #a7b7ad;
+  --color-heading: #eef3ef;
+  --color-brand: #176c5c;
+  --color-brand-text: #f8fbf7;
+  --color-link: #9fd8c6;
+  --color-border: #34463b;
+  color-scheme: dark;
+}

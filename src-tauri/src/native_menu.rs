@@ -19,9 +19,9 @@ const SPONSORING_ID: &str = "native-help-sponsoring";
 const FEEDBACK_ID: &str = "native-help-feedback";
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 const WEBSITE_ID: &str = "native-help-website";
-const REPOSITORY_URL: &str = "https://github.com/jerney-nexus/epikrise";
+const WEBSITE_URL: &str = "https://epikrise.jerney.nexus/";
 #[cfg(not(target_os = "macos"))]
-const REPOSITORY_LABEL: &str = "github.com/jerney-nexus/epikrise";
+const WEBSITE_LABEL: &str = "epikrise.jerney.nexus";
 const SPONSORING_URL: &str = "https://buymeacoffee.com/jerney.nexus";
 const FEEDBACK_URL: &str = "https://github.com/jerney-nexus/epikrise/discussions";
 const GENERAL_SETTINGS_ID: &str = "native-settings-general";
@@ -609,10 +609,9 @@ fn replace_about_in_submenu(app: &AppHandle<Wry>, submenu: &Submenu<Wry>) -> tau
                             name: app.config().product_name.clone(),
                             version: Some(app.package_info().version.to_string()),
                             // Windows prints the website as plain text in its About dialog, so the link lives in Help → Website there.
-                            website: (!cfg!(target_os = "windows"))
-                                .then(|| REPOSITORY_URL.to_owned()),
+                            website: (!cfg!(target_os = "windows")).then(|| WEBSITE_URL.to_owned()),
                             website_label: (!cfg!(target_os = "windows"))
-                                .then(|| REPOSITORY_LABEL.to_owned()),
+                                .then(|| WEBSITE_LABEL.to_owned()),
                             icon: app.default_window_icon().cloned(),
                             ..Default::default()
                         }),
@@ -676,7 +675,7 @@ pub(crate) fn dispatch(app: &AppHandle<Wry>, id: &str) {
         SPONSORING_ID => Some(SPONSORING_URL),
         FEEDBACK_ID => Some(FEEDBACK_URL),
         #[cfg(any(target_os = "macos", target_os = "windows"))]
-        WEBSITE_ID => Some(REPOSITORY_URL),
+        WEBSITE_ID => Some(WEBSITE_URL),
         _ => None,
     };
     if let Some(url) = external_url {

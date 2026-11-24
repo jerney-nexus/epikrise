@@ -8,7 +8,7 @@ A desktop drafting aid that turns user-supplied clinical material into a structu
 > [!IMPORTANT]
 > Epikrise is a **drafting aid**, not a medical device and not a diagnostic tool. Every generated text must be reviewed by the responsible clinician before use. See [Safety and scope](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#safety-and-scope).
 
-Project website: [jerney-nexus.github.io/epikrise](https://jerney-nexus.github.io/epikrise/).
+Project website: [epikrise.jerney.nexus](https://epikrise.jerney.nexus/).
 
 ## What it does
 

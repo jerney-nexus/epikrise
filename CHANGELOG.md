@@ -9,8 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### 🚀 Features
 
 - The Close button in popup dialogs shows a hover highlight in both light and dark themes (#296)
-- The Help menu has Sponsoring and Feedback items that open in the system browser, and the About panel links to the GitHub repository on Linux (#340)
-- On macOS and Windows, the Help menu has a Website item that opens the GitHub repository in the system browser (#340)
+- The Help menu has Sponsoring and Feedback items that open in the system browser, and the About panel links to the Epikrise website on Linux (#340, #343)
+- On macOS and Windows, the Help menu has a Website item that opens the Epikrise website at epikrise.jerney.nexus in the system browser (#340, #343)
 
 ## [2026.11.9] - 2026-11-20
 
