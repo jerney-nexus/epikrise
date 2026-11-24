@@ -175,7 +175,9 @@ modules:
     build-commands:
       - |
         set -euo pipefail
-        pnpm install --frozen-lockfile --offline
+        # The sandbox has no registry metadata, so the supply-chain policy
+        # check cannot run; integrity comes from the lockfile and node-sources.json.
+        pnpm install --frozen-lockfile --offline --trust-lockfile
         pnpm build
         triple="$(rustc -vV | sed -n 's/^host: //p')"
         mkdir -p src-tauri/binaries src-tauri/resources/ocr/pdfium src-tauri/resources/ocr/tessdata
