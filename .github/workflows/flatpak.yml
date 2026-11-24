@@ -108,8 +108,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # pnpm 12 reads the v11 store; the generator defaults to v10.
           PYTHONPATH=flatpak-builder-tools/node python3 -m flatpak_node_generator \
-            pnpm pnpm-lock.yaml -o flatpak/node-sources.json
+            pnpm pnpm-lock.yaml --pnpm-store-version v11 -o flatpak/node-sources.json
 
       - name: Generate Cargo sources
         shell: bash
