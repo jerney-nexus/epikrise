@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "vite.site.config.js"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -26,16 +30,26 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
 
-      - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@v1
+      - uses: pnpm/setup@v2
         with:
-          source: ./docs
-          destination: ./_site
+          version: 12.15.0
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build site with Vite
+        run: pnpm site:build
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: ./_site
+          path: ./build/site
 
   deploy:
     needs: build
