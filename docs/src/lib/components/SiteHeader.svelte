@@ -2,7 +2,7 @@
   import ThemePreference from "./ThemePreference.svelte";
 </script>
 
-<header class="site-header">
+<header class="site-header" lang="en">
   <div class="site-header__inner">
     <a class="site-brand" href="/">
       <svg
