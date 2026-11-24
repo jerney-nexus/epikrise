@@ -293,3 +293,13 @@ jobs:
       commit: ${{ inputs.expected_sha }}
       request_id: ${{ inputs.request_id }}
       previous_store_version: ${{ inputs.previous_store_version || '' }}
+
+  flatpak:
+    name: Build Flatpak bundles
+    uses: ./.github/workflows/flatpak.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    with:
+      commit: ${{ inputs.expected_sha }}

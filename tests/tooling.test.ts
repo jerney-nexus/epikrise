@@ -3437,6 +3437,14 @@ describe("six-target desktop build tooling", () => {
     expect(storeMsixWorkflow).toMatch(
       /Create unsigned Store MSIX[\s\S]*Stage Store MSIX with integrity manifest[\s\S]*epikrise-store-msix-/,
     );
+    expect(workflow).toMatch(
+      /flatpak:\s+name: Build Flatpak bundles\s+uses: \.\/\.github\/workflows\/flatpak\.yml[\s\S]*?commit: \$\{\{ inputs\.expected_sha \}\}/,
+    );
+    const flatpakWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/flatpak.yml"),
+      "utf8",
+    );
+    expect(flatpakWorkflow).toContain('bundle_suffix="-diagnostic"');
   });
 
   it("checks Visual Studio paths outside parenthesized CMD blocks", async () => {

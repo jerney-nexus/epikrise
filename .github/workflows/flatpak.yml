@@ -8,9 +8,10 @@ on:
         required: true
         type: string
       release_tag:
-        description: Release tag to validate against the commit
-        required: true
+        description: Release tag to validate against the commit (empty for diagnostic builds)
+        required: false
         type: string
+        default: ""
 
 permissions:
   contents: read
@@ -54,9 +55,25 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          node scripts/release-artifacts.mjs validate --tag "$RELEASE_TAG"
           [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]]
-          [[ "$(git rev-parse "${RELEASE_TAG}^{commit}")" == "$RELEASE_SHA" ]]
+          if [[ -n "$RELEASE_TAG" ]]; then
+            node scripts/release-artifacts.mjs validate --tag "$RELEASE_TAG"
+            [[ "$(git rev-parse "${RELEASE_TAG}^{commit}")" == "$RELEASE_SHA" ]]
+          fi
+
+      - name: Resolve bundle version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$RELEASE_TAG" ]]; then
+            bundle_version="${RELEASE_TAG#v}"
+            bundle_suffix=""
+          else
+            bundle_version="$(node -p 'require("./package.json").version')"
+            bundle_suffix="-diagnostic"
+          fi
+          printf 'BUNDLE_VERSION=%s\n' "$bundle_version" >> "$GITHUB_ENV"
+          printf 'BUNDLE_SUFFIX=%s\n' "$bundle_suffix" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v7
         with:
@@ -113,8 +130,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="${RELEASE_TAG#v}"
-          bundle_name="Epikrise_${version}_${FLATPAK_ARCH}.flatpak"
+          bundle_name="Epikrise_${BUNDLE_VERSION}${BUNDLE_SUFFIX}_${FLATPAK_ARCH}.flatpak"
           mkdir -p flatpak-bundle
           flatpak build-bundle --arch="$FLATPAK_ARCH" \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
