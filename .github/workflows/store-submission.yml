@@ -192,7 +192,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:STORE_PRODUCT_ID) {
-            throw "STORE_PRODUCT_ID repository variable is not set."
+            throw "STORE_PRODUCT_ID environment variable is not set in the store-partner-center environment."
           }
 
       - uses: actions/download-artifact@v8
