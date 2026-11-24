@@ -20,7 +20,7 @@ Use the [dev container](.devcontainer/devcontainer.json), which has everything p
 ```
 .devcontainer/            dev container definition and setup scripts
 .github/                  workflows, issue templates, and the PR template
-docs/                     privacy policies published with GitHub Pages
+docs/                     project website and privacy policies, published with GitHub Pages
 locales/                  Fluent message catalogs, one folder per language
 scripts/                  build, packaging, OCR, and release helpers
 src/                      SvelteKit frontend (SPA, no SSR); bindings.ts is generated
@@ -56,6 +56,10 @@ The full gate list, including formatting, linting, and audit commands, is on the
 Use Conventional Commit subjects (`feat: add template importer`, `fix: handle formatted output`) and keep each commit focused on one change. User-visible changes get an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
 
 Release preparation, the release gates, and the updater and Store rules are documented in the [Releasing](https://github.com/jerney-nexus/epikrise/wiki/Releasing) wiki page.
+
+## Project website
+
+The public website is the Jekyll site in `docs/` (`docs/index.md` and the privacy policies). [pages.yml](.github/workflows/pages.yml) builds it with `actions/jekyll-build-pages` and deploys it with GitHub Pages on pushes to `main`. The Pages source is GitHub Actions, so keep it set to that rather than to a branch folder. To preview locally, run `jekyll build --source docs --destination /tmp/epikrise-site` with Jekyll 3.x or 4.x and open the generated `index.html`.
 
 ## Localization
 
