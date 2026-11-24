@@ -26,6 +26,7 @@
     stored = null;
   }
   select.value = stored === "light" || stored === "dark" ? stored : "auto";
+  apply(select.value);
 
   select.addEventListener("change", function () {
     try {
