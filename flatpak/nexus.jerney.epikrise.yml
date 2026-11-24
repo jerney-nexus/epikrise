@@ -119,16 +119,29 @@ modules:
           - flatpak/cargo-sources.json
       - cargo-sources.json
       - node-sources.json
-      - type: file
-        url: https://registry.npmjs.org/pnpm/-/pnpm-12.15.0.tgz
-        sha512: b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61
-        dest: tools
-        dest-filename: pnpm.tgz
+      - type: archive
+        only-arches: [x86_64]
+        url: https://registry.npmjs.org/@pnpm/exe.linux-x64/-/exe.linux-x64-12.15.0.tgz
+        sha512: c9cf9095947ef7e9ebdbd2787d1ce13286a98314c10e776affea5eca8ab55d4b9f9d01677db5d4305b9d0c82b31e2e78e658a71aa98e9977e7d0da2e7cd81c3a
+        strip-components: 1
+        dest: tools/pnpm-x86_64
+      - type: archive
+        only-arches: [aarch64]
+        url: https://registry.npmjs.org/@pnpm/exe.linux-arm64/-/exe.linux-arm64-12.15.0.tgz
+        sha512: a8c2fff1a097b2587cb5dff0e14f8724da94719dbe9ba11f4db592708cd9466c8fb1114dfb10782cfd54fe1ca6c5cd6248988ab46e7a1c9c767ef504ad61481b
+        strip-components: 1
+        dest: tools/pnpm-aarch64
       - type: script
         dest: tools/bin
         dest-filename: pnpm
         commands:
-          - exec node "$(dirname "$0")/../pnpm/bin/pnpm.mjs" "$@"
+          - |
+            case "$(uname -m)" in
+              x86_64) pnpm_arch=x86_64 ;;
+              aarch64) pnpm_arch=aarch64 ;;
+              *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+            esac
+            exec "$(dirname "$0")/../pnpm-${pnpm_arch}/pnpm" "$@"
       - type: archive
         only-arches: [x86_64]
         url: https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8066/pdfium-linux-x64.tgz
@@ -162,9 +175,6 @@ modules:
     build-commands:
       - |
         set -euo pipefail
-        mkdir -p tools/pnpm
-        tar -xzf tools/pnpm.tgz -C tools/pnpm --strip-components=1
-        chmod +x tools/bin/pnpm
         pnpm install --frozen-lockfile --offline
         pnpm build
         triple="$(rustc -vV | sed -n 's/^host: //p')"
