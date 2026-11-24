@@ -146,11 +146,13 @@ modules:
         only-arches: [x86_64]
         url: https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8066/pdfium-linux-x64.tgz
         sha256: 0b43f405477cf2cfc4dbff06905093c3309756c6bca1fb9da99234a2ca97fed2
+        strip-components: 0
         dest: pdfium/x86_64
       - type: archive
         only-arches: [aarch64]
         url: https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8066/pdfium-linux-arm64.tgz
         sha256: 0e6f90dccbc6b81fd5d7106abaf164c4222178f024c204d00d526b60fd2ad535
+        strip-components: 0
         dest: pdfium/aarch64
       - type: file
         url: https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/87416418657359cb625c412a48b6e1d6d41c29bd/deu.traineddata
