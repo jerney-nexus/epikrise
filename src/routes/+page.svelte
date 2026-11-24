@@ -5332,6 +5332,10 @@
     opacity: 0.55;
   }
 
+  .button-secondary.input-tool-button:disabled {
+    opacity: 1;
+  }
+
   .url-import input {
     min-width: 0;
     width: 100%;
