@@ -1,4 +1,8 @@
-<header class="site-header" lang="en">
+<script>
+  import ThemePreference from "./ThemePreference.svelte";
+</script>
+
+<header class="site-header">
   <div class="site-header__inner">
     <a class="site-brand" href="/">
       <span class="site-brand__mark" aria-hidden="true">E</span>
@@ -9,13 +13,6 @@
       <a href="/privacy-policy/en/">Privacy</a>
       <a href="https://github.com/jerney-nexus/epikrise">GitHub</a>
     </nav>
-    <label class="theme-select">
-      <span>Theme</span>
-      <select id="theme-preference">
-        <option value="auto">Auto</option>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-      </select>
-    </label>
+    <ThemePreference />
   </div>
 </header>
