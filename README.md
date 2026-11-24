@@ -8,6 +8,8 @@ A desktop drafting aid that turns user-supplied clinical material into a structu
 > [!IMPORTANT]
 > Epikrise is a **drafting aid**, not a medical device and not a diagnostic tool. Every generated text must be reviewed by the responsible clinician before use. See [Safety and scope](https://github.com/jerney-nexus/epikrise/wiki/User-Guide#safety-and-scope).
 
+Project website: [jerney-nexus.github.io/epikrise](https://jerney-nexus.github.io/epikrise/).
+
 ## What it does
 
 Paste text or images, import documents, or provide a URL. Epikrise extracts text from plain-text files, PDF, DOCX, XLSX, RTF and HTML. PNG/JPEG images and sparse PDF pages can use local OCR or, when enabled and supported by the selected model, vision analysis. Images are limited to 20 MB, 8,192 pixels in width and in height, and 128 MB of decoded pixel data; larger images are rejected, and an image that cannot be decoded is reported as an invalid image. URLs are fetched and converted to readable text. Text clipboard access uses Tauri's clipboard plugin; image paste is handled by the webview and sent to Rust over IPC.
