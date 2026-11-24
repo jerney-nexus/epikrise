@@ -2903,11 +2903,21 @@ describe("six-target desktop build tooling", () => {
     ).toThrow("not manually dispatched");
   });
 
-  it("requires all six target jobs to succeed", () => {
-    const jobs = desktopTargets.map((target) => ({
-      name: `Build ${target}`,
-      conclusion: "success",
-    }));
+  it("requires all six target jobs and both Flatpak jobs to succeed", () => {
+    const jobs = [
+      ...desktopTargets.map((target) => ({
+        name: `Build ${target}`,
+        conclusion: "success",
+      })),
+      {
+        name: "Build Flatpak bundles / Build Flatpak bundle (aarch64)",
+        conclusion: "success",
+      },
+      {
+        name: "Build Flatpak bundles / Build Flatpak bundle (x86_64)",
+        conclusion: "success",
+      },
+    ];
     expect(() => assertSuccessfulJobs(jobs)).not.toThrow();
     expect(() =>
       assertSuccessfulJobs([
@@ -2917,6 +2927,11 @@ describe("six-target desktop build tooling", () => {
       ]),
     ).not.toThrow();
     expect(() => assertSuccessfulJobs(jobs.slice(1))).toThrow("did not succeed");
+    expect(() =>
+      assertSuccessfulJobs(
+        jobs.slice(0, -1).concat({ ...jobs[jobs.length - 1], conclusion: "failure" }),
+      ),
+    ).toThrow("Flatpak bundle (x86_64)");
     expect(() =>
       assertSuccessfulJobs(jobs.map((job) => ({ ...job, conclusion: "failure" }))),
     ).toThrow("did not succeed");
@@ -3373,7 +3388,7 @@ describe("six-target desktop build tooling", () => {
       const version = "1.2.3";
       const writeBundle = async (arch: string, contents: string) => {
         const target = `${arch}-unknown-linux-gnu`;
-        const bundleName = `Epikrise_${version}-diagnostic_${arch}.flatpak`;
+        const bundleName = `Epikrise_${version}_${arch}.flatpak`;
         const targetDirectory = path.join(directory, `${target}-flatpak`);
         await mkdir(targetDirectory, { recursive: true });
         const digest = createHash("sha256").update(contents).digest("hex");
@@ -3390,7 +3405,7 @@ describe("six-target desktop build tooling", () => {
       expect(await verifyFlatpakSet(directory, { version })).toHaveLength(2);
 
       await writeFile(
-        path.join(x86Directory, "Epikrise_1.2.3-diagnostic_x86_64.flatpak"),
+        path.join(x86Directory, "Epikrise_1.2.3_x86_64.flatpak"),
         "tampered",
       );
       await expect(verifyFlatpakSet(directory, { version })).rejects.toThrow(
@@ -3485,7 +3500,7 @@ describe("six-target desktop build tooling", () => {
       path.join(repoRoot, ".github/workflows/flatpak.yml"),
       "utf8",
     );
-    expect(flatpakWorkflow).toContain('bundle_suffix="-diagnostic"');
+    expect(flatpakWorkflow).not.toContain("-diagnostic");
   });
 
   it("checks Visual Studio paths outside parenthesized CMD blocks", async () => {

@@ -57,7 +57,7 @@ const flatpakTargets = new Set([
 
 /** @param {DesktopTarget} target @param {string} version */
 function flatpakBundleName(target, version) {
-  return `Epikrise_${version}-diagnostic_${target.split("-")[0]}.flatpak`;
+  return `Epikrise_${version}_${target.split("-")[0]}.flatpak`;
 }
 
 /**
@@ -135,6 +135,13 @@ export function assertSuccessfulJobs(jobs) {
     assert(
       conclusions.get(`Build ${target}`) === "success",
       `Required build job did not succeed: Build ${target}.`,
+    );
+  }
+  for (const arch of ["aarch64", "x86_64"]) {
+    const name = `Build Flatpak bundles / Build Flatpak bundle (${arch})`;
+    assert(
+      conclusions.get(name) === "success",
+      `Required build job did not succeed: ${name}.`,
     );
   }
 }

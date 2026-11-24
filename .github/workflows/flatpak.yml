@@ -68,12 +68,8 @@ jobs:
           bundle_version="$(node -p 'require("./package.json").version')"
           if [[ -n "$RELEASE_TAG" ]]; then
             [[ "$RELEASE_TAG" == "v${bundle_version}" ]]
-            bundle_suffix=""
-          else
-            bundle_suffix="-diagnostic"
           fi
           printf 'BUNDLE_VERSION=%s\n' "$bundle_version" >> "$GITHUB_ENV"
-          printf 'BUNDLE_SUFFIX=%s\n' "$bundle_suffix" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v7
         with:
@@ -131,7 +127,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bundle_name="Epikrise_${BUNDLE_VERSION}${BUNDLE_SUFFIX}_${FLATPAK_ARCH}.flatpak"
+          bundle_name="Epikrise_${BUNDLE_VERSION}_${FLATPAK_ARCH}.flatpak"
           mkdir -p flatpak-bundle
           flatpak build-bundle --arch="$FLATPAK_ARCH" \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
