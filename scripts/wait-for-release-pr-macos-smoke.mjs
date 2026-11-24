@@ -36,6 +36,9 @@ const symlinkMode = "120000";
  * preparation legitimately changes the version fields of package.json,
  * Cargo.toml, Cargo.lock, and tauri.conf.json, so those are compared with
  * version-only normalization.
+ *
+ * Entries may be absent from the repository; an absent entry is skipped. A PR
+ * that adds one of them still fails the gate, which is why they stay listed.
  */
 export const smokeTrustedPaths = [
   workflowPath,
