@@ -1,0 +1,233 @@
+.home {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 1.25rem 3rem;
+  overflow-x: clip;
+}
+
+.hero {
+  position: relative;
+  padding: 4.5rem 0 3rem;
+
+  &__glow {
+    position: absolute;
+    top: -6rem;
+    left: 0;
+    right: 0;
+    height: 460px;
+    background: radial-gradient(closest-side, var(--color-glow), transparent);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  &__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 1.25rem;
+    padding: 0.3rem 0.85rem;
+    color: var(--color-muted);
+    font-size: 0.85rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-surface);
+  }
+
+  &__dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--color-accent);
+  }
+
+  &__copy {
+    max-width: 46rem;
+
+    h1 {
+      margin: 0 0 1rem;
+      font-family: inherit;
+      font-size: clamp(2.4rem, 6vw, 4rem);
+      font-weight: 750;
+      letter-spacing: -0.02em;
+      line-height: 1.05;
+      background: var(--gradient-brand);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    p {
+      margin: 0 0 0.75rem;
+      color: var(--color-muted);
+      font-size: 1.15rem;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.75rem;
+  }
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.7rem 1.2rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+
+  &--primary {
+    color: var(--color-brand-text);
+    background: var(--color-brand);
+    box-shadow: 0 6px 18px var(--color-glow);
+
+    &:hover {
+      background: var(--color-brand-strong);
+    }
+  }
+
+  &--ghost {
+    color: var(--color-heading);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+
+    &:hover {
+      border-color: var(--color-brand);
+    }
+  }
+}
+
+.cards {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+
+  &:hover {
+    transform: translateY(-4px);
+    border-color: var(--color-brand);
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  h2 {
+    margin: 0.9rem 0 0.5rem;
+    font-size: 1.2rem;
+  }
+
+  &__icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 12px;
+    color: var(--color-brand);
+    background: var(--color-brand-soft);
+
+    svg {
+      width: 1.4rem;
+      height: 1.4rem;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+  }
+
+  &__body {
+    color: var(--color-muted);
+    font-size: 0.97rem;
+
+    p {
+      margin: 0.5rem 0;
+    }
+
+    ul {
+      padding-left: 1.1rem;
+      margin: 0.5rem 0;
+    }
+
+    li + li {
+      margin-top: 0.35rem;
+    }
+
+    a {
+      font-weight: 600;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero__glow {
+    animation: drift 14s ease-in-out infinite alternate;
+  }
+
+  .hero__copy,
+  .hero__eyebrow,
+  .hero__actions {
+    animation: rise 700ms ease-out backwards;
+  }
+
+  .hero__eyebrow {
+    animation-delay: 0ms;
+  }
+
+  .hero__copy {
+    animation-delay: 120ms;
+  }
+
+  .hero__actions {
+    animation-delay: 240ms;
+  }
+
+  .card {
+    animation: rise 600ms ease-out backwards;
+
+    @for $i from 1 through 6 {
+      &:nth-child(#{$i}) {
+        animation-delay: $i * 90ms + 300ms;
+      }
+    }
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(4%, 6%, 0) scale(1.08);
+  }
+}

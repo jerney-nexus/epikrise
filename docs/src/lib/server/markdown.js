@@ -3,7 +3,7 @@ import MarkdownIt from "markdown-it";
 const markdown = new MarkdownIt({ typographer: true });
 
 // Kramdown gives headings ids that the in-page links rely on (for example #download).
-function slugify(text) {
+export function slugify(text) {
   return text
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, "-")

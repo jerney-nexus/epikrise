@@ -1,5 +1,5 @@
-import { indexHtml } from "../lib/server/content.js";
+import { indexPage } from "../lib/server/content.js";
 
 export function load() {
-  return { html: indexHtml };
+  return indexPage;
 }
