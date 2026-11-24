@@ -185,8 +185,9 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: epikrise-flatpak
+          pattern: epikrise-flatpak-*
           path: flatpak-bundle
+          merge-multiple: true
 
       - name: Verify Store bundle checksum and provenance
         env:
@@ -204,9 +205,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          bundle="flatpak-bundle/nexus.jerney.epikrise.flatpak"
-          (cd flatpak-bundle && sha256sum -c nexus.jerney.epikrise.flatpak.sha256)
-          gh attestation verify "$bundle" --repo "$GITHUB_REPOSITORY"
+          bundles=(flatpak-bundle/Epikrise_*.flatpak)
+          [[ ${#bundles[@]} -eq 2 ]]
+          for bundle in "${bundles[@]}"; do
+            bundle_name="$(basename "$bundle")"
+            (cd flatpak-bundle && sha256sum -c "$bundle_name.sha256")
+            gh attestation verify "$bundle" --repo "$GITHUB_REPOSITORY"
+          done
 
       - name: Stage Store MSIX packages and bundle as release assets
         run: |
@@ -233,10 +238,9 @@ jobs:
           set -euo pipefail
           flatpak_dir="release-artifacts/release-flatpak"
           mkdir -p "$flatpak_dir"
-          cp flatpak-bundle/nexus.jerney.epikrise.flatpak \
-            flatpak-bundle/nexus.jerney.epikrise.flatpak.sha256 "$flatpak_dir"/
-          # The bundle and its .sha256.
-          [[ "$(find "$flatpak_dir" -maxdepth 1 -type f | wc -l)" -eq 2 ]]
+          cp flatpak-bundle/Epikrise_*.flatpak flatpak-bundle/Epikrise_*.flatpak.sha256 "$flatpak_dir"/
+          # One bundle and its .sha256 for each of x86_64 and aarch64.
+          [[ "$(find "$flatpak_dir" -maxdepth 1 -type f | wc -l)" -eq 4 ]]
 
       - name: Generate static updater manifest
         run: |

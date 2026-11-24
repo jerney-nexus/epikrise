@@ -3882,10 +3882,11 @@ describe("signed release artifacts", () => {
     const approveJob = releaseWorkflow.slice(approveJobStart, publishJobStart);
     const publishJob = releaseWorkflow.slice(publishJobStart);
     expect(stageJob).toContain("needs: [build, store-msix, flatpak]");
-    expect(stageJob).toContain("name: epikrise-flatpak");
+    expect(stageJob).toContain("pattern: epikrise-flatpak-*");
+    expect(stageJob).toContain("merge-multiple: true");
     expect(stageJob).toContain('gh attestation verify "$bundle"');
     expect(stageJob).toContain('"$flatpak_dir"/');
-    expect(stageJob).toContain("-eq 2 ]]");
+    expect(stageJob).toContain("-eq 4 ]]");
     expect(stageJob).toContain("attestations: read");
     expect(stageJob).toContain('gh attestation verify "${bundles[0]}"');
     expect(stageJob).toContain("node scripts/desktop-builds.mjs stage-store-release");

@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The Close button in popup dialogs shows a hover highlight in both light and dark themes (#296)
 - The Help menu has Sponsoring and Feedback items that open in the system browser, and the About panel links to the Epikrise website on Linux (#340, #343)
 - On macOS and Windows, the Help menu has a Website item that opens the Epikrise website at epikrise.jerney.nexus in the system browser (#340, #343)
-- Linux releases include a Flatpak bundle (`nexus.jerney.epikrise.flatpak`) built in CI and attached to each GitHub release (#185)
+- Linux releases include Flatpak bundles for x86_64 and aarch64 (`Epikrise_<version>_<arch>.flatpak`), built in CI and attached to each GitHub release (#185)
 
 ### 🐛 Bug Fixes
 
