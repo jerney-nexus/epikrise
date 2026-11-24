@@ -72,6 +72,7 @@ import {
   stagePackages,
   stageStoreReleaseAssets,
   verifyArtifactSet,
+  verifyFlatpakSet,
   verifyStoreReleaseAssets,
 } from "../scripts/desktop-builds.mjs";
 import {
@@ -3361,6 +3362,46 @@ describe("six-target desktop build tooling", () => {
         recursive: true,
       });
       await expect(verifyArtifactSet(directory, expected)).rejects.toThrow();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts only exact Flatpak bundles with matching checksums", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-flatpak-download-"));
+    try {
+      const version = "1.2.3";
+      const writeBundle = async (arch: string, contents: string) => {
+        const target = `${arch}-unknown-linux-gnu`;
+        const bundleName = `Epikrise_${version}-diagnostic_${arch}.flatpak`;
+        const targetDirectory = path.join(directory, `${target}-flatpak`);
+        await mkdir(targetDirectory, { recursive: true });
+        const digest = createHash("sha256").update(contents).digest("hex");
+        await writeFile(path.join(targetDirectory, bundleName), contents);
+        await writeFile(
+          path.join(targetDirectory, `${bundleName}.sha256`),
+          `${digest}  ${bundleName}\n`,
+        );
+        return targetDirectory;
+      };
+      const x86Directory = await writeBundle("x86_64", "x86 bundle");
+      await writeBundle("aarch64", "arm bundle");
+
+      expect(await verifyFlatpakSet(directory, { version })).toHaveLength(2);
+
+      await writeFile(
+        path.join(x86Directory, "Epikrise_1.2.3-diagnostic_x86_64.flatpak"),
+        "tampered",
+      );
+      await expect(verifyFlatpakSet(directory, { version })).rejects.toThrow(
+        "SHA-256 verification failed",
+      );
+      await writeBundle("x86_64", "x86 bundle");
+
+      await writeFile(path.join(x86Directory, "extra.txt"), "unexpected");
+      await expect(verifyFlatpakSet(directory, { version })).rejects.toThrow(
+        "exactly the expected bundle",
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

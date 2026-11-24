@@ -50,6 +50,15 @@ const expectedSuffixes = {
   "aarch64-pc-windows-msvc": [".exe"],
 };
 const storeMsixTargets = new Set(["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"]);
+const flatpakTargets = new Set([
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+]);
+
+/** @param {DesktopTarget} target @param {string} version */
+function flatpakBundleName(target, version) {
+  return `Epikrise_${version}-diagnostic_${target.split("-")[0]}.flatpak`;
+}
 
 /**
  * @param {DesktopTarget} target
@@ -407,6 +416,55 @@ async function verifyArtifactDirectory(directory, expected) {
     "Downloaded artifact contains files not declared in its manifest.",
   );
   return manifest;
+}
+
+/**
+ * Flatpak artifacts carry a bundle and its sha256sum file instead of a manifest.
+ * @param {string} directory
+ * @param {{ target: DesktopTarget, version: string }} expected
+ * @returns {Promise<string>} Path to the verified bundle.
+ */
+async function verifyFlatpakDirectory(directory, { target, version }) {
+  const bundleName = flatpakBundleName(target, version);
+  const checksumName = `${bundleName}.sha256`;
+  const names = (await readdir(directory)).sort();
+  assert(
+    names.length === 2 && names[0] === bundleName && names[1] === checksumName,
+    "Flatpak artifact does not contain exactly the expected bundle and checksum.",
+  );
+  const bundlePath = path.join(directory, bundleName);
+  const metadata = await lstat(bundlePath);
+  assert(
+    metadata.isFile() && !metadata.isSymbolicLink() && metadata.size > 0,
+    "Flatpak bundle is not a non-empty regular file.",
+  );
+  const checksum = await readFile(path.join(directory, checksumName), "utf8");
+  const match = /^([0-9a-f]{64}) {2}(.+)\n$/.exec(checksum);
+  assert(match && match[2] === bundleName, "Flatpak checksum file is malformed.");
+  assert(
+    match[1] === (await sha256(bundlePath)),
+    "Flatpak SHA-256 verification failed.",
+  );
+  return bundlePath;
+}
+
+/**
+ * @param {string} root
+ * @param {{ version: string }} expected
+ * @returns {Promise<string[]>} Paths to the verified Flatpak bundles.
+ */
+export async function verifyFlatpakSet(root, expected) {
+  const bundles = [];
+  for (const target of desktopTargets) {
+    if (!flatpakTargets.has(target)) continue;
+    bundles.push(
+      await verifyFlatpakDirectory(path.join(root, `${target}-flatpak`), {
+        target,
+        version: expected.version,
+      }),
+    );
+  }
+  return bundles;
 }
 
 /**
@@ -786,6 +844,20 @@ async function dispatchAndDownload() {
           storeDestination,
         ]);
       }
+      if (flatpakTargets.has(target)) {
+        const flatpakDestination = path.join(temporaryRoot, `${target}-flatpak`);
+        const flatpakArch = target.split("-")[0];
+        await mkdir(flatpakDestination, { recursive: true });
+        await run("gh", [
+          "run",
+          "download",
+          String(selectedRun.databaseId),
+          "--name",
+          `epikrise-flatpak-${flatpakArch}`,
+          "--dir",
+          flatpakDestination,
+        ]);
+      }
     }
     const packageJson = JSON.parse(
       await readFile(path.join(repoRoot, "package.json"), "utf8"),
@@ -795,6 +867,7 @@ async function dispatchAndDownload() {
       commit,
       version: packageJson.version,
     });
+    await verifyFlatpakSet(temporaryRoot, { version: packageJson.version });
     try {
       await lstat(outputRoot);
       throw new Error(`Output directory already exists: ${outputRoot}.`);
@@ -811,7 +884,7 @@ async function dispatchAndDownload() {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
   console.log(
-    `Verified all six targets and both Windows package families: ${outputRoot}`,
+    `Verified all six targets, both Windows package families, and both Flatpak bundles: ${outputRoot}`,
   );
 }
 
