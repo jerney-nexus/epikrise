@@ -1,6 +1,9 @@
 ---
 title: Datenschutzrichtlinie für Epikrise
 permalink: /privacy-policy/de/
+layout: page
+legal: true
+lang: de
 ---
 
 # Datenschutzrichtlinie für Epikrise

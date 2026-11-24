@@ -1,6 +1,9 @@
 ---
 title: Informativa sulla privacy di Epikrise
 permalink: /privacy-policy/it/
+layout: page
+legal: true
+lang: it
 ---
 
 # Informativa sulla privacy di Epikrise

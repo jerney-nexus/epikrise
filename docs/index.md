@@ -1,6 +1,8 @@
 ---
 title: Epikrise
 permalink: /
+layout: page
+description: Epikrise, a local-only drafting aid for clinical material
 ---
 
 # Epikrise

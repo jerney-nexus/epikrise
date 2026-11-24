@@ -1,6 +1,9 @@
 ---
 title: Politique de confidentialité d’Epikrise
 permalink: /privacy-policy/fr/
+layout: page
+legal: true
+lang: fr
 ---
 
 # Politique de confidentialité d’Epikrise
