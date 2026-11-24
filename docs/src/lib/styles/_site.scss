@@ -18,7 +18,7 @@ body {
   margin: 0;
   color: var(--color-text);
   background: var(--color-bg);
-  font-family: $font-sans;
+  font-family: $font-serif;
   font-size: 16px;
   line-height: 1.6;
 }
@@ -96,8 +96,6 @@ pre {
   z-index: 10;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-header-bg);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
 
   &__inner {
     display: flex;
@@ -115,20 +113,14 @@ pre {
   align-items: center;
   gap: 0.6rem;
   color: var(--color-heading);
-  font-weight: 750;
-  letter-spacing: -0.01em;
+  font-family: $font-serif;
+  font-size: 1.25rem;
   text-decoration: none;
 
   &__mark {
-    display: inline-grid;
-    place-items: center;
-    width: 1.9rem;
-    height: 1.9rem;
-    border-radius: 8px;
-    color: var(--color-brand-text);
-    background: var(--gradient-brand);
-    font-family: $font-sans;
-    font-weight: 700;
+    display: block;
+    width: 2.25rem;
+    height: 2.25rem;
   }
 }
 
@@ -141,6 +133,7 @@ pre {
   a {
     padding: 0.35rem 0.75rem;
     color: var(--color-text);
+    font-family: $font-sans;
     border-radius: 999px;
     text-decoration: none;
     transition: background-color 160ms ease;
