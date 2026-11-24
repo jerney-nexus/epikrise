@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Epikrise
+GenericName=Clinical case assistant
+Comment=Local-only assistant that turns anonymized clinical material into a structured diagnosis and findings list
+Exec=epikrise
+Icon=nexus.jerney.epikrise
+Terminal=false
+Categories=Office;Science;

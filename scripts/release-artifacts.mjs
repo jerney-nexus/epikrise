@@ -40,6 +40,9 @@ export const releaseTargets = /** @type {const} */ ([
 /** Store MSIX packages and bundle, attached to the release alongside the updater assets. */
 export const storeMsixReleaseDirectory = "release-store-msix";
 
+/** Flatpak bundle and its checksum, attached to the release alongside the updater assets. */
+export const flatpakReleaseDirectory = "release-flatpak";
+
 const targetConfig = /** @type {Record<string, ReleaseTargetConfig>} */ ({
   "x86_64-unknown-linux-gnu": {
     platform: "linux-x86_64",
@@ -609,14 +612,19 @@ async function collectExpectedReleaseAssets({ artifactsRoot, latestPath }) {
   const directories = [
     ...releaseTargets.map((target) => `release-${target}`),
     storeMsixReleaseDirectory,
+    flatpakReleaseDirectory,
   ];
+  const optionalDirectories = new Set([
+    storeMsixReleaseDirectory,
+    flatpakReleaseDirectory,
+  ]);
   for (const directoryName of directories) {
     const directory = path.join(artifactsRoot, directoryName);
     let names;
     try {
       names = await readdir(directory);
     } catch (error) {
-      if (directoryName === storeMsixReleaseDirectory && isNotFoundError(error)) {
+      if (optionalDirectories.has(directoryName) && isNotFoundError(error)) {
         continue;
       }
       throw error;

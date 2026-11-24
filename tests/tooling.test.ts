@@ -3831,6 +3831,9 @@ describe("signed release artifacts", () => {
     );
     expect(releaseWorkflow).not.toMatch(/build:\s+needs: approve-builds/);
     expect(releaseWorkflow).toMatch(/store-msix:\s+[\s\S]*?needs: \[approve-builds\]/);
+    expect(releaseWorkflow).toMatch(
+      /flatpak:\s+name: Build Flatpak bundle\s+needs: \[approve-builds\]\s+uses: \.\/\.github\/workflows\/flatpak\.yml/,
+    );
     const frontendWorkflow = await readFile(
       path.join(repoRoot, ".github/workflows/frontend-tests.yml"),
       "utf8",
@@ -3878,7 +3881,11 @@ describe("signed release artifacts", () => {
     const stageJob = releaseWorkflow.slice(stageJobStart, approveJobStart);
     const approveJob = releaseWorkflow.slice(approveJobStart, publishJobStart);
     const publishJob = releaseWorkflow.slice(publishJobStart);
-    expect(stageJob).toContain("needs: [build, store-msix]");
+    expect(stageJob).toContain("needs: [build, store-msix, flatpak]");
+    expect(stageJob).toContain("name: epikrise-flatpak");
+    expect(stageJob).toContain('gh attestation verify "$bundle"');
+    expect(stageJob).toContain('"$flatpak_dir"/');
+    expect(stageJob).toContain("-eq 2 ]]");
     expect(stageJob).toContain("attestations: read");
     expect(stageJob).toContain('gh attestation verify "${bundles[0]}"');
     expect(stageJob).toContain("node scripts/desktop-builds.mjs stage-store-release");
@@ -3891,10 +3898,10 @@ describe("signed release artifacts", () => {
     expect(stageJob).toContain("asset-evidence");
     expect(stageJob).toContain("name: acceptance-evidence-${{ github.run_id }}");
     expect(stageJob).toContain("overwrite: true");
-    expect(approveJob).toContain("needs: [stage, store-msix]");
+    expect(approveJob).toContain("needs: [stage, store-msix, flatpak]");
     expect(approveJob).toContain("environment:\n      name: release");
     expect(approveJob).not.toContain("concurrency:");
-    expect(publishJob).toContain("needs: [stage, approve, store-msix]");
+    expect(publishJob).toContain("needs: [stage, approve, store-msix, flatpak]");
     expect(publishJob).not.toContain("environment:");
     expect(publishJob).toContain("validate-draft");
     expect(publishJob).toContain("actions/download-artifact@v8");

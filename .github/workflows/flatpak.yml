@@ -1,0 +1,123 @@
+name: Flatpak bundle
+
+on:
+  workflow_call:
+    inputs:
+      commit:
+        description: Full commit SHA to package
+        required: true
+        type: string
+      release_tag:
+        description: Release tag to validate against the commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Flatpak bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_SHA: ${{ inputs.commit }}
+      FLATPAK_BUILDER_TOOLS_REF: 9d86d336a39b9af38b86f114b6ce5820fe260f91
+      FLATPAK_ID: nexus.jerney.epikrise
+    steps:
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Validate release tag and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          node scripts/release-artifacts.mjs validate --tag "$RELEASE_TAG"
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]]
+          [[ "$(git rev-parse "${RELEASE_TAG}^{commit}")" == "$RELEASE_SHA" ]]
+
+      - uses: actions/checkout@v7
+        with:
+          repository: flatpak/flatpak-builder-tools
+          ref: ${{ env.FLATPAK_BUILDER_TOOLS_REF }}
+          path: flatpak-builder-tools
+          persist-credentials: false
+
+      - uses: pnpm/setup@v2
+        with:
+          version: 12.15.0
+          install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install Flatpak tooling and generator dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder \
+            python3-aiohttp python3-yaml python3-tomlkit
+          if [[ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          flatpak remote-add --user --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Generate pnpm sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=flatpak-builder-tools/node python3 -m flatpak_node_generator \
+            pnpm pnpm-lock.yaml -o flatpak/node-sources.json
+
+      - name: Generate Cargo sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 flatpak-builder-tools/cargo/flatpak-cargo-generator.py \
+            src-tauri/Cargo.lock -o flatpak/cargo-sources.json
+
+      - name: Build Flatpak
+        shell: bash
+        run: |
+          set -euo pipefail
+          flatpak-builder --force-clean --user --install-deps-from=flathub \
+            --repo=flatpak-repo flatpak-build-dir \
+            "flatpak/$FLATPAK_ID.yml"
+
+      - name: Export Flatpak bundle and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p flatpak-bundle
+          flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            flatpak-repo "flatpak-bundle/$FLATPAK_ID.flatpak" "$FLATPAK_ID"
+          (cd flatpak-bundle && sha256sum "$FLATPAK_ID.flatpak" > "$FLATPAK_ID.flatpak.sha256")
+
+      - name: Attest Flatpak provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: flatpak-bundle/nexus.jerney.epikrise.flatpak
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: epikrise-flatpak
+          path: flatpak-bundle
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

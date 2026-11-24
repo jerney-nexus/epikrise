@@ -119,9 +119,21 @@ jobs:
       commit: ${{ github.sha }}
       release_tag: ${{ github.ref_name }}
 
+  flatpak:
+    name: Build Flatpak bundle
+    needs: [approve-builds]
+    uses: ./.github/workflows/flatpak.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    with:
+      commit: ${{ github.sha }}
+      release_tag: ${{ github.ref_name }}
+
   stage:
-    name: Stage signed updater and Store release
-    needs: [build, store-msix]
+    name: Stage signed updater, Store, and Flatpak release
+    needs: [build, store-msix, flatpak]
     runs-on: ubuntu-24.04
     permissions:
       attestations: read
@@ -171,6 +183,11 @@ jobs:
           name: epikrise-store-msixbundle
           path: store-bundle
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: epikrise-flatpak
+          path: flatpak-bundle
+
       - name: Verify Store bundle checksum and provenance
         env:
           GH_TOKEN: ${{ github.token }}
@@ -181,6 +198,15 @@ jobs:
           bundle_name="$(basename "${bundles[0]}")"
           (cd store-bundle && sha256sum -c "$bundle_name.sha256")
           gh attestation verify "${bundles[0]}" --repo "$GITHUB_REPOSITORY"
+
+      - name: Verify Flatpak checksum and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bundle="flatpak-bundle/nexus.jerney.epikrise.flatpak"
+          (cd flatpak-bundle && sha256sum -c nexus.jerney.epikrise.flatpak.sha256)
+          gh attestation verify "$bundle" --repo "$GITHUB_REPOSITORY"
 
       - name: Stage Store MSIX packages and bundle as release assets
         run: |
@@ -201,6 +227,16 @@ jobs:
           cp store-bundle/Epikrise_*_bundle.msixbundle store-bundle/Epikrise_*_bundle.msixbundle.sha256 "$store_dir"/
           # Two architectures, each with a .msix and .msix.manifest.json, plus the bundle and its .sha256.
           [[ "$(find "$store_dir" -maxdepth 1 -type f | wc -l)" -eq 6 ]]
+
+      - name: Stage Flatpak bundle as release asset
+        run: |
+          set -euo pipefail
+          flatpak_dir="release-artifacts/release-flatpak"
+          mkdir -p "$flatpak_dir"
+          cp flatpak-bundle/nexus.jerney.epikrise.flatpak \
+            flatpak-bundle/nexus.jerney.epikrise.flatpak.sha256 "$flatpak_dir"/
+          # The bundle and its .sha256.
+          [[ "$(find "$flatpak_dir" -maxdepth 1 -type f | wc -l)" -eq 2 ]]
 
       - name: Generate static updater manifest
         run: |
@@ -264,7 +300,7 @@ jobs:
 
   approve:
     name: Approve accepted draft release
-    needs: [stage, store-msix]
+    needs: [stage, store-msix, flatpak]
     runs-on: ubuntu-24.04
     environment:
       name: release
@@ -274,7 +310,7 @@ jobs:
 
   publish:
     name: Publish accepted draft release
-    needs: [stage, approve, store-msix]
+    needs: [stage, approve, store-msix, flatpak]
     runs-on: ubuntu-24.04
     concurrency:
       group: updater-release
