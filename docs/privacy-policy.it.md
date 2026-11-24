@@ -5,7 +5,7 @@ permalink: /privacy-policy/it/
 
 # Informativa sulla privacy di Epikrise
 
-Lingua: [English](https://jerney-nexus.github.io/epikrise/privacy-policy/en/) · [Deutsch](https://jerney-nexus.github.io/epikrise/privacy-policy/de/) · [Français](https://jerney-nexus.github.io/epikrise/privacy-policy/fr/) · Italiano · [Español](https://jerney-nexus.github.io/epikrise/privacy-policy/es/)
+Lingua: [English](https://epikrise.jerney.nexus/privacy-policy/en/) · [Deutsch](https://epikrise.jerney.nexus/privacy-policy/de/) · [Français](https://epikrise.jerney.nexus/privacy-policy/fr/) · Italiano · [Español](https://epikrise.jerney.nexus/privacy-policy/es/)
 
 Ultimo aggiornamento: 2026-11-08
 
@@ -58,4 +58,4 @@ Poiché il titolare non raccoglie dati personali, le richieste di accesso, retti
 
 ## 10. Modifiche
 
-Il titolare può modificare la presente informativa. La versione attuale è disponibile all’indirizzo https://jerney-nexus.github.io/epikrise/privacy-policy/it/.
+Il titolare può modificare la presente informativa. La versione attuale è disponibile all’indirizzo https://epikrise.jerney.nexus/privacy-policy/it/.

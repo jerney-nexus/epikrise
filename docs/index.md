@@ -19,7 +19,7 @@ Installers and release notes are published on [GitHub Releases](https://github.c
 - Case content is held in memory and is not saved as history.
 - API keys are stored in the operating system keychain.
 
-The full privacy policy is available in [English](https://jerney-nexus.github.io/epikrise/privacy-policy/en/), [Deutsch](https://jerney-nexus.github.io/epikrise/privacy-policy/de/), [Français](https://jerney-nexus.github.io/epikrise/privacy-policy/fr/), [Italiano](https://jerney-nexus.github.io/epikrise/privacy-policy/it/) and [Español](https://jerney-nexus.github.io/epikrise/privacy-policy/es/).
+The full privacy policy is available in [English](https://epikrise.jerney.nexus/privacy-policy/en/), [Deutsch](https://epikrise.jerney.nexus/privacy-policy/de/), [Français](https://epikrise.jerney.nexus/privacy-policy/fr/), [Italiano](https://epikrise.jerney.nexus/privacy-policy/it/) and [Español](https://epikrise.jerney.nexus/privacy-policy/es/).
 
 ## Project
 
