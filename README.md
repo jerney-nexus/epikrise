@@ -54,44 +54,7 @@ pnpm tauri dev
 
 ## Linux package repositories
 
-Each release publishes signed `.deb` and `.rpm` packages to static apt and dnf repositories at `https://packages.jerney.nexus/`. The signing public key is at `https://packages.jerney.nexus/jerney-archive-keyring.asc`.
-
-Debian and Ubuntu (`/etc/apt/sources.list.d/epikrise.sources`):
-
-```text
-Types: deb
-URIs: https://packages.jerney.nexus/apt
-Suites: stable
-Components: main
-Architectures: amd64 arm64
-Signed-By: /usr/share/keyrings/jerney-archive-keyring.asc
-```
-
-Fedora and RHEL-compatible systems (`/etc/yum.repos.d/epikrise.repo`):
-
-```ini
-[epikrise]
-name=Epikrise
-baseurl=https://packages.jerney.nexus/rpm/$basearch
-enabled=1
-gpgcheck=1
-repo_gpgcheck=1
-gpgkey=https://packages.jerney.nexus/jerney-archive-keyring.asc
-```
-
-Download the key to the path named in `Signed-By` before running `apt update`, or to `/etc/pki/rpm-gpg/` before installing from dnf.
-
-### Publishing from this and other applications
-
-Publishing is centralised in the `jerney-nexus/linux-repositories` repository. It alone holds the signing key and R2 credentials. This repository only requests a publish: the `linux-repositories` job in `signed-release.yml` mints a GitHub App token and sends a `repository_dispatch` (`publish-linux-packages`) with `client_payload.sources` set to `jerney-nexus/epikrise@<tag>`. The publisher downloads the `.deb` and `.rpm` assets, adds them to the existing repositories, re-signs the metadata, and uploads the result.
-
-Another application publishes the same way: add its `owner/repo` to `allowed-sources.txt` in `jerney-nexus/linux-repositories`, then dispatch with its own `owner/repo@tag`. The publisher rejects any source not on that list. No new subdomain is needed.
-
-The release job needs these settings in the `linux-repository` environment of this repository:
-
-- Variable `LINUX_REPOSITORY_APP_ID` and secret `LINUX_REPOSITORY_APP_PRIVATE_KEY` for a GitHub App installed on `jerney-nexus` with write access to `linux-repositories`.
-
-Packages with the same name and version from two applications are not disambiguated, and the later upload replaces the earlier one.
+Each release publishes signed `.deb` and `.rpm` packages to `https://packages.jerney.nexus/`. Setup steps for apt and dnf are in the [wiki](https://github.com/jerney-nexus/epikrise/wiki/Linux-Package-Repositories). Publishing is handled by the central [linux-repositories](https://github.com/jerney-nexus/linux-repositories#readme) repository.
 
 ## Documentation
 
@@ -99,6 +62,7 @@ Detailed guides are in the [wiki](https://github.com/jerney-nexus/epikrise/wiki)
 
 - [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide) — software updates, templates, provider generation settings, interface language, safety and scope, administrator egress policy
 - [Installers](https://github.com/jerney-nexus/epikrise/wiki/Installers) — local macOS, Linux, and Windows installers, Dev Container cross-build, uninstall
+- [Linux Package Repositories](https://github.com/jerney-nexus/epikrise/wiki/Linux-Package-Repositories) — apt and dnf setup for the signed packages
 - [Cross-Platform Builds](https://github.com/jerney-nexus/epikrise/wiki/Cross-Platform-Builds) — native and cross-platform builds, Store `.msixbundle`
 - [Testing](https://github.com/jerney-nexus/epikrise/wiki/Testing) — test commands and quality gates
 - [Releasing](https://github.com/jerney-nexus/epikrise/wiki/Releasing) — release steps for [Calendar Versioning](https://calver.org) (`YYYY.M.MICRO`)
