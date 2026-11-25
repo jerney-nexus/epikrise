@@ -41,6 +41,7 @@
 
   onMount(() => {
     preference = readStoredPreference();
+    applyTheme(preference);
     const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
     const onSystemChange = () => {
       if (preference === "auto") applyTheme("auto");

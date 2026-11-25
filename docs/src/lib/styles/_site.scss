@@ -84,6 +84,7 @@ pre {
   color: var(--color-brand-text);
   background: var(--color-brand);
   border-radius: 4px;
+  z-index: 20;
 
   &:focus {
     top: 0.5rem;

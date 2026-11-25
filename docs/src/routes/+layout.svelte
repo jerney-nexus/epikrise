@@ -1,9 +1,16 @@
 <script>
   import "../lib/styles/style.scss";
+  import { page } from "$app/state";
   import SiteHeader from "../lib/components/SiteHeader.svelte";
   import SiteFooter from "../lib/components/SiteFooter.svelte";
+  import { pageLanguage } from "../lib/page-language.js";
 
   let { children } = $props();
+
+  // Keeps <html lang> in step with client-side navigation between language pages.
+  $effect(() => {
+    document.documentElement.lang = pageLanguage(page.url.pathname);
+  });
 </script>
 
 <svelte:head>
