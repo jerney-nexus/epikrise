@@ -273,7 +273,7 @@ jobs:
         id: publisher_token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.LINUX_REPOSITORY_APP_ID }}
+          client-id: ${{ vars.LINUX_REPOSITORY_APP_CLIENT_ID }}
           private-key: ${{ secrets.LINUX_REPOSITORY_APP_PRIVATE_KEY }}
           owner: jerney-nexus
           repositories: linux-repositories
