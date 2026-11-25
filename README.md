@@ -54,7 +54,7 @@ pnpm tauri dev
 
 ## Linux package repositories
 
-Each release publishes signed `.deb` and `.rpm` packages to static apt and dnf repositories at `https://packages.jerney.nexus/`. The signing public key is at `https://packages.jerney.nexus/epikrise-archive-keyring.asc`.
+Each release publishes signed `.deb` and `.rpm` packages to static apt and dnf repositories at `https://packages.jerney.nexus/`. The signing public key is at `https://packages.jerney.nexus/jerney-archive-keyring.asc`.
 
 Debian and Ubuntu (`/etc/apt/sources.list.d/epikrise.sources`):
 
@@ -64,7 +64,7 @@ URIs: https://packages.jerney.nexus/apt
 Suites: stable
 Components: main
 Architectures: amd64 arm64
-Signed-By: /usr/share/keyrings/epikrise-archive-keyring.asc
+Signed-By: /usr/share/keyrings/jerney-archive-keyring.asc
 ```
 
 Fedora and RHEL-compatible systems (`/etc/yum.repos.d/epikrise.repo`):
@@ -76,23 +76,22 @@ baseurl=https://packages.jerney.nexus/rpm/$basearch
 enabled=1
 gpgcheck=1
 repo_gpgcheck=1
-gpgkey=https://packages.jerney.nexus/epikrise-archive-keyring.asc
+gpgkey=https://packages.jerney.nexus/jerney-archive-keyring.asc
 ```
 
 Download the key to the path named in `Signed-By` before running `apt update`, or to `/etc/pki/rpm-gpg/` before installing from dnf.
 
-### Publishing packages from other applications
+### Publishing from this and other applications
 
-The same repositories host packages from other applications. The apt pool is organised by each package's Debian name, and rpm packages are grouped by architecture, so packages from different applications do not overwrite each other. Each run downloads the sources, adds them to the published repositories, re-signs the metadata, and uploads the result.
+Publishing is centralised in the `jerney-nexus/linux-repositories` repository. It alone holds the signing key and R2 credentials. This repository only requests a publish: the `linux-repositories` job in `signed-release.yml` mints a GitHub App token and sends a `repository_dispatch` (`publish-linux-packages`) with `client_payload.sources` set to `jerney-nexus/epikrise@<tag>`. The publisher downloads the `.deb` and `.rpm` assets, adds them to the existing repositories, re-signs the metadata, and uploads the result.
 
-A source is a GitHub release in the form `owner/repo@tag`. Its `.deb` and `.rpm` assets are added. Trigger the `Linux package repositories` workflow in this repository in one of two ways:
+Another application publishes the same way: add its `owner/repo` to `allowed-sources.txt` in `jerney-nexus/linux-repositories`, then dispatch with its own `owner/repo@tag`. The publisher rejects any source not on that list. No new subdomain is needed.
 
-- `repository_dispatch` with event type `publish-linux-packages` and `client_payload.sources`, one `owner/repo@tag` per line. A caller sends this with a token that can write to this repository.
-- `workflow_dispatch` with the `sources` input, for manual runs.
+The release job needs these settings in the `linux-repository` environment of this repository:
 
-Downloading from private repositories needs the optional `LINUX_REPOSITORY_SOURCE_TOKEN` secret, a token with `contents: read` on those repositories. Without it, the workflow uses its own token, which only reads this repository.
+- Variable `LINUX_REPOSITORY_APP_ID` and secret `LINUX_REPOSITORY_APP_PRIVATE_KEY` for a GitHub App installed on `jerney-nexus` with write access to `linux-repositories`.
 
-The `linux-repository` environment holds the signing key and R2 credentials. Configure required reviewers on it so that a dispatch cannot publish without approval. Any caller that can dispatch to this repository can publish packages to the signed repositories, so limit dispatch access to trusted applications. Packages with the same name and version from two applications are not disambiguated and the later upload replaces the earlier one.
+Packages with the same name and version from two applications are not disambiguated, and the later upload replaces the earlier one.
 
 ## Documentation
 
