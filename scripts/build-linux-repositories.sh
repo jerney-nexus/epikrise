@@ -10,7 +10,9 @@ Usage: EPIKRISE_GPG_KEY_ID=<key-id> build-linux-repositories.sh --repo-root <dir
 
 Adds each .deb or .rpm package to <dir>/apt and <dir>/rpm, regenerates the
 repository metadata, and signs it with the GPG key named by EPIKRISE_GPG_KEY_ID.
-The key must be available in the active GNUPGHOME without a passphrase prompt.
+Packages from any application can be added; apt pool directories follow each
+package's own Debian name. The key must be available in the active GNUPGHOME
+without a passphrase prompt.
 USAGE
 }
 
@@ -53,7 +55,7 @@ done
 
 apt_root="$repo_root/apt"
 dnf_root="$repo_root/rpm"
-pool_dir="$apt_root/pool/main/e/epikrise"
+pool_root="$apt_root/pool/main"
 suite_dir="$apt_root/dists/stable"
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
@@ -67,6 +69,14 @@ rpm_arch_for_deb() {
   esac
 }
 
+# Follows the Debian pool layout: lib* packages use their first four characters.
+pool_dir_for() {
+  local name="$1" prefix
+  prefix="${name:0:1}"
+  [[ "$name" == lib* ]] && prefix="${name:0:4}"
+  echo "$pool_root/$prefix/$name"
+}
+
 add_package() {
   local package="$1"
   local name arch rpm_arch
@@ -78,6 +88,13 @@ add_package() {
         echo "Unsupported Debian architecture in $name: $arch" >&2
         exit 1
       }
+      local package_name pool_dir
+      package_name="$(dpkg-deb -f "$package" Package)"
+      if [[ ! "$package_name" =~ ^[a-z0-9][a-z0-9+.-]*$ ]]; then
+        echo "Invalid Debian package name in $name: $package_name" >&2
+        exit 1
+      fi
+      pool_dir="$(pool_dir_for "$package_name")"
       mkdir -p "$pool_dir"
       cp -f "$package" "$pool_dir/$name"
       ;;
@@ -166,7 +183,7 @@ for package in "${packages[@]}"; do
   add_package "$package"
 done
 
-if [[ -d "$pool_dir" ]]; then
+if [[ -d "$pool_root" ]]; then
   write_apt_indexes
   write_apt_release
 fi

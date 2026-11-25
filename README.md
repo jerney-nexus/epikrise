@@ -54,13 +54,13 @@ pnpm tauri dev
 
 ## Linux package repositories
 
-Each release publishes signed `.deb` and `.rpm` packages to static apt and dnf repositories at `https://<REPOSITORY_HOST>/`. The signing public key is at `https://<REPOSITORY_HOST>/epikrise-archive-keyring.asc`.
+Each release publishes signed `.deb` and `.rpm` packages to static apt and dnf repositories at `https://packages.jerney.nexus/`. The signing public key is at `https://packages.jerney.nexus/epikrise-archive-keyring.asc`.
 
 Debian and Ubuntu (`/etc/apt/sources.list.d/epikrise.sources`):
 
 ```text
 Types: deb
-URIs: https://<REPOSITORY_HOST>/apt
+URIs: https://packages.jerney.nexus/apt
 Suites: stable
 Components: main
 Architectures: amd64 arm64
@@ -72,14 +72,27 @@ Fedora and RHEL-compatible systems (`/etc/yum.repos.d/epikrise.repo`):
 ```ini
 [epikrise]
 name=Epikrise
-baseurl=https://<REPOSITORY_HOST>/rpm/$basearch
+baseurl=https://packages.jerney.nexus/rpm/$basearch
 enabled=1
 gpgcheck=1
 repo_gpgcheck=1
-gpgkey=https://<REPOSITORY_HOST>/epikrise-archive-keyring.asc
+gpgkey=https://packages.jerney.nexus/epikrise-archive-keyring.asc
 ```
 
 Download the key to the path named in `Signed-By` before running `apt update`, or to `/etc/pki/rpm-gpg/` before installing from dnf.
+
+### Publishing packages from other applications
+
+The same repositories host packages from other applications. The apt pool is organised by each package's Debian name, and rpm packages are grouped by architecture, so packages from different applications do not overwrite each other. Each run downloads the sources, adds them to the published repositories, re-signs the metadata, and uploads the result.
+
+A source is a GitHub release in the form `owner/repo@tag`. Its `.deb` and `.rpm` assets are added. Trigger the `Linux package repositories` workflow in this repository in one of two ways:
+
+- `repository_dispatch` with event type `publish-linux-packages` and `client_payload.sources`, one `owner/repo@tag` per line. A caller sends this with a token that can write to this repository.
+- `workflow_dispatch` with the `sources` input, for manual runs.
+
+Downloading from private repositories needs the optional `LINUX_REPOSITORY_SOURCE_TOKEN` secret, a token with `contents: read` on those repositories. Without it, the workflow uses its own token, which only reads this repository.
+
+The `linux-repository` environment holds the signing key and R2 credentials. Configure required reviewers on it so that a dispatch cannot publish without approval. Any caller that can dispatch to this repository can publish packages to the signed repositories, so limit dispatch access to trusted applications. Packages with the same name and version from two applications are not disambiguated and the later upload replaces the earlier one.
 
 ## Documentation
 

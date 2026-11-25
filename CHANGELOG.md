@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The Close button in popup dialogs shows a hover highlight in both light and dark themes (#296)
 - The Help menu has Sponsoring and Feedback items that open in the system browser, and the About panel links to the Epikrise website on Linux (#340, #343)
 - On macOS and Windows, the Help menu has a Website item that opens the Epikrise website at epikrise.jerney.nexus in the system browser (#340, #343)
-- Each release publishes signed `.deb` and `.rpm` packages to apt and dnf repositories, with installation steps in the README (#363)
+- Each release publishes signed `.deb` and `.rpm` packages to apt and dnf repositories, with installation steps in the README. The repositories can also host packages from other applications through a publish workflow (#363)
 
 ### 🐛 Bug Fixes
 
