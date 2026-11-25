@@ -52,6 +52,35 @@ pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
+## Linux package repositories
+
+Each release publishes signed `.deb` and `.rpm` packages to static apt and dnf repositories at `https://<REPOSITORY_HOST>/`. The signing public key is at `https://<REPOSITORY_HOST>/epikrise-archive-keyring.asc`.
+
+Debian and Ubuntu (`/etc/apt/sources.list.d/epikrise.sources`):
+
+```text
+Types: deb
+URIs: https://<REPOSITORY_HOST>/apt
+Suites: stable
+Components: main
+Architectures: amd64 arm64
+Signed-By: /usr/share/keyrings/epikrise-archive-keyring.asc
+```
+
+Fedora and RHEL-compatible systems (`/etc/yum.repos.d/epikrise.repo`):
+
+```ini
+[epikrise]
+name=Epikrise
+baseurl=https://<REPOSITORY_HOST>/rpm/$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://<REPOSITORY_HOST>/epikrise-archive-keyring.asc
+```
+
+Download the key to the path named in `Signed-By` before running `apt update`, or to `/etc/pki/rpm-gpg/` before installing from dnf.
+
 ## Documentation
 
 Detailed guides are in the [wiki](https://github.com/jerney-nexus/epikrise/wiki):

@@ -389,3 +389,13 @@ jobs:
             "repos/$GITHUB_REPOSITORY/releases/$release_id" \
             -F draft=false \
             --raw-field "make_latest=$make_latest" > /dev/null
+
+  linux-repositories:
+    name: Publish Linux package repositories
+    needs: [publish]
+    uses: ./.github/workflows/linux-repositories.yml
+    permissions:
+      contents: read
+    with:
+      release_tag: ${{ github.ref_name }}
+    secrets: inherit

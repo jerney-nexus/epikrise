@@ -1,0 +1,75 @@
+name: Linux package repositories
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Published release tag whose .deb and .rpm assets join the repositories
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish signed apt and dnf repositories
+    runs-on: ubuntu-24.04
+    environment:
+      name: linux-repository
+    concurrency:
+      group: linux-repository
+      cancel-in-progress: false
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.LINUX_REPOSITORY_R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.LINUX_REPOSITORY_R2_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.LINUX_REPOSITORY_R2_ENDPOINT }}
+      R2_BUCKET: ${{ vars.LINUX_REPOSITORY_R2_BUCKET }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install repository tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-utils createrepo-c rclone rpm
+
+      - name: Download release packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          packages_dir="$RUNNER_TEMP/packages"
+          mkdir -p "$packages_dir"
+          gh release download "$RELEASE_TAG" \
+            --dir "$packages_dir" \
+            --pattern '*.deb' \
+            --pattern '*.rpm'
+
+      - name: Import repository signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.LINUX_REPOSITORY_GPG_PRIVATE_KEY }}
+        run: printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+      - name: Download published repositories
+        run: |
+          repo_root="$RUNNER_TEMP/repo"
+          mkdir -p "$repo_root"
+          rclone copy "r2:$R2_BUCKET" "$repo_root"
+
+      - name: Add packages and sign repositories
+        env:
+          EPIKRISE_GPG_KEY_ID: ${{ vars.LINUX_REPOSITORY_GPG_KEY_ID }}
+        run: |
+          packages_dir="$RUNNER_TEMP/packages"
+          bash scripts/build-linux-repositories.sh \
+            --repo-root "$RUNNER_TEMP/repo" \
+            "$packages_dir"/*.deb \
+            "$packages_dir"/*.rpm
+
+      - name: Upload repositories
+        run: rclone copy "$RUNNER_TEMP/repo" "r2:$R2_BUCKET" --checksum
