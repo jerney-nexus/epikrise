@@ -125,7 +125,6 @@ jobs:
           commit-message: Refresh Store base metadata from Partner Center
           title: Refresh Store base metadata from Partner Center
           labels: release
-          milestone: 2
           body: |
             ## Summary
 
