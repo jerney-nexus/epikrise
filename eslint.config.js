@@ -8,7 +8,7 @@ export default tseslint.config(
   {
     ignores: [
       "build/**",
-      ".svelte-kit/**",
+      "**/.svelte-kit/**",
       "node_modules/**",
       "coverage/**",
       "src-tauri/target/**",

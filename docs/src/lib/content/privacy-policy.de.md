@@ -1,11 +1,3 @@
----
-title: Datenschutzrichtlinie für Epikrise
-permalink: /privacy-policy/de/
-layout: page
-legal: true
-lang: de
----
-
 # Datenschutzrichtlinie für Epikrise
 
 Sprache: [English](https://epikrise.jerney.nexus/privacy-policy/en/) · Deutsch · [Français](https://epikrise.jerney.nexus/privacy-policy/fr/) · [Italiano](https://epikrise.jerney.nexus/privacy-policy/it/) · [Español](https://epikrise.jerney.nexus/privacy-policy/es/)

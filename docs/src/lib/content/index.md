@@ -1,10 +1,3 @@
----
-title: Epikrise
-permalink: /
-layout: page
-description: Epikrise, a local-only drafting aid for clinical material
----
-
 # Epikrise
 
 Epikrise is a local-only desktop drafting aid. It turns clinical material that you supply (text, documents, images and web pages) into a structured draft for review and manual use in your clinic information system.

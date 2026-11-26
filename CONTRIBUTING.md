@@ -20,7 +20,7 @@ Use the [dev container](.devcontainer/devcontainer.json), which has everything p
 ```
 .devcontainer/            dev container definition and setup scripts
 .github/                  workflows, issue templates, and the PR template
-docs/                     project website and privacy policies, published with GitHub Pages
+docs/                     project website (SvelteKit, prerendered) and privacy policies, published with GitHub Pages
 locales/                  Fluent message catalogs, one folder per language
 scripts/                  build, packaging, OCR, and release helpers
 src/                      SvelteKit frontend (SPA, no SSR); bindings.ts is generated
@@ -59,7 +59,7 @@ Release preparation, the release gates, and the updater and Store rules are docu
 
 ## Project website
 
-The public website is the Jekyll site in `docs/` (`docs/index.md` and the privacy policies). [pages.yml](.github/workflows/pages.yml) builds it with `actions/jekyll-build-pages` and deploys it with GitHub Pages on pushes to `main`. The Pages source is GitHub Actions, so keep it set to that rather than to a branch folder. To preview locally, run `jekyll build --source docs --destination /tmp/epikrise-site` with Jekyll 3.x or 4.x and open the generated `index.html`.
+The public website is a standalone SvelteKit app in `docs/`, prerendered to static HTML with `@sveltejs/adapter-static` by [vite.site.config.js](vite.site.config.js). Pages live in `docs/src/routes/` (the index and `privacy-policy/[lang]/`). The Markdown sources are in `docs/src/lib/content/` and are rendered at build time by `docs/src/lib/server/`; shared header, footer, and theme controls are in `docs/src/lib/components/`, and styles in `docs/src/lib/styles/`. Static files in `docs/static/` (including `CNAME` and `favicon.png`) are copied as-is. [pages.yml](.github/workflows/pages.yml) runs `pnpm site:build` and deploys `build/site` with GitHub Pages on pushes to `main`. The Pages source is GitHub Actions, so keep it set to that rather than to a branch folder. To preview locally, run `pnpm site:dev` and open the printed URL; use `pnpm site:build` to produce `build/site`.
 
 ## Localization
 

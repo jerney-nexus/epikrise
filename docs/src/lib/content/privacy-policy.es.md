@@ -1,11 +1,3 @@
----
-title: Política de privacidad de Epikrise
-permalink: /privacy-policy/es/
-layout: page
-legal: true
-lang: es
----
-
 # Política de privacidad de Epikrise
 
 Idioma: [English](https://epikrise.jerney.nexus/privacy-policy/en/) · [Deutsch](https://epikrise.jerney.nexus/privacy-policy/de/) · [Français](https://epikrise.jerney.nexus/privacy-policy/fr/) · [Italiano](https://epikrise.jerney.nexus/privacy-policy/it/) · Español

@@ -30,7 +30,7 @@ The result can be copied to the clipboard only after the clinician reviews and a
 - **Remote endpoints receive your input.** OpenAI, Anthropic, Gemini, xAI, Groq, OpenRouter and any remote OpenAI-compatible or Ollama endpoint receive the material included in a request. Ollama is local only when its configured endpoint is local. The active provider and endpoint are shown in the controls rail. Before the first remote generation in each case, Epikrise asks you to confirm the provider and endpoint that will receive the case and template.
 - **Anonymization is your responsibility.** Epikrise does not de-identify anything and does not attempt to detect identifying data.
 
-The full privacy policy is available in [English](docs/privacy-policy.en.md), [Deutsch](docs/privacy-policy.de.md), [Français](docs/privacy-policy.fr.md), [Italiano](docs/privacy-policy.it.md) and [Español](docs/privacy-policy.es.md).
+The full privacy policy is available in [English](docs/src/lib/content/privacy-policy.en.md), [Deutsch](docs/src/lib/content/privacy-policy.de.md), [Français](docs/src/lib/content/privacy-policy.fr.md), [Italiano](docs/src/lib/content/privacy-policy.it.md) and [Español](docs/src/lib/content/privacy-policy.es.md).
 
 ## Requirements
 
