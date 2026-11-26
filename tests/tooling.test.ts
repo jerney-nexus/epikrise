@@ -1107,6 +1107,42 @@ describe("CalVer release versions", () => {
       expect(result.stderr).toContain("en-us: missing listing");
     });
 
+    it("rejects unexpected locales in the read-back", () => {
+      const readback = {
+        Listings: {
+          ...base.Listings,
+          "fr-fr": { BaseListing: { Features: ["Unexpected locale"] } },
+        },
+      };
+
+      expect(verifyStoreListings(readback, base).mismatches).toContain(
+        "fr-fr: unexpected listing",
+      );
+    });
+
+    it("rejects changed locale metadata outside BaseListing", () => {
+      const expected = {
+        Listings: {
+          "en-us": {
+            ...base.Listings["en-us"],
+            PlatformOverrides: { Windows: { Description: "Expected" } },
+          },
+        },
+      };
+      const readback = {
+        Listings: {
+          "en-us": {
+            ...expected.Listings["en-us"],
+            PlatformOverrides: { Windows: { Description: "Changed" } },
+          },
+        },
+      };
+
+      expect(verifyStoreListings(readback, expected).mismatches).toContain(
+        "en-us PlatformOverrides",
+      );
+    });
+
     it("rejects missing, replaced, and reordered images", () => {
       const expected = {
         Listings: {
@@ -4384,6 +4420,14 @@ describe("signed release artifacts", () => {
     );
     expect(workflow).toContain("node tooling/scripts/verify-store-metadata-draft.mjs");
     expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - 2>&1");
+    const snapshotListingsVerification =
+      "node tooling/scripts/verify-store-listings.mjs submission-updated-readback.json submission-updated.json submission.json";
+    expect(workflow).toContain(snapshotListingsVerification);
+    expect(workflow.indexOf(snapshotListingsVerification)).toBeLessThan(
+      workflow.indexOf(
+        "$draftId = node tooling/scripts/verify-store-metadata-draft.mjs verify-new",
+      ),
+    );
     expect(workflow).toContain(
       "node tooling/scripts/verify-store-listings.mjs listings-readback.json submission-updated.json submission.json",
     );
