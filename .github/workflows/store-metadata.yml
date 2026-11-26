@@ -1,20 +1,16 @@
 name: Store metadata
 run-name: Store metadata ${{ github.event.workflow_run.head_branch || github.ref_name }}
 
-# Syncs the listing text and images from store-assets/base-metadata.json into
-# the Partner Center submission. It is separate from Store submission packages,
-# so a missing locale or screenshot cannot block a package upload. Automatic
-# runs follow a successful package submission and only update the draft; commit
-# the draft by hand in Partner Center, or dispatch this workflow with commit.
-# A published commit then refreshes store-assets/base-metadata.json.
+# Syncs the listing text and images from store-assets/base-metadata.json into the
+# Partner Center submission, commits it, and then opens a pull request that refreshes
+# store-assets/base-metadata.json from the published submission. It runs after a
+# successful Store submission packages run, so a missing locale or screenshot cannot
+# block the package upload. Dispatch it to repeat the same steps; dry_run only uploads
+# a preview artifact and changes nothing.
 
 on:
   workflow_dispatch:
     inputs:
-      commit:
-        description: Commit the updated submission and wait for Published
-        type: boolean
-        default: false
       dry_run:
         description: Upload the merged submission (without upload URLs) as an artifact and change nothing in Partner Center
         type: boolean
@@ -40,14 +36,14 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
     name: Sync Store listing metadata
     environment:
-      name: store-partner-center-metadata
+      name: store-partner-center
     runs-on: windows-latest
     timeout-minutes: 330
     outputs:
       published: ${{ steps.commit.outputs.published }}
+      base_metadata_stale: ${{ steps.drift.outputs.stale }}
     env:
       STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
-      COMMIT_SUBMISSION: ${{ github.event_name == 'workflow_dispatch' && inputs.commit }}
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
     steps:
       - uses: actions/checkout@v7
@@ -59,7 +55,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:STORE_PRODUCT_ID) {
-            throw "STORE_PRODUCT_ID environment variable is not set in the store-partner-center-metadata environment."
+            throw "STORE_PRODUCT_ID environment variable is not set in the store-partner-center environment."
           }
 
       - uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
@@ -104,6 +100,21 @@ jobs:
           }
           $merged | Out-File -FilePath submission-updated.json -Encoding utf8
           "METADATA_CHANGED=true" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # The merge compares listings only. A Published submission can still differ from
+      # store-assets/base-metadata.json in other keys (Id, ApplicationPackages, FriendlyName),
+      # so compare the whole export and request a base-metadata refresh when they differ.
+      - name: Detect base metadata drift
+        id: drift
+        if: env.DRY_RUN != 'true' && env.SUBMISSION_STATUS == 'Published' && env.METADATA_CHANGED != 'true'
+        shell: pwsh
+        run: |
+          $keys = node scripts/compare-store-base-metadata.mjs submission.json store-assets/base-metadata.json
+          if ($LASTEXITCODE -ne 0) { throw "compare-store-base-metadata.mjs failed." }
+          if ($keys) {
+            "Store submission differs from store-assets/base-metadata.json in: $($keys -join ', ')"
+            "stale=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
 
       - name: Redact merged submission for review
         if: env.METADATA_CHANGED == 'true' && env.DRY_RUN == 'true'
@@ -153,7 +164,7 @@ jobs:
       - name: Commit submission and wait for Published
         id: commit
         if: >-
-          env.DRY_RUN != 'true' && env.COMMIT_SUBMISSION == 'true' &&
+          env.DRY_RUN != 'true' &&
           (env.METADATA_CHANGED == 'true' || env.SUBMISSION_STATUS == 'PendingCommit')
         env:
           AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
@@ -173,9 +184,139 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "The submission did not reach Published." }
           "published=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-  refresh-base-metadata:
-    name: Refresh base metadata after commit
+  get-base-metadata:
+    name: Get Store base metadata
     needs: sync-metadata
-    if: needs.sync-metadata.outputs.published == 'true'
-    uses: ./.github/workflows/store-base-metadata.yml
-    secrets: inherit
+    if: >-
+      needs.sync-metadata.result == 'success' &&
+      (needs.sync-metadata.outputs.published == 'true' ||
+      needs.sync-metadata.outputs.base_metadata_stale == 'true')
+    environment:
+      name: store-partner-center
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Require Store product ID
+        shell: pwsh
+        run: |
+          if (-not $env:STORE_PRODUCT_ID) {
+            throw "STORE_PRODUCT_ID environment variable is not set in the store-partner-center environment."
+          }
+
+      - uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
+
+      - name: Configure Partner Center credentials
+        env:
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          SELLER_ID: ${{ secrets.SELLER_ID }}
+          AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          AZURE_AD_CERTIFICATE_PFX_BASE64: ${{ secrets.AZURE_AD_CERTIFICATE_PFX_BASE64 }}
+          AZURE_AD_CERTIFICATE_PASSWORD: ${{ secrets.AZURE_AD_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "partner-center.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:AZURE_AD_CERTIFICATE_PFX_BASE64))
+          msstore reconfigure `
+            --tenantId $env:AZURE_AD_TENANT_ID `
+            --sellerId $env:SELLER_ID `
+            --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID `
+            --certificateFilePath $pfxPath `
+            --certificatePassword $env:AZURE_AD_CERTIFICATE_PASSWORD
+          if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed." }
+
+      - name: Get base metadata
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path store-base-metadata | Out-Null
+          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-raw.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
+          # The raw submission carries FileUploadUrl (an upload SAS); never upload it.
+          node scripts/redact-store-submission.mjs submission-raw.json | Out-File -FilePath store-base-metadata/base-metadata.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "redact-store-submission.mjs failed." }
+          Remove-Item submission-raw.json
+          Get-Content store-base-metadata/base-metadata.json -Raw | ConvertFrom-Json | Out-Null
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: epikrise-store-base-metadata
+          path: store-base-metadata/base-metadata.json
+          if-no-files-found: error
+          retention-days: 14
+
+  open-pull-request:
+    name: Open base metadata pull request
+    needs: get-base-metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: epikrise-store-base-metadata
+          path: store-base-metadata
+
+      # The file is a verbatim export (see .prettierignore); copy it unchanged.
+      - name: Replace base metadata with the export
+        run: |
+          set -euo pipefail
+          node --input-type=module -e 'JSON.parse(await (await import("node:fs/promises")).readFile("store-base-metadata/base-metadata.json", "utf8"));'
+          if grep -qi 'fileuploadurl' store-base-metadata/base-metadata.json; then
+            echo "The export still contains an upload URL." >&2
+            exit 1
+          fi
+          cp store-base-metadata/base-metadata.json store-assets/base-metadata.json
+
+      # Pull requests opened with GITHUB_TOKEN do not trigger the quality workflows.
+      - uses: actions/create-github-app-token@v3
+        id: release-app-token
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ steps.release-app-token.outputs.token }}
+          base: ${{ github.event.repository.default_branch }}
+          branch: chore/store-base-metadata
+          add-paths: store-assets/base-metadata.json
+          commit-message: Refresh Store base metadata from Partner Center
+          title: Refresh Store base metadata from Partner Center
+          labels: release
+          body: |
+            ## Summary
+
+            Replaces `store-assets/base-metadata.json` with the redacted current Partner Center submission from the **Store metadata** run ${{ github.run_id }}. Review the diff: the file is the source **Store metadata** pushes to Partner Center, so changes that exist only in this PR's base (for example unmerged release notes) would be overwritten if merged blindly.
+
+            ## Related issue
+
+            None
+
+            - [ ] Completed all acceptance criteria from the linked issues or not applicable
+
+            ## Validation
+
+            Generated by the **Store metadata** workflow. The file was parsed as JSON and checked for upload URLs before the commit.
+
+            ## AI assistance
+
+            None. Opened by a workflow.
+
+            ## Safety and privacy
+
+            - [ ] Followed the applicable guidance in [CONTRIBUTING.md](https://github.com/jerney-nexus/epikrise/blob/main/CONTRIBUTING.md).
+            - [ ] No real or realistic patient data, clinical text, credentials, or secrets are included in this PR.
+            - [ ] Any examples or test fixtures use synthetic, non-sensitive data.
+            - [ ] Changes preserve the app's privacy boundaries and clinician-review requirements, or explain any intentional change above.

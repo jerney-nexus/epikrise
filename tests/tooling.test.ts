@@ -51,6 +51,7 @@ import {
 } from "../scripts/wait-store-submission.mjs";
 import { assertReleaseAdvancesStoreVersions } from "../scripts/check-store-version.mjs";
 import { redactFileUploadUrls } from "../scripts/redact-store-submission.mjs";
+import { differingTopLevelKeys } from "../scripts/compare-store-base-metadata.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
 import {
   buildReleasePreparationWorkflowArgs,
@@ -759,6 +760,43 @@ describe("CalVer release versions", () => {
       Listings: { "en-us": { Images: [{}] } },
       Version: "1.0.0",
     });
+  });
+
+  it("reports top-level keys that differ between a submission and base metadata", () => {
+    const base = {
+      Id: "1",
+      FriendlyName: "Submission 8",
+      ApplicationPackages: [{ FileName: "a.msixbundle", Version: "1.0.0.0" }],
+      Listings: { "en-us": { Title: "Epikrise" } },
+      Status: "Published",
+    };
+    const submission = {
+      ...base,
+      Id: "2",
+      FriendlyName: "Submission 10",
+      ApplicationPackages: [{ FileName: "b.msixbundle", Version: "1.0.0.0" }],
+      FileUploadUrl: "https://blob?sig=secret",
+      Status: "PendingCommit",
+    };
+
+    expect(differingTopLevelKeys(submission, base)).toEqual([
+      "ApplicationPackages",
+      "FriendlyName",
+      "Id",
+    ]);
+  });
+
+  it("ignores FileUploadUrl and volatile status keys when comparing", () => {
+    const base = { Id: "1", Listings: {}, Status: "Published" };
+    const submission = {
+      Id: "1",
+      Listings: {},
+      Status: "PendingCommit",
+      StatusDetails: { Errors: [] },
+      FileUploadUrl: "https://blob?sig=secret",
+    };
+
+    expect(differingTopLevelKeys(submission, base)).toEqual([]);
   });
 
   it("copies base metadata listings and images into the draft submission", async () => {
@@ -3980,26 +4018,6 @@ describe("signed release artifacts", () => {
     expect(diagnosticWorkflow).not.toContain("gh release create");
   });
 
-  it("runs the manual Store base metadata helper in the Store environment", async () => {
-    const workflow = await readFile(
-      path.join(repoRoot, ".github/workflows/store-base-metadata.yml"),
-      "utf8",
-    );
-
-    expect(workflow).toContain(
-      "environment:\n      name: store-partner-center-metadata",
-    );
-
-    const pullRequestJob = workflow.slice(workflow.indexOf("  open-pull-request:"));
-    expect(pullRequestJob).toContain("needs: get-base-metadata");
-    expect(pullRequestJob).not.toContain("environment:");
-    expect(pullRequestJob).not.toContain("AZURE_AD");
-    expect(pullRequestJob).toContain("peter-evans/create-pull-request@v8");
-    expect(pullRequestJob).toContain("add-paths: store-assets/base-metadata.json");
-    expect(pullRequestJob).toContain("fileuploadurl");
-    expect(workflow).toContain("workflow_call:");
-  });
-
   it("reports Store release notes that still match the previous release", () => {
     const metadata = (notes: Record<string, string>) => ({
       Listings: Object.fromEntries(
@@ -4042,28 +4060,25 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain('if [[ "$status" -ne 2 ]]; then');
   });
 
-  it("syncs Store metadata in a separate workflow that only commits on request", async () => {
+  it("syncs Store metadata, commits it, and refreshes the base metadata pull request", async () => {
     const workflow = await readFile(
       path.join(repoRoot, ".github/workflows/store-metadata.yml"),
       "utf8",
     );
 
     expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).not.toContain("workflow_call");
+    expect(workflow).not.toContain("inputs.commit");
     expect(workflow).toContain("- Store submission packages");
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(workflow).toContain("group: store-partner-center-submission");
-    expect(workflow).toContain(
-      "environment:\n      name: store-partner-center-metadata",
-    );
-    expect(workflow).toMatch(/commit:[\s\S]*?default: false/);
+    expect(workflow).toContain("environment:\n      name: store-partner-center\n");
+    expect(workflow).not.toContain("store-partner-center-metadata");
     expect(workflow).toContain("check-store-submission-state.mjs");
     expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - 2>&1");
     expect(workflow).toContain("verify-store-listings.mjs listings-readback.json");
     expect(workflow).toContain(
       "msstore submission get $env:STORE_PRODUCT_ID -m listings",
-    );
-    expect(workflow).toContain(
-      "github.event_name == 'workflow_dispatch' && inputs.commit",
     );
     expect(workflow).not.toContain("msstore publish");
     expect(workflow).toContain("env.SUBMISSION_STATUS == 'PendingCommit'");
@@ -4071,11 +4086,32 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain(
       '"published=true" | Out-File -FilePath $env:GITHUB_OUTPUT',
     );
-    const refreshJob = workflow.slice(workflow.indexOf("  refresh-base-metadata:"));
-    expect(refreshJob).toContain("needs: sync-metadata");
-    expect(refreshJob).toContain("if: needs.sync-metadata.outputs.published == 'true'");
-    expect(refreshJob).toContain("uses: ./.github/workflows/store-base-metadata.yml");
-    expect(refreshJob).toContain("secrets: inherit");
+    expect(workflow).toContain("id: drift");
+    expect(workflow).toContain(
+      "if: env.DRY_RUN != 'true' && env.SUBMISSION_STATUS == 'Published'",
+    );
+    expect(workflow).toContain("compare-store-base-metadata.mjs submission.json");
+    expect(workflow).toContain('"stale=true" | Out-File -FilePath $env:GITHUB_OUTPUT');
+
+    const exportJob = workflow.slice(
+      workflow.indexOf("  get-base-metadata:"),
+      workflow.indexOf("  open-pull-request:"),
+    );
+    expect(exportJob).toContain("needs: sync-metadata");
+    expect(exportJob).toContain("needs.sync-metadata.outputs.published == 'true'");
+    expect(exportJob).toContain(
+      "needs.sync-metadata.outputs.base_metadata_stale == 'true'",
+    );
+    expect(exportJob).toContain("environment:\n      name: store-partner-center\n");
+    expect(exportJob).toContain("redact-store-submission.mjs submission-raw.json");
+
+    const pullRequestJob = workflow.slice(workflow.indexOf("  open-pull-request:"));
+    expect(pullRequestJob).toContain("needs: get-base-metadata");
+    expect(pullRequestJob).not.toContain("environment:");
+    expect(pullRequestJob).not.toContain("AZURE_AD");
+    expect(pullRequestJob).toContain("peter-evans/create-pull-request@v8");
+    expect(pullRequestJob).toContain("add-paths: store-assets/base-metadata.json");
+    expect(pullRequestJob).toContain("fileuploadurl");
   });
 
   it("builds and attaches Store packages after successful tagged updater releases", async () => {
