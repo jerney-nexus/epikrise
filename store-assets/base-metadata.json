@@ -44,7 +44,7 @@
           "Fallinhalte an externe Endpunkte nur nach Bestätigung je Fall, Anbieter und Endpunkt",
           "Oberfläche auf Deutsch, Englisch, Französisch, Italienisch und Spanisch"
         ],
-        "ReleaseNotes": "Das Hilfemenü bietet jetzt einen Link zur Epikrise-Website sowie Links zur Unterstützung des Projekts und für Feedback. Schliessen-Schaltflächen in Dialogen werden beim Darüberfahren mit der Maus deutlicher hervorgehoben, und der Textkontrast im dunklen Design wurde verbessert.",
+        "ReleaseNotes": "Kleine Verbesserungen erhöhen die Zuverlässigkeit von Store-Updates.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-09 014756.png",
@@ -125,7 +125,7 @@
           "Case content sent to remote endpoints only after confirmation per case, provider and endpoint",
           "Interface in German, English, French, Italian and Spanish"
         ],
-        "ReleaseNotes": "The Help menu has a Website item that opens the Epikrise website, plus links to support the project and to send feedback. Close buttons in popup dialogs have a clearer hover highlight, and text contrast in dark theme is improved.",
+        "ReleaseNotes": "Minor improvements to the reliability of Store updates.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-09 023845.png",
@@ -206,7 +206,7 @@
           "Contenu de dossier envoyé à des points de terminaison externes seulement après confirmation par dossier, fournisseur et point de terminaison",
           "Interface en allemand, anglais, français, italien et espagnol"
         ],
-        "ReleaseNotes": "Le menu Aide propose désormais un lien vers le site web d’Epikrise, ainsi que des liens pour soutenir le projet et envoyer des commentaires. Le bouton Fermer des fenêtres contextuelles est mieux mis en évidence au survol, et le contraste du texte en thème sombre a été amélioré.",
+        "ReleaseNotes": "De légères améliorations renforcent la fiabilité des mises à jour du Store.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-17 155300.png",
@@ -287,7 +287,7 @@
           "Contenuti dei casi inviati a endpoint remoti solo dopo conferma per caso, fornitore ed endpoint",
           "Interfaccia in tedesco, inglese, francese, italiano e spagnolo"
         ],
-        "ReleaseNotes": "Il menu Aiuto include ora un collegamento al sito web di Epikrise, oltre a collegamenti per sostenere il progetto e inviare un feedback. Il pulsante Chiudi nelle finestre a comparsa è evidenziato meglio al passaggio del mouse e il contrasto del testo nel tema scuro è migliorato.",
+        "ReleaseNotes": "Piccoli miglioramenti aumentano l'affidabilità degli aggiornamenti dello Store.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-17 155540.png",
@@ -368,7 +368,7 @@
           "Contenido de los casos enviado a endpoints remotos solo tras confirmación por caso, proveedor y endpoint",
           "Interfaz en alemán, inglés, francés, italiano y español"
         ],
-        "ReleaseNotes": "El menú Ayuda incluye ahora un enlace al sitio web de Epikrise, además de enlaces para apoyar el proyecto y enviar comentarios. El botón Cerrar de los diálogos emergentes se resalta mejor al pasar el cursor, y se ha mejorado el contraste del texto en el tema oscuro.",
+        "ReleaseNotes": "Pequeñas mejoras aumentan la fiabilidad de las actualizaciones de Store.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-17 155604.png",
