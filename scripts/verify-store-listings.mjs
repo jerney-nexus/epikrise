@@ -115,9 +115,13 @@ export function verifyStoreListings(readback, expectedSubmission, publishedSubmi
       continue;
     }
 
-    for (const [fieldName, expected] of Object.entries(expectedListing)) {
+    const listingFields = new Set([
+      ...Object.keys(expectedListing),
+      ...Object.keys(actualListing),
+    ]);
+    for (const fieldName of listingFields) {
       if (fieldName.toLowerCase() === "images") continue;
-      if (!isDeepStrictEqual(actualListing[fieldName], expected)) {
+      if (!isDeepStrictEqual(actualListing[fieldName], expectedListing[fieldName])) {
         mismatches.push(`${locale} ${fieldName}`);
       }
     }

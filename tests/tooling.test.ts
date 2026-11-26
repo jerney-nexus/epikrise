@@ -1100,6 +1100,41 @@ describe("CalVer release versions", () => {
       expect(result.stderr).not.toContain("2026.11.6");
     });
 
+    it("rejects unexpected BaseListing text without printing its value", async () => {
+      const result = await runVerifier({
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              ...base.Listings["en-us"].BaseListing,
+              Description: "Unexpected Store text",
+            },
+          },
+        },
+      });
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("en-us Description");
+      expect(result.stderr).not.toContain("Unexpected Store text");
+    });
+
+    it("rejects missing expected BaseListing fields", async () => {
+      const expected = {
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              ...base.Listings["en-us"].BaseListing,
+              Description: "Expected Store text",
+            },
+          },
+        },
+      };
+      const result = await runVerifier(base, expected);
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("en-us Description");
+      expect(result.stderr).not.toContain("Expected Store text");
+    });
+
     it("fails when a base locale is absent from the submission", async () => {
       const result = await runVerifier({ Listings: {} });
 
