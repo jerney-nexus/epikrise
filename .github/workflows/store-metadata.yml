@@ -6,13 +6,19 @@ run-name: Store metadata ${{ github.event.workflow_run.head_branch || github.ref
 # store-assets/base-metadata.json from the published submission. It runs after a
 # successful Store submission packages run, so a missing locale or screenshot cannot
 # block the package upload. Dispatch it to repeat the same steps; dry_run only uploads
-# a preview artifact and changes nothing.
+# a preview artifact and changes nothing. refresh_base_metadata skips the listing sync
+# and only opens the base metadata pull request from the Published submission, for
+# example after a failed listing merge.
 
 on:
   workflow_dispatch:
     inputs:
       dry_run:
         description: Upload the merged submission (without upload URLs) as an artifact and change nothing in Partner Center
+        type: boolean
+        default: false
+      refresh_base_metadata:
+        description: Skip the listing sync and only open the base metadata pull request from the Published submission
         type: boolean
         default: false
   workflow_run:
@@ -33,7 +39,7 @@ concurrency:
 jobs:
   resolve-release-commit:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && !inputs.refresh_base_metadata) ||
       github.event.workflow_run.conclusion == 'success'
     name: Resolve release commit
     runs-on: ubuntu-24.04
@@ -65,7 +71,7 @@ jobs:
   sync-metadata:
     needs: resolve-release-commit
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && !inputs.refresh_base_metadata) ||
       github.event.workflow_run.conclusion == 'success'
     name: Sync Store listing metadata
     environment:
@@ -221,9 +227,13 @@ jobs:
     name: Get Store base metadata
     needs: sync-metadata
     if: >-
-      needs.sync-metadata.result == 'success' &&
-      (needs.sync-metadata.outputs.published == 'true' ||
-      needs.sync-metadata.outputs.base_metadata_stale == 'true')
+      always() &&
+      (
+        (github.event_name == 'workflow_dispatch' && inputs.refresh_base_metadata) ||
+        (needs.sync-metadata.result == 'success' &&
+          (needs.sync-metadata.outputs.published == 'true' ||
+          needs.sync-metadata.outputs.base_metadata_stale == 'true'))
+      )
     environment:
       name: store-partner-center
     runs-on: windows-latest

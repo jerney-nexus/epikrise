@@ -4067,6 +4067,7 @@ describe("signed release artifacts", () => {
     );
 
     expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("refresh_base_metadata:");
     expect(workflow).not.toContain("workflow_call");
     expect(workflow).toContain("needs.resolve-release-commit.outputs.sha");
     expect(workflow).toContain("gh run download");
@@ -4108,6 +4109,7 @@ describe("signed release artifacts", () => {
     expect(exportJob).toContain("environment:\n      name: store-partner-center\n");
     expect(exportJob).toContain("redact-store-submission.mjs submission-raw.json");
     expect(exportJob).toContain("$status -ne 'Published'");
+    expect(exportJob).toContain("inputs.refresh_base_metadata");
 
     const pullRequestJob = workflow.slice(workflow.indexOf("  open-pull-request:"));
     expect(pullRequestJob).toContain("needs: get-base-metadata");
