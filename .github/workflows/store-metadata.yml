@@ -444,6 +444,7 @@ jobs:
   open-pull-request:
     name: Open base metadata pull request
     needs: get-base-metadata
+    if: ${{ !cancelled() && needs.get-base-metadata.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

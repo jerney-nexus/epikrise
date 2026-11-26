@@ -4518,6 +4518,9 @@ describe("signed release artifacts", () => {
 
     const pullRequestJob = workflow.slice(workflow.indexOf("  open-pull-request:"));
     expect(pullRequestJob).toContain("needs: get-base-metadata");
+    expect(pullRequestJob).toContain(
+      "if: ${{ !cancelled() && needs.get-base-metadata.result == 'success' }}",
+    );
     expect(pullRequestJob).not.toContain("environment:");
     expect(pullRequestJob).not.toContain("AZURE_AD");
     expect(pullRequestJob).toContain("peter-evans/create-pull-request@v8");
