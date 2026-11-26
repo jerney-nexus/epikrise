@@ -188,6 +188,21 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
+      - name: Record the release commit for Store metadata
+        shell: pwsh
+        env:
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          New-Item -ItemType Directory -Force -Path store-release-context | Out-Null
+          $env:RELEASE_SHA | Out-File -FilePath store-release-context/release-sha.txt -Encoding ascii -NoNewline
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: epikrise-store-release-context
+          path: store-release-context/release-sha.txt
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Require Store product ID
         shell: pwsh
         run: |

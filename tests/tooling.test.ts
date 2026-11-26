@@ -4068,6 +4068,9 @@ describe("signed release artifacts", () => {
 
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toContain("workflow_call");
+    expect(workflow).toContain("needs.resolve-release-commit.outputs.sha");
+    expect(workflow).toContain("gh run download");
+    expect(workflow).toContain("--name epikrise-store-release-context");
     expect(workflow).not.toContain("inputs.commit");
     expect(workflow).toContain("- Store submission packages");
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
@@ -4104,6 +4107,7 @@ describe("signed release artifacts", () => {
     );
     expect(exportJob).toContain("environment:\n      name: store-partner-center\n");
     expect(exportJob).toContain("redact-store-submission.mjs submission-raw.json");
+    expect(exportJob).toContain("$status -ne 'Published'");
 
     const pullRequestJob = workflow.slice(workflow.indexOf("  open-pull-request:"));
     expect(pullRequestJob).toContain("needs: get-base-metadata");
@@ -4122,6 +4126,7 @@ describe("signed release artifacts", () => {
 
     expect(workflow).toContain("workflow_run:");
     expect(workflow).not.toContain("updateMetadata");
+    expect(workflow).toContain("name: epikrise-store-release-context");
     expect(workflow).not.toContain("update-store-metadata");
     expect(workflow).toContain("msstore submission publish");
     expect(workflow).toContain("node scripts/wait-store-submission.mjs");

@@ -22,6 +22,7 @@ on:
       - completed
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -30,7 +31,39 @@ concurrency:
   queue: max
 
 jobs:
+  resolve-release-commit:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    name: Resolve release commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      # A workflow_run for Store submission packages checks out the default branch, so its
+      # head_sha is not the signed release commit. The submit job records that commit.
+      - name: Read the release commit
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBMISSION_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            sha="$GITHUB_SHA"
+          else
+            gh run download "$SUBMISSION_RUN_ID" --name epikrise-store-release-context --dir release-context
+            sha="$(cat release-context/release-sha.txt)"
+          fi
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "The release commit is not a full SHA: $sha" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
   sync-metadata:
+    needs: resolve-release-commit
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
@@ -48,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.resolve-release-commit.outputs.sha }}
           persist-credentials: false
 
       - name: Require Store product ID
@@ -236,6 +269,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path store-base-metadata | Out-Null
           msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-raw.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
+          # A draft created after the sync job's Published check must not reach the refresh pull request.
+          $status = (Get-Content submission-raw.json -Raw | ConvertFrom-Json).Status
+          if ($status -ne 'Published') { throw "The submission is $status, not Published; refusing to export it." }
           # The raw submission carries FileUploadUrl (an upload SAS); never upload it.
           node scripts/redact-store-submission.mjs submission-raw.json | Out-File -FilePath store-base-metadata/base-metadata.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "redact-store-submission.mjs failed." }
