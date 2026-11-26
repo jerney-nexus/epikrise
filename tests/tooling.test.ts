@@ -41,6 +41,12 @@ import {
   renderReleaseNotesChecklist,
 } from "../scripts/check-store-release-notes.mjs";
 import { assertSubmissionAcceptsMetadata } from "../scripts/check-store-submission-state.mjs";
+import { assertStorePackageIdentity } from "../scripts/check-store-package-identity.mjs";
+import { assertMetadataDraftContainsOnlyListingChanges } from "../scripts/verify-store-metadata-draft.mjs";
+import {
+  createStoreReleaseContext,
+  validateStoreReleaseContext,
+} from "../scripts/store-release-context.mjs";
 import {
   createClientAssertion,
   createTokenProvider,
@@ -747,6 +753,72 @@ describe("CalVer release versions", () => {
     ).toThrow("must be greater");
   });
 
+  it("binds Store metadata runs to the exact package identity for their release tag", () => {
+    const context = createStoreReleaseContext("v2026.11.10", "a".repeat(40));
+    expect(context).toEqual({
+      releaseSha: "a".repeat(40),
+      releaseTag: "v2026.11.10",
+      packageVersion: "2026.11.10.0",
+    });
+    expect(validateStoreReleaseContext(context)).toEqual(context);
+    expect(() =>
+      validateStoreReleaseContext({ ...context, packageVersion: "2026.11.9.0" }),
+    ).toThrow("does not match its tag");
+    expect(() => createStoreReleaseContext("main", "a".repeat(40))).toThrow(
+      "Invalid Store release tag",
+    );
+  });
+
+  it("rejects Store submissions whose packages do not all match the release", () => {
+    expect(() =>
+      assertStorePackageIdentity(
+        {
+          ApplicationPackages: [
+            { Version: "2026.11.10.0" },
+            { Version: "2026.11.9.0" },
+          ],
+        },
+        "2026.11.10.0",
+      ),
+    ).toThrow("does not match release package");
+    expect(() =>
+      assertStorePackageIdentity({ ApplicationPackages: [] }, "2026.11.10.0"),
+    ).toThrow("no readable application packages");
+  });
+
+  it("allows only listing metadata to change in a newly created submission draft", () => {
+    const published = {
+      Id: "published",
+      Status: "Published",
+      ApplicationPackages: [{ Version: "2026.11.10.0" }],
+      Listings: { "en-us": { Title: "Old" } },
+      FileUploadUrl: "https://blob?sig=published",
+    };
+    const draft = {
+      ...published,
+      Id: "draft",
+      Status: "PendingCommit",
+      Listings: { "en-us": { Title: "New" } },
+      FileUploadUrl: "https://blob?sig=draft",
+    };
+
+    expect(assertMetadataDraftContainsOnlyListingChanges(published, draft)).toBe(
+      "draft",
+    );
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(published, {
+        ...draft,
+        ApplicationPackages: [{ Version: "2026.11.9.0" }],
+      }),
+    ).toThrow("outside listing metadata");
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(published, {
+        ...draft,
+        Status: "Published",
+      }),
+    ).toThrow("did not create a PendingCommit draft");
+  });
+
   it("removes FileUploadUrl credentials at any depth from submission JSON", () => {
     const redacted = redactFileUploadUrls({
       Packages: [{ FileName: "a.msix", FileUploadUrl: "https://blob?sig=secret" }],
@@ -975,10 +1047,10 @@ describe("CalVer release versions", () => {
     });
   });
 
-  it("only updates metadata on a published or uncommitted Store submission", () => {
+  it("only updates metadata on a published Store submission", () => {
     expect(assertSubmissionAcceptsMetadata({ Status: "Published" })).toBe("Published");
-    expect(assertSubmissionAcceptsMetadata({ Status: "PendingCommit" })).toBe(
-      "PendingCommit",
+    expect(() => assertSubmissionAcceptsMetadata({ Status: "PendingCommit" })).toThrow(
+      "Resolve the existing draft",
     );
     expect(() => assertSubmissionAcceptsMetadata({ Status: "Certification" })).toThrow(
       "submission is Certification",
@@ -4073,6 +4145,13 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain("gh run download");
     expect(workflow).toContain('--repo "$GITHUB_REPOSITORY"');
     expect(workflow).toContain("--name epikrise-store-release-context");
+    expect(workflow).toContain(
+      "package_version: ${{ steps.resolve.outputs.package_version }}",
+    );
+    expect(workflow).toContain(
+      "node tooling/scripts/store-release-context.mjs read release-context/release.json",
+    );
+    expect(workflow).toContain('if [[ "$GITHUB_REF_TYPE" != "tag" ]]');
     expect(workflow).toContain("ref: ${{ github.workflow_sha }}");
     expect(workflow).toContain("node tooling/scripts/compare-store-base-metadata.mjs");
     expect(workflow).not.toContain("inputs.commit");
@@ -4082,13 +4161,15 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain("environment:\n      name: store-partner-center\n");
     expect(workflow).not.toContain("store-partner-center-metadata");
     expect(workflow).toContain("check-store-submission-state.mjs");
+    expect(workflow).toContain("check-store-package-identity.mjs submission.json");
+    expect(workflow).toContain("verify-store-metadata-draft.mjs");
     expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - 2>&1");
     expect(workflow).toContain("verify-store-listings.mjs listings-readback.json");
     expect(workflow).toContain(
       "msstore submission get $env:STORE_PRODUCT_ID -m listings",
     );
     expect(workflow).not.toContain("msstore publish");
-    expect(workflow).toContain("env.SUBMISSION_STATUS == 'PendingCommit'");
+    expect(workflow).not.toContain("env.SUBMISSION_STATUS == 'PendingCommit'");
     expect(workflow).toContain("id: commit");
     expect(workflow).toContain(
       '"published=true" | Out-File -FilePath $env:GITHUB_OUTPUT',

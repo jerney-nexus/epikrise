@@ -5,10 +5,10 @@ run-name: Store metadata ${{ github.event.workflow_run.head_branch || github.ref
 # Partner Center submission, commits it, and then opens a pull request that refreshes
 # store-assets/base-metadata.json from the published submission. It runs after a
 # successful Store submission packages run, so a missing locale or screenshot cannot
-# block the package upload. Dispatch it to repeat the same steps; dry_run only uploads
-# a preview artifact and changes nothing. refresh_base_metadata skips the listing sync
-# and only opens the base metadata pull request from the Published submission, for
-# example after a failed listing merge.
+# block the package upload. Dispatch a listing sync from a release tag; dry_run only
+# uploads a preview artifact and changes nothing. refresh_base_metadata skips the
+# listing sync and only opens the base metadata pull request from the Published
+# submission, for example after a failed listing merge.
 
 on:
   workflow_dispatch:
@@ -46,9 +46,16 @@ jobs:
     timeout-minutes: 5
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
+      package_version: ${{ steps.resolve.outputs.package_version }}
     steps:
-      # A workflow_run for Store submission packages checks out the default branch, so its
-      # head_sha is not the signed release commit. The submit job records that commit.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: tooling
+          persist-credentials: false
+
+      # A workflow_run checks out the default branch, so the submit job carries the
+      # signed release commit and exact package identity in its artifact.
       - name: Read the release commit
         id: resolve
         env:
@@ -57,16 +64,15 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            sha="$GITHUB_SHA"
+            if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
+              echo "Manual metadata sync must be dispatched from a release tag." >&2
+              exit 1
+            fi
+            node tooling/scripts/store-release-context.mjs create "$GITHUB_REF_NAME" "$GITHUB_SHA" release-context.json
           else
             gh run download "$SUBMISSION_RUN_ID" --repo "$GITHUB_REPOSITORY" --name epikrise-store-release-context --dir release-context
-            sha="$(cat release-context/release-sha.txt)"
           fi
-          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "The release commit is not a full SHA: $sha" >&2
-            exit 1
-          fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          node tooling/scripts/store-release-context.mjs read release-context/release.json >> "$GITHUB_OUTPUT"
 
   sync-metadata:
     needs: resolve-release-commit
@@ -83,6 +89,7 @@ jobs:
       base_metadata_stale: ${{ steps.drift.outputs.stale }}
     env:
       STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
+      EXPECTED_STORE_PACKAGE_VERSION: ${{ needs.resolve-release-commit.outputs.package_version }}
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
     steps:
       - uses: actions/checkout@v7
@@ -90,8 +97,7 @@ jobs:
           ref: ${{ needs.resolve-release-commit.outputs.sha }}
           persist-credentials: false
 
-      # Older release commits predate the drift helper, so run it from this workflow's revision.
-      # The comparison input stays the release commit's store-assets/base-metadata.json.
+      # Use current workflow tooling even when the release commit predates these checks.
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.workflow_sha }}
@@ -126,7 +132,7 @@ jobs:
             --certificatePassword $env:AZURE_AD_CERTIFICATE_PASSWORD
           if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed." }
 
-      - name: Require an editable submission
+      - name: Require a published submission
         shell: pwsh
         run: |
           msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission.json -Encoding utf8
@@ -135,6 +141,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Store submission state guard failed." }
           $status = (Get-Content submission.json -Raw | ConvertFrom-Json).Status
           "SUBMISSION_STATUS=$status" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          node scripts/check-store-package-identity.mjs submission.json $env:EXPECTED_STORE_PACKAGE_VERSION
+          if ($LASTEXITCODE -ne 0) { throw "Store package identity does not match this release." }
 
       - name: Merge listing metadata from store-assets
         shell: pwsh
@@ -196,8 +204,7 @@ jobs:
       # prove the listings were stored. A mismatch stops the run before any commit.
       - name: Verify listings in the pending submission
         if: >-
-          env.DRY_RUN != 'true' &&
-          (env.METADATA_CHANGED == 'true' || env.SUBMISSION_STATUS == 'PendingCommit')
+          env.DRY_RUN != 'true' && env.METADATA_CHANGED == 'true'
         shell: pwsh
         run: |
           msstore submission get $env:STORE_PRODUCT_ID -m listings | Out-File -FilePath listings-readback.json -Encoding utf8
@@ -205,23 +212,37 @@ jobs:
           node scripts/verify-store-listings.mjs listings-readback.json store-assets/base-metadata.json
           if ($LASTEXITCODE -ne 0) { throw "Store listings do not match store-assets/base-metadata.json." }
 
-      # An unchanged listing is still committed when a draft is already pending, so an
-      # earlier run's draft or a failed commit can be retried. A Published submission
-      # with nothing to change is never republished.
+      - name: Verify the pending metadata draft contains only listing changes
+        id: draft
+        if: env.METADATA_CHANGED == 'true' && env.DRY_RUN != 'true'
+        shell: pwsh
+        run: |
+          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-updated-readback.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed after metadata update." }
+          node scripts/check-store-package-identity.mjs submission-updated-readback.json $env:EXPECTED_STORE_PACKAGE_VERSION
+          if ($LASTEXITCODE -ne 0) { throw "The pending draft package identity does not match this release." }
+          $draftId = node scripts/verify-store-metadata-draft.mjs submission.json submission-updated-readback.json
+          if ($LASTEXITCODE -ne 0) { throw "The pending draft contains unapproved changes." }
+          "submission_id=$draftId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      # Only publish a draft created by this run and verified to contain listing changes.
       - name: Commit submission and wait for Published
         id: commit
         if: >-
-          env.DRY_RUN != 'true' &&
-          (env.METADATA_CHANGED == 'true' || env.SUBMISSION_STATUS == 'PendingCommit')
+          env.DRY_RUN != 'true' && env.METADATA_CHANGED == 'true'
         env:
           AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
           AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
           AZURE_AD_CERTIFICATE_PASSWORD: ${{ secrets.AZURE_AD_CERTIFICATE_PASSWORD }}
+          VERIFIED_SUBMISSION_ID: ${{ steps.draft.outputs.submission_id }}
         shell: pwsh
         run: |
-          # Capture the pending draft ID first; the Published status must match this ID.
+          # Ensure the current draft is the one whose non-listing fields were verified.
           $env:STORE_SUBMISSION_ID = node scripts/wait-store-submission.mjs --capture-id
           if ($LASTEXITCODE -ne 0) { throw "Could not capture the pending submission ID." }
+          if ($env:STORE_SUBMISSION_ID -ne $env:VERIFIED_SUBMISSION_ID) {
+            throw "The pending submission changed after verification; refusing to publish it."
+          }
           msstore submission publish $env:STORE_PRODUCT_ID
           if ($LASTEXITCODE -ne 0) { throw "msstore submission publish failed." }
           # Wait for Status Published; the single-check poll subcommand can report the old Published submission.
