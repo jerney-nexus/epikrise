@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### 🔧 Changed
+
+- Store listing publication now waits for human screenshot review and revalidates the draft's image identities after approval.
+
 ## [2026.11.10] - 2026-11-26
 
 ### 🚀 Features

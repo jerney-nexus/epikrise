@@ -42,7 +42,10 @@ import {
 } from "../scripts/check-store-release-notes.mjs";
 import { assertSubmissionAcceptsMetadata } from "../scripts/check-store-submission-state.mjs";
 import { assertStorePackageIdentity } from "../scripts/check-store-package-identity.mjs";
-import { assertMetadataDraftContainsOnlyListingChanges } from "../scripts/verify-store-metadata-draft.mjs";
+import {
+  assertMetadataDraftContainsOnlyListingChanges,
+  assertReviewedMetadataDraftUnchanged,
+} from "../scripts/verify-store-metadata-draft.mjs";
 import {
   createStoreReleaseContext,
   validateStoreReleaseContext,
@@ -58,6 +61,7 @@ import {
 import { assertReleaseAdvancesStoreVersions } from "../scripts/check-store-version.mjs";
 import { redactFileUploadUrls } from "../scripts/redact-store-submission.mjs";
 import { differingTopLevelKeys } from "../scripts/compare-store-base-metadata.mjs";
+import { verifyStoreListings } from "../scripts/verify-store-listings.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
 import {
   buildReleasePreparationWorkflowArgs,
@@ -961,6 +965,14 @@ describe("CalVer release versions", () => {
 
   describe("Store listing read-back verification", () => {
     const verifier = path.join(process.cwd(), "scripts", "verify-store-listings.mjs");
+    const images = [
+      {
+        Id: "image-1",
+        FileName: "screen-one.png",
+        FileStatus: "Uploaded",
+        ImageType: "Screenshot",
+      },
+    ];
     const base = {
       Listings: {
         "en-us": {
@@ -968,21 +980,31 @@ describe("CalVer release versions", () => {
             Features: ["Feature one"],
             Keywords: ["keyword"],
             ReleaseNotes: "Notes",
-            Images: [{ FileName: "icon.png" }],
+            Images: images,
           },
         },
       },
     };
 
-    async function runVerifier(listings: unknown, baseMetadata: unknown = base) {
+    async function runVerifier(
+      listings: unknown,
+      baseMetadata: unknown = base,
+      publishedMetadata?: unknown,
+    ) {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-store-verify-"));
       try {
         const listingsPath = path.join(directory, "listings.json");
         const basePath = path.join(directory, "base.json");
         await writeFile(listingsPath, JSON.stringify(listings));
         await writeFile(basePath, JSON.stringify(baseMetadata));
+        const args = [verifier, listingsPath, basePath];
+        if (publishedMetadata !== undefined) {
+          const publishedPath = path.join(directory, "published.json");
+          await writeFile(publishedPath, JSON.stringify(publishedMetadata));
+          args.push(publishedPath);
+        }
         try {
-          const { stdout } = await execFile("node", [verifier, listingsPath, basePath]);
+          const { stdout } = await execFile("node", args);
           return { code: 0, stdout, stderr: "" };
         } catch (error) {
           const failure = error as { code: number; stderr: string };
@@ -1001,13 +1023,61 @@ describe("CalVer release versions", () => {
               Features: ["Feature one"],
               Keywords: ["keyword"],
               ReleaseNotes: "Notes",
+              Images: images,
             },
           },
         },
       });
 
       expect(result.code).toBe(0);
-      expect(result.stdout).toContain("matches base-metadata.json");
+      expect(result.stdout).toContain("text and image read-back matches");
+      expect(result.stdout).toContain("Screenshot review required");
+      expect(result.stdout).toContain("screen-one.png");
+    });
+
+    it("reports screenshot changes against the published submission", async () => {
+      const previousImages = [
+        images[0],
+        {
+          Id: "image-2",
+          FileName: "screen-two.png",
+          FileStatus: "Uploaded",
+          ImageType: "Screenshot",
+        },
+      ];
+      const nextImages = [
+        images[0],
+        {
+          Id: "image-3",
+          FileName: "screen-three.png",
+          FileStatus: "Uploaded",
+          ImageType: "Screenshot",
+        },
+      ];
+      const submissionWithImages = (screenshots: typeof images) => ({
+        Listings: {
+          "en-us": {
+            BaseListing: { ...base.Listings["en-us"].BaseListing, Images: screenshots },
+          },
+        },
+      });
+
+      const result = await runVerifier(
+        submissionWithImages(nextImages),
+        submissionWithImages(nextImages),
+        submissionWithImages(previousImages),
+      );
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain(
+        "| en-us | Unchanged | 1. screen-one.png (image-1)",
+      );
+      expect(result.stdout).toContain(
+        "| en-us | Removed | 2. screen-two.png (image-2) | —",
+      );
+      expect(result.stdout).toContain(
+        "| en-us | Added | — | 2. screen-three.png (image-3) |",
+      );
     });
 
     it("names the stale field and locale without printing values", async () => {
@@ -1018,6 +1088,7 @@ describe("CalVer release versions", () => {
               Features: ["Feature one"],
               Keywords: [],
               ReleaseNotes: "Old 2026.11.6 notes",
+              Images: images,
             },
           },
         },
@@ -1033,7 +1104,145 @@ describe("CalVer release versions", () => {
       const result = await runVerifier({ Listings: {} });
 
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain("en-us: missing from the submission");
+      expect(result.stderr).toContain("en-us: missing listing");
+    });
+
+    it("rejects missing, replaced, and reordered images", () => {
+      const expected = {
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              Images: [
+                ...images,
+                {
+                  Id: "image-2",
+                  FileName: "screen-two.png",
+                  FileStatus: "Uploaded",
+                  ImageType: "Screenshot",
+                },
+              ],
+            },
+          },
+        },
+      };
+      const [first, second] = expected.Listings["en-us"].BaseListing.Images;
+      const readback = (imageList: unknown[]) => ({
+        Listings: { "en-us": { BaseListing: { Images: imageList } } },
+      });
+
+      expect(verifyStoreListings(readback([first]), expected).mismatches).toContain(
+        "en-us Images (missing, changed, reordered, or not uploaded)",
+      );
+      expect(
+        verifyStoreListings(
+          readback([{ ...second, Id: "replacement-id" }, first]),
+          expected,
+        ).mismatches,
+      ).toContain("en-us Images (missing, changed, reordered, or not uploaded)");
+      expect(
+        verifyStoreListings(readback([second, first]), expected).mismatches,
+      ).toContain("en-us Images (missing, changed, reordered, or not uploaded)");
+      const previous = {
+        Listings: {
+          "en-us": {
+            BaseListing: { Images: [first, second] },
+          },
+        },
+      };
+      const desired = {
+        Listings: {
+          "en-us": {
+            BaseListing: { Images: [first] },
+          },
+        },
+      };
+      expect(
+        verifyStoreListings(readback([first]), desired, previous).screenshotRows,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("| en-us | Removed |"),
+          expect.stringContaining("| en-us | Unchanged |"),
+        ]),
+      );
+    });
+
+    it("rejects a listing locale with no screenshots to review", () => {
+      const expected = {
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              Images: [
+                {
+                  Id: "logo-1",
+                  FileName: "logo.png",
+                  FileStatus: "Uploaded",
+                  ImageType: "StoreLogoSquare",
+                },
+              ],
+            },
+          },
+        },
+      };
+      expect(verifyStoreListings(expected, expected).mismatches).toContain(
+        "en-us Screenshots (none configured)",
+      );
+    });
+
+    it("rejects unuploaded images and detects changes after review", () => {
+      const reviewed = {
+        Id: "draft-1",
+        Status: "PendingCommit",
+        Listings: { "en-us": { BaseListing: { Images: images } } },
+      };
+      expect(
+        verifyStoreListings(
+          {
+            Listings: {
+              "en-us": {
+                BaseListing: {
+                  Images: [{ ...images[0], FileStatus: "PendingUpload" }],
+                },
+              },
+            },
+          },
+          reviewed,
+        ).mismatches,
+      ).toContain("en-us Images (missing, changed, reordered, or not uploaded)");
+      expect(() =>
+        assertReviewedMetadataDraftUnchanged(
+          reviewed,
+          {
+            ...reviewed,
+            Listings: {
+              "en-us": {
+                BaseListing: {
+                  Images: [{ ...images[0], Id: "different-image" }],
+                },
+              },
+            },
+          },
+          "draft-1",
+        ),
+      ).toThrow("changed after human review");
+    });
+
+    it("ignores volatile state and upload URLs after human review", () => {
+      const reviewed = {
+        Id: "draft-1",
+        Status: "PendingCommit",
+        StatusDetails: { Errors: [] },
+        FileUploadUrl: "https://blob?sig=before",
+        Listings: { "en-us": { BaseListing: { Images: images } } },
+      };
+      const current = {
+        ...reviewed,
+        StatusDetails: { Errors: ["processing"] },
+        FileUploadUrl: "https://blob?sig=after",
+      };
+
+      expect(() =>
+        assertReviewedMetadataDraftUnchanged(reviewed, current, "draft-1"),
+      ).not.toThrow();
     });
 
     it("fails closed when the base metadata has no locale listings", async () => {
@@ -4175,29 +4384,51 @@ describe("signed release artifacts", () => {
     );
     expect(workflow).toContain("node tooling/scripts/verify-store-metadata-draft.mjs");
     expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - 2>&1");
-    expect(workflow).toContain("verify-store-listings.mjs listings-readback.json");
+    expect(workflow).toContain(
+      "node tooling/scripts/verify-store-listings.mjs listings-readback.json submission-updated.json submission.json",
+    );
     expect(workflow).toContain(
       "msstore submission get $env:STORE_PRODUCT_ID -m listings",
     );
     expect(workflow).not.toContain("msstore publish");
     expect(workflow).not.toContain("env.SUBMISSION_STATUS == 'PendingCommit'");
+    expect(workflow).toContain("epikrise-store-metadata-approval");
+    expect(workflow).toContain("Human screenshot review required before publication");
+    expect(workflow).toContain("Approve the **Publish Store metadata draft**");
+    expect(workflow).toContain(
+      "verify-reviewed store-metadata-approval/pending-submission.json",
+    );
+    expect(workflow).toContain("name: Publish Store metadata draft");
+    expect(workflow).toContain("needs.sync-metadata.outputs.submission_id");
     expect(workflow).toContain("id: commit");
     expect(workflow).toContain(
       '"published=true" | Out-File -FilePath $env:GITHUB_OUTPUT',
     );
     expect(workflow).toContain("id: drift");
     expect(workflow).toContain(
-      "if: env.DRY_RUN != 'true' && env.SUBMISSION_STATUS == 'Published'",
+      "if: env.DRY_RUN != 'true' && steps.published_submission.outputs.status == 'Published' && steps.merge_metadata.outputs.changed != 'true'",
     );
     expect(workflow).toContain("compare-store-base-metadata.mjs submission.json");
     expect(workflow).toContain('"stale=true" | Out-File -FilePath $env:GITHUB_OUTPUT');
+
+    const publishJob = workflow.slice(
+      workflow.indexOf("  publish-metadata:"),
+      workflow.indexOf("  get-base-metadata:"),
+    );
+    expect(publishJob).toContain("environment:\n      name: store-partner-center\n");
+    expect(publishJob).toContain("actions/download-artifact@v8");
+    expect(publishJob).toContain(
+      "verify-reviewed store-metadata-approval/pending-submission.json",
+    );
+    expect(publishJob).toContain("submission-final-check.json");
 
     const exportJob = workflow.slice(
       workflow.indexOf("  get-base-metadata:"),
       workflow.indexOf("  open-pull-request:"),
     );
-    expect(exportJob).toContain("needs: sync-metadata");
-    expect(exportJob).toContain("needs.sync-metadata.outputs.published == 'true'");
+    expect(exportJob).toContain("- sync-metadata");
+    expect(exportJob).toContain("- publish-metadata");
+    expect(exportJob).toContain("needs.publish-metadata.outputs.published == 'true'");
     expect(exportJob).toContain(
       "needs.sync-metadata.outputs.base_metadata_stale == 'true'",
     );

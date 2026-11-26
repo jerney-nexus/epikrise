@@ -86,7 +86,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 330
     outputs:
-      published: ${{ steps.commit.outputs.published }}
+      submission_id: ${{ steps.draft.outputs.submission_id }}
       base_metadata_stale: ${{ steps.drift.outputs.stale }}
     env:
       STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
@@ -134,6 +134,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed." }
 
       - name: Require a published submission
+        id: published_submission
         shell: pwsh
         run: |
           msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission.json -Encoding utf8
@@ -141,28 +142,29 @@ jobs:
           node tooling/scripts/check-store-submission-state.mjs submission.json
           if ($LASTEXITCODE -ne 0) { throw "Store submission state guard failed." }
           $status = (Get-Content submission.json -Raw | ConvertFrom-Json).Status
-          "SUBMISSION_STATUS=$status" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           node tooling/scripts/check-store-package-identity.mjs submission.json $env:EXPECTED_STORE_PACKAGE_VERSION
           if ($LASTEXITCODE -ne 0) { throw "Store package identity does not match this release." }
 
       - name: Merge listing metadata from store-assets
+        id: merge_metadata
         shell: pwsh
         run: |
           $merged = node scripts/update-store-metadata.mjs submission.json store-assets/base-metadata.json
           if ($LASTEXITCODE -ne 0) { throw "update-store-metadata.mjs failed." }
           if (-not $merged) {
-            "METADATA_CHANGED=false" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "changed=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             return
           }
           $merged | Out-File -FilePath submission-updated.json -Encoding utf8
-          "METADATA_CHANGED=true" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "changed=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       # The merge compares listings only. A Published submission can still differ from
       # store-assets/base-metadata.json in other keys (Id, ApplicationPackages, FriendlyName),
       # so compare the whole export and request a base-metadata refresh when they differ.
       - name: Detect base metadata drift
         id: drift
-        if: env.DRY_RUN != 'true' && env.SUBMISSION_STATUS == 'Published' && env.METADATA_CHANGED != 'true'
+        if: env.DRY_RUN != 'true' && steps.published_submission.outputs.status == 'Published' && steps.merge_metadata.outputs.changed != 'true'
         shell: pwsh
         run: |
           $keys = node tooling/scripts/compare-store-base-metadata.mjs submission.json store-assets/base-metadata.json
@@ -173,7 +175,7 @@ jobs:
           }
 
       - name: Redact merged submission for review
-        if: env.METADATA_CHANGED == 'true' && env.DRY_RUN == 'true'
+        if: steps.merge_metadata.outputs.changed == 'true' && env.DRY_RUN == 'true'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path store-metadata-preview | Out-Null
@@ -181,7 +183,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "redact-store-submission.mjs failed." }
 
       - uses: actions/upload-artifact@v7
-        if: env.METADATA_CHANGED == 'true' && env.DRY_RUN == 'true'
+        if: steps.merge_metadata.outputs.changed == 'true' && env.DRY_RUN == 'true'
         with:
           name: epikrise-store-metadata-preview
           path: store-metadata-preview/submission-updated.json
@@ -189,7 +191,7 @@ jobs:
           retention-days: 14
 
       - name: Update submission metadata
-        if: env.METADATA_CHANGED == 'true' && env.DRY_RUN != 'true'
+        if: steps.merge_metadata.outputs.changed == 'true' && env.DRY_RUN != 'true'
         shell: pwsh
         run: |
           $updated = Get-Content submission-updated.json -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
@@ -201,52 +203,162 @@ jobs:
             throw "msstore submission updateMetadata failed."
           }
 
-      # Read the draft back from Partner Center: a successful exit code alone does not
-      # prove the listings were stored. A mismatch stops the run before any commit.
+      # Read the draft back from Partner Center: verify every text field and image
+      # identity against the exact payload before requesting human publication approval.
       - name: Verify listings in the pending submission
         if: >-
-          env.DRY_RUN != 'true' && env.METADATA_CHANGED == 'true'
+          env.DRY_RUN != 'true' && steps.merge_metadata.outputs.changed == 'true'
         shell: pwsh
         run: |
           msstore submission get $env:STORE_PRODUCT_ID -m listings | Out-File -FilePath listings-readback.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "msstore submission get (listings) failed." }
-          node scripts/verify-store-listings.mjs listings-readback.json store-assets/base-metadata.json
-          if ($LASTEXITCODE -ne 0) { throw "Store listings do not match store-assets/base-metadata.json." }
+          node tooling/scripts/verify-store-listings.mjs listings-readback.json submission-updated.json submission.json |
+            Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          if ($LASTEXITCODE -ne 0) { throw "Store listings or images do not match the prepared submission." }
 
       - name: Verify the pending metadata draft contains only listing changes
         id: draft
-        if: env.METADATA_CHANGED == 'true' && env.DRY_RUN != 'true'
+        if: steps.merge_metadata.outputs.changed == 'true' && env.DRY_RUN != 'true'
         shell: pwsh
         run: |
           msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-updated-readback.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed after metadata update." }
           node tooling/scripts/check-store-package-identity.mjs submission-updated-readback.json $env:EXPECTED_STORE_PACKAGE_VERSION
           if ($LASTEXITCODE -ne 0) { throw "The pending draft package identity does not match this release." }
-          $draftId = node tooling/scripts/verify-store-metadata-draft.mjs submission.json submission-updated-readback.json
+          $draftId = node tooling/scripts/verify-store-metadata-draft.mjs verify-new submission.json submission-updated-readback.json
           if ($LASTEXITCODE -ne 0) { throw "The pending draft contains unapproved changes." }
           "submission_id=$draftId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      # Only publish a draft created by this run and verified to contain listing changes.
-      - name: Commit submission and wait for Published
+      - name: Explain the required screenshot review
+        if: steps.merge_metadata.outputs.changed == 'true' && env.DRY_RUN != 'true'
+        env:
+          VERIFIED_SUBMISSION_ID: ${{ steps.draft.outputs.submission_id }}
+        shell: pwsh
+        run: |
+          @"
+          ## Human screenshot review required before publication
+
+          The Store metadata draft has been created and verified, but has **not** been published.
+
+          - Store product: ``$env:STORE_PRODUCT_ID``
+          - Pending submission: ``$env:VERIFIED_SUBMISSION_ID``
+          - [Open this workflow run to inspect the screenshot list and review artifact](https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID)
+
+          Open the pending submission in Partner Center and visually inspect every screenshot in every locale listed above. Confirm the screenshots are present, current, correctly ordered, and show the intended content. Approve the **Publish Store metadata draft** environment deployment only after this review. Reject or leave it pending if anything is missing or incorrect.
+
+          After approval, the workflow fetches the submission again and refuses to publish if its ID, package, listing text, or image metadata changed.
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Save redacted snapshot for post-approval verification
+        if: steps.merge_metadata.outputs.changed == 'true' && env.DRY_RUN != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path store-metadata-approval | Out-Null
+          node tooling/scripts/redact-store-submission.mjs submission-updated-readback.json |
+            Out-File -FilePath store-metadata-approval/pending-submission.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "Could not redact the pending submission snapshot." }
+
+      - uses: actions/upload-artifact@v7
+        if: steps.merge_metadata.outputs.changed == 'true' && env.DRY_RUN != 'true'
+        with:
+          name: epikrise-store-metadata-approval
+          path: store-metadata-approval/pending-submission.json
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-metadata:
+    needs:
+      - resolve-release-commit
+      - sync-metadata
+    if: needs.sync-metadata.outputs.submission_id != ''
+    name: Publish Store metadata draft
+    environment:
+      name: store-partner-center
+    runs-on: windows-latest
+    timeout-minutes: 330
+    outputs:
+      published: ${{ steps.commit.outputs.published }}
+    env:
+      STORE_PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
+      EXPECTED_STORE_PACKAGE_VERSION: ${{ needs.resolve-release-commit.outputs.package_version }}
+      VERIFIED_SUBMISSION_ID: ${{ needs.sync-metadata.outputs.submission_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-release-commit.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: tooling
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: epikrise-store-metadata-approval
+          path: store-metadata-approval
+
+      - name: Require Store product ID
+        shell: pwsh
+        run: |
+          if (-not $env:STORE_PRODUCT_ID) {
+            throw "STORE_PRODUCT_ID environment variable is not set in the store-partner-center environment."
+          }
+
+      - uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
+
+      - name: Configure Partner Center credentials
+        env:
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          SELLER_ID: ${{ secrets.SELLER_ID }}
+          AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          AZURE_AD_CERTIFICATE_PFX_BASE64: ${{ secrets.AZURE_AD_CERTIFICATE_PFX_BASE64 }}
+          AZURE_AD_CERTIFICATE_PASSWORD: ${{ secrets.AZURE_AD_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "partner-center.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:AZURE_AD_CERTIFICATE_PFX_BASE64))
+          msstore reconfigure `
+            --tenantId $env:AZURE_AD_TENANT_ID `
+            --sellerId $env:SELLER_ID `
+            --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID `
+            --certificateFilePath $pfxPath `
+            --certificatePassword $env:AZURE_AD_CERTIFICATE_PASSWORD
+          if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed." }
+
+      - name: Revalidate reviewed draft and publish
         id: commit
-        if: >-
-          env.DRY_RUN != 'true' && env.METADATA_CHANGED == 'true'
         env:
           AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
           AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
           AZURE_AD_CERTIFICATE_PASSWORD: ${{ secrets.AZURE_AD_CERTIFICATE_PASSWORD }}
-          VERIFIED_SUBMISSION_ID: ${{ steps.draft.outputs.submission_id }}
         shell: pwsh
         run: |
-          # Ensure the current draft is the one whose non-listing fields were verified.
+          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-after-approval.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed after approval." }
+          node tooling/scripts/check-store-package-identity.mjs submission-after-approval.json $env:EXPECTED_STORE_PACKAGE_VERSION
+          if ($LASTEXITCODE -ne 0) { throw "The approved draft package identity does not match this release." }
+          node tooling/scripts/verify-store-metadata-draft.mjs verify-reviewed store-metadata-approval/pending-submission.json submission-after-approval.json $env:VERIFIED_SUBMISSION_ID
+          if ($LASTEXITCODE -ne 0) { throw "The Partner Center draft changed after human review." }
+
+          msstore submission get $env:STORE_PRODUCT_ID -m listings | Out-File -FilePath listings-after-approval.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission get (listings) failed after approval." }
+          node tooling/scripts/verify-store-listings.mjs listings-after-approval.json store-metadata-approval/pending-submission.json
+          if ($LASTEXITCODE -ne 0) { throw "The approved draft listings or images changed." }
+
+          # Ensure the current pending submission is still the draft reviewed by the human.
           $env:STORE_SUBMISSION_ID = node scripts/wait-store-submission.mjs --capture-id
           if ($LASTEXITCODE -ne 0) { throw "Could not capture the pending submission ID." }
           if ($env:STORE_SUBMISSION_ID -ne $env:VERIFIED_SUBMISSION_ID) {
             throw "The pending submission changed after verification; refusing to publish it."
           }
+          msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-final-check.json -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed before publication." }
+          node tooling/scripts/verify-store-metadata-draft.mjs verify-reviewed store-metadata-approval/pending-submission.json submission-final-check.json $env:VERIFIED_SUBMISSION_ID
+          if ($LASTEXITCODE -ne 0) { throw "The Partner Center draft changed before publication." }
           msstore submission publish $env:STORE_PRODUCT_ID
           if ($LASTEXITCODE -ne 0) { throw "msstore submission publish failed." }
-          # Wait for Status Published; the single-check poll subcommand can report the old Published submission.
           $env:STORE_CERT_PFX_PATH = Join-Path $env:RUNNER_TEMP "partner-center.pfx"
           $env:STORE_CERT_PASSWORD = $env:AZURE_AD_CERTIFICATE_PASSWORD
           node scripts/wait-store-submission.mjs
@@ -255,13 +367,15 @@ jobs:
 
   get-base-metadata:
     name: Get Store base metadata
-    needs: sync-metadata
+    needs:
+      - sync-metadata
+      - publish-metadata
     if: >-
       always() &&
       (
         (github.event_name == 'workflow_dispatch' && inputs.refresh_base_metadata && !inputs.dry_run) ||
         (needs.sync-metadata.result == 'success' &&
-          (needs.sync-metadata.outputs.published == 'true' ||
+          (needs.publish-metadata.outputs.published == 'true' ||
           needs.sync-metadata.outputs.base_metadata_stale == 'true'))
       )
     environment:
