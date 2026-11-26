@@ -85,13 +85,28 @@ export function verifyStoreListings(readback, expectedSubmission, publishedSubmi
 
   /** @type {string[]} */
   const mismatches = [];
+  for (const locale of Object.keys(listings)) {
+    if (!Object.hasOwn(expectedListings, locale)) {
+      mismatches.push(`${locale}: unexpected listing`);
+    }
+  }
   /** @type {Map<string, Record<string, unknown>[]>} */
   const verifiedScreenshots = new Map();
   for (const [locale, source] of expectedLocales) {
+    const actualLocale = listings[locale];
+    if (isRecord(source) && isRecord(actualLocale)) {
+      const fields = new Set([...Object.keys(source), ...Object.keys(actualLocale)]);
+      fields.delete("BaseListing");
+      fields.delete("baseListing");
+      for (const fieldName of fields) {
+        if (!isDeepStrictEqual(actualLocale[fieldName], source[fieldName])) {
+          mismatches.push(`${locale} ${fieldName}`);
+        }
+      }
+    }
     const expectedListing = isRecord(source)
       ? (source.BaseListing ?? source.baseListing)
       : undefined;
-    const actualLocale = listings[locale];
     const actualListing = isRecord(actualLocale)
       ? (actualLocale.BaseListing ?? actualLocale.baseListing)
       : undefined;
