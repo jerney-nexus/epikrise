@@ -1,13 +1,10 @@
 #!/usr/bin/env node
-// Fails unless the Partner Center submission can take a metadata update:
-// a published submission (a new draft is created) or a draft that is not yet
-// committed. Anything else (certification, publishing, ...) is already in flight.
+// Fails unless the current Partner Center submission is Published. Existing drafts
+// may contain unrelated changes and must be resolved by a person before syncing.
 // Usage: node scripts/check-store-submission-state.mjs <submission.json>
 
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-
-const EDITABLE_STATUSES = new Set(["Published", "PendingCommit"]);
 
 /** @param {unknown} submission @returns {string | undefined} */
 export function submissionStatus(submission) {
@@ -23,10 +20,10 @@ export function assertSubmissionAcceptsMetadata(submission) {
   if (status === undefined) {
     throw new Error("The Partner Center submission has no readable Status.");
   }
-  if (!EDITABLE_STATUSES.has(status)) {
+  if (status !== "Published") {
     throw new Error(
       `The Partner Center submission is ${status}. ` +
-        "Wait for it to finish, then rerun the Store metadata workflow.",
+        "Resolve the existing draft or wait for publication, then rerun the Store metadata workflow.",
     );
   }
   return status;

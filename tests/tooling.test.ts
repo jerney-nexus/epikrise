@@ -41,6 +41,15 @@ import {
   renderReleaseNotesChecklist,
 } from "../scripts/check-store-release-notes.mjs";
 import { assertSubmissionAcceptsMetadata } from "../scripts/check-store-submission-state.mjs";
+import { assertStorePackageIdentity } from "../scripts/check-store-package-identity.mjs";
+import {
+  assertMetadataDraftContainsOnlyListingChanges,
+  assertReviewedMetadataDraftUnchanged,
+} from "../scripts/verify-store-metadata-draft.mjs";
+import {
+  createStoreReleaseContext,
+  validateStoreReleaseContext,
+} from "../scripts/store-release-context.mjs";
 import {
   createClientAssertion,
   createTokenProvider,
@@ -51,6 +60,8 @@ import {
 } from "../scripts/wait-store-submission.mjs";
 import { assertReleaseAdvancesStoreVersions } from "../scripts/check-store-version.mjs";
 import { redactFileUploadUrls } from "../scripts/redact-store-submission.mjs";
+import { differingTopLevelKeys } from "../scripts/compare-store-base-metadata.mjs";
+import { verifyStoreListings } from "../scripts/verify-store-listings.mjs";
 import { prepareReleaseWorkspace } from "../scripts/prepare-release-workspace.mjs";
 import {
   buildReleasePreparationWorkflowArgs,
@@ -746,6 +757,86 @@ describe("CalVer release versions", () => {
     ).toThrow("must be greater");
   });
 
+  it("binds Store metadata runs to the exact package identity for their release tag", () => {
+    const context = createStoreReleaseContext("v2026.11.10", "a".repeat(40));
+    expect(context).toEqual({
+      releaseSha: "a".repeat(40),
+      releaseTag: "v2026.11.10",
+      packageVersion: "2026.11.10.0",
+    });
+    expect(validateStoreReleaseContext(context)).toEqual(context);
+    expect(() =>
+      validateStoreReleaseContext({ ...context, packageVersion: "2026.11.9.0" }),
+    ).toThrow("does not match its tag");
+    expect(() => createStoreReleaseContext("main", "a".repeat(40))).toThrow(
+      "Invalid Store release tag",
+    );
+  });
+
+  it("rejects Store submissions whose packages do not all match the release", () => {
+    expect(() =>
+      assertStorePackageIdentity(
+        {
+          ApplicationPackages: [
+            { Version: "2026.11.10.0" },
+            { Version: "2026.11.9.0" },
+          ],
+        },
+        "2026.11.10.0",
+      ),
+    ).toThrow("does not match release package");
+    expect(() =>
+      assertStorePackageIdentity({ ApplicationPackages: [] }, "2026.11.10.0"),
+    ).toThrow("no readable application packages");
+  });
+
+  it("allows only listing metadata to change in a newly created submission draft", () => {
+    const published = {
+      Id: "published",
+      Status: "Published",
+      ApplicationPackages: [{ Version: "2026.11.10.0" }],
+      Listings: { "en-us": { Title: "Old" } },
+      FileUploadUrl: "https://blob?sig=published",
+    };
+    const draft = {
+      ...published,
+      Id: "draft",
+      Status: "PendingCommit",
+      Listings: { "en-us": { Title: "New" } },
+      FileUploadUrl: "https://blob?sig=draft",
+    };
+
+    expect(assertMetadataDraftContainsOnlyListingChanges(published, draft)).toBe(
+      "draft",
+    );
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(published, {
+        ...draft,
+        ApplicationPackages: [{ Version: "2026.11.9.0" }],
+      }),
+    ).toThrow("outside listing metadata");
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(published, {
+        ...draft,
+        Status: "Published",
+      }),
+    ).toThrow("did not create a PendingCommit draft");
+  });
+
+  it.each([
+    ["verify-reviewed", "reviewed.json", "current.json"],
+    ["unknown", "draft.json"],
+    ["verify-new", "published.json", "draft.json", "extra.json"],
+  ])("rejects malformed metadata draft verifier arguments: %s", async (...args) => {
+    const verifier = path.join(repoRoot, "scripts", "verify-store-metadata-draft.mjs");
+
+    await expect(execFile("node", [verifier, ...args])).rejects.toMatchObject({
+      code: 1,
+      stdout: "",
+      stderr: expect.stringContaining("usage: verify-store-metadata-draft.mjs"),
+    });
+  });
+
   it("removes FileUploadUrl credentials at any depth from submission JSON", () => {
     const redacted = redactFileUploadUrls({
       Packages: [{ FileName: "a.msix", FileUploadUrl: "https://blob?sig=secret" }],
@@ -759,6 +850,43 @@ describe("CalVer release versions", () => {
       Listings: { "en-us": { Images: [{}] } },
       Version: "1.0.0",
     });
+  });
+
+  it("reports top-level keys that differ between a submission and base metadata", () => {
+    const base = {
+      Id: "1",
+      FriendlyName: "Submission 8",
+      ApplicationPackages: [{ FileName: "a.msixbundle", Version: "1.0.0.0" }],
+      Listings: { "en-us": { Title: "Epikrise" } },
+      Status: "Published",
+    };
+    const submission = {
+      ...base,
+      Id: "2",
+      FriendlyName: "Submission 10",
+      ApplicationPackages: [{ FileName: "b.msixbundle", Version: "1.0.0.0" }],
+      FileUploadUrl: "https://blob?sig=secret",
+      Status: "PendingCommit",
+    };
+
+    expect(differingTopLevelKeys(submission, base)).toEqual([
+      "ApplicationPackages",
+      "FriendlyName",
+      "Id",
+    ]);
+  });
+
+  it("ignores FileUploadUrl and volatile status keys when comparing", () => {
+    const base = { Id: "1", Listings: {}, Status: "Published" };
+    const submission = {
+      Id: "1",
+      Listings: {},
+      Status: "PendingCommit",
+      StatusDetails: { Errors: [] },
+      FileUploadUrl: "https://blob?sig=secret",
+    };
+
+    expect(differingTopLevelKeys(submission, base)).toEqual([]);
   });
 
   it("copies base metadata listings and images into the draft submission", async () => {
@@ -851,6 +979,14 @@ describe("CalVer release versions", () => {
 
   describe("Store listing read-back verification", () => {
     const verifier = path.join(process.cwd(), "scripts", "verify-store-listings.mjs");
+    const images = [
+      {
+        Id: "image-1",
+        FileName: "screen-one.png",
+        FileStatus: "Uploaded",
+        ImageType: "Screenshot",
+      },
+    ];
     const base = {
       Listings: {
         "en-us": {
@@ -858,21 +994,31 @@ describe("CalVer release versions", () => {
             Features: ["Feature one"],
             Keywords: ["keyword"],
             ReleaseNotes: "Notes",
-            Images: [{ FileName: "icon.png" }],
+            Images: images,
           },
         },
       },
     };
 
-    async function runVerifier(listings: unknown, baseMetadata: unknown = base) {
+    async function runVerifier(
+      listings: unknown,
+      baseMetadata: unknown = base,
+      publishedMetadata?: unknown,
+    ) {
       const directory = await mkdtemp(path.join(tmpdir(), "epikrise-store-verify-"));
       try {
         const listingsPath = path.join(directory, "listings.json");
         const basePath = path.join(directory, "base.json");
         await writeFile(listingsPath, JSON.stringify(listings));
         await writeFile(basePath, JSON.stringify(baseMetadata));
+        const args = [verifier, listingsPath, basePath];
+        if (publishedMetadata !== undefined) {
+          const publishedPath = path.join(directory, "published.json");
+          await writeFile(publishedPath, JSON.stringify(publishedMetadata));
+          args.push(publishedPath);
+        }
         try {
-          const { stdout } = await execFile("node", [verifier, listingsPath, basePath]);
+          const { stdout } = await execFile("node", args);
           return { code: 0, stdout, stderr: "" };
         } catch (error) {
           const failure = error as { code: number; stderr: string };
@@ -891,13 +1037,61 @@ describe("CalVer release versions", () => {
               Features: ["Feature one"],
               Keywords: ["keyword"],
               ReleaseNotes: "Notes",
+              Images: images,
             },
           },
         },
       });
 
       expect(result.code).toBe(0);
-      expect(result.stdout).toContain("matches base-metadata.json");
+      expect(result.stdout).toContain("text and image read-back matches");
+      expect(result.stdout).toContain("Screenshot review required");
+      expect(result.stdout).toContain("screen-one.png");
+    });
+
+    it("reports screenshot changes against the published submission", async () => {
+      const previousImages = [
+        images[0],
+        {
+          Id: "image-2",
+          FileName: "screen-two.png",
+          FileStatus: "Uploaded",
+          ImageType: "Screenshot",
+        },
+      ];
+      const nextImages = [
+        images[0],
+        {
+          Id: "image-3",
+          FileName: "screen-three.png",
+          FileStatus: "Uploaded",
+          ImageType: "Screenshot",
+        },
+      ];
+      const submissionWithImages = (screenshots: typeof images) => ({
+        Listings: {
+          "en-us": {
+            BaseListing: { ...base.Listings["en-us"].BaseListing, Images: screenshots },
+          },
+        },
+      });
+
+      const result = await runVerifier(
+        submissionWithImages(nextImages),
+        submissionWithImages(nextImages),
+        submissionWithImages(previousImages),
+      );
+
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain(
+        "| en-us | Unchanged | 1. screen-one.png (image-1)",
+      );
+      expect(result.stdout).toContain(
+        "| en-us | Removed | 2. screen-two.png (image-2) | —",
+      );
+      expect(result.stdout).toContain(
+        "| en-us | Added | — | 2. screen-three.png (image-3) |",
+      );
     });
 
     it("names the stale field and locale without printing values", async () => {
@@ -908,6 +1102,7 @@ describe("CalVer release versions", () => {
               Features: ["Feature one"],
               Keywords: [],
               ReleaseNotes: "Old 2026.11.6 notes",
+              Images: images,
             },
           },
         },
@@ -919,11 +1114,220 @@ describe("CalVer release versions", () => {
       expect(result.stderr).not.toContain("2026.11.6");
     });
 
+    it("rejects unexpected BaseListing text without printing its value", async () => {
+      const result = await runVerifier({
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              ...base.Listings["en-us"].BaseListing,
+              Description: "Unexpected Store text",
+            },
+          },
+        },
+      });
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("en-us Description");
+      expect(result.stderr).not.toContain("Unexpected Store text");
+    });
+
+    it("rejects missing expected BaseListing fields", async () => {
+      const expected = {
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              ...base.Listings["en-us"].BaseListing,
+              Description: "Expected Store text",
+            },
+          },
+        },
+      };
+      const result = await runVerifier(base, expected);
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("en-us Description");
+      expect(result.stderr).not.toContain("Expected Store text");
+    });
+
     it("fails when a base locale is absent from the submission", async () => {
       const result = await runVerifier({ Listings: {} });
 
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain("en-us: missing from the submission");
+      expect(result.stderr).toContain("en-us: missing listing");
+    });
+
+    it("rejects unexpected locales in the read-back", () => {
+      const readback = {
+        Listings: {
+          ...base.Listings,
+          "fr-fr": { BaseListing: { Features: ["Unexpected locale"] } },
+        },
+      };
+
+      expect(verifyStoreListings(readback, base).mismatches).toContain(
+        "fr-fr: unexpected listing",
+      );
+    });
+
+    it("rejects changed locale metadata outside BaseListing", () => {
+      const expected = {
+        Listings: {
+          "en-us": {
+            ...base.Listings["en-us"],
+            PlatformOverrides: { Windows: { Description: "Expected" } },
+          },
+        },
+      };
+      const readback = {
+        Listings: {
+          "en-us": {
+            ...expected.Listings["en-us"],
+            PlatformOverrides: { Windows: { Description: "Changed" } },
+          },
+        },
+      };
+
+      expect(verifyStoreListings(readback, expected).mismatches).toContain(
+        "en-us PlatformOverrides",
+      );
+    });
+
+    it("rejects missing, replaced, and reordered images", () => {
+      const expected = {
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              Images: [
+                ...images,
+                {
+                  Id: "image-2",
+                  FileName: "screen-two.png",
+                  FileStatus: "Uploaded",
+                  ImageType: "Screenshot",
+                },
+              ],
+            },
+          },
+        },
+      };
+      const [first, second] = expected.Listings["en-us"].BaseListing.Images;
+      const readback = (imageList: unknown[]) => ({
+        Listings: { "en-us": { BaseListing: { Images: imageList } } },
+      });
+
+      expect(verifyStoreListings(readback([first]), expected).mismatches).toContain(
+        "en-us Images (missing, changed, reordered, or not uploaded)",
+      );
+      expect(
+        verifyStoreListings(
+          readback([{ ...second, Id: "replacement-id" }, first]),
+          expected,
+        ).mismatches,
+      ).toContain("en-us Images (missing, changed, reordered, or not uploaded)");
+      expect(
+        verifyStoreListings(readback([second, first]), expected).mismatches,
+      ).toContain("en-us Images (missing, changed, reordered, or not uploaded)");
+      const previous = {
+        Listings: {
+          "en-us": {
+            BaseListing: { Images: [first, second] },
+          },
+        },
+      };
+      const desired = {
+        Listings: {
+          "en-us": {
+            BaseListing: { Images: [first] },
+          },
+        },
+      };
+      expect(
+        verifyStoreListings(readback([first]), desired, previous).screenshotRows,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("| en-us | Removed |"),
+          expect.stringContaining("| en-us | Unchanged |"),
+        ]),
+      );
+    });
+
+    it("rejects a listing locale with no screenshots to review", () => {
+      const expected = {
+        Listings: {
+          "en-us": {
+            BaseListing: {
+              Images: [
+                {
+                  Id: "logo-1",
+                  FileName: "logo.png",
+                  FileStatus: "Uploaded",
+                  ImageType: "StoreLogoSquare",
+                },
+              ],
+            },
+          },
+        },
+      };
+      expect(verifyStoreListings(expected, expected).mismatches).toContain(
+        "en-us Screenshots (none configured)",
+      );
+    });
+
+    it("rejects unuploaded images and detects changes after review", () => {
+      const reviewed = {
+        Id: "draft-1",
+        Status: "PendingCommit",
+        Listings: { "en-us": { BaseListing: { Images: images } } },
+      };
+      expect(
+        verifyStoreListings(
+          {
+            Listings: {
+              "en-us": {
+                BaseListing: {
+                  Images: [{ ...images[0], FileStatus: "PendingUpload" }],
+                },
+              },
+            },
+          },
+          reviewed,
+        ).mismatches,
+      ).toContain("en-us Images (missing, changed, reordered, or not uploaded)");
+      expect(() =>
+        assertReviewedMetadataDraftUnchanged(
+          reviewed,
+          {
+            ...reviewed,
+            Listings: {
+              "en-us": {
+                BaseListing: {
+                  Images: [{ ...images[0], Id: "different-image" }],
+                },
+              },
+            },
+          },
+          "draft-1",
+        ),
+      ).toThrow("changed after human review");
+    });
+
+    it("ignores volatile state and upload URLs after human review", () => {
+      const reviewed = {
+        Id: "draft-1",
+        Status: "PendingCommit",
+        StatusDetails: { Errors: [] },
+        FileUploadUrl: "https://blob?sig=before",
+        Listings: { "en-us": { BaseListing: { Images: images } } },
+      };
+      const current = {
+        ...reviewed,
+        StatusDetails: { Errors: ["processing"] },
+        FileUploadUrl: "https://blob?sig=after",
+      };
+
+      expect(() =>
+        assertReviewedMetadataDraftUnchanged(reviewed, current, "draft-1"),
+      ).not.toThrow();
     });
 
     it("fails closed when the base metadata has no locale listings", async () => {
@@ -937,10 +1341,10 @@ describe("CalVer release versions", () => {
     });
   });
 
-  it("only updates metadata on a published or uncommitted Store submission", () => {
+  it("only updates metadata on a published Store submission", () => {
     expect(assertSubmissionAcceptsMetadata({ Status: "Published" })).toBe("Published");
-    expect(assertSubmissionAcceptsMetadata({ Status: "PendingCommit" })).toBe(
-      "PendingCommit",
+    expect(() => assertSubmissionAcceptsMetadata({ Status: "PendingCommit" })).toThrow(
+      "Resolve the existing draft",
     );
     expect(() => assertSubmissionAcceptsMetadata({ Status: "Certification" })).toThrow(
       "submission is Certification",
@@ -3980,26 +4384,6 @@ describe("signed release artifacts", () => {
     expect(diagnosticWorkflow).not.toContain("gh release create");
   });
 
-  it("runs the manual Store base metadata helper in the Store environment", async () => {
-    const workflow = await readFile(
-      path.join(repoRoot, ".github/workflows/store-base-metadata.yml"),
-      "utf8",
-    );
-
-    expect(workflow).toContain(
-      "environment:\n      name: store-partner-center-metadata",
-    );
-
-    const pullRequestJob = workflow.slice(workflow.indexOf("  open-pull-request:"));
-    expect(pullRequestJob).toContain("needs: get-base-metadata");
-    expect(pullRequestJob).not.toContain("environment:");
-    expect(pullRequestJob).not.toContain("AZURE_AD");
-    expect(pullRequestJob).toContain("peter-evans/create-pull-request@v8");
-    expect(pullRequestJob).toContain("add-paths: store-assets/base-metadata.json");
-    expect(pullRequestJob).toContain("fileuploadurl");
-    expect(workflow).toContain("workflow_call:");
-  });
-
   it("reports Store release notes that still match the previous release", () => {
     const metadata = (notes: Record<string, string>) => ({
       Listings: Object.fromEntries(
@@ -4042,40 +4426,120 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain('if [[ "$status" -ne 2 ]]; then');
   });
 
-  it("syncs Store metadata in a separate workflow that only commits on request", async () => {
+  it("syncs Store metadata, commits it, and refreshes the base metadata pull request", async () => {
     const workflow = await readFile(
       path.join(repoRoot, ".github/workflows/store-metadata.yml"),
       "utf8",
     );
 
     expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("refresh_base_metadata:");
+    expect(workflow).not.toContain("workflow_call");
+    expect(workflow).toContain("needs.resolve-release-commit.outputs.sha");
+    expect(workflow).toContain("gh run download");
+    expect(workflow).toContain('--repo "$GITHUB_REPOSITORY"');
+    expect(workflow).toContain("--name epikrise-store-release-context");
+    expect(workflow).toContain(
+      "package_version: ${{ steps.resolve.outputs.package_version }}",
+    );
+    expect(workflow).toContain(
+      "node tooling/scripts/store-release-context.mjs read release-context/release.json",
+    );
+    expect(workflow).toContain("mkdir -p release-context");
+    expect(workflow).toContain(
+      'create "$GITHUB_REF_NAME" "$GITHUB_SHA" release-context/release.json',
+    );
+    expect(workflow).toContain('if [[ "$GITHUB_REF_TYPE" != "tag" ]]');
+    expect(workflow).toContain("ref: ${{ github.workflow_sha }}");
+    expect(workflow).toContain("node tooling/scripts/compare-store-base-metadata.mjs");
+    expect(workflow).not.toContain("inputs.commit");
     expect(workflow).toContain("- Store submission packages");
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(workflow).toContain("group: store-partner-center-submission");
+    expect(workflow).toContain("environment:\n      name: store-partner-center\n");
+    expect(workflow).not.toContain("store-partner-center-metadata");
     expect(workflow).toContain(
-      "environment:\n      name: store-partner-center-metadata",
+      "node tooling/scripts/check-store-submission-state.mjs submission.json",
     );
-    expect(workflow).toMatch(/commit:[\s\S]*?default: false/);
-    expect(workflow).toContain("check-store-submission-state.mjs");
+    expect(workflow).toContain(
+      "node tooling/scripts/check-store-package-identity.mjs submission.json",
+    );
+    expect(workflow).toContain(
+      "node tooling/scripts/check-store-package-identity.mjs submission-updated-readback.json",
+    );
+    expect(workflow).toContain("node tooling/scripts/verify-store-metadata-draft.mjs");
     expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - 2>&1");
-    expect(workflow).toContain("verify-store-listings.mjs listings-readback.json");
+    const snapshotListingsVerification =
+      "node tooling/scripts/verify-store-listings.mjs submission-updated-readback.json submission-updated.json submission.json";
+    expect(workflow).toContain(snapshotListingsVerification);
+    expect(workflow.indexOf(snapshotListingsVerification)).toBeLessThan(
+      workflow.indexOf(
+        "$draftId = node tooling/scripts/verify-store-metadata-draft.mjs verify-new",
+      ),
+    );
+    expect(workflow).toContain(
+      "node tooling/scripts/verify-store-listings.mjs listings-readback.json submission-updated.json submission.json",
+    );
     expect(workflow).toContain(
       "msstore submission get $env:STORE_PRODUCT_ID -m listings",
     );
-    expect(workflow).toContain(
-      "github.event_name == 'workflow_dispatch' && inputs.commit",
-    );
     expect(workflow).not.toContain("msstore publish");
-    expect(workflow).toContain("env.SUBMISSION_STATUS == 'PendingCommit'");
+    expect(workflow).not.toContain("env.SUBMISSION_STATUS == 'PendingCommit'");
+    expect(workflow).toContain("epikrise-store-metadata-approval");
+    expect(workflow).toContain("Human screenshot review required before publication");
+    expect(workflow).toContain("Approve the **Publish Store metadata draft**");
+    expect(workflow).toContain(
+      "verify-reviewed store-metadata-approval/pending-submission.json",
+    );
+    expect(workflow).toContain("name: Publish Store metadata draft");
+    expect(workflow).toContain("needs.sync-metadata.outputs.submission_id");
     expect(workflow).toContain("id: commit");
     expect(workflow).toContain(
       '"published=true" | Out-File -FilePath $env:GITHUB_OUTPUT',
     );
-    const refreshJob = workflow.slice(workflow.indexOf("  refresh-base-metadata:"));
-    expect(refreshJob).toContain("needs: sync-metadata");
-    expect(refreshJob).toContain("if: needs.sync-metadata.outputs.published == 'true'");
-    expect(refreshJob).toContain("uses: ./.github/workflows/store-base-metadata.yml");
-    expect(refreshJob).toContain("secrets: inherit");
+    expect(workflow).toContain("id: drift");
+    expect(workflow).toContain(
+      "if: env.DRY_RUN != 'true' && steps.published_submission.outputs.status == 'Published' && steps.merge_metadata.outputs.changed != 'true'",
+    );
+    expect(workflow).toContain("compare-store-base-metadata.mjs submission.json");
+    expect(workflow).toContain('"stale=true" | Out-File -FilePath $env:GITHUB_OUTPUT');
+
+    const publishJob = workflow.slice(
+      workflow.indexOf("  publish-metadata:"),
+      workflow.indexOf("  get-base-metadata:"),
+    );
+    expect(publishJob).toContain("environment:\n      name: store-partner-center\n");
+    expect(publishJob).toContain("actions/download-artifact@v8");
+    expect(publishJob).toContain(
+      "verify-reviewed store-metadata-approval/pending-submission.json",
+    );
+    expect(publishJob).toContain("submission-final-check.json");
+
+    const exportJob = workflow.slice(
+      workflow.indexOf("  get-base-metadata:"),
+      workflow.indexOf("  open-pull-request:"),
+    );
+    expect(exportJob).toContain("- sync-metadata");
+    expect(exportJob).toContain("- publish-metadata");
+    expect(exportJob).toContain("needs.publish-metadata.outputs.published == 'true'");
+    expect(exportJob).toContain(
+      "needs.sync-metadata.outputs.base_metadata_stale == 'true'",
+    );
+    expect(exportJob).toContain("environment:\n      name: store-partner-center\n");
+    expect(exportJob).toContain("redact-store-submission.mjs submission-raw.json");
+    expect(exportJob).toContain("$status -ne 'Published'");
+    expect(exportJob).toContain("inputs.refresh_base_metadata && !inputs.dry_run");
+
+    const pullRequestJob = workflow.slice(workflow.indexOf("  open-pull-request:"));
+    expect(pullRequestJob).toContain("needs: get-base-metadata");
+    expect(pullRequestJob).toContain(
+      "if: ${{ !cancelled() && needs.get-base-metadata.result == 'success' }}",
+    );
+    expect(pullRequestJob).not.toContain("environment:");
+    expect(pullRequestJob).not.toContain("AZURE_AD");
+    expect(pullRequestJob).toContain("peter-evans/create-pull-request@v8");
+    expect(pullRequestJob).toContain("add-paths: store-assets/base-metadata.json");
+    expect(pullRequestJob).toContain("fileuploadurl");
   });
 
   it("builds and attaches Store packages after successful tagged updater releases", async () => {
@@ -4086,6 +4550,10 @@ describe("signed release artifacts", () => {
 
     expect(workflow).toContain("workflow_run:");
     expect(workflow).not.toContain("updateMetadata");
+    expect(workflow).toContain("name: epikrise-store-release-context");
+    expect(workflow).toContain("ref: ${{ github.workflow_sha }}");
+    expect(workflow).toContain("path: tooling");
+    expect(workflow).toContain("node tooling/scripts/store-release-context.mjs create");
     expect(workflow).not.toContain("update-store-metadata");
     expect(workflow).toContain("msstore submission publish");
     expect(workflow).toContain("node scripts/wait-store-submission.mjs");
