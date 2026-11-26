@@ -68,7 +68,8 @@ jobs:
               echo "Manual metadata sync must be dispatched from a release tag." >&2
               exit 1
             fi
-            node tooling/scripts/store-release-context.mjs create "$GITHUB_REF_NAME" "$GITHUB_SHA" release-context.json
+            mkdir -p release-context
+            node tooling/scripts/store-release-context.mjs create "$GITHUB_REF_NAME" "$GITHUB_SHA" release-context/release.json
           else
             gh run download "$SUBMISSION_RUN_ID" --repo "$GITHUB_REPOSITORY" --name epikrise-store-release-context --dir release-context
           fi
@@ -137,11 +138,11 @@ jobs:
         run: |
           msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed." }
-          node scripts/check-store-submission-state.mjs submission.json
+          node tooling/scripts/check-store-submission-state.mjs submission.json
           if ($LASTEXITCODE -ne 0) { throw "Store submission state guard failed." }
           $status = (Get-Content submission.json -Raw | ConvertFrom-Json).Status
           "SUBMISSION_STATUS=$status" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          node scripts/check-store-package-identity.mjs submission.json $env:EXPECTED_STORE_PACKAGE_VERSION
+          node tooling/scripts/check-store-package-identity.mjs submission.json $env:EXPECTED_STORE_PACKAGE_VERSION
           if ($LASTEXITCODE -ne 0) { throw "Store package identity does not match this release." }
 
       - name: Merge listing metadata from store-assets
@@ -219,9 +220,9 @@ jobs:
         run: |
           msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-updated-readback.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed after metadata update." }
-          node scripts/check-store-package-identity.mjs submission-updated-readback.json $env:EXPECTED_STORE_PACKAGE_VERSION
+          node tooling/scripts/check-store-package-identity.mjs submission-updated-readback.json $env:EXPECTED_STORE_PACKAGE_VERSION
           if ($LASTEXITCODE -ne 0) { throw "The pending draft package identity does not match this release." }
-          $draftId = node scripts/verify-store-metadata-draft.mjs submission.json submission-updated-readback.json
+          $draftId = node tooling/scripts/verify-store-metadata-draft.mjs submission.json submission-updated-readback.json
           if ($LASTEXITCODE -ne 0) { throw "The pending draft contains unapproved changes." }
           "submission_id=$draftId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 

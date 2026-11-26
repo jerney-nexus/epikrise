@@ -188,13 +188,19 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: tooling
+          persist-credentials: false
+
       - name: Record the release commit for Store metadata
         shell: pwsh
         env:
           RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           New-Item -ItemType Directory -Force -Path store-release-context | Out-Null
-          node scripts/store-release-context.mjs create $env:RELEASE_TAG $env:RELEASE_SHA store-release-context/release.json
+          node tooling/scripts/store-release-context.mjs create $env:RELEASE_TAG $env:RELEASE_SHA store-release-context/release.json
           if ($LASTEXITCODE -ne 0) { throw "Could not create the Store release context." }
 
       - uses: actions/upload-artifact@v7

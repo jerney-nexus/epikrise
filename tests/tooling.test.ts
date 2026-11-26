@@ -4151,6 +4151,10 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain(
       "node tooling/scripts/store-release-context.mjs read release-context/release.json",
     );
+    expect(workflow).toContain("mkdir -p release-context");
+    expect(workflow).toContain(
+      'create "$GITHUB_REF_NAME" "$GITHUB_SHA" release-context/release.json',
+    );
     expect(workflow).toContain('if [[ "$GITHUB_REF_TYPE" != "tag" ]]');
     expect(workflow).toContain("ref: ${{ github.workflow_sha }}");
     expect(workflow).toContain("node tooling/scripts/compare-store-base-metadata.mjs");
@@ -4160,9 +4164,16 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain("group: store-partner-center-submission");
     expect(workflow).toContain("environment:\n      name: store-partner-center\n");
     expect(workflow).not.toContain("store-partner-center-metadata");
-    expect(workflow).toContain("check-store-submission-state.mjs");
-    expect(workflow).toContain("check-store-package-identity.mjs submission.json");
-    expect(workflow).toContain("verify-store-metadata-draft.mjs");
+    expect(workflow).toContain(
+      "node tooling/scripts/check-store-submission-state.mjs submission.json",
+    );
+    expect(workflow).toContain(
+      "node tooling/scripts/check-store-package-identity.mjs submission.json",
+    );
+    expect(workflow).toContain(
+      "node tooling/scripts/check-store-package-identity.mjs submission-updated-readback.json",
+    );
+    expect(workflow).toContain("node tooling/scripts/verify-store-metadata-draft.mjs");
     expect(workflow).toContain("updateMetadata $env:STORE_PRODUCT_ID - 2>&1");
     expect(workflow).toContain("verify-store-listings.mjs listings-readback.json");
     expect(workflow).toContain(
@@ -4213,6 +4224,9 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain("workflow_run:");
     expect(workflow).not.toContain("updateMetadata");
     expect(workflow).toContain("name: epikrise-store-release-context");
+    expect(workflow).toContain("ref: ${{ github.workflow_sha }}");
+    expect(workflow).toContain("path: tooling");
+    expect(workflow).toContain("node tooling/scripts/store-release-context.mjs create");
     expect(workflow).not.toContain("update-store-metadata");
     expect(workflow).toContain("msstore submission publish");
     expect(workflow).toContain("node scripts/wait-store-submission.mjs");
