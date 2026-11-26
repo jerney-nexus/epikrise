@@ -44,7 +44,7 @@
           "Fallinhalte an externe Endpunkte nur nach Bestätigung je Fall, Anbieter und Endpunkt",
           "Oberfläche auf Deutsch, Englisch, Französisch, Italienisch und Spanisch"
         ],
-        "ReleaseNotes": "Das Hilfemenü bietet jetzt einen Link zur Epikrise-Website sowie Links zur Unterstützung des Projekts und für Feedback. Schließen-Schaltflächen in Dialogen werden beim Überfahren deutlicher hervorgehoben, und der Textkontrast im dunklen Design wurde verbessert.",
+        "ReleaseNotes": "Das Hilfemenü bietet jetzt einen Link zur Epikrise-Website sowie Links zur Unterstützung des Projekts und für Feedback. Schliessen-Schaltflächen in Dialogen werden beim Darüberfahren mit der Maus deutlicher hervorgehoben, und der Textkontrast im dunklen Design wurde verbessert.",
         "Images": [
           {
             "FileName": "Screenshot 2026-11-09 014756.png",
