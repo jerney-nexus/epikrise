@@ -223,6 +223,8 @@ jobs:
         run: |
           msstore submission get $env:STORE_PRODUCT_ID | Out-File -FilePath submission-updated-readback.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "msstore submission get failed after metadata update." }
+          node tooling/scripts/verify-store-listings.mjs submission-updated-readback.json submission-updated.json submission.json
+          if ($LASTEXITCODE -ne 0) { throw "The approval snapshot listings or images do not match the prepared submission." }
           node tooling/scripts/check-store-package-identity.mjs submission-updated-readback.json $env:EXPECTED_STORE_PACKAGE_VERSION
           if ($LASTEXITCODE -ne 0) { throw "The pending draft package identity does not match this release." }
           $draftId = node tooling/scripts/verify-store-metadata-draft.mjs verify-new submission.json submission-updated-readback.json
