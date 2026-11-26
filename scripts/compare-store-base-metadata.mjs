@@ -31,9 +31,7 @@ export function differingTopLevelKeys(submission, base) {
   const left = comparable(submission);
   const right = comparable(base);
   const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
-  return [...keys]
-    .filter((key) => !isDeepStrictEqual(left[key], right[key]))
-    .sort();
+  return [...keys].filter((key) => !isDeepStrictEqual(left[key], right[key])).sort();
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
