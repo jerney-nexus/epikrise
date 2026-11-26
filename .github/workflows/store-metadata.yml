@@ -59,7 +59,7 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
             sha="$GITHUB_SHA"
           else
-            gh run download "$SUBMISSION_RUN_ID" --name epikrise-store-release-context --dir release-context
+            gh run download "$SUBMISSION_RUN_ID" --repo "$GITHUB_REPOSITORY" --name epikrise-store-release-context --dir release-context
             sha="$(cat release-context/release-sha.txt)"
           fi
           if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
@@ -88,6 +88,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve-release-commit.outputs.sha }}
+          persist-credentials: false
+
+      # Older release commits predate the drift helper, so run it from this workflow's revision.
+      # The comparison input stays the release commit's store-assets/base-metadata.json.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: tooling
           persist-credentials: false
 
       - name: Require Store product ID
@@ -148,7 +156,7 @@ jobs:
         if: env.DRY_RUN != 'true' && env.SUBMISSION_STATUS == 'Published' && env.METADATA_CHANGED != 'true'
         shell: pwsh
         run: |
-          $keys = node scripts/compare-store-base-metadata.mjs submission.json store-assets/base-metadata.json
+          $keys = node tooling/scripts/compare-store-base-metadata.mjs submission.json store-assets/base-metadata.json
           if ($LASTEXITCODE -ne 0) { throw "compare-store-base-metadata.mjs failed." }
           if ($keys) {
             "Store submission differs from store-assets/base-metadata.json in: $($keys -join ', ')"
@@ -229,7 +237,7 @@ jobs:
     if: >-
       always() &&
       (
-        (github.event_name == 'workflow_dispatch' && inputs.refresh_base_metadata) ||
+        (github.event_name == 'workflow_dispatch' && inputs.refresh_base_metadata && !inputs.dry_run) ||
         (needs.sync-metadata.result == 'success' &&
           (needs.sync-metadata.outputs.published == 'true' ||
           needs.sync-metadata.outputs.base_metadata_stale == 'true'))

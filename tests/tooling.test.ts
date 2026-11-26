@@ -4071,7 +4071,10 @@ describe("signed release artifacts", () => {
     expect(workflow).not.toContain("workflow_call");
     expect(workflow).toContain("needs.resolve-release-commit.outputs.sha");
     expect(workflow).toContain("gh run download");
+    expect(workflow).toContain('--repo "$GITHUB_REPOSITORY"');
     expect(workflow).toContain("--name epikrise-store-release-context");
+    expect(workflow).toContain("ref: ${{ github.workflow_sha }}");
+    expect(workflow).toContain("node tooling/scripts/compare-store-base-metadata.mjs");
     expect(workflow).not.toContain("inputs.commit");
     expect(workflow).toContain("- Store submission packages");
     expect(workflow).toContain("github.event.workflow_run.conclusion == 'success'");
@@ -4109,7 +4112,7 @@ describe("signed release artifacts", () => {
     expect(exportJob).toContain("environment:\n      name: store-partner-center\n");
     expect(exportJob).toContain("redact-store-submission.mjs submission-raw.json");
     expect(exportJob).toContain("$status -ne 'Published'");
-    expect(exportJob).toContain("inputs.refresh_base_metadata");
+    expect(exportJob).toContain("inputs.refresh_base_metadata && !inputs.dry_run");
 
     const pullRequestJob = workflow.slice(workflow.indexOf("  open-pull-request:"));
     expect(pullRequestJob).toContain("needs: get-base-metadata");
