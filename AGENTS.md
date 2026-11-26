@@ -24,7 +24,7 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - All six GitHub Actions desktop targets build natively on matching runners. Cross-compilation is never an Actions or release path.
 - The only cross-build exception is an explicit human Linux x64/ARM64 build of the diagnostic Windows NSIS installer. MSI and MSIX are not cross-built.
 - Windows NSIS is the local installer. The unsigned Store MSIX is a Partner Center submission input; Microsoft manages Store signing and updates. Package creation is not Store certification.
-- See `README.md` and `CONTRIBUTING.md` for prerequisites, exact commands, and current acceptance evidence.
+- Prerequisites, exact commands, and current acceptance evidence are in the GitHub wiki; link to the relevant wiki page rather than repeating detail.
 
 ## Global Rules
 
@@ -40,7 +40,7 @@ Epikrise follows a modular architecture with a clear separation of concerns:
 - Localization: user-facing strings go through Fluent (`t()`). Intentionally English items (brand names, model prompts, persisted template data, Fluent source strings) are listed in [CONTRIBUTING.md](CONTRIBUTING.md) under "Localization" and are not hardcoded-string findings.
 - Do not hand-edit generated files in `build/`, `src-tauri/target/`, or generated bindings.
 - Report checks that cannot run.
-- See `README.md` and `CONTRIBUTING.md` for setup and project conventions.
+- Documentation placement: detailed documentation goes in the GitHub wiki. `README.md` and `CONTRIBUTING.md` keep only basic documentation (short setup, the first commands, and links to wiki pages). Edit the wiki for detailed docs and keep the root files short.
 - Update the `CHANGELOG.md` when changes are notable to users.
 
 ## Dev Container
