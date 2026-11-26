@@ -823,6 +823,20 @@ describe("CalVer release versions", () => {
     ).toThrow("did not create a PendingCommit draft");
   });
 
+  it.each([
+    ["verify-reviewed", "reviewed.json", "current.json"],
+    ["unknown", "draft.json"],
+    ["verify-new", "published.json", "draft.json", "extra.json"],
+  ])("rejects malformed metadata draft verifier arguments: %s", async (...args) => {
+    const verifier = path.join(repoRoot, "scripts", "verify-store-metadata-draft.mjs");
+
+    await expect(execFile("node", [verifier, ...args])).rejects.toMatchObject({
+      code: 1,
+      stdout: "",
+      stderr: expect.stringContaining("usage: verify-store-metadata-draft.mjs"),
+    });
+  });
+
   it("removes FileUploadUrl credentials at any depth from submission JSON", () => {
     const redacted = redactFileUploadUrls({
       Packages: [{ FileName: "a.msix", FileUploadUrl: "https://blob?sig=secret" }],

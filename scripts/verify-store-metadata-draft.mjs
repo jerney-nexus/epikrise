@@ -98,9 +98,8 @@ export function assertReviewedMetadataDraftUnchanged(reviewed, current, expected
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [publishedPath, draftPath] = process.argv.slice(2);
   const [command, ...args] = process.argv.slice(2);
-  if (command === "verify-reviewed" && args.length === 3) {
+  if (command === "verify-reviewed" && args.length === 3 && args.every(Boolean)) {
     try {
       assertReviewedMetadataDraftUnchanged(
         JSON.parse(readFileSync(args[0], "utf8")),
@@ -113,7 +112,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.stderr.write(`verify-store-metadata-draft: ${message}\n`);
       process.exit(1);
     }
-  } else if (command === "verify-new" && args.length === 2) {
+  } else if (command === "verify-new" && args.length === 2 && args.every(Boolean)) {
     try {
       const id = assertMetadataDraftContainsOnlyListingChanges(
         JSON.parse(readFileSync(args[0], "utf8")),
@@ -125,7 +124,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.stderr.write(`verify-store-metadata-draft: ${message}\n`);
       process.exit(1);
     }
-  } else if (!publishedPath || !draftPath) {
+  } else {
     process.stderr.write(
       "usage: verify-store-metadata-draft.mjs verify-new <published.json> <draft.json> | verify-reviewed <reviewed.json> <current.json> <submission-id>\n",
     );
