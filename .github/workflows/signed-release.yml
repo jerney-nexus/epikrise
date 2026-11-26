@@ -262,6 +262,31 @@ jobs:
           compression-level: 0
           overwrite: true
 
+  linux-repositories:
+    name: Request Linux package repository publish
+    needs: [publish]
+    runs-on: ubuntu-24.04
+    environment:
+      name: linux-repository
+    steps:
+      - name: Create publisher token
+        id: publisher_token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.LINUX_REPOSITORY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.LINUX_REPOSITORY_APP_PRIVATE_KEY }}
+          owner: jerney-nexus
+          repositories: linux-repositories
+
+      - name: Dispatch publish to linux-repositories
+        env:
+          GH_TOKEN: ${{ steps.publisher_token.outputs.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh api repos/jerney-nexus/linux-repositories/dispatches \
+            -f event_type=publish-linux-packages \
+            -f "client_payload[sources]=${GITHUB_REPOSITORY}@${RELEASE_TAG}"
+
   approve:
     name: Approve accepted draft release
     needs: [stage, store-msix]

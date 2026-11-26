@@ -52,12 +52,17 @@ pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
+## Linux package repositories
+
+Each release publishes signed `.deb` and `.rpm` packages to `https://packages.jerney.nexus/`. Setup steps for apt and dnf are in the [wiki](https://github.com/jerney-nexus/epikrise/wiki/Linux-Package-Repositories). Publishing is handled by the central [linux-repositories](https://github.com/jerney-nexus/linux-repositories#readme) repository.
+
 ## Documentation
 
 Detailed guides are in the [wiki](https://github.com/jerney-nexus/epikrise/wiki):
 
 - [User Guide](https://github.com/jerney-nexus/epikrise/wiki/User-Guide) — software updates, templates, provider generation settings, interface language, safety and scope, administrator egress policy
 - [Installers](https://github.com/jerney-nexus/epikrise/wiki/Installers) — local macOS, Linux, and Windows installers, Dev Container cross-build, uninstall
+- [Linux Package Repositories](https://github.com/jerney-nexus/epikrise/wiki/Linux-Package-Repositories) — apt and dnf setup for the signed packages
 - [Cross-Platform Builds](https://github.com/jerney-nexus/epikrise/wiki/Cross-Platform-Builds) — native and cross-platform builds, Store `.msixbundle`
 - [Testing](https://github.com/jerney-nexus/epikrise/wiki/Testing) — test commands and quality gates
 - [Releasing](https://github.com/jerney-nexus/epikrise/wiki/Releasing) — release steps for [Calendar Versioning](https://calver.org) (`YYYY.M.MICRO`)
