@@ -1273,7 +1273,7 @@ dependencies = [
 
 [[package]]
 name = "epikrise"
-version = "2026.11.9"
+version = "2026.11.10"
 dependencies = [
  "async-trait",
  "epikrise-core",
@@ -1310,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "epikrise-core"
-version = "2026.11.9"
+version = "2026.11.10"
 dependencies = [
  "chrono",
  "minijinja",
@@ -1324,7 +1324,7 @@ dependencies = [
 
 [[package]]
 name = "epikrise-ingest"
-version = "2026.11.9"
+version = "2026.11.10"
 dependencies = [
  "calamine",
  "dom_smoothie",
@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "epikrise-llm"
-version = "2026.11.9"
+version = "2026.11.10"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

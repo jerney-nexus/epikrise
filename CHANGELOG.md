@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2026.11.10] - 2026-11-26
+
 ### 🚀 Features
 
 - The Close button in popup dialogs shows a hover highlight in both light and dark themes (#296)
@@ -16,6 +18,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### 🐛 Bug Fixes
 
 - Dark theme text for labels, the Help and settings buttons, the local egress status, and the Ollama provider name meets WCAG 2.1 AA contrast; the disabled Add URL button in light theme does too (#200)
+
+### 📚 Documentation
+
+- Add GitHub Pages website for Epikrise (#343) (#353)
+- Repoint website links and style GitHub Pages site (#343) (#359)
+- Migrate GitHub Pages site to SvelteKit (#343) (#360)
+- _(agents)_ Point detailed documentation to the wiki (#366)
+
+### 🧪 Testing
+
+- Pin native validation before OCR preparation (#124) (#348)
 
 ## [2026.11.9] - 2026-11-20
 
@@ -581,4 +594,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 [2026.11.7]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.6...v2026.11.7
 [2026.11.8]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.7...v2026.11.8
 [2026.11.9]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.8...v2026.11.9
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.9...HEAD
+[2026.11.10]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.9...v2026.11.10
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.10...HEAD
