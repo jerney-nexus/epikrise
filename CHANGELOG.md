@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [2026.11.11] - 2026-11-26
+
 ### 🔧 Changed
 
 - Store listing publication now waits for human screenshot review and revalidates the draft's image identities after approval.
@@ -599,4 +601,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 [2026.11.8]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.7...v2026.11.8
 [2026.11.9]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.8...v2026.11.9
 [2026.11.10]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.9...v2026.11.10
-[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.10...HEAD
+[2026.11.11]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.10...v2026.11.11
+[Unreleased]: https://github.com/jerney-nexus/epikrise/compare/v2026.11.11...HEAD
