@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### 🐛 Bug Fixes
+
+- Store listing draft verification tolerates known Partner Center-managed read-back differences while retaining package and approval checks.
+- Store listing sync can retry a published release from `main` using current workflow tooling without creating a new release tag.
+
 ## [2026.11.11] - 2026-11-26
 
 ### 🔧 Changed

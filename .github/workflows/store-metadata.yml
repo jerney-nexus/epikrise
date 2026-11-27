@@ -5,14 +5,19 @@ run-name: Store metadata ${{ github.event.workflow_run.head_branch || github.ref
 # Partner Center submission, commits it, and then opens a pull request that refreshes
 # store-assets/base-metadata.json from the published submission. It runs after a
 # successful Store submission packages run, so a missing locale or screenshot cannot
-# block the package upload. Dispatch a listing sync from a release tag; dry_run only
-# uploads a preview artifact and changes nothing. refresh_base_metadata skips the
+# block the package upload. Dispatch from main with a published release tag input,
+# or from a release tag without an input. dry_run only uploads a preview artifact
+# and changes nothing. refresh_base_metadata skips the
 # listing sync and only opens the base metadata pull request from the Published
 # submission, for example after a failed listing merge.
 
 on:
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: Published release tag to sync when dispatching from main (leave blank for tag dispatch or base refresh)
+        type: string
+        required: false
       dry_run:
         description: Upload the merged submission (without upload URLs) as an artifact and change nothing in Partner Center
         type: boolean
@@ -61,19 +66,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SUBMISSION_RUN_ID: ${{ github.event.workflow_run.id }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
-              echo "Manual metadata sync must be dispatched from a release tag." >&2
-              exit 1
-            fi
             mkdir -p release-context
-            node tooling/scripts/store-release-context.mjs create "$GITHUB_REF_NAME" "$GITHUB_SHA" release-context/release.json
+            node tooling/scripts/store-release-context.mjs resolve-manual "$GITHUB_REF" "$GITHUB_REF_NAME" "$GITHUB_SHA" "$RELEASE_TAG" "$GITHUB_REPOSITORY" release-context/release.json
           else
             gh run download "$SUBMISSION_RUN_ID" --repo "$GITHUB_REPOSITORY" --name epikrise-store-release-context --dir release-context
           fi
           node tooling/scripts/store-release-context.mjs read release-context/release.json >> "$GITHUB_OUTPUT"
+          echo "Store release context: $(cat release-context/release.json)" >> "$GITHUB_STEP_SUMMARY"
 
   sync-metadata:
     needs: resolve-release-commit
@@ -150,7 +153,7 @@ jobs:
         id: merge_metadata
         shell: pwsh
         run: |
-          $merged = node scripts/update-store-metadata.mjs submission.json store-assets/base-metadata.json
+          $merged = node tooling/scripts/update-store-metadata.mjs submission.json store-assets/base-metadata.json
           if ($LASTEXITCODE -ne 0) { throw "update-store-metadata.mjs failed." }
           if (-not $merged) {
             "changed=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -179,7 +182,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path store-metadata-preview | Out-Null
-          node scripts/redact-store-submission.mjs submission-updated.json | Out-File -FilePath store-metadata-preview/submission-updated.json -Encoding utf8
+          node tooling/scripts/redact-store-submission.mjs submission-updated.json | Out-File -FilePath store-metadata-preview/submission-updated.json -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw "redact-store-submission.mjs failed." }
 
       - uses: actions/upload-artifact@v7
@@ -350,7 +353,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "The approved draft listings or images changed." }
 
           # Ensure the current pending submission is still the draft reviewed by the human.
-          $env:STORE_SUBMISSION_ID = node scripts/wait-store-submission.mjs --capture-id
+          $env:STORE_SUBMISSION_ID = node tooling/scripts/wait-store-submission.mjs --capture-id
           if ($LASTEXITCODE -ne 0) { throw "Could not capture the pending submission ID." }
           if ($env:STORE_SUBMISSION_ID -ne $env:VERIFIED_SUBMISSION_ID) {
             throw "The pending submission changed after verification; refusing to publish it."
@@ -363,7 +366,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "msstore submission publish failed." }
           $env:STORE_CERT_PFX_PATH = Join-Path $env:RUNNER_TEMP "partner-center.pfx"
           $env:STORE_CERT_PASSWORD = $env:AZURE_AD_CERTIFICATE_PASSWORD
-          node scripts/wait-store-submission.mjs
+          node tooling/scripts/wait-store-submission.mjs
           if ($LASTEXITCODE -ne 0) { throw "The submission did not reach Published." }
           "published=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
