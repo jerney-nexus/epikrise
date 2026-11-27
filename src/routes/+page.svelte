@@ -2249,7 +2249,7 @@
 
 <div class="app-shell">
   <aside class="provider-rail" aria-labelledby="controls-heading">
-    <a class="brand" href={resolve("/")} aria-label={t("Epikrise home")}>
+    <a class="brand" href={resolve("/")}>
       <span class="brand-mark" aria-hidden="true">E</span>
       <span class="brand-name">Epikrise</span>
     </a>
@@ -2295,21 +2295,22 @@
           onchange={(event) => changeProvider(event.currentTarget.value)}
         >
           <option value="ollama" disabled={!isProviderAllowed("ollama")}>Ollama</option>
-          <option value="open_ai" disabled={!isProviderAllowed("open_ai")}
-            >OpenAI</option
-          >
-          <option value="anthropic" disabled={!isProviderAllowed("anthropic")}
-            >Anthropic</option
-          >
+          <option value="open_ai" disabled={!isProviderAllowed("open_ai")}>
+            OpenAI
+          </option>
+          <option value="anthropic" disabled={!isProviderAllowed("anthropic")}>
+            Anthropic
+          </option>
           <option value="gemini" disabled={!isProviderAllowed("gemini")}>Gemini</option>
           <option
             value="open_ai_compatible"
             disabled={!isProviderAllowed("open_ai_compatible")}
-            >OpenAI compatible</option
           >
-          <option value="open_router" disabled={!isProviderAllowed("open_router")}
-            >OpenRouter</option
-          >
+            OpenAI compatible
+          </option>
+          <option value="open_router" disabled={!isProviderAllowed("open_router")}>
+            OpenRouter
+          </option>
           <option value="xai" disabled={!isProviderAllowed("xai")}>xAI</option>
           <option value="groq" disabled={!isProviderAllowed("groq")}>Groq</option>
         </select>
@@ -2881,9 +2882,9 @@
             disabled={modelListLoading || isGenerating}
           >
             {#if !currentModels.includes(model)}
-              <option value={model} disabled={!isModelAllowed(adapter, model)}
-                >{model} ({t("current")})</option
-              >
+              <option value={model} disabled={!isModelAllowed(adapter, model)}>
+                {model} ({t("current")})
+              </option>
             {/if}
             {#each currentModels as availableModel (availableModel)}
               <option value={availableModel}>{availableModel}</option>
@@ -2946,24 +2947,24 @@
         >
           <option value="provider_default">{t("Provider default")}</option>
           <option value="none">{t("None")}</option>
-          <option value="minimal" disabled={!isReasoningEffortAllowed("minimal")}
-            >{t("Minimal")}</option
-          >
-          <option value="low" disabled={!isReasoningEffortAllowed("low")}
-            >{t("Low")}</option
-          >
-          <option value="medium" disabled={!isReasoningEffortAllowed("medium")}
-            >{t("Medium")}</option
-          >
-          <option value="high" disabled={!isReasoningEffortAllowed("high")}
-            >{t("High")}</option
-          >
-          <option value="x_high" disabled={!isReasoningEffortAllowed("x_high")}
-            >{t("Extra high")}</option
-          >
-          <option value="max" disabled={!isReasoningEffortAllowed("max")}
-            >{t("Maximum")}</option
-          >
+          <option value="minimal" disabled={!isReasoningEffortAllowed("minimal")}>
+            {t("Minimal")}
+          </option>
+          <option value="low" disabled={!isReasoningEffortAllowed("low")}>
+            {t("Low")}
+          </option>
+          <option value="medium" disabled={!isReasoningEffortAllowed("medium")}>
+            {t("Medium")}
+          </option>
+          <option value="high" disabled={!isReasoningEffortAllowed("high")}>
+            {t("High")}
+          </option>
+          <option value="x_high" disabled={!isReasoningEffortAllowed("x_high")}>
+            {t("Extra high")}
+          </option>
+          <option value="max" disabled={!isReasoningEffortAllowed("max")}>
+            {t("Maximum")}
+          </option>
         </select>
 
         <label class="vision-setting" for="vision-enabled">
@@ -3160,11 +3161,9 @@
                     onchange={(event) =>
                       updateTemplateValue(variable.name, event.currentTarget.checked)}
                   />
-                  <span
-                    >{templateVariableLabel(variable)}{variable.required
-                      ? " *"
-                      : ""}</span
-                  >
+                  <span>
+                    {templateVariableLabel(variable)}{variable.required ? " *" : ""}
+                  </span>
                 </label>
               {:else}
                 <label for={fieldId}>
@@ -3181,9 +3180,9 @@
                     onchange={(event) =>
                       updateTemplateValue(variable.name, event.currentTarget.value)}
                   >
-                    <option value="" disabled={variable.required}
-                      >{t("Select...")}</option
-                    >
+                    <option value="" disabled={variable.required}>
+                      {t("Select...")}
+                    </option>
                     {#each variable.options as option (option)}
                       <option value={option}>{option}</option>
                     {/each}
@@ -3738,9 +3737,9 @@
               <p class="eyebrow">{t("01 / Source")}</p>
               <h3 id="source-title">{t("Clinical material")}</h3>
             </div>
-            <span class="field-count"
-              >{t("count-chars", { count: inputCharacterCount })}</span
-            >
+            <span class="field-count">
+              {t("count-chars", { count: inputCharacterCount })}
+            </span>
           </div>
 
           <input
@@ -3821,11 +3820,11 @@
                     <span>{t("count-chars", { count: block.content.length })}</span>
                   </div>
                   <div class="source-input-details">
-                    <span
-                      >{block.round + 1 === 1
+                    <span>
+                      {block.round + 1 === 1
                         ? t("New round")
-                        : t("round-number", { round: block.round + 1 })}</span
-                    >
+                        : t("round-number", { round: block.round + 1 })}
+                    </span>
                     <span>{extractionMethodLabel(block.extraction_method)}</span>
                     <span>{block.images?.[0]?.mime_type ?? t("Extracted text")}</span>
                   </div>
@@ -3943,9 +3942,9 @@
               {/if}
             {:else if isGenerating}
               <p class="empty-state">
-                {t("Preparing draft")}<span class="typing-dots" aria-hidden="true"
-                  >...</span
-                >
+                {t("Preparing draft")}<span class="typing-dots" aria-hidden="true">
+                  ...
+                </span>
               </p>
             {:else}
               <p class="empty-state">{t("No draft yet")}</p>

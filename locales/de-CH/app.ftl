@@ -4,7 +4,6 @@ startup-session-bus-failed = Epikrise konnte nicht mit der Session-Bus-Adresse d
 startup-session-bus-hint = Das Auflisten der Zugangsdaten kann fehlschlagen.
 startup-policy-failed = Epikrise konnte nicht gestartet werden, weil die Richtliniendatei des Administrators (policy.toml) nicht geladen werden konnte.
 startup-policy-hint = Korrigieren Sie die Richtliniendatei und starten Sie Epikrise neu.
-ui-epikrise-home = Epikrise Startseite
 ui-workspace = Arbeitsbereich
 ui-provider-settings = Anbieter-Einstellungen
 ui-choose-a-provider-endpoint-and-saved-keychain-credential = Anbieter-Endpunkt und gespeicherte Zugangsdaten im Systemschlüsselbund auswählen.
