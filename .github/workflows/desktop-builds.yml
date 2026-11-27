@@ -93,7 +93,7 @@ jobs:
             "$archive_file")"
           printf 'EPIKRISE_SOURCE_ARCHIVE_SHA256=%s\n' "$source_archive_sha256" >> "$GITHUB_ENV"
 
-      - uses: pnpm/setup@v2
+      - uses: pnpm/setup@v3
         with:
           version: 12.15.0
           install: false
