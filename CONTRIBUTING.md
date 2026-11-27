@@ -57,6 +57,12 @@ Use Conventional Commit subjects (`feat: add template importer`, `fix: handle fo
 
 Release preparation, the release gates, and the updater and Store rules are documented in the [Releasing](https://github.com/jerney-nexus/epikrise/wiki/Releasing) wiki page.
 
+## Pull requests
+
+Use the generic pull request template for regular changes. Release pull requests use the release-specific template and generated Store release-notes checklist. Store metadata refresh pull requests are opened with a dedicated review body; review the full metadata diff and resolve base-only changes, especially unreleased release notes, before merging.
+
+See [ACCESSIBILITY.md](ACCESSIBILITY.md) for accessibility expectations and checks.
+
 ## Project website
 
 The public website is a standalone SvelteKit app in `docs/`, prerendered to static HTML with `@sveltejs/adapter-static` by [vite.site.config.js](vite.site.config.js). Pages live in `docs/src/routes/` (the index and `privacy-policy/[lang]/`). The Markdown sources are in `docs/src/lib/content/` and are rendered at build time by `docs/src/lib/server/`; shared header, footer, and theme controls are in `docs/src/lib/components/`, and styles in `docs/src/lib/styles/`. Static files in `docs/static/` (including `CNAME` and `favicon.png`) are copied as-is. [pages.yml](.github/workflows/pages.yml) runs `pnpm site:build` and deploys `build/site` with GitHub Pages on pushes to `main`. The Pages source is GitHub Actions, so keep it set to that rather than to a branch folder. To preview locally, run `pnpm site:dev` and open the printed URL; use `pnpm site:build` to produce `build/site`.

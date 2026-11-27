@@ -1,6 +1,6 @@
 name: Task
 description: Plan or track repository work
-title: "[Task]: "
+type: Task
 body:
   - type: markdown
     attributes:

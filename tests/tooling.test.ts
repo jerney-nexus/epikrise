@@ -68,6 +68,8 @@ import {
   buildReleasePreparationWorkflowArgs,
   dispatchReleasePreparation,
 } from "../scripts/release-prepare-workflow.mjs";
+import { renderReleasePullRequestBody } from "../scripts/render-release-pr-body.mjs";
+import { renderStoreMetadataPullRequestBody } from "../scripts/render-store-metadata-pr-body.mjs";
 import {
   createAndPushReleaseTag,
   assertCleanReleaseWorktree,
@@ -4649,6 +4651,7 @@ describe("signed release artifacts", () => {
       previousTag: "v2026.11.6",
     });
     expect(checklist).toContain("- [ ] Update `ReleaseNotes`");
+    expect(checklist).toContain("<!-- Please tick all applicable checkboxes. -->");
     expect(checklist).toContain("unchanged since `v2026.11.6`: `en-us`");
   });
 
@@ -4667,6 +4670,154 @@ describe("signed release artifacts", () => {
       'git ls-remote --exit-code --heads origin "refs/heads/release/$RELEASE_VERSION"',
     );
     expect(workflow).toContain('if [[ "$status" -ne 2 ]]; then');
+  });
+
+  it("uses dedicated PR templates and renders Store metadata workflow links", async () => {
+    const genericTemplate = await readFile(
+      path.join(repoRoot, ".github/pull_request_template.md"),
+      "utf8",
+    );
+    const selectableGenericTemplate = await readFile(
+      path.join(repoRoot, ".github/PULL_REQUEST_TEMPLATE/generic.md"),
+      "utf8",
+    );
+    expect(selectableGenericTemplate).toBe(genericTemplate);
+    expect(
+      genericTemplate.match(/<!-- Please tick all applicable checkboxes\. -->/g),
+    ).toHaveLength(2);
+    expect(genericTemplate).toContain(
+      "If this PR should close the linked issue, use a closing keyword such as `Closes`, `Fixes`, or `Resolves` before the issue reference.",
+    );
+    expect(genericTemplate).toContain(
+      "See [CONTRIBUTING.md](https://github.com/jerney-nexus/epikrise/blob/main/CONTRIBUTING.md) and the [Epikrise wiki](https://github.com/jerney-nexus/epikrise/wiki) for contributor guidance and quality gates.",
+    );
+    expect(genericTemplate).toContain(
+      "and the [Epikrise wiki](https://github.com/jerney-nexus/epikrise/wiki)",
+    );
+
+    const releaseTemplate = await readFile(
+      path.join(repoRoot, ".github/PULL_REQUEST_TEMPLATE/release.md"),
+      "utf8",
+    );
+    const releaseWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/release-preparation.yml"),
+      "utf8",
+    );
+    expect(releaseTemplate).toContain("## Summary");
+    expect(releaseTemplate).toContain("## Release review checklist");
+    expect(releaseTemplate).toContain("## Validation");
+    expect(releaseTemplate).toContain("## Safety and privacy");
+    expect(
+      releaseTemplate.match(/<!-- Please tick all applicable checkboxes\. -->/g),
+    ).toHaveLength(2);
+    expect(releaseTemplate).toContain("{{RELEASE_VERSION}}");
+    expect(releaseTemplate).toContain("{{STORE_RELEASE_NOTES_CHECKLIST}}");
+    const releaseChecklist = renderReleaseNotesChecklist({
+      locales: ["de-ch", "en-us"],
+      needing: ["en-us"],
+      previousTag: "v2026.11.6",
+    });
+    const releaseBody = renderReleasePullRequestBody({
+      template: releaseTemplate,
+      version: "2026.11.12",
+      storeReleaseNotesChecklist: releaseChecklist,
+    });
+    expect(releaseBody).toContain("Automated CalVer version bump to `2026.11.12`");
+    expect(releaseBody).toContain("## Release review checklist");
+    expect(releaseBody).toContain("## Store listing release notes");
+    expect(releaseBody).toContain("unchanged since `v2026.11.6`: `en-us`");
+    expect(releaseBody).toContain(releaseChecklist);
+    expect(releaseBody).toContain("## Safety and privacy");
+    expect(
+      releaseBody.match(/<!-- Please tick all applicable checkboxes\. -->/g),
+    ).toHaveLength(3);
+    expect(releaseBody).toContain("## Validation");
+    expect(releaseBody).toContain("## AI assistance");
+    expect(() =>
+      renderReleasePullRequestBody({
+        template: releaseTemplate,
+        version: "not-a-version",
+        storeReleaseNotesChecklist: "## Store listing release notes",
+      }),
+    ).toThrow("Release PR version must use YYYY.M.MICRO format.");
+    expect(() =>
+      renderReleasePullRequestBody({
+        template: "no placeholders",
+        version: "2026.11.12",
+        storeReleaseNotesChecklist: "## Store listing release notes",
+      }),
+    ).toThrow(
+      "Release PR template must contain one version and one release-notes placeholder.",
+    );
+    expect(releaseWorkflow).toContain("scripts/render-release-pr-body.mjs");
+    expect(releaseWorkflow).toContain("node scripts/check-store-release-notes.mjs");
+    expect(releaseWorkflow).toContain("$RUNNER_TEMP/store-release-notes-checklist.md");
+    expect(releaseWorkflow).toContain(
+      "body-path: ${{ runner.temp }}/release-pr-body.md",
+    );
+
+    const storeMetadataTemplate = await readFile(
+      path.join(repoRoot, ".github/PULL_REQUEST_TEMPLATE/store-metadata.md"),
+      "utf8",
+    );
+    expect(storeMetadataTemplate).toContain("## Summary");
+    expect(storeMetadataTemplate).toContain("## Review checklist");
+    expect(storeMetadataTemplate).toContain("## Validation");
+    expect(storeMetadataTemplate).toContain("## Safety and privacy");
+    expect(
+      storeMetadataTemplate.match(/<!-- Please tick all applicable checkboxes\. -->/g),
+    ).toHaveLength(2);
+    expect(storeMetadataTemplate.match(/\{\{RUN_ID\}\}/g)).toHaveLength(2);
+    const renderedStoreMetadataBody = renderStoreMetadataPullRequestBody({
+      template: storeMetadataTemplate,
+      runId: "123456789",
+    });
+    expect(renderedStoreMetadataBody).not.toContain("{{RUN_ID}}");
+    expect(renderedStoreMetadataBody).toContain(
+      "workflow run 123456789](https://github.com/jerney-nexus/epikrise/actions/runs/123456789)",
+    );
+    expect(renderedStoreMetadataBody.match(/runs\/123456789/g)).toHaveLength(1);
+    expect(renderedStoreMetadataBody).toContain(
+      "including unreleased Store release notes",
+    );
+    expect(renderedStoreMetadataBody).toContain("## Review checklist");
+    expect(renderedStoreMetadataBody).toContain("## Safety and privacy");
+    expect(
+      renderedStoreMetadataBody.match(
+        /<!-- Please tick all applicable checkboxes\. -->/g,
+      ),
+    ).toHaveLength(2);
+    expect(renderedStoreMetadataBody).toContain(
+      "and the [Epikrise wiki](https://github.com/jerney-nexus/epikrise/wiki/Releasing)",
+    );
+    expect(() =>
+      renderStoreMetadataPullRequestBody({
+        template: storeMetadataTemplate,
+        runId: "not-a-run-id",
+      }),
+    ).toThrow("Store metadata workflow run ID must be numeric.");
+    expect(() =>
+      renderStoreMetadataPullRequestBody({
+        template: "no placeholders",
+        runId: "123456789",
+      }),
+    ).toThrow(
+      "Store metadata PR template must contain exactly two RUN_ID placeholders.",
+    );
+
+    const storeMetadataWorkflow = await readFile(
+      path.join(repoRoot, ".github/workflows/store-metadata.yml"),
+      "utf8",
+    );
+    const pullRequestJob = storeMetadataWorkflow.slice(
+      storeMetadataWorkflow.indexOf("  open-pull-request:"),
+    );
+    expect(pullRequestJob).toContain("STORE_METADATA_RUN_ID: ${{ github.run_id }}");
+    expect(pullRequestJob).toContain("scripts/render-store-metadata-pr-body.mjs");
+    expect(pullRequestJob).toContain(
+      "body-path: ${{ runner.temp }}/store-metadata-pr-body.md",
+    );
+    expect(pullRequestJob).not.toContain("body: |");
   });
 
   it("syncs Store metadata, commits it, and refreshes the base metadata pull request", async () => {
@@ -5607,6 +5758,90 @@ describe("signed release artifacts", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("GitHub repository configuration", () => {
+  it("configures weekly grouped Dependabot updates for all required ecosystems", async () => {
+    type DependabotUpdate = {
+      "package-ecosystem": string;
+      directory: string;
+      schedule: {
+        interval: string;
+        day: string;
+        time: string;
+        timezone: string;
+      };
+      groups: Record<string, { patterns: string[]; "update-types": string[] }>;
+    };
+
+    const dependabotText = await readFile(
+      path.join(repoRoot, ".github/dependabot.yml"),
+      "utf8",
+    );
+    const dependabot = parseYaml(dependabotText) as {
+      version: number;
+      updates: DependabotUpdate[];
+    };
+
+    expect(dependabot.version).toBe(2);
+    expect(
+      dependabot.updates.map((update) => [
+        update["package-ecosystem"],
+        update.directory,
+      ]),
+    ).toEqual([
+      ["npm", "/"],
+      ["cargo", "/src-tauri"],
+      ["github-actions", "/"],
+    ]);
+
+    for (const update of dependabot.updates) {
+      expect(update.schedule).toMatchObject({
+        interval: "weekly",
+        day: "monday",
+        time: "08:00",
+        timezone: "Etc/UTC",
+      });
+      const groups = Object.values(update.groups);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].patterns).toEqual(["*"]);
+      expect(groups[0]["update-types"]).toEqual(["minor", "patch"]);
+    }
+
+    expect(dependabotText).not.toContain("auto-merge");
+  });
+
+  it("assigns GitHub issue types without title prefixes and preserves safeguards", async () => {
+    const issueForms = [
+      { file: "bug_report.yml", type: "Bug", prefix: "[Bug]:" },
+      { file: "feature_request.yml", type: "Feature", prefix: "[Feature]:" },
+      { file: "task.yml", type: "Task", prefix: "[Task]:" },
+    ];
+
+    for (const { file, type, prefix } of issueForms) {
+      const source = await readFile(
+        path.join(repoRoot, ".github/ISSUE_TEMPLATE", file),
+        "utf8",
+      );
+      const form = parseYaml(source);
+      expect(form.type).toBe(type);
+      expect(form.title).toBeUndefined();
+      expect(source).not.toContain(prefix);
+      expect(source).toContain("Do not include patient data");
+    }
+
+    const bugReport = await readFile(
+      path.join(repoRoot, ".github/ISSUE_TEMPLATE/bug_report.yml"),
+      "utf8",
+    );
+    expect(bugReport).toContain("private reporting link");
+
+    const issueConfig = parseYaml(
+      await readFile(path.join(repoRoot, ".github/ISSUE_TEMPLATE/config.yml"), "utf8"),
+    );
+    expect(issueConfig.blank_issues_enabled).toBe(false);
+    expect(issueConfig.contact_links[0].url).toContain("/security/advisories/new");
   });
 });
 

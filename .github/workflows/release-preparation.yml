@@ -59,12 +59,17 @@ jobs:
       - name: Verify release metadata formatting
         run: pnpm format:check:file CHANGELOG.md src-tauri/tauri.conf.json
       - name: Write release PR body
+        env:
+          RELEASE_VERSION: ${{ steps.prepare.outputs.version }}
         run: |
-          {
-            echo "Automated CalVer version bump and changelog update."
-            echo
-            node scripts/check-store-release-notes.mjs
-          } > "$RUNNER_TEMP/release-pr-body.md"
+          set -euo pipefail
+          node scripts/check-store-release-notes.mjs \
+            > "$RUNNER_TEMP/store-release-notes-checklist.md"
+          node scripts/render-release-pr-body.mjs \
+            .github/PULL_REQUEST_TEMPLATE/release.md \
+            "$RUNNER_TEMP/release-pr-body.md" \
+            "$RELEASE_VERSION" \
+            "$RUNNER_TEMP/store-release-notes-checklist.md"
       # Pull requests opened with GITHUB_TOKEN do not trigger workflows, which
       # leaves the release PR macOS updater gate without an opened event.
       - uses: actions/create-github-app-token@v3
