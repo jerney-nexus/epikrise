@@ -4,7 +4,6 @@ startup-session-bus-failed = Epikrise could not restart with the desktop session
 startup-session-bus-hint = Credential listing may fail.
 startup-policy-failed = Epikrise could not start because the administrator policy file (policy.toml) could not be loaded.
 startup-policy-hint = Correct the policy file and restart Epikrise.
-ui-epikrise-home = Epikrise home
 ui-workspace = Workspace
 ui-provider-settings = Provider settings
 ui-choose-a-provider-endpoint-and-saved-keychain-credential = Choose a provider endpoint and saved keychain credential.

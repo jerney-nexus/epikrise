@@ -1,10 +1,11 @@
 <script>
+  import { resolve } from "$app/paths";
   import ThemePreference from "./ThemePreference.svelte";
 </script>
 
 <header class="site-header" lang="en">
   <div class="site-header__inner">
-    <a class="site-brand" href="/">
+    <a class="site-brand" href={resolve("/")}>
       <svg
         class="site-brand__mark"
         xmlns="http://www.w3.org/2000/svg"
@@ -22,14 +23,16 @@
           font-family="Georgia, 'Times New Roman', serif"
           font-size="640"
           text-anchor="middle"
-          dominant-baseline="middle">E</text
+          dominant-baseline="middle"
         >
+          E
+        </text>
       </svg>
       <span class="site-brand__name">Epikrise</span>
     </a>
     <nav class="site-nav" aria-label="Main">
-      <a href="/#download">Download</a>
-      <a href="/privacy-policy/en/">Privacy</a>
+      <a href={resolve("/#download")}>Download</a>
+      <a href={resolve("/privacy-policy/en/")}>Privacy</a>
       <a href="https://github.com/jerney-nexus/epikrise">GitHub</a>
     </nav>
     <ThemePreference />

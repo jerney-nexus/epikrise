@@ -100,7 +100,7 @@ jobs:
     env:
       PLAYWRIGHT_CROSS_BROWSER: "1"
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --user 1001
     steps:
       - uses: actions/checkout@v7

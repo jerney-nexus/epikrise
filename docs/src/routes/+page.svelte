@@ -1,4 +1,6 @@
 <script>
+  import { resolve } from "$app/paths";
+
   let { data } = $props();
 
   // Decorative 24px line icons, keyed by section id from index.md.
@@ -29,9 +31,13 @@
     <div class="hero__actions">
       <a
         class="button button--primary"
-        href="https://github.com/jerney-nexus/epikrise/releases">Download</a
+        href="https://github.com/jerney-nexus/epikrise/releases"
       >
-      <a class="button button--ghost" href="/privacy-policy/en/">Privacy policy</a>
+        Download
+      </a>
+      <a class="button button--ghost" href={resolve("/privacy-policy/en/")}>
+        Privacy policy
+      </a>
     </div>
   </section>
 

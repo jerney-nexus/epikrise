@@ -4,7 +4,6 @@ startup-session-bus-failed = Epikrise n'a pas pu redémarrer avec l'adresse du b
 startup-session-bus-hint = L'affichage des identifiants peut échouer.
 startup-policy-failed = Epikrise n'a pas pu démarrer, car le fichier de politique de l'administrateur (policy.toml) n'a pas pu être chargé.
 startup-policy-hint = Corrigez le fichier de politique, puis redémarrez Epikrise.
-ui-epikrise-home = Accueil d’Epikrise
 ui-workspace = Espace de travail
 ui-provider-settings = Paramètres du fournisseur
 ui-choose-a-provider-endpoint-and-saved-keychain-credential = Choisissez un point de terminaison du fournisseur et un identifiant enregistré dans le trousseau.
