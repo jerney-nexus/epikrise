@@ -4983,7 +4983,7 @@ describe("signed release artifacts", () => {
     expect(workflow).toContain("release.body.includes(marker)");
 
     const publishJob = workflow.slice(workflow.indexOf("  publish:"));
-    expect(publishJob).toContain("uses: pnpm/setup@v2");
+    expect(publishJob).toContain("uses: pnpm/setup@v3");
     expect(publishJob).toContain("cache: pnpm");
     expect(publishJob.indexOf("run: pnpm install --frozen-lockfile")).toBeLessThan(
       publishJob.indexOf(

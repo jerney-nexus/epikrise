@@ -28,7 +28,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: pnpm/setup@v2
+      - uses: pnpm/setup@v3
         with:
           version: 12.15.0
           install: false

@@ -23,7 +23,7 @@ jobs:
           GIT_CONFIG_VALUE_0: main
         with:
           fetch-depth: 0
-      - uses: pnpm/setup@v2
+      - uses: pnpm/setup@v3
         with:
           version: 12.15.0
           install: false
