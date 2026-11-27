@@ -6,7 +6,20 @@ import { isDeepStrictEqual } from "node:util";
 import { pathToFileURL } from "node:url";
 import { redactFileUploadUrls } from "./redact-store-submission.mjs";
 
-const ALLOWED_CHANGES = new Set(["id", "listings", "status", "statusdetails"]);
+const ALLOWED_CHANGES = new Set([
+  "id",
+  "listings",
+  "status",
+  "statusdetails",
+  "friendlyname",
+]);
+const PACKAGE_IDENTITY_FIELDS = [
+  "id",
+  "filename",
+  "version",
+  "architecture",
+  "filestatus",
+];
 
 /** @param {unknown} value @returns {value is Record<string, unknown>} */
 function isRecord(value) {
@@ -30,9 +43,93 @@ function submissionId(value) {
 /** @param {Record<string, unknown>} value */
 function comparable(value) {
   const redacted = /** @type {Record<string, unknown>} */ (redactFileUploadUrls(value));
-  return Object.fromEntries(
+  const result = Object.fromEntries(
     Object.entries(redacted).filter(([key]) => !ALLOWED_CHANGES.has(key.toLowerCase())),
   );
+  const pricing = field(result, "pricing");
+  if (isRecord(pricing)) removeField(pricing, "isadvancedpricingmodel");
+  const delivery = field(result, "packagedeliveryoptions");
+  const rollout = isRecord(delivery) ? field(delivery, "packagerollout") : undefined;
+  if (isRecord(rollout)) removeField(rollout, "fallbacksubmissionid");
+  return result;
+}
+
+/** @param {Record<string, unknown>} value @param {string} name */
+function field(value, name) {
+  const keys = Object.keys(value).filter((key) => key.toLowerCase() === name);
+  return keys.length === 1 ? value[keys[0]] : undefined;
+}
+
+/** @param {Record<string, unknown>} value @param {string} name */
+function removeField(value, name) {
+  for (const key of Object.keys(value)) {
+    if (key.toLowerCase() === name) delete value[key];
+  }
+}
+
+/** @param {Record<string, unknown>} value @param {string} name */
+function hasUnambiguousField(value, name) {
+  return Object.keys(value).filter((key) => key.toLowerCase() === name).length <= 1;
+}
+
+/**
+ * Partner Center may omit derived platform details from a newly created draft.
+ * Only tolerate missing details for a package with the same complete identity.
+ * @param {Record<string, unknown>} published
+ * @param {Record<string, unknown>} draft
+ */
+function normalizeIncompletePackageReadback(published, draft) {
+  const before = field(published, "applicationpackages");
+  const after = field(draft, "applicationpackages");
+  if (
+    !Array.isArray(before) ||
+    !Array.isArray(after) ||
+    before.length !== after.length
+  ) {
+    return;
+  }
+  for (let i = 0; i < before.length; i++) {
+    const original = before[i];
+    const updated = after[i];
+    if (!isRecord(original) || !isRecord(updated)) continue;
+    const sameIdentity = PACKAGE_IDENTITY_FIELDS.every((name) => {
+      const expected = field(original, name);
+      return (
+        typeof expected === "string" &&
+        expected !== "" &&
+        field(updated, name) === expected
+      );
+    });
+    if (!sameIdentity) continue;
+
+    const platform = field(original, "targetplatform");
+    const draftPlatform = field(updated, "targetplatform");
+    if (
+      hasUnambiguousField(original, "targetplatform") &&
+      hasUnambiguousField(updated, "targetplatform") &&
+      typeof platform === "string" &&
+      platform !== "" &&
+      draftPlatform == null
+    ) {
+      removeField(original, "targetplatform");
+      removeField(updated, "targetplatform");
+    }
+
+    const families = field(original, "targetdevicefamilies");
+    const draftFamilies = field(updated, "targetdevicefamilies");
+    if (
+      Array.isArray(families) &&
+      families.length > 0 &&
+      families.every((family) => typeof family === "string" && family !== "") &&
+      hasUnambiguousField(original, "targetdevicefamilies") &&
+      hasUnambiguousField(updated, "targetdevicefamilies") &&
+      (draftFamilies == null ||
+        (Array.isArray(draftFamilies) && draftFamilies.length === 0))
+    ) {
+      removeField(original, "targetdevicefamilies");
+      removeField(updated, "targetdevicefamilies");
+    }
+  }
 }
 
 /**
@@ -53,7 +150,10 @@ export function assertMetadataDraftContainsOnlyListingChanges(published, draft) 
   if (!id) {
     throw new Error("The pending metadata draft has no readable ID.");
   }
-  if (!isDeepStrictEqual(comparable(published), comparable(draft))) {
+  const publishedComparable = comparable(published);
+  const draftComparable = comparable(draft);
+  normalizeIncompletePackageReadback(publishedComparable, draftComparable);
+  if (!isDeepStrictEqual(publishedComparable, draftComparable)) {
     throw new Error(
       "The pending metadata draft contains changes outside listing metadata; refusing to publish it.",
     );

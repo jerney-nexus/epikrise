@@ -48,6 +48,7 @@ import {
 } from "../scripts/verify-store-metadata-draft.mjs";
 import {
   createStoreReleaseContext,
+  resolveManualStoreRelease,
   validateStoreReleaseContext,
 } from "../scripts/store-release-context.mjs";
 import {
@@ -773,6 +774,121 @@ describe("CalVer release versions", () => {
     );
   });
 
+  it("resolves manual Store retries from main to a published release commit", () => {
+    const dispatch = {
+      ref: "refs/heads/main",
+      refName: "main",
+      sha: "a".repeat(40),
+      releaseTag: "v2026.11.11",
+    };
+    const github = {
+      getRelease: vi.fn(() => ({
+        tagName: dispatch.releaseTag,
+        isDraft: false,
+        isPrerelease: false,
+      })),
+      getTagSha: vi.fn(() => "b".repeat(40)),
+    };
+    expect(resolveManualStoreRelease(dispatch, github)).toEqual({
+      releaseTag: "v2026.11.11",
+      releaseSha: "b".repeat(40),
+      packageVersion: "2026.11.11.0",
+    });
+    expect(github.getRelease).toHaveBeenCalledWith("v2026.11.11");
+    expect(github.getTagSha).toHaveBeenCalledWith("v2026.11.11");
+
+    for (const tag of ["", "main", "v2026.11.11/other"]) {
+      expect(() =>
+        resolveManualStoreRelease({ ...dispatch, releaseTag: tag }, github),
+      ).toThrow("Invalid Store release tag");
+    }
+    expect(() =>
+      resolveManualStoreRelease({ ...dispatch, ref: "refs/heads/development" }, github),
+    ).toThrow("must use main or a release tag");
+
+    for (const release of [
+      { tagName: dispatch.releaseTag, isDraft: true, isPrerelease: false },
+      { tagName: dispatch.releaseTag, isDraft: false, isPrerelease: true },
+      { tagName: "v2026.11.10", isDraft: false, isPrerelease: false },
+      null,
+    ]) {
+      const getTagSha = vi.fn(() => "b".repeat(40));
+      expect(() =>
+        resolveManualStoreRelease(dispatch, { getRelease: () => release, getTagSha }),
+      ).toThrow("published, non-prerelease");
+      expect(getTagSha).not.toHaveBeenCalled();
+    }
+    expect(() =>
+      resolveManualStoreRelease(dispatch, { ...github, getTagSha: () => "not-a-sha" }),
+    ).toThrow("full lowercase SHA");
+  });
+
+  it("preserves tag-dispatched Store sync and rejects a conflicting tag input", () => {
+    const github = {
+      getRelease: vi.fn(),
+      getTagSha: vi.fn(),
+    };
+    const dispatch = {
+      ref: "refs/tags/v2026.11.11",
+      refName: "v2026.11.11",
+      sha: "a".repeat(40),
+      releaseTag: "",
+    };
+    expect(resolveManualStoreRelease(dispatch, github)).toEqual(
+      createStoreReleaseContext(dispatch.refName, dispatch.sha),
+    );
+    expect(() =>
+      resolveManualStoreRelease({ ...dispatch, releaseTag: "v2026.11.10" }, github),
+    ).toThrow("must match the dispatched tag");
+    expect(github.getRelease).not.toHaveBeenCalled();
+    expect(github.getTagSha).not.toHaveBeenCalled();
+  });
+
+  it("writes manual retry context using the release commit returned by GitHub", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "epikrise-store-retry-"));
+    const gh = path.join(directory, "gh");
+    const output = path.join(directory, "release.json");
+    try {
+      await writeFile(
+        gh,
+        `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "release" ]]; then
+  [[ "$2" == "view" && "$3" == "v2026.11.11" && "$4" == "--repo" && "$5" == "example/repo" ]]
+  printf '%s\\n' '{"tagName":"v2026.11.11","isDraft":false,"isPrerelease":false}'
+elif [[ "$1" == "api" ]]; then
+  [[ "$2" == "repos/example/repo/commits/refs/tags/v2026.11.11" ]]
+  printf '%s\\n' '${"b".repeat(40)}'
+else
+  exit 1
+fi
+`,
+      );
+      await chmod(gh, 0o755);
+      await execFile(
+        process.execPath,
+        [
+          path.join(repoRoot, "scripts/store-release-context.mjs"),
+          "resolve-manual",
+          "refs/heads/main",
+          "main",
+          "a".repeat(40),
+          "v2026.11.11",
+          "example/repo",
+          output,
+        ],
+        { env: { ...process.env, PATH: `${directory}:${process.env.PATH}` } },
+      );
+      expect(JSON.parse(await readFile(output, "utf8"))).toEqual({
+        releaseTag: "v2026.11.11",
+        releaseSha: "b".repeat(40),
+        packageVersion: "2026.11.11.0",
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects Store submissions whose packages do not all match the release", () => {
     expect(() =>
       assertStorePackageIdentity(
@@ -821,6 +937,133 @@ describe("CalVer release versions", () => {
         Status: "Published",
       }),
     ).toThrow("did not create a PendingCommit draft");
+  });
+
+  it("accepts documented server-managed changes and incomplete readback for the same package", () => {
+    const packageBefore = {
+      Id: "package-1",
+      FileName: "app.msixbundle",
+      Version: "2026.11.11.0",
+      Architecture: "Neutral",
+      FileStatus: "Uploaded",
+      TargetPlatform: "Windows10",
+      TargetDeviceFamilies: ["Windows.Desktop min version 10.0.19041.0"],
+    };
+    const published = {
+      Id: "published",
+      Status: "Published",
+      FriendlyName: "Submission 10",
+      Pricing: { IsAdvancedPricingModel: true, PriceId: "Free" },
+      PackageDeliveryOptions: {
+        PackageRollout: { FallbackSubmissionId: "older", IsPackageRollout: false },
+      },
+      ApplicationPackages: [packageBefore],
+    };
+    const draft = {
+      ...published,
+      Id: "draft",
+      Status: "PendingCommit",
+      FriendlyName: "Submission 11",
+      Pricing: { IsAdvancedPricingModel: false, PriceId: "Free" },
+      PackageDeliveryOptions: {
+        PackageRollout: { FallbackSubmissionId: "published", IsPackageRollout: false },
+      },
+      ApplicationPackages: [
+        { ...packageBefore, TargetPlatform: null, TargetDeviceFamilies: [] },
+      ],
+    };
+
+    expect(assertMetadataDraftContainsOnlyListingChanges(published, draft)).toBe(
+      "draft",
+    );
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(published, {
+        ...draft,
+        ApplicationPackages: [{ ...draft.ApplicationPackages[0], Id: "other-package" }],
+      }),
+    ).toThrow("outside listing metadata");
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(published, {
+        ...draft,
+        Pricing: { ...draft.Pricing, PriceId: "Tier2" },
+      }),
+    ).toThrow("outside listing metadata");
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(published, {
+        ...draft,
+        PackageDeliveryOptions: {
+          PackageRollout: {
+            ...draft.PackageDeliveryOptions.PackageRollout,
+            IsPackageRollout: true,
+          },
+        },
+      }),
+    ).toThrow("outside listing metadata");
+    expect(() =>
+      assertReviewedMetadataDraftUnchanged(
+        draft,
+        { ...draft, FriendlyName: "Changed" },
+        "draft",
+      ),
+    ).toThrow("changed after human review");
+    expect(() =>
+      assertReviewedMetadataDraftUnchanged(
+        draft,
+        {
+          ...draft,
+          ApplicationPackages: [
+            { ...draft.ApplicationPackages[0], TargetDeviceFamilies: ["Windows.Xbox"] },
+          ],
+        },
+        "draft",
+      ),
+    ).toThrow("changed after human review");
+  });
+
+  it("rejects populated platform differences and incomplete package identities", () => {
+    const pkg = {
+      id: "package-1",
+      fileName: "app.msixbundle",
+      version: "2026.11.11.0",
+      architecture: "Neutral",
+      fileStatus: "Uploaded",
+      targetPlatform: "Windows10",
+      targetDeviceFamilies: ["Windows.Desktop"],
+    };
+    const published = { id: "old", status: "Published", applicationPackages: [pkg] };
+    const draft = { id: "new", status: "PendingCommit", applicationPackages: [pkg] };
+    const withPackage = (value: object) => ({ ...draft, applicationPackages: [value] });
+
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(
+        published,
+        withPackage({ ...pkg, targetPlatform: "Windows8" }),
+      ),
+    ).toThrow("outside listing metadata");
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(
+        published,
+        withPackage({ ...pkg, targetDeviceFamilies: ["Windows.Xbox"] }),
+      ),
+    ).toThrow("outside listing metadata");
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(
+        { ...published, applicationPackages: [{ ...pkg, id: "" }] },
+        withPackage({ ...pkg, id: "", targetPlatform: null, targetDeviceFamilies: [] }),
+      ),
+    ).toThrow("outside listing metadata");
+    expect(() =>
+      assertMetadataDraftContainsOnlyListingChanges(
+        published,
+        withPackage({ ...pkg, targetPlatform: null, TargetPlatform: "Windows8" }),
+      ),
+    ).toThrow("outside listing metadata");
+    expect(
+      assertMetadataDraftContainsOnlyListingChanges(
+        published,
+        withPackage({ ...pkg, targetPlatform: null, targetDeviceFamilies: [] }),
+      ),
+    ).toBe("new");
   });
 
   it.each([
@@ -4433,6 +4676,7 @@ describe("signed release artifacts", () => {
     );
 
     expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("release_tag:");
     expect(workflow).toContain("refresh_base_metadata:");
     expect(workflow).not.toContain("workflow_call");
     expect(workflow).toContain("needs.resolve-release-commit.outputs.sha");
@@ -4447,10 +4691,13 @@ describe("signed release artifacts", () => {
     );
     expect(workflow).toContain("mkdir -p release-context");
     expect(workflow).toContain(
-      'create "$GITHUB_REF_NAME" "$GITHUB_SHA" release-context/release.json',
+      'resolve-manual "$GITHUB_REF" "$GITHUB_REF_NAME" "$GITHUB_SHA" "$RELEASE_TAG" "$GITHUB_REPOSITORY" release-context/release.json',
     );
-    expect(workflow).toContain('if [[ "$GITHUB_REF_TYPE" != "tag" ]]');
     expect(workflow).toContain("ref: ${{ github.workflow_sha }}");
+    expect(workflow).toContain(
+      "node tooling/scripts/update-store-metadata.mjs submission.json store-assets/base-metadata.json",
+    );
+    expect(workflow).toContain("node tooling/scripts/wait-store-submission.mjs");
     expect(workflow).toContain("node tooling/scripts/compare-store-base-metadata.mjs");
     expect(workflow).not.toContain("inputs.commit");
     expect(workflow).toContain("- Store submission packages");
