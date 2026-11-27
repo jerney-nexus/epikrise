@@ -1,5 +1,5 @@
 {
-  "Id": "1152921505702516775",
+  "Id": "1152921505702523478",
   "ApplicationCategory": "Productivity",
   "Pricing": {
     "TrialPeriod": "NoFreeTrial",
@@ -455,10 +455,10 @@
   },
   "ApplicationPackages": [
     {
-      "FileName": "Epikrise_2026.11.10.0_bundle.msixbundle",
+      "FileName": "Epikrise_2026.11.11.0_bundle.msixbundle",
       "FileStatus": "Uploaded",
-      "Id": "2000000000101325149",
-      "Version": "2026.11.10.0",
+      "Id": "2000000000101346159",
+      "Version": "2026.11.11.0",
       "Architecture": "neutral",
       "Languages": [
         "de-CH",
@@ -494,6 +494,6 @@
     "Team": false,
     "Holographic": false
   },
-  "FriendlyName": "Submission 10",
+  "FriendlyName": "Submission 12",
   "Trailers": []
 }
