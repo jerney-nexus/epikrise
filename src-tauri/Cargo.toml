@@ -60,7 +60,7 @@ keyring = { version = "3.6.3", default-features = false, features = [
     "crypto-rust",
 ] }
 keyring-search = "1"
-minijinja = { version = "2", features = ["fuel"] }
+minijinja = { version = "3", features = ["fuel"] }
 quick-xml = "0.42"
 rtf-parser-tt = "0.6"
 pdf-extract = "0.12"
