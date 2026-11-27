@@ -1910,6 +1910,22 @@ mod tests {
     }
 
     #[test]
+    fn pdf_with_leading_bytes_is_detected_for_vision_and_ingestion() {
+        let pdf = b" \n%PDF-1.7\nnot a document".to_vec();
+
+        assert_eq!(
+            infer::get(&pdf).map(|kind| kind.mime_type()),
+            Some("application/pdf")
+        );
+        assert_eq!(
+            epikrise_ingest::extract_file_with_ocr("invalid.pdf".to_owned(), pdf, |_, _| {
+                panic!("malformed PDF must not reach OCR")
+            }),
+            Err(epikrise_ingest::IngestError::PdfExtractionFailed)
+        );
+    }
+
+    #[test]
     fn classifies_tesseract_stderr_without_returning_raw_diagnostics() {
         use epikrise_ingest::OcrDiagnosticCategory;
 
