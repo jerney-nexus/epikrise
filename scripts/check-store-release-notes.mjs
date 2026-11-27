@@ -50,6 +50,8 @@ export function renderReleaseNotesChecklist({ locales, needing, previousTag }) {
   const lines = [
     "## Store listing release notes",
     "",
+    "<!-- Please tick all applicable checkboxes. -->",
+    "",
     `- [ ] Update \`ReleaseNotes\` in \`${metadataPath}\` for every locale (${locales
       .map((locale) => `\`${locale}\``)
       .join(", ")}) on this branch, then run **Store metadata** after the release.`,

@@ -1,6 +1,6 @@
 name: Feature request
 description: Suggest an improvement to Epikrise
-title: "[Feature]: "
+type: Feature
 body:
   - type: markdown
     attributes:
