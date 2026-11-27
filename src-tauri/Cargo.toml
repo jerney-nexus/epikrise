@@ -75,7 +75,7 @@ sha2 = "0.10"
 specta = { version = "2.0.0-rc.25", features = ["derive"] }
 tempfile = "3"
 thiserror = "2"
-toml = "0.9"
+toml = "1.1"
 tokio = { version = "1", features = ["macros", "net", "rt"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 reqwest = { version = "0.12", default-features = false, features = [
